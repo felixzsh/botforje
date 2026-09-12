@@ -34,8 +34,8 @@ needs a channel; an LLM is optional and only used when configured.
   may bind to a node or graph variable (read and write).
 - Node context — node variables that reset when the node is entered again.
 - Graph context — session-wide variables that persist across nodes.
-- Scope — namespace applied to actions, graphs, and bots. References resolve
-  only within the same scope.
+- Scope — generic isolation namespace applied to actions, graphs, and bots
+  (a tenant is one use). References and sessions never cross scopes.
 
 ## Message lifecycle
 

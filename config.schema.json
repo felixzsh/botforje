@@ -99,7 +99,7 @@
       "properties": {
         "scope": {
           "type": "string",
-          "description": "Scope name. Defaults to 'default'. Entities with the same name can coexist in different scopes."
+          "description": "Optional isolation namespace. Defaults to 'default'. Entities in different scopes can share names and never reference each other"
         },
         "inputs": {
           "$ref": "#/definitions/Inputs"
@@ -335,7 +335,7 @@
       "properties": {
         "scope": {
           "type": "string",
-          "description": "Scope name. Defaults to 'default'. References resolve within the same scope."
+          "description": "Optional isolation namespace. Defaults to 'default'. References resolve only within the same scope"
         },
         "root": {
           "type": "string",
@@ -467,7 +467,7 @@
       "properties": {
         "scope": {
           "type": "string",
-          "description": "Scope name. Bot and its referenced graph must share the same scope."
+          "description": "Optional isolation namespace. Defaults to 'default'. The bot and its referenced graph must share the same scope"
         },
         "graph": {
           "type": "string",

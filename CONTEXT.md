@@ -57,7 +57,8 @@ than WhatsApp.
   bind to node or graph variables) inside a node; edges remain the only
   transitions. See ADR 0008.
 - Messaging channel and LLM provider are two separate ports. See ADR 0004.
-- Scope is an explicit field per entity, not derived from file paths.
+- Scope is an explicit isolation namespace per entity, not derived from file
+  paths; a tenant is one use, not the definition.
   See ADR 0005.
 - SQLite is the only persistence technology in the MVP. See ADR 0006.
 - Go structs are the source for the config schema; runtime validation is in
@@ -73,7 +74,8 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
 
 - Bot — one WhatsApp account plus the graph that gives it behavior.
 - Fleet — the set of bots a single BotForje instance runs.
-- Scope — isolation namespace for entities; references never cross scopes.
+- Scope — generic isolation namespace; references and sessions never cross
+  scopes.
 - Graph — conversation state machine owned by one bot.
 - Node — a state: goal, policy, entry/exit actions, agent tools, and
   optional node-local context.

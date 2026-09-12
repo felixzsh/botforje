@@ -371,6 +371,8 @@ bots:
 #   policy and tools, and how it transitions (edges).
 # - Naming: goal is the agent's objective; edge intent is the user trigger;
 #   message intent is the reply's goal. All short, clear text, not snake_case.
+# - Scope is an optional isolation namespace (default "default"); entities in
+#   different scopes never reference each other or share sessions.
 # - Policies compose: node policy always applies; a message policy refines it.
 # - Message modes:
 #     body only              deterministic text (string or list of variants)
