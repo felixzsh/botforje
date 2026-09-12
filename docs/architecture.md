@@ -23,11 +23,13 @@ needs a channel; an LLM is optional and only used when configured.
 
 - Bot — identity (account) plus settings and the reference to one graph.
 - Graph — state machine with root, fallback, timeout, and a map of nodes.
-- Node — intent, policy, examples, entry/exit actions, allowed actions, and
+- Node — goal, policy, examples, entry/exit actions, agent tools, and
   optional node-local context.
 - Edge — transition matched by intent, text, or condition. LLM routing
   resolves unmatched input when a provider is configured.
-- Action — ordered steps (`message`, `request`, `location`) with guards.
+- Action — ordered steps (`message`, `request`, `location`) with guards and
+  declared `inputs`; exposed to the agent when a node lists it in `tools`.
+- Tool — an action the agent may invoke with validated arguments.
 - Scope — namespace applied to actions, graphs, and bots. References resolve
   only within the same scope.
 
@@ -38,23 +40,37 @@ Inbound:
 1. Channel receives an event and maps it to an `IncomingMessage`.
 2. Inbox filters it (groups, allow/ignore lists, dedup) and routes it to the
    right bot and session.
-3. Graph engine loads or creates the session and evaluates the current node's
-   edges: deterministic match first, LLM intent routing as fallback.
-4. Engine runs the transition: exit actions, target node, entry actions, and
-   any allowed actions selected by the LLM.
-5. Reply text is deterministic, LLM-realized within node policy, or both; a
-   policy check runs before anything is queued.
-6. Results are queued in the bot's outbox and the session is persisted.
+3. Graph engine loads or creates the session. Deterministic matching runs
+   first: the current node's edges are evaluated against their examples.
+4. If nothing matches and LLM routing is enabled, the agent loop starts
+   (ADR 0008): the agent may call node tools with arguments validated
+   against each action's `inputs`, and may produce a reply.
+5. Tool results return to the agent as context; the agent can chain calls,
+   stay in the node, or take a declared edge. It never invents a transition.
+6. Engine runs the selected transition: exit actions, target node, entry
+   actions.
+7. Reply text is deterministic, LLM-realized within node policy, or both
+   (anchor plus fallback); a policy check runs before anything is queued.
+8. Results are queued in the bot's outbox and the session is persisted.
 
 Outbound:
 
 1. Outbox paces messages with the bot's configured delay.
 2. Channel sends them; failures are surfaced, never silently dropped.
 
+## Templates
+
+Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
+`{{sender.*}}`, `{{message.*}}`, `{{bot.*}}`, tool arguments as
+`{{input.<name>}}`, and request results as `{{node.<request>.resp.body.*}}`.
+Tool result syntax is still open (Phase 4).
+
 ## Concurrency
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
+- The agent loop runs inside the bot actor and is bounded (max tools per
+  message, timeout); a slow provider cannot stall other bots.
 - Bounded queues between inbox, engine, and outbox provide backpressure.
 - No shared mutable state between bots; shared services are read-only or
   synchronized.

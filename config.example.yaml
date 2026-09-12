@@ -43,7 +43,7 @@ actions:
             - "Thanks for stopping by. See you soon!"
             - "All done here. Take care!"
 
-  # LLM-realized reply: the engine generates text from intent and policy
+  # Intent-only reply: no fallback text; fails when no provider is configured
   summarize-policy:
     scope: "support"
     steps:
@@ -51,7 +51,7 @@ actions:
           intent: explain_return_policy
           policy: "Friendly and clear. Maximum three sentences. Never promise refunds."
 
-  # Deterministic base that the LLM may rewrite within policy (hybrid)
+  # LLM generates anchored on body; body is also the fallback (ADR 0003)
   confirm-order:
     scope: "support"
     steps:
@@ -59,6 +59,56 @@ actions:
           body: "Your order is confirmed."
           intent: confirm_order
           policy: "Friendly, one short sentence, no extra promises."
+
+  # Tool with declared inputs: the agent fills product before invoking it
+  product-info:
+    scope: "support"
+    inputs:
+      product:
+        type: "string"
+        required: true
+        description: "Product name or id to look up"
+    steps:
+      - request:
+          name: lookup
+          url: "https://api.example.com/products?q={{input.product}}"
+          method: GET
+          headers:
+            Authorization: "Bearer your-api-token"
+          timeout: 5000
+          retry: 1
+
+  # Tool with side effects and several inputs
+  start-order:
+    scope: "support"
+    inputs:
+      product:
+        type: "string"
+        required: true
+        description: "Product name or id to order"
+      quantity:
+        type: "integer"
+        required: true
+        description: "Units to order"
+    steps:
+      - request:
+          name: create
+          url: "https://api.example.com/orders"
+          method: POST
+          headers:
+            Authorization: "Bearer your-api-token"
+          body: '{"product": "{{input.product}}", "qty": {{input.quantity}}}'
+          timeout: 10000
+          retry: 2
+
+  # Used by the purchase node; body is the fallback when generation runs
+  ask-product:
+    scope: "support"
+    steps:
+      - message:
+          body: "Which product would you like, and how many units?"
+          intent: ask_product
+          policy: "One short question; ask for product and quantity together."
 
   # Request with payload; response captured for later templates
   lead-notify:
@@ -174,18 +224,19 @@ graphs:
 
     nodes:
       menu:
-        intent: show_menu
+        goal: show_menu
         examples: ["menu", "start", "help", "options"]
         policy: "Warm and brief. Never promise a human unless escalate runs."
         on_enter: ["menu"]
         on_exit: ["nav-log"]
-        can_use: ["lead-notify"]  # Optional actions; deterministic or LLM-selected
         edges:
           - examples: ["1", "hours", "schedule", "when are you open"]
             goto: "hours"
           - examples: ["2", "catalog", "products"]
             goto: "catalog"
-          - intent: ask_human     # LLM routing when no example matches
+          - intent: start_purchase   # LLM routing when no example matches
+            goto: "purchase"
+          - intent: ask_human
             goto: "escalate"
           - examples: ["4", "price", "pricing", "cost"]
             goto: "pricing"
@@ -194,7 +245,7 @@ graphs:
           - goto: "invalid"       # Default edge: catches everything else
 
       hours:
-        intent: show_hours
+        goal: show_hours
         examples: ["hours", "schedule", "open"]
         on_enter: ["hours"]
         edges:
@@ -203,7 +254,7 @@ graphs:
           - goto: "invalid"
 
       catalog:
-        intent: browse_catalog
+        goal: browse_catalog
         examples: ["catalog", "products", "brochure"]
         on_enter: ["catalog"]
         edges:
@@ -211,8 +262,21 @@ graphs:
             goto: "menu"
           - goto: "invalid"
 
+      purchase:
+        goal: "Help the customer buy the right product"
+        policy: "Confirm product and quantity before ordering. Never invent prices."
+        examples: ["buy", "order", "purchase", "i want"]
+        on_enter: ["ask-product"]
+        tools: ["product-info", "start-order"]
+        edges:
+          - examples: ["menu", "back", "cancel"]
+            goto: "menu"
+          - intent: wants_human
+            goto: "escalate"
+          - goto: "invalid"
+
       pricing:
-        intent: ask_pricing
+        goal: ask_pricing
         examples: ["price", "pricing", "cost", "plans"]
         on_enter: ["pricing"]
         initial_context:          # Node-local; resets on every re-entry
@@ -226,7 +290,7 @@ graphs:
           - goto: "invalid"
 
       lead:
-        intent: capture_lead
+        goal: capture_lead
         on_enter: ["lead-notify"]
         edges:
           - examples: ["menu", "back"]
@@ -234,7 +298,7 @@ graphs:
           - goto: "farewell"
 
       escalate:
-        intent: ask_human
+        goal: ask_human
         examples: ["human", "agent", "person", "talk", "speak"]
         on_enter: ["escalate"]    # Cooldown guard applies here
         edges:
@@ -243,13 +307,13 @@ graphs:
           - goto: "invalid"
 
       invalid:
-        intent: invalid_option
+        goal: invalid_option
         on_enter: ["invalid"]
         edges:
           - goto: "menu"          # Always return to the menu after invalid input
 
       farewell:
-        intent: farewell
+        goal: farewell
         examples: ["bye", "goodbye", "thanks", "that is all"]
         on_enter: ["farewell"]
         edges: []                 # Terminal node; session expires by timeout
@@ -260,7 +324,7 @@ graphs:
     root: "ping"
     nodes:
       ping:
-        intent: health_check
+        goal: health_check
         examples: ["ping"]
         on_enter: ["greet"]
         edges: []
@@ -283,17 +347,21 @@ bots:
       ignore_groups: false
 
 # Notes
-# - Hybrid model (ADR 0003): a node declares what it is doing (intent,
-#   examples, policy) and how it transitions (edges).
+# - Hybrid model (ADR 0003): a node declares a goal (context for the agent),
+#   examples and policy, and how it transitions (edges).
 # - Message modes:
 #     body only              deterministic text (string or list of variants)
-#     intent only            LLM realization from intent and policy
-#     body + intent          LLM rewrite of the deterministic base
+#     intent only            LLM realization; no fallback, fails with no provider
+#     body + intent          LLM generates anchored on body; body is also the
+#                            fallback when generation is unavailable or fails
+# - Agentic nodes (ADR 0008): tools lists the actions the agent may invoke
+#   with validated inputs; edges remain the only transitions. With no llm
+#   section there are no tools: only on_enter, on_exit and edges run.
 # - Matching runs deterministically first (examples). LLM routing handles
-#   the rest when the llm section is configured. No llm section means a
-#   fully deterministic bot.
+#   the rest when the llm section is configured.
 # - Scope is an explicit field; uniqueness key is (type, scope, name).
 # - Template contexts: {{graph.*}}, {{node.*}}, {{sender.*}}, {{message.*}},
-#   {{bot.*}}, and request results as {{node.<request-name>.resp.body.*}}.
+#   {{bot.*}}, tool inputs as {{input.<name>}}, and request results as
+#   {{node.<request-name>.resp.body.*}} (tool result syntax is still open).
 # - Matching thresholds and structured policy details stay open until the
 #   algorithms and the engine exist (Phase 1/4).

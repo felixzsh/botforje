@@ -39,7 +39,8 @@ architecture:
 - CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
 - REST API with key-based auth.
 - Hybrid LLM support designed in from the start: deterministic routing works
-  with no LLM configured; intents and providers are first-class when enabled.
+  with no LLM configured; intents, providers, and agentic tools are
+  first-class when enabled.
 
 Not in the MVP: dashboard, behavior stored in a database, automatic graph
 extraction from chat history, SaaS/login infrastructure, and channels other
@@ -50,8 +51,11 @@ than WhatsApp.
 - Go + whatsmeow over Node.js + whatsapp-web.js. See ADR 0001.
 - YAML is the behavior source of truth; SQLite stores runtime state. A later
   dashboard phase may migrate behavior to the database. See ADR 0002.
-- Hybrid intent model: nodes describe intent, policy, examples, and allowed
-  actions; replies are deterministic, LLM-realized, or both. See ADR 0003.
+- Hybrid intent model: nodes describe a goal, policy, tools, and examples;
+  replies are deterministic, LLM-realized, or both (anchor plus fallback).
+  See ADR 0003.
+- Nodes are agentic: the agent invokes tools with validated inputs inside a
+  node; edges remain the only transitions. See ADR 0008.
 - Messaging channel and LLM provider are two separate ports. See ADR 0004.
 - Scope is an explicit field per entity, not derived from file paths.
   See ADR 0005.
@@ -71,9 +75,16 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
 - Fleet — the set of bots a single BotForje instance runs.
 - Scope — isolation namespace for entities; references never cross scopes.
 - Graph — conversation state machine owned by one bot.
-- Node — a state: intent, policy, entry actions, optional node context.
+- Node — a state: goal, policy, examples, entry/exit actions, agent tools,
+  and optional node-local context.
 - Edge — transition between nodes, matched by intent, text, or condition.
-- Action — reusable pipeline of steps (`message`, `request`, `location`).
+- Action — reusable pipeline of steps (`message`, `request`, `location`)
+  with guards and optional declared inputs.
+- Tool — an action a node exposes to the agent, invoked with validated
+  arguments (`inputs`).
+- Input — named, typed argument declared by a tool.
+- Agent loop — bounded sequence of tool calls and replies the LLM runs for
+  one incoming message inside a node.
 - Step — single operation inside an action.
 - Guard — rule that limits execution, for example a cooldown per sender.
 - Session — per-sender conversation state stored in SQLite.

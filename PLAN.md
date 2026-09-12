@@ -59,9 +59,10 @@ with precise errors.
 
 Deliverables:
 
-- Design task first: freeze config v1 (node `intent`/`examples`/`policy`,
-  edge `intent`/`examples`, message modes, scope, `llm` section). Align
-  `config.example.yaml` and the draft `config.schema.json` with it.
+- Design task first: freeze config v1 (node `goal`/`policy`/`tools`/
+  `examples`, action `inputs`, edge `intent`/`examples`, message modes,
+  scope, `llm` section). Align `config.example.yaml` and the draft
+  `config.schema.json` with it.
 - Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
 - Loader: main config plus `include` fragments (file, glob, directory),
   merge, and scope handling.
@@ -116,8 +117,9 @@ Deliverables:
 - Transitions: exit actions, `goto`, entry actions, and fallback node.
 - Steps: `message`, `location`, and `request` with retry and result capture.
 - Guards: cooldown per sender per action; blocked-action behavior.
-- Hybrid intent semantics: classification fallback, rendering modes, and
-  policy checks (the shape was frozen in Phase 1; ADR 0003).
+- Hybrid intent semantics: classification fallback, rendering modes with
+  anchor plus fallback, and policy checks (shape frozen in Phase 1;
+  ADR 0003).
 - Tests: simulated conversations including fallback, timeout, guards, and
   request failures.
 
@@ -158,7 +160,7 @@ Deliverables:
 Gate: two or more bot accounts run concurrently; messages from each are
 answered with the configured pacing.
 
-### Phase 7 — LLM providers and hybrid behavior
+### Phase 7 — LLM providers, tools, and hybrid behavior
 
 Goal: the LLM-first design becomes usable without making LLMs mandatory.
 
@@ -167,14 +169,21 @@ Deliverables:
 - `LLMProvider` implementations: at least one cloud provider and one local
   option, selected by config.
 - Intent classification as fallback for unmatched input.
-- Reply realization within node policy; policy checks before queueing.
+- Agentic tool calling (ADR 0008): the agent invokes node `tools` with
+  arguments validated against their `inputs`, chains calls, and stays in or
+  leaves the node through declared edges only.
+- Reply realization within node policy; `body` plus `intent` uses the body
+  as anchor and fallback; policy checks before queueing.
 - Deterministic fallback when no provider is configured or a call fails.
-- Per-message logging of node, intent, provider, and policy version.
-- Tests: provider fakes, classification cases, policy rejection fallback,
-  and evaluation fixtures (golden conversations).
+- Bounded agent loop: max tools per message and timeout from `llm.agent`.
+- Per-message logging of node, intent, tools called, provider, and policy
+  version.
+- Tests: provider fakes, classification cases, tool argument validation,
+  policy rejection fallback, and evaluation fixtures (golden conversations).
 
 Gate: the same graph runs with no LLM (deterministic) and with an LLM
-(routing, realization, or both), with logs that explain each decision.
+(routing, realization, tool use, or a combination), with logs that explain
+each decision.
 
 ### Phase 8 — CLI and REST API
 
@@ -229,6 +238,9 @@ knowledge.
   `invopop/jsonschema`).
 - Fuzzy matching algorithm and defaults (close in Phase 4).
 - Structured policy shape: free string versus structured object (Phase 4).
+- Tool result template syntax (close in Phase 4/7).
+- Confirmation guard for tools with side effects (Phase 7).
+- Agent bounds defaults: max tools per message and timeout (Phase 7).
 - Which LLM providers ship first (close in Phase 7).
 - API shape and auth details (close in Phase 8).
 

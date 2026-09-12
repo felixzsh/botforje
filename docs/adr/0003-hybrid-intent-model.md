@@ -10,18 +10,25 @@ audit. Both extremes are bad for a framework that wants controlled behavior.
 
 ## Decision
 
-A node describes intent, not literal output:
+A node describes a goal, not literal output:
 
-- `intent`: what the node is for, for example `ask_shipping_zip`.
+- `goal`: what the state is trying to achieve, for example `ask_shipping_zip`.
 - `policy`: tone, constraints, and prohibitions for any generated reply.
 - `examples`: phrases that lead to this node; also usable as fast-path match.
-- `can_use`: actions the engine may run while in this node.
+- `tools`: actions the agent may invoke while in this node (ADR 0008).
 
-Routing and reply realization each choose a mode per node: deterministic
-(text or variants), LLM-assisted, or both with deterministic fallback. A
-policy check runs on generated replies before they are queued; a failed check
-falls back to deterministic output. Critical flows (prices, data, compliance)
-stay deterministic or constrained to values from context.
+Reply realization lives on messages and has three modes:
+
+- `body` only: deterministic text. A list means random variants.
+- `intent` only: the LLM realizes the reply from intent and policy. Without a
+  provider the step fails; there is no fallback text.
+- `body` plus `intent`: the LLM generates using `body` as the factual anchor
+  within policy; if no provider is available, the call fails, or the policy
+  check rejects the output, the resolved `body` is sent as the fallback.
+
+`policy` without `intent` is invalid, and a variant list combined with
+`intent` is invalid. Critical flows (prices, data, compliance) stay
+deterministic or constrained to values from context.
 
 ## Consequences
 
@@ -29,8 +36,8 @@ stay deterministic or constrained to values from context.
   fingerprinting is reduced.
 - LLM usage is optional per node and per instance; bots still run with no
   provider configured.
-- Every generated message must be traceable: node, intent, provider, and
-  policy version are logged.
+- Every generated message must be traceable: node, intent, tools called,
+  provider, and policy version are logged.
 - Testing needs two extra layers: classification cases and reply evaluations
   (golden conversations) on top of deterministic unit tests.
 - Policies and prompts are versioned with the config and change under review.
