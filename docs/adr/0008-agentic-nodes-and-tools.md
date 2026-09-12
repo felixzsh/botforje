@@ -26,7 +26,7 @@ in that state:
 
 Flow for one incoming message in a node:
 
-1. Deterministic edge matching runs first (examples, no LLM).
+1. Deterministic edge matching runs first (edge examples, no LLM).
 2. If nothing matches and LLM routing is enabled, the agent decides: it may
    call one or more tools, with validated arguments, and may produce a reply.
 3. Tool results return to the agent as context; the agent can chain calls,

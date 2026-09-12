@@ -225,7 +225,6 @@ graphs:
     nodes:
       menu:
         goal: show_menu
-        examples: ["menu", "start", "help", "options"]
         policy: "Warm and brief. Never promise a human unless escalate runs."
         on_enter: ["menu"]
         on_exit: ["nav-log"]
@@ -246,7 +245,6 @@ graphs:
 
       hours:
         goal: show_hours
-        examples: ["hours", "schedule", "open"]
         on_enter: ["hours"]
         edges:
           - examples: ["menu", "back"]
@@ -255,7 +253,6 @@ graphs:
 
       catalog:
         goal: browse_catalog
-        examples: ["catalog", "products", "brochure"]
         on_enter: ["catalog"]
         edges:
           - examples: ["menu", "back"]
@@ -265,7 +262,6 @@ graphs:
       purchase:
         goal: "Help the customer buy the right product"
         policy: "Confirm product and quantity before ordering. Never invent prices."
-        examples: ["buy", "order", "purchase", "i want"]
         on_enter: ["ask-product"]
         tools: ["product-info", "start-order"]
         edges:
@@ -277,7 +273,6 @@ graphs:
 
       pricing:
         goal: ask_pricing
-        examples: ["price", "pricing", "cost", "plans"]
         on_enter: ["pricing"]
         initial_context:          # Node-local; resets on every re-entry
           plan: ""
@@ -299,7 +294,6 @@ graphs:
 
       escalate:
         goal: ask_human
-        examples: ["human", "agent", "person", "talk", "speak"]
         on_enter: ["escalate"]    # Cooldown guard applies here
         edges:
           - examples: ["menu", "back"]
@@ -314,7 +308,6 @@ graphs:
 
       farewell:
         goal: farewell
-        examples: ["bye", "goodbye", "thanks", "that is all"]
         on_enter: ["farewell"]
         edges: []                 # Terminal node; session expires by timeout
 
@@ -325,7 +318,6 @@ graphs:
     nodes:
       ping:
         goal: health_check
-        examples: ["ping"]
         on_enter: ["greet"]
         edges: []
 
@@ -348,7 +340,7 @@ bots:
 
 # Notes
 # - Hybrid model (ADR 0003): a node declares a goal (context for the agent),
-#   examples and policy, and how it transitions (edges).
+#   policy and tools, and how it transitions (edges).
 # - Message modes:
 #     body only              deterministic text (string or list of variants)
 #     intent only            LLM realization; no fallback, fails with no provider
@@ -357,8 +349,8 @@ bots:
 # - Agentic nodes (ADR 0008): tools lists the actions the agent may invoke
 #   with validated inputs; edges remain the only transitions. With no llm
 #   section there are no tools: only on_enter, on_exit and edges run.
-# - Matching runs deterministically first (examples). LLM routing handles
-#   the rest when the llm section is configured.
+# - Matching runs deterministically first (edge examples). LLM routing
+#   handles the rest when the llm section is configured.
 # - Scope is an explicit field; uniqueness key is (type, scope, name).
 # - Template contexts: {{graph.*}}, {{node.*}}, {{sender.*}}, {{message.*}},
 #   {{bot.*}}, tool inputs as {{input.<name>}}, and request results as

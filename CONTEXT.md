@@ -51,9 +51,8 @@ than WhatsApp.
 - Go + whatsmeow over Node.js + whatsapp-web.js. See ADR 0001.
 - YAML is the behavior source of truth; SQLite stores runtime state. A later
   dashboard phase may migrate behavior to the database. See ADR 0002.
-- Hybrid intent model: nodes describe a goal, policy, tools, and examples;
-  replies are deterministic, LLM-realized, or both (anchor plus fallback).
-  See ADR 0003.
+- Hybrid intent model: nodes describe a goal, policy, and tools; replies are
+  deterministic, LLM-realized, or both (anchor plus fallback). See ADR 0003.
 - Nodes are agentic: the agent invokes tools with validated inputs inside a
   node; edges remain the only transitions. See ADR 0008.
 - Messaging channel and LLM provider are two separate ports. See ADR 0004.
@@ -75,8 +74,8 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
 - Fleet — the set of bots a single BotForje instance runs.
 - Scope — isolation namespace for entities; references never cross scopes.
 - Graph — conversation state machine owned by one bot.
-- Node — a state: goal, policy, examples, entry/exit actions, agent tools,
-  and optional node-local context.
+- Node — a state: goal, policy, entry/exit actions, agent tools, and
+  optional node-local context.
 - Edge — transition between nodes, matched by intent, text, or condition.
 - Action — reusable pipeline of steps (`message`, `request`, `location`)
   with guards and optional declared inputs.

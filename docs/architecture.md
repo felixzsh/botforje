@@ -23,8 +23,8 @@ needs a channel; an LLM is optional and only used when configured.
 
 - Bot — identity (account) plus settings and the reference to one graph.
 - Graph — state machine with root, fallback, timeout, and a map of nodes.
-- Node — goal, policy, examples, entry/exit actions, agent tools, and
-  optional node-local context.
+- Node — goal, policy, entry/exit actions, agent tools, and optional
+  node-local context.
 - Edge — transition matched by intent, text, or condition. LLM routing
   resolves unmatched input when a provider is configured.
 - Action — ordered steps (`message`, `request`, `location`) with guards and

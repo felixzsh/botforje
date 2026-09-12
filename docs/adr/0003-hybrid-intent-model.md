@@ -14,7 +14,6 @@ A node describes a goal, not literal output:
 
 - `goal`: what the state is trying to achieve, for example `ask_shipping_zip`.
 - `policy`: tone, constraints, and prohibitions for any generated reply.
-- `examples`: phrases that lead to this node; also usable as fast-path match.
 - `tools`: actions the agent may invoke while in this node (ADR 0008).
 
 Reply realization lives on messages and has three modes:

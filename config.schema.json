@@ -371,14 +371,6 @@
           "minLength": 1,
           "description": "What this state is trying to achieve; agent context, not a routing target"
         },
-        "examples": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Phrases that lead to this node; used as fast-path match and as classifier examples"
-        },
         "policy": {
           "type": "string",
           "minLength": 1,
