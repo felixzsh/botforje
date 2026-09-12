@@ -53,8 +53,9 @@ than WhatsApp.
   dashboard phase may migrate behavior to the database. See ADR 0002.
 - Hybrid intent model: nodes describe a goal, policy, and tools; replies are
   deterministic, LLM-realized, or both (anchor plus fallback). See ADR 0003.
-- Nodes are agentic: the agent invokes tools with validated inputs inside a
-  node; edges remain the only transitions. See ADR 0008.
+- Nodes are agentic: the agent invokes tools with validated inputs (which may
+  bind to node or graph variables) inside a node; edges remain the only
+  transitions. See ADR 0008.
 - Messaging channel and LLM provider are two separate ports. See ADR 0004.
 - Scope is an explicit field per entity, not derived from file paths.
   See ADR 0005.
@@ -85,7 +86,10 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
   with guards and optional declared inputs.
 - Tool — an action a node exposes to the agent, invoked with validated
   arguments (`inputs`).
-- Input — named, typed argument declared by a tool.
+- Input — named, typed argument of a tool; may bind to a node or graph
+  variable to read and write it.
+- Node context — node variables; reset when the node is entered again.
+- Graph context — session-wide variables; persist across nodes.
 - Agent loop — bounded sequence of tool calls and replies the LLM runs for
   one incoming message inside a node.
 - Step — single operation inside an action.

@@ -60,7 +60,7 @@ with precise errors.
 Deliverables:
 
 - Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
-  action `inputs`, edge `intent`/`triggers`, message modes, scope, `llm`
+  action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope, `llm`
   section). Align `config.example.yaml` and the draft `config.schema.json`
   with it.
 - Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
@@ -172,6 +172,9 @@ Deliverables:
 - Agentic tool calling (ADR 0008): the agent invokes node `tools` with
   arguments validated against their `inputs`, chains calls, and stays in or
   leaves the node through declared edges only.
+- Slot filling: missing required inputs return a tool error; the agent asks
+  the user and bound variables remember the answer. `bind` targets are
+  validated against node and graph `initial_context`.
 - Reply realization within node policy; `body` plus `intent` uses the body
   as anchor and fallback; policy checks before queueing.
 - Deterministic fallback when no provider is configured or a call fails.
@@ -239,6 +242,7 @@ knowledge.
 - Fuzzy matching algorithm and defaults (close in Phase 4).
 - Structured policy shape and conflict precedence (Phase 4; free string now).
 - Tool result template syntax (close in Phase 4/7).
+- Context variable typing and empty-versus-default semantics (Phase 4).
 - Confirmation guard for tools with side effects (Phase 7).
 - Agent bounds defaults: max tools per message and timeout (Phase 7).
 - Which LLM providers ship first (close in Phase 7).

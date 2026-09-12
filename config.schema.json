@@ -120,7 +120,7 @@
     },
     "Inputs": {
       "type": "object",
-      "description": "Named arguments for this tool. Steps consume them as {{input.<name>}}",
+      "description": "Named arguments for this tool. Steps consume them as {{input.<name>}}. An input may bind to a node or graph variable to read and write it",
       "additionalProperties": {
         "$ref": "#/definitions/Input"
       }
@@ -139,6 +139,11 @@
         },
         "default": {
           "description": "Value used when the agent omits the argument"
+        },
+        "bind": {
+          "type": "string",
+          "pattern": "^(node|graph)\\.[A-Za-z][A-Za-z0-9_]*$",
+          "description": "Context variable this argument reads from and writes to, for example node.product; must be declared in initial_context"
         },
         "description": {
           "type": "string",
@@ -348,7 +353,7 @@
         },
         "initial_context": {
           "type": "object",
-          "description": "Free-form key-value pairs, persists across nodes within the session",
+          "description": "Session context: free-form key-value pairs that persist across nodes; tools can bind inputs to these variables",
           "additionalProperties": true
         },
         "nodes": {
@@ -378,7 +383,7 @@
         },
         "initial_context": {
           "type": "object",
-          "description": "Free-form key-value pairs, resets every time the node is entered",
+          "description": "Node context: free-form key-value pairs that reset every time the node is entered; tools can bind inputs to these variables",
           "additionalProperties": true
         },
         "on_enter": {

@@ -60,7 +60,8 @@ actions:
           intent: "confirm the order"
           policy: "Friendly, one short sentence, no extra promises."
 
-  # Tool with declared inputs: the agent fills product before invoking it
+  # Tool with a bound input: the agent fills node.product once and it is
+  # remembered for later tool calls in the same node
   product-info:
     scope: "support"
     inputs:
@@ -68,6 +69,7 @@ actions:
         type: "string"
         required: true
         description: "Product name or id to look up"
+        bind: node.product
     steps:
       - request:
           name: lookup
@@ -86,10 +88,12 @@ actions:
         type: "string"
         required: true
         description: "Product name or id to order"
+        bind: node.product
       quantity:
         type: "integer"
         required: true
         description: "Units to order"
+        bind: node.quantity
     steps:
       - request:
           name: create
@@ -269,6 +273,9 @@ graphs:
       purchase:
         goal: "help the customer buy"
         policy: "Confirm product and quantity before ordering. Never invent prices."
+        initial_context:          # Node context; reset on re-entry
+          product: ""
+          quantity: 0
         on_enter: ["ask-product"]
         tools: ["product-info", "start-order"]
         edges:
@@ -363,6 +370,8 @@ bots:
 # - Agentic nodes (ADR 0008): tools lists the actions the agent may invoke
 #   with validated inputs; edges remain the only transitions. With no llm
 #   section there are no tools: only on_enter, on_exit and edges run.
+# - Tool inputs are typed arguments; bind: node.<var> or graph.<var> reads and
+#   writes a declared context variable, so the agent does not re-ask.
 # - Matching runs deterministically first (edge triggers). LLM routing
 #   handles the rest when the llm section is configured.
 # - Scope is an explicit field; uniqueness key is (type, scope, name).

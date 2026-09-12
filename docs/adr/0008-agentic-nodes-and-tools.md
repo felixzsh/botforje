@@ -20,7 +20,9 @@ in that state:
 - `policy`: constraints for generated text and agent behavior.
 - `tools`: actions available in this node. Each action declares `inputs`
   (type, required, default, description) and consumes them in its steps as
-  `{{input.<name>}}`.
+  `{{input.<name>}}`. An input may `bind` to a declared node or graph
+  variable: the value is read from it when the agent omits the argument and
+  written back when the agent provides it.
 - `edges`: the only allowed transitions, each with a user intent (or the
   default edge) and optional triggers. The agent never invents a transition
   outside them.
@@ -41,6 +43,9 @@ Bounds and safety:
   under `llm.agent`.
 - Arguments are validated against the declared `inputs`; the model never
   writes template strings directly.
+- A call with a missing required argument returns a tool error to the agent,
+  which asks the user; the answer is remembered in the bound variable. Agents
+  fill declared variables only; they never create new ones.
 - Tools with side effects may require a confirmation guard before executing.
 - With no LLM configured, tools are unavailable and the bot stays fully
   deterministic (`on_enter`, `on_exit`, edges).

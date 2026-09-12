@@ -30,7 +30,10 @@ needs a channel; an LLM is optional and only used when configured.
   routing resolves input that matches no trigger.
 - Action — ordered steps (`message`, `request`, `location`) with guards and
   declared `inputs`; exposed to the agent when a node lists it in `tools`.
-- Tool — an action the agent may invoke with validated arguments.
+- Tool — an action the agent may invoke with validated arguments; an input
+  may bind to a node or graph variable (read and write).
+- Node context — node variables that reset when the node is entered again.
+- Graph context — session-wide variables that persist across nodes.
 - Scope — namespace applied to actions, graphs, and bots. References resolve
   only within the same scope.
 
@@ -46,8 +49,10 @@ Inbound:
 4. If nothing matches and LLM routing is enabled, the agent loop starts
    (ADR 0008): the agent may call node tools with arguments validated
    against each action's `inputs`, and may produce a reply.
-5. Tool results return to the agent as context; the agent can chain calls,
-   stay in the node, or take a declared edge. It never invents a transition.
+5. Tool results return to the agent as context; missing required arguments
+   return a tool error and the agent asks the user, storing the answer in the
+   bound variable. The agent can chain calls, stay in the node, or take a
+   declared edge; it never invents a transition.
 6. Engine runs the selected transition: exit actions, target node, entry
    actions.
 7. Effective policy composes node policy (always) and message policy
