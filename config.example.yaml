@@ -230,21 +230,21 @@ graphs:
         on_exit: ["nav-log"]
         edges:
           - intent: "wants support hours"
-            examples: ["1", "hours", "schedule", "when are you open"]
+            triggers: ["1", "hours", "schedule", "when are you open"]
             goto: "hours"
           - intent: "wants the catalog"
-            examples: ["2", "catalog", "products"]
+            triggers: ["2", "catalog", "products"]
             goto: "catalog"
           - intent: "wants to buy"
-            examples: ["buy", "order", "purchase"]
+            triggers: ["buy", "order", "purchase"]
             goto: "purchase"
           - intent: "wants a human"
             goto: "escalate"
           - intent: "wants pricing"
-            examples: ["4", "price", "pricing", "cost"]
+            triggers: ["4", "price", "pricing", "cost"]
             goto: "pricing"
           - intent: "wants to leave"
-            examples: ["0", "exit", "bye", "goodbye"]
+            triggers: ["0", "exit", "bye", "goodbye"]
             goto: "farewell"
           - goto: "invalid"       # Default edge: catches everything else
 
@@ -253,7 +253,7 @@ graphs:
         on_enter: ["hours"]
         edges:
           - intent: "wants the menu"
-            examples: ["menu", "back"]
+            triggers: ["menu", "back"]
             goto: "menu"
           - goto: "invalid"
 
@@ -262,7 +262,7 @@ graphs:
         on_enter: ["catalog"]
         edges:
           - intent: "wants the menu"
-            examples: ["menu", "back"]
+            triggers: ["menu", "back"]
             goto: "menu"
           - goto: "invalid"
 
@@ -273,7 +273,7 @@ graphs:
         tools: ["product-info", "start-order"]
         edges:
           - intent: "wants the menu"
-            examples: ["menu", "back", "cancel"]
+            triggers: ["menu", "back", "cancel"]
             goto: "menu"
           - intent: "wants a human"
             goto: "escalate"
@@ -287,7 +287,7 @@ graphs:
           budget: 0
         edges:
           - intent: "wants the menu"
-            examples: ["menu", "back"]
+            triggers: ["menu", "back"]
             goto: "menu"
           - intent: "is ready to buy"
             goto: "lead"
@@ -298,7 +298,7 @@ graphs:
         on_enter: ["lead-notify"]
         edges:
           - intent: "wants the menu"
-            examples: ["menu", "back"]
+            triggers: ["menu", "back"]
             goto: "menu"
           - goto: "farewell"
 
@@ -307,7 +307,7 @@ graphs:
         on_enter: ["escalate"]    # Cooldown guard applies here
         edges:
           - intent: "wants the menu"
-            examples: ["menu", "back"]
+            triggers: ["menu", "back"]
             goto: "menu"
           - goto: "invalid"
 
@@ -363,7 +363,7 @@ bots:
 # - Agentic nodes (ADR 0008): tools lists the actions the agent may invoke
 #   with validated inputs; edges remain the only transitions. With no llm
 #   section there are no tools: only on_enter, on_exit and edges run.
-# - Matching runs deterministically first (edge examples). LLM routing
+# - Matching runs deterministically first (edge triggers). LLM routing
 #   handles the rest when the llm section is configured.
 # - Scope is an explicit field; uniqueness key is (type, scope, name).
 # - Template contexts: {{graph.*}}, {{node.*}}, {{sender.*}}, {{message.*}},

@@ -60,7 +60,7 @@ with precise errors.
 Deliverables:
 
 - Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
-  action `inputs`, edge `intent`/`examples`, message modes, scope, `llm`
+  action `inputs`, edge `intent`/`triggers`, message modes, scope, `llm`
   section). Align `config.example.yaml` and the draft `config.schema.json`
   with it.
 - Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.

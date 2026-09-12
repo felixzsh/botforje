@@ -415,20 +415,20 @@
     },
     "EdgeDefinition": {
       "type": "object",
-      "description": "A directed edge from one node to another. Every edge has a user-side intent, except the default (catch-all) edge, which has only goto. examples is an optional deterministic fast path",
+      "description": "A directed edge from one node to another. Every edge has a user-side intent, except the default (catch-all) edge, which has only goto. triggers is an optional deterministic fast path",
       "properties": {
         "intent": {
           "type": "string",
           "minLength": 1,
           "description": "User trigger, short and clear text such as \"wants a human\"; required except on the default edge"
         },
-        "examples": {
+        "triggers": {
           "type": "array",
           "items": {
             "type": "string",
             "minLength": 1
           },
-          "description": "Optional phrases that trigger this transition without the LLM; also used as classifier examples"
+          "description": "Optional phrases that trigger this transition without the LLM; the match is fuzzy, so variations count too, and they double as classifier examples"
         },
         "goto": {
           "type": "string",
@@ -448,7 +448,7 @@
                 "required": ["intent"]
               },
               {
-                "required": ["examples"]
+                "required": ["triggers"]
               }
             ]
           }

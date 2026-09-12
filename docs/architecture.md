@@ -26,8 +26,8 @@ needs a channel; an LLM is optional and only used when configured.
 - Node — goal, policy, entry/exit actions, agent tools, and optional
   node-local context.
 - Edge — transition with a required user intent, except the default
-  (catch-all) edge. `examples` is an optional deterministic fast path; LLM
-  routing resolves input that matches no example.
+  (catch-all) edge. `triggers` is an optional deterministic fast path; LLM
+  routing resolves input that matches no trigger.
 - Action — ordered steps (`message`, `request`, `location`) with guards and
   declared `inputs`; exposed to the agent when a node lists it in `tools`.
 - Tool — an action the agent may invoke with validated arguments.
@@ -42,7 +42,7 @@ Inbound:
 2. Inbox filters it (groups, allow/ignore lists, dedup) and routes it to the
    right bot and session.
 3. Graph engine loads or creates the session. Deterministic matching runs
-   first: the current node's edges are evaluated against their examples.
+   first: the current node's edges are evaluated against their triggers.
 4. If nothing matches and LLM routing is enabled, the agent loop starts
    (ADR 0008): the agent may call node tools with arguments validated
    against each action's `inputs`, and may produce a reply.
