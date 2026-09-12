@@ -13,7 +13,8 @@ audit. Both extremes are bad for a framework that wants controlled behavior.
 A node describes a goal, not literal output:
 
 - `goal`: what the state is trying to achieve, for example `ask_shipping_zip`.
-- `policy`: tone, constraints, and prohibitions for any generated reply.
+- `policy`: ambient constraints for the state: agent decisions, tool
+  selection, and generated text.
 - `tools`: actions the agent may invoke while in this node (ADR 0008).
 
 Reply realization lives on messages and has three modes:
@@ -24,6 +25,10 @@ Reply realization lives on messages and has three modes:
 - `body` plus `intent`: the LLM generates using `body` as the factual anchor
   within policy; if no provider is available, the call fails, or the policy
   check rejects the output, the resolved `body` is sent as the fallback.
+
+Policies compose: `node.policy` always applies; `message.policy` is optional
+and refines it for that reply, winning on direct conflict. Without
+`message.policy`, the node policy is inherited.
 
 `policy` without `intent` is invalid, and a variant list combined with
 `intent` is invalid. Critical flows (prices, data, compliance) stay

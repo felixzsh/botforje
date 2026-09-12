@@ -341,6 +341,7 @@ bots:
 # Notes
 # - Hybrid model (ADR 0003): a node declares a goal (context for the agent),
 #   policy and tools, and how it transitions (edges).
+# - Policies compose: node policy always applies; a message policy refines it.
 # - Message modes:
 #     body only              deterministic text (string or list of variants)
 #     intent only            LLM realization; no fallback, fails with no provider

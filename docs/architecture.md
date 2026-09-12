@@ -49,7 +49,8 @@ Inbound:
    stay in the node, or take a declared edge. It never invents a transition.
 6. Engine runs the selected transition: exit actions, target node, entry
    actions.
-7. Reply text is deterministic, LLM-realized within node policy, or both
+7. Effective policy composes node policy (always) and message policy
+   (optional refinement). Reply text is deterministic, LLM-realized, or both
    (anchor plus fallback); a policy check runs before anything is queued.
 8. Results are queued in the bot's outbox and the session is persisted.
 

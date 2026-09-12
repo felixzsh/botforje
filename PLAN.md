@@ -237,7 +237,7 @@ knowledge.
 - Schema generator choice and approval (Phase 1; candidate:
   `invopop/jsonschema`).
 - Fuzzy matching algorithm and defaults (close in Phase 4).
-- Structured policy shape: free string versus structured object (Phase 4).
+- Structured policy shape and conflict precedence (Phase 4; free string now).
 - Tool result template syntax (close in Phase 4/7).
 - Confirmation guard for tools with side effects (Phase 7).
 - Agent bounds defaults: max tools per message and timeout (Phase 7).

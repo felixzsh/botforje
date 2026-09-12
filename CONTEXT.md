@@ -86,6 +86,8 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
   one incoming message inside a node.
 - Step — single operation inside an action.
 - Guard — rule that limits execution, for example a cooldown per sender.
+- Policy — constraints for agent decisions, tool selection, and generated
+  text. Node policy is ambient; message policy refines it.
 - Session — per-sender conversation state stored in SQLite.
 - Channel — messaging transport implementation (WhatsApp today).
 - Provider — LLM implementation (cloud or local) used for routing and replies.

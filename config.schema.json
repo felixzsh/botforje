@@ -221,7 +221,7 @@
             "policy": {
               "type": "string",
               "minLength": 1,
-              "description": "Constraints for generated or rewritten text: tone, length, prohibitions. Requires intent or body plus intent"
+              "description": "Optional refinement of the node policy for this reply; the node policy still applies. Requires intent"
             }
           },
           "anyOf": [
@@ -374,7 +374,7 @@
         "policy": {
           "type": "string",
           "minLength": 1,
-          "description": "Constraints for any text generated while in this node: tone, length, prohibitions"
+          "description": "Ambient constraints for the state: agent decisions, tool selection, and generated text"
         },
         "initial_context": {
           "type": "object",
