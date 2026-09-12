@@ -12,7 +12,8 @@ audit. Both extremes are bad for a framework that wants controlled behavior.
 
 A node describes a goal, not literal output:
 
-- `goal`: what the state is trying to achieve, for example `ask_shipping_zip`.
+- `goal`: what the agent must achieve in this state, named from its side
+  (for example, "collect the shipping zip").
 - `policy`: ambient constraints for the state: agent decisions, tool
   selection, and generated text.
 - `tools`: actions the agent may invoke while in this node (ADR 0008).

@@ -369,7 +369,7 @@
         "goal": {
           "type": "string",
           "minLength": 1,
-          "description": "What this state is trying to achieve; agent context, not a routing target"
+          "description": "What the agent must achieve in this state, short and clear; names the agent's objective, not a routing target"
         },
         "policy": {
           "type": "string",
@@ -420,7 +420,7 @@
         "intent": {
           "type": "string",
           "minLength": 1,
-          "description": "Transition label used by LLM routing, for example ask_human"
+          "description": "User trigger label used by LLM routing, for example wants_human"
         },
         "examples": {
           "type": "array",

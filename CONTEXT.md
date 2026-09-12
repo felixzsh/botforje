@@ -76,7 +76,10 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
 - Graph — conversation state machine owned by one bot.
 - Node — a state: goal, policy, entry/exit actions, agent tools, and
   optional node-local context.
+- Goal — the agent's objective in a node, short and clear.
 - Edge — transition between nodes, matched by intent, text, or condition.
+- Intent — on an edge, the user trigger for the transition (for example
+  wants_human); on a message, what the reply should accomplish.
 - Action — reusable pipeline of steps (`message`, `request`, `location`)
   with guards and optional declared inputs.
 - Tool — an action a node exposes to the agent, invoked with validated
