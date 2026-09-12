@@ -1,68 +1,67 @@
-# Global Context
+# BotForje — Agent Guide
 
-## Project Identity
+## What this project is
 
-BotForje is a long-running application designed for long-term evolution.
+BotForje is a declarative WhatsApp bot framework written in Go. Bot behavior
+is defined in YAML: bots, conversation graphs, actions, and guards. One
+instance runs a fleet of WhatsApp accounts through the native Multi-Device
+protocol (`go.mau.fi/whatsmeow`) with no browser automation.
 
-The project prioritizes maintainability, clarity, and operational reliability over rapid feature delivery.
+This repository is the definitive implementation and will supersede
+`botforje-js`. The JS project is reference material only: read it for ideas
+and lessons, never copy code and never modify it.
 
-Every change should make the codebase easier to understand, extend, and operate in the future.
+## Sources of truth
 
----
+- `CONTEXT.md` — identity, decisions, glossary, current state.
+- `README.md` — entry point for humans.
+- `PLAN.md` — phase-by-phase plan to the MVP.
+- `docs/architecture.md` — components, boundaries, message lifecycle.
+- `docs/adr/` — why each important decision was made.
+- `config.schema.json` and `config.example.yaml` — configuration structure.
+- User `config.yml` — behavior of a running bot during the MVP.
 
-## Coding Principles
+When documents disagree, `CONTEXT.md` and the ADRs win over this file.
 
-* Favor simple designs over sophisticated architectures
-* Model the domain first, infrastructure second
-* Clear responsibilities over multifunction components
-* Explicit dependencies over hidden relationships
-* Small APIs over large abstractions
-* Composition over hierarchy
-* Flat structures over deep hierarchies
-* Local reasoning over global knowledge
-* Readability over cleverness
-* Consistency over personal preference
-* Evolve abstractions from real needs, not predictions
-* Optimize for maintainability before optimization for performance
-* Prefer boring and proven solutions
-* Keep concurrency contained and intentional
-* Minimize shared mutable state
-* Prefer the standard library unless a dependency provides significant value
-* Package boundaries should remain clear and easy to explain
+## Repositories and boundaries
 
----
+Write only inside this repository.
 
-## Structure Hints (TBD)
+- `../botforje-js` — legacy reference. Read-only. Never modify, never port
+  code or fixtures.
+- `../botforje-docs` — snapshot of legacy docs for the JS project. Do not
+  update it; all current documentation lives here.
 
----
+## Commands
 
-## Commands (TBD)
+TBD. Fill this section with real commands (build, test, validate, run) as
+soon as code exists. Until then, do not invent commands.
 
----
+## Structure
 
-## Never Do
+TBD. Expected shape once code exists: `cmd/` for entrypoints and `internal/`
+for packages. Replace this guess with the real layout.
 
-* Introduce abstractions without a demonstrated need
-* Create catch-all packages (`utils`, `helpers`, `common`, `misc`)
-* Mix domain logic with transport, persistence, or framework concerns
-* Hide dependencies behind globals or service locators
-* Add dependencies without explicit approval
-* Optimize before identifying a real bottleneck
-* Remove files without explicit request
-* Perform unrequested refactors
-* Perform unrequested fixes
-* Interact with git or GitHub
+## Conventions
 
----
+- The domain never imports YAML, SQL, whatsmeow, or LLM SDK types.
+- Define interfaces at the consumer; keep them small and intentional.
+- Keep code, comments, logs, and documentation in English.
+- Do not re-litigate settled decisions in code. Propose an ADR change instead.
+- A phase from `PLAN.md` is done only when its gate (tests) passes.
 
-## Always Do
+## Never
 
-* Make focused, atomic changes
-* Follow existing project conventions
-* Treat the codebase as the source of truth
-* Preserve clear ownership of responsibilities
-* Prefer explicitness over magic
-* Keep public APIs small and intentional
-* Leave the codebase at least as maintainable as you found it
-* Discuss architectural changes before implementing them
-* Keep code, logs, comments, and documentation in English
+- Modify sibling repositories.
+- Add a dependency without explicit approval.
+- Mix domain logic with transport, persistence, or CLI concerns.
+- Create catch-all packages (`utils`, `helpers`, `common`, `misc`).
+- Refactor or fix things that were not requested.
+- Delete files without explicit request.
+- Optimize before a real bottleneck exists.
+
+## Git
+
+- This repository follows the global rule: Conventional Commits, commit
+  settled work, squash related iterations.
+- Never run git commands inside sibling repositories.

@@ -1,0 +1,24 @@
+# ADR 0006 — SQLite as the only persistence technology in the MVP
+
+Status: Accepted (2026-09)
+
+## Context
+
+The engine must persist whatsmeow credentials, conversation sessions, and
+message history. A single-instance deployment should stay simple to operate;
+no external database should be required.
+
+## Decision
+
+SQLite is the project database. One file per instance, WAL mode, and schema
+migrations on startup. Tables: whatsmeow device store, sessions,
+conversations, messages, and (with the API) web sessions and admin keys.
+The domain depends on repository interfaces, not on SQL.
+
+## Consequences
+
+- Zero external services; backup is copying files.
+- The single-writer model is acceptable for one process with short writes.
+- Migrations must exist from the first table; no manual schema edits.
+- Dashboard and SaaS phases may add tables and an import path; the storage
+  engine stays SQLite.
