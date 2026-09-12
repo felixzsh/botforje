@@ -22,6 +22,9 @@ llm:
   # base_url: "http://localhost:11434"   # Local / self-hosted providers
   routing: "fallback"             # off | fallback | always
   realization: "auto"             # off | auto
+  agent:                          # Bounds for agentic tool use (ADR 0008)
+    max_tools_per_message: 3
+    timeout: 30000                # Agent loop timeout in milliseconds
 
 # Action Catalog — reusable actions referenced by graphs.
 # Scope is explicit; references never cross scopes. Default scope is "default".
@@ -70,6 +73,11 @@ actions:
         required: true
         description: "Product name or id to look up"
         bind: node.product
+      fields:
+        type: "string"
+        required: false
+        default: "name,price"
+        description: "Comma-separated fields to return"
     steps:
       - request:
           name: lookup
@@ -207,6 +215,8 @@ actions:
           longitude: -99.1332
           name: "Main Office"
           address: "Av. Reforma 123, CDMX"
+          url: "https://example.com/office"
+          description: "Second floor, ask for support."
 
 # Multi-file organization: fragments may define any mix of actions, graphs,
 # and bots. Global settings are only valid in config.yml.
