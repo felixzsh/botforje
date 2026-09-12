@@ -63,12 +63,14 @@ Outbound:
 ## Configuration pipeline
 
 ```
-YAML -> structural validation -> typed model -> semantic validation -> engine
+YAML -> strict decode -> typed model -> semantic validation -> engine
 ```
 
-Structural validation uses `config.schema.json`. Semantic validation
-(reference resolution, scope isolation, uniqueness, reachability) happens in
-Go because a JSON Schema cannot express it.
+Runtime validation happens in Go only: strict YAML decoding rejects unknown
+fields and wrong types, and semantic checks cover reference resolution,
+scope isolation, uniqueness, reachability, and mode rules. The
+`config.schema.json` file is generated from the Go types for editor support
+and is never edited by hand (ADR 0007).
 
 ## Explicitly avoided for now
 

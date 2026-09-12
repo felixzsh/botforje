@@ -52,22 +52,27 @@ Gate: the spike proves pairing and messaging work; conventions are written.
 
 Out of scope: any product code.
 
-### Phase 1 — Config engine and `validate`
+### Phase 1 — Config engine, config v1, and `validate`
 
-Goal: YAML becomes a validated typed model with precise errors.
+Goal: freeze the config v1 shape and turn YAML into a validated typed model
+with precise errors.
 
 Deliverables:
 
-- Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard.
+- Design task first: freeze config v1 (node `intent`/`examples`/`policy`,
+  edge `intent`/`examples`, message modes, scope, `llm` section). Align
+  `config.example.yaml` and the draft `config.schema.json` with it.
+- Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
 - Loader: main config plus `include` fragments (file, glob, directory),
   merge, and scope handling.
-- Structural validation against `config.schema.json`.
-- Semantic validation in Go: reference resolution, scope isolation,
-  uniqueness by (type, scope, name), node reachability.
+- Runtime validation in Go: strict YAML decoding plus semantic checks.
+  The JSON Schema is generated from the Go types for editors only (ADR 0007).
+- Semantic validation: reference resolution, scope isolation, uniqueness by
+  (type, scope, name), node reachability, and message mode rules.
+- Schema generation: pick and approve a generator (candidate:
+  `invopop/jsonschema`) and wire the regeneration step.
 - CLI command `validate` with readable output and a `--json` mode.
 - Fixtures: valid and invalid cases for every rule.
-- Close the schema decision: hand-written schema versus generated from Go
-  types.
 
 Gate: `validate` accepts valid fixtures and rejects every invalid fixture
 with an error naming file, entity, and reason. Unit tests for merge and
@@ -111,8 +116,8 @@ Deliverables:
 - Transitions: exit actions, `goto`, entry actions, and fallback node.
 - Steps: `message`, `location`, and `request` with retry and result capture.
 - Guards: cooldown per sender per action; blocked-action behavior.
-- Hybrid intent support in the model: intent, policy, examples, and allowed
-  actions per node; deterministic rendering first.
+- Hybrid intent semantics: classification fallback, rendering modes, and
+  policy checks (the shape was frozen in Phase 1; ADR 0003).
 - Tests: simulated conversations including fallback, timeout, guards, and
   request failures.
 
@@ -219,13 +224,18 @@ knowledge.
 
 ## Open decisions
 
-- Hand-written versus generated `config.schema.json` (close in Phase 1).
 - CLI approach: standard library flags versus a CLI library (Phase 0/1).
-- Exact YAML shape for intent nodes and policies (close in Phase 4).
+- Schema generator choice and approval (Phase 1; candidate:
+  `invopop/jsonschema`).
 - Fuzzy matching algorithm and defaults (close in Phase 4).
+- Structured policy shape: free string versus structured object (Phase 4).
 - Which LLM providers ship first (close in Phase 7).
 - API shape and auth details (close in Phase 8).
 
+Resolved: Go structs are the schema source and runtime validation happens in
+Go (ADR 0007). The config v1 shape is frozen in Phase 1.
+
 Candidate dependencies from the earlier plan (`gopkg.in/yaml.v3`,
-`urfave/cli/v3`, `google/jsonschema-go`) are candidates, not commitments.
-Confirm each in Phase 0 or 1.
+`urfave/cli/v3`) are candidates, not commitments. Confirm each in Phase 0/1.
+`google/jsonschema-go` is no longer needed: runtime validation is in Go
+(ADR 0007).

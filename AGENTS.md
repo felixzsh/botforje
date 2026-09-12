@@ -18,7 +18,8 @@ and lessons, never copy code and never modify it.
 - `PLAN.md` — phase-by-phase plan to the MVP.
 - `docs/architecture.md` — components, boundaries, message lifecycle.
 - `docs/adr/` — why each important decision was made.
-- `config.schema.json` and `config.example.yaml` — configuration structure.
+- `config.schema.json` (generated from Go types starting in Phase 1) and
+  `config.example.yaml` (draft v1) — configuration structure.
 - User `config.yml` — behavior of a running bot during the MVP.
 
 When documents disagree, `CONTEXT.md` and the ADRs win over this file.

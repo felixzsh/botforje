@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "config.schema.json",
-  "title": "Botforje Configuration Schema",
-  "description": "Schema for botforje YAML/NL configuration files. Defines the main config.yml structure and the Fragment sub-schema for included files.",
+  "title": "BotForje Configuration Schema (v1 draft)",
+  "description": "Editor schema for BotForje YAML configuration. Draft v1: once generation from Go structs exists (ADR 0007) this file is generated and never edited by hand.",
   "type": "object",
   "required": ["version"],
   "properties": {
@@ -11,8 +11,8 @@
     "address": { "type": "string", "description": "REST API bind address" },
     "port": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "REST API port (0 = disabled)" },
     "log_level": { "type": "string", "enum": ["debug", "info", "warn", "error"], "description": "Logging verbosity" },
-    "trusted_issuers": { "type": "array", "items": { "type": "string" }, "description": "External login server public keys (federated auth)" },
     "default_timeout": { "type": "integer", "minimum": 0, "description": "Default graph session timeout in seconds" },
+    "llm": { "$ref": "#/definitions/LLM" },
     "include": {
       "type": "array",
       "items": { "type": "string" },
@@ -96,10 +96,26 @@
       "properties": {
         "message": {
           "type": "object",
+          "description": "Reply text. Three modes: body only (deterministic), intent only (LLM realization), or body plus intent (LLM rewrite of the base within policy)",
           "properties": {
-            "body": { "type": "string", "minLength": 1 }
+            "body": {
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "minItems": 1
+                }
+              ],
+              "description": "Deterministic reply text, or a list of variants chosen at random"
+            },
+            "intent": { "type": "string", "minLength": 1, "description": "What the reply should accomplish; enables LLM realization" },
+            "policy": { "type": "string", "minLength": 1, "description": "Constraints for generated or rewritten text: tone, length, prohibitions. Requires intent or body plus intent" }
           },
-          "required": ["body"],
+          "anyOf": [
+            { "required": ["body"] },
+            { "required": ["intent"] }
+          ],
           "additionalProperties": false
         }
       },
@@ -121,7 +137,8 @@
               "additionalProperties": { "type": "string" }
             },
             "timeout": { "type": "integer", "minimum": 0, "description": "Request timeout in milliseconds" },
-            "retry": { "type": "integer", "minimum": 0, "description": "Number of retry attempts on failure" }
+            "retry": { "type": "integer", "minimum": 0, "description": "Number of retry attempts on failure" },
+            "body": { "type": "string", "description": "Request payload (supports template variables)" }
           },
           "required": ["name", "url", "method"],
           "additionalProperties": false
@@ -174,8 +191,15 @@
     },
     "NodeDefinition": {
       "type": "object",
-      "description": "A single node in a graph state machine",
+      "description": "A single graph state. Describes what the conversation is doing here and how it transitions",
       "properties": {
+        "intent": { "type": "string", "minLength": 1, "description": "What this node is for, for example show_hours. Defaults to the node name" },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Phrases that lead to this node; used as fast-path match and as classifier examples"
+        },
+        "policy": { "type": "string", "minLength": 1, "description": "Constraints for any text generated while in this node: tone, length, prohibitions" },
         "initial_context": {
           "type": "object",
           "description": "Free-form key-value pairs, resets every time the node is entered",
@@ -193,7 +217,7 @@
         },
         "can_use": {
           "type": "array",
-          "description": "Actions the LLM can optionally invoke",
+          "description": "Actions available while in this node; invoked deterministically or selected by the LLM when it is configured",
           "items": { "type": "string" }
         },
         "edges": {
@@ -207,10 +231,14 @@
     },
     "EdgeDefinition": {
       "type": "object",
-      "description": "A directed edge from one node to another, triggered by a match or default",
+      "description": "A directed edge from one node to another. An edge with no intent and no examples is the default (catch-all) edge",
       "properties": {
-        "match": { "type": "string", "description": "Comma-separated fuzzy match phrases. Absence means default (catch-all) edge." },
-        "fuzzy_threshold": { "type": "number", "minimum": 0, "maximum": 1, "description": "0.3=strict, 0.6=moderate (default), 0.9=loose" },
+        "intent": { "type": "string", "minLength": 1, "description": "Transition label used by LLM routing, for example ask_human" },
+        "examples": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Phrases that trigger this transition; used as fast-path match and as classifier examples"
+        },
         "goto": { "type": "string", "minLength": 1, "description": "Target node name" }
       },
       "required": ["goto"],
@@ -224,14 +252,14 @@
         "graph": { "type": "string", "minLength": 1, "description": "Name of the graph this bot uses (must exist in the same scope)" },
         "settings": { "$ref": "#/definitions/BotSettings" }
       },
-      "required": ["graph", "settings"],
+      "required": ["graph"],
       "additionalProperties": false
     },
     "BotSettings": {
       "type": "object",
       "properties": {
-        "queue_delay": { "type": "integer", "minimum": 0, "description": "Milliseconds between outbound messages" },
-        "ignore_groups": { "type": "boolean", "description": "Ignore group messages" },
+        "queue_delay": { "type": "integer", "minimum": 0, "description": "Milliseconds between outbound messages (engine default applies when omitted)" },
+        "ignore_groups": { "type": "boolean", "description": "Ignore group messages (engine default applies when omitted)" },
         "allowed_senders": {
           "type": "array",
           "items": { "type": "string" },
@@ -243,7 +271,20 @@
           "description": "Senders to ignore (e.g. status@broadcast)"
         }
       },
-      "required": ["queue_delay", "ignore_groups"],
+      "additionalProperties": false
+    },
+    "LLM": {
+      "type": "object",
+      "description": "Language model integration. Optional: bots run deterministically with no provider configured. Draft shape; final details close in Phase 4/7",
+      "properties": {
+        "provider": { "type": "string", "minLength": 1, "description": "Provider id, for example openai, anthropic, or ollama" },
+        "model": { "type": "string", "minLength": 1, "description": "Model name passed to the provider" },
+        "api_key_env": { "type": "string", "minLength": 1, "description": "Name of the environment variable holding the API key. Never store keys in config" },
+        "base_url": { "type": "string", "format": "uri", "description": "Endpoint override for local or self-hosted providers" },
+        "routing": { "type": "string", "enum": ["off", "fallback", "always"], "description": "Intent classification for input that matches no deterministic edge" },
+        "realization": { "type": "string", "enum": ["off", "auto"], "description": "Whether nodes and messages that declare an intent may generate text" }
+      },
+      "required": ["provider", "model"],
       "additionalProperties": false
     }
   }

@@ -12,9 +12,9 @@ browser instance per account.
 
 ## Status
 
-Pre-code. Architecture, decisions, and the phase plan are being settled;
-implementation has not started. See `PLAN.md` for the phases and
-`CONTEXT.md` for the current state.
+Pre-code. Architecture, decisions, and the phase plan are settled; the
+config v1 shape is drafted in `config.example.yaml`. Implementation has not
+started. See `PLAN.md` for the phases and `CONTEXT.md` for the current state.
 
 ## Documentation
 

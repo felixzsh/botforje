@@ -56,11 +56,14 @@ than WhatsApp.
 - Scope is an explicit field per entity, not derived from file paths.
   See ADR 0005.
 - SQLite is the only persistence technology in the MVP. See ADR 0006.
+- Go structs are the source for the config schema; runtime validation is in
+  Go and the JSON Schema is generated for editors. See ADR 0007.
 - `botforje-js` is reference only: no code port, no fixture port.
 
 ## Current state
 
-Pre-code. Decisions and plan are being settled; no implementation started.
+Pre-code. The config v1 shape is drafted in `config.example.yaml` and
+`config.schema.json` (intents included); no implementation started.
 
 ## Glossary
 
