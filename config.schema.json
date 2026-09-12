@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "config.schema.json",
+  "title": "Botforje Configuration Schema",
+  "description": "Schema for botforje YAML/NL configuration files. Defines the main config.yml structure and the Fragment sub-schema for included files.",
+  "type": "object",
+  "required": ["version"],
+  "properties": {
+    "$schema": { "type": "string", "description": "Points to this schema file for IDE autocompletion and validation" },
+    "version": { "type": "integer", "minimum": 1, "description": "Schema version. Code uses this to select the correct parser. Increment when making incompatible changes." },
+    "address": { "type": "string", "description": "REST API bind address" },
+    "port": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "REST API port (0 = disabled)" },
+    "log_level": { "type": "string", "enum": ["debug", "info", "warn", "error"], "description": "Logging verbosity" },
+    "trusted_issuers": { "type": "array", "items": { "type": "string" }, "description": "External login server public keys (federated auth)" },
+    "default_timeout": { "type": "integer", "minimum": 0, "description": "Default graph session timeout in seconds" },
+    "include": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Glob patterns or file paths to fragment YAML files. Each fragment can define actions, graphs, and/or bots — any mix, any organization. Global settings are not allowed in fragments."
+    },
+    "actions": { "$ref": "#/definitions/ActionCatalog" },
+    "graphs": { "$ref": "#/definitions/GraphCatalog" },
+    "bots": { "$ref": "#/definitions/BotCatalog" }
+  },
+  "definitions": {
+    "Fragment": {
+      "type": "object",
+      "description": "Schema for included YAML fragment files. Only catalogs allowed — no global settings or include.",
+      "properties": {
+        "actions": { "$ref": "#/definitions/ActionCatalog" },
+        "graphs": { "$ref": "#/definitions/GraphCatalog" },
+        "bots": { "$ref": "#/definitions/BotCatalog" }
+      },
+      "additionalProperties": false
+    },
+    "ActionCatalog": {
+      "type": "object",
+      "description": "Map of action name to action definition",
+      "additionalProperties": { "$ref": "#/definitions/ActionDefinition" }
+    },
+    "GraphCatalog": {
+      "type": "object",
+      "description": "Map of graph name to graph definition",
+      "additionalProperties": { "$ref": "#/definitions/GraphDefinition" }
+    },
+    "BotCatalog": {
+      "type": "object",
+      "description": "Map of bot name to bot definition",
+      "additionalProperties": { "$ref": "#/definitions/BotDefinition" }
+    },
+    "ActionDefinition": {
+      "type": "object",
+      "description": "A reusable action composed of sequential steps",
+      "properties": {
+        "scope": { "type": "string", "description": "Scope name. Defaults to 'default'. Entities with the same name can coexist in different scopes." },
+        "guards": { "$ref": "#/definitions/Guards" },
+        "steps": {
+          "type": "array",
+          "description": "Steps executed in sequence when the action triggers",
+          "items": { "$ref": "#/definitions/Step" }
+        }
+      },
+      "required": ["steps"],
+      "additionalProperties": false
+    },
+    "Guards": {
+      "type": "object",
+      "description": "Pre-execution guards that can block an action",
+      "properties": {
+        "cooldown": {
+          "type": "object",
+          "properties": {
+            "duration": { "type": "integer", "minimum": 0, "description": "Seconds before the same sender can re-trigger this action" },
+            "on_blocked": {
+              "type": "array",
+              "description": "Steps to run when cooldown blocks the action",
+              "items": { "$ref": "#/definitions/Step" }
+            }
+          },
+          "required": ["duration"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Step": {
+      "oneOf": [
+        { "$ref": "#/definitions/MessageStep" },
+        { "$ref": "#/definitions/RequestStep" },
+        { "$ref": "#/definitions/LocationStep" }
+      ],
+      "description": "One of: message (text reply), request (HTTP call), location (map pin)"
+    },
+    "MessageStep": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string", "minLength": 1 }
+          },
+          "required": ["body"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["message"],
+      "additionalProperties": false
+    },
+    "RequestStep": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$", "description": "Identifier for this request; used in template resolution as {{node.name.resp.body.*}}" },
+            "url": { "type": "string", "minLength": 1, "description": "Request URL (supports template variables)" },
+            "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] },
+            "headers": {
+              "type": "object",
+              "description": "Free-form HTTP headers",
+              "additionalProperties": { "type": "string" }
+            },
+            "timeout": { "type": "integer", "minimum": 0, "description": "Request timeout in milliseconds" },
+            "retry": { "type": "integer", "minimum": 0, "description": "Number of retry attempts on failure" }
+          },
+          "required": ["name", "url", "method"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["request"],
+      "additionalProperties": false
+    },
+    "LocationStep": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "type": "object",
+          "properties": {
+            "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+            "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+            "name": { "type": "string" },
+            "address": { "type": "string" },
+            "url": { "type": "string", "format": "uri" },
+            "description": { "type": "string" }
+          },
+          "required": ["latitude", "longitude"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["location"],
+      "additionalProperties": false
+    },
+    "GraphDefinition": {
+      "type": "object",
+      "description": "A conversation state machine with named nodes and directed edges",
+      "properties": {
+        "scope": { "type": "string", "description": "Scope name. Defaults to 'default'. References resolve within the same scope." },
+        "root": { "type": "string", "minLength": 1, "description": "Entry node name" },
+        "timeout": { "type": "integer", "minimum": 1, "description": "Session TTL in seconds (overrides global default_timeout)" },
+        "fallback": { "type": "string", "description": "Node to route to when no edge matches" },
+        "initial_context": {
+          "type": "object",
+          "description": "Free-form key-value pairs, persists across nodes within the session",
+          "additionalProperties": true
+        },
+        "nodes": {
+          "type": "object",
+          "description": "Map of node name to node definition",
+          "additionalProperties": { "$ref": "#/definitions/NodeDefinition" }
+        }
+      },
+      "required": ["root", "nodes"],
+      "additionalProperties": false
+    },
+    "NodeDefinition": {
+      "type": "object",
+      "description": "A single node in a graph state machine",
+      "properties": {
+        "initial_context": {
+          "type": "object",
+          "description": "Free-form key-value pairs, resets every time the node is entered",
+          "additionalProperties": true
+        },
+        "on_enter": {
+          "type": "array",
+          "description": "Actions to run automatically when entering this node",
+          "items": { "type": "string" }
+        },
+        "on_exit": {
+          "type": "array",
+          "description": "Actions to run automatically when leaving this node",
+          "items": { "type": "string" }
+        },
+        "can_use": {
+          "type": "array",
+          "description": "Actions the LLM can optionally invoke",
+          "items": { "type": "string" }
+        },
+        "edges": {
+          "type": "array",
+          "description": "Outgoing edges evaluated in order; first match wins",
+          "items": { "$ref": "#/definitions/EdgeDefinition" }
+        }
+      },
+      "required": ["edges"],
+      "additionalProperties": false
+    },
+    "EdgeDefinition": {
+      "type": "object",
+      "description": "A directed edge from one node to another, triggered by a match or default",
+      "properties": {
+        "match": { "type": "string", "description": "Comma-separated fuzzy match phrases. Absence means default (catch-all) edge." },
+        "fuzzy_threshold": { "type": "number", "minimum": 0, "maximum": 1, "description": "0.3=strict, 0.6=moderate (default), 0.9=loose" },
+        "goto": { "type": "string", "minLength": 1, "description": "Target node name" }
+      },
+      "required": ["goto"],
+      "additionalProperties": false
+    },
+    "BotDefinition": {
+      "type": "object",
+      "description": "A bot instance that connects a transport (WhatsApp) to a graph",
+      "properties": {
+        "scope": { "type": "string", "description": "Scope name. Bot and its referenced graph must share the same scope." },
+        "graph": { "type": "string", "minLength": 1, "description": "Name of the graph this bot uses (must exist in the same scope)" },
+        "settings": { "$ref": "#/definitions/BotSettings" }
+      },
+      "required": ["graph", "settings"],
+      "additionalProperties": false
+    },
+    "BotSettings": {
+      "type": "object",
+      "properties": {
+        "queue_delay": { "type": "integer", "minimum": 0, "description": "Milliseconds between outbound messages" },
+        "ignore_groups": { "type": "boolean", "description": "Ignore group messages" },
+        "allowed_senders": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Whitelist of sender phone numbers; empty/null = all allowed"
+        },
+        "ignored_senders": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Senders to ignore (e.g. status@broadcast)"
+        }
+      },
+      "required": ["queue_delay", "ignore_groups"],
+      "additionalProperties": false
+    }
+  }
+}

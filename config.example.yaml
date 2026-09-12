@@ -1,0 +1,320 @@
+# yaml-language-server: $schema=./config.schema.json
+---
+# Botforje Configuration Example
+# This is a comprehensive example showing all available configuration options
+# Copy this to ~/.config/botforje/config.yml and customize for your needs
+
+$schema: "./config.schema.json"
+version: 1
+
+# Global system configuration
+address: "127.0.0.1"              # Bind address (127.0.0.1 = localhost only, 0.0.0.0 = all interfaces)
+port: 3000                         # Port for REST API (set to enable the API)
+log_level: "info"                  # Log level: info, debug, warn, error
+# trusted_issuers: []              # External login server public keys
+default_timeout: 300               # Global default timeout for graph sessions (seconds)
+
+# Action Catalog — reusable actions that graphs reference by id
+# Actions are universal: not tied to any specific bot or graph
+actions:
+  # Simple message action
+  greet:
+    steps:
+      - message:
+          body: "Hello! Welcome to our support chat. How can I help you today?"
+
+  # Menu action with options
+  menu:
+    steps:
+      - message:
+          body: "Main menu:\n1. Hours & schedule\n2. Product catalog\n3. Talk to a human\n4. Pricing\n0. Exit"
+
+  # Action with cooldown — same sender can't re-trigger within cooldown period
+  escalate:
+    guards:
+      cooldown:
+        duration: 120                # Seconds before same sender can trigger this again
+        on_blocked:
+          - message:
+              body: "You already requested a human agent. Please wait, one will connect shortly."
+    steps:
+      - message:
+          body: "Connecting you to a human agent. One moment please."
+      - request:
+          name: escalate-human
+          url: "https://api.example.com/support/escalate"
+          method: POST
+          headers:
+            Authorization: "Bearer your-api-token"
+          timeout: 10000
+          retry: 3
+
+  # on_exit example — runs automatically when leaving a node
+  log_navigation:
+    steps:
+      - request:
+          name: nav-log
+          url: "https://analytics.example.com/navigation"
+          method: POST
+          headers:
+            X-API-Key: "your-analytics-key"
+          timeout: 3000
+          retry: 1
+
+  # can_use example — actions the LLM can optionally invoke, each independently
+  search_catalog:
+    steps:
+      - message:
+          body: "Let me look that up in our catalog..."
+      - request:
+          name: catalog-search
+          url: "https://api.example.com/catalog/search?q={{message.body}}"
+          method: GET
+          headers:
+            Authorization: "Bearer token"
+          timeout: 5000
+          retry: 1
+
+  # Dual request chaining — two requests feed into a single message
+  build-order:
+    steps:
+      - request:
+          name: product-info
+          url: "https://api.example.com/products/lookup"
+          method: POST
+          headers:
+            Authorization: "Bearer your-api-token"
+      - request:
+          name: shipping-rate
+          url: "https://api.example.com/shipping/rate?zip={{node.product-info.resp.body.zip}}"
+          method: GET
+          headers:
+            Authorization: "Bearer your-api-token"
+      - message:
+          body: |
+            Order summary:
+            Product: {{node.product-info.resp.body.name}}
+            Price: ${{node.product-info.resp.body.price}}
+            Shipping: ${{node.shipping-rate.resp.body.cost}}
+
+  # request-only action
+  lead-notify:
+    steps:
+      - request:
+          name: lead-capture
+          url: "https://crm.example.com/leads"
+          method: POST
+          headers:
+            X-API-Key: "your-crm-key"
+          timeout: 5000
+          retry: 2
+
+  hours:
+    steps:
+      - message:
+          body: "Our support hours:\n• Monday-Friday: 9:00 AM - 6:00 PM\n• Saturday: 10:00 AM - 2:00 PM\n• Sunday: Closed"
+
+  catalog:
+    steps:
+      - message:
+          body: "Here's our product catalog: https://example.com/catalog.pdf"
+
+  pricing:
+    steps:
+      - message:
+          body: "Our pricing starts at $29/month for the basic plan. Would you like more details?"
+
+  invalid:
+    steps:
+      - message:
+          body: "That option is not valid. Please choose a number from the menu."
+
+  farewell:
+    steps:
+      - message:
+          body: "Thank you! Have a great day. If you need anything else, just write 'menu'."
+
+  pong:
+    steps:
+      - message:
+          body: "pong!"
+
+  # Send a WhatsApp location pin (combined with a text message)
+  send-office:
+    steps:
+      - message:
+          body: "Here is our office."
+      - location:
+          latitude: 19.4326
+          longitude: -99.1332
+          name: "Main Office"
+          address: "Av. Reforma 123, CDMX"
+
+# For multi-tenant setups, entities can be split into separate files
+# using include. Each included file can define any mix of actions, graphs,
+# and/or bots. Global settings are only valid in config.yml.
+# include:
+#   - ./tenants/support.yml          # Single file
+#   - ./tenants/*.yml                # All YAML files matching the glob
+#   - ./extras/                      # All *.yml in directory
+
+# Graph Catalog — conversation state machines owned by a single bot
+# Each graph has a root node, optional timeout, optional fallback, initial context and a map of nodes
+graphs:
+  # FAQ support graph with navigation menu
+  faq-support:
+    scope: support                   # Optional scope. Defaults to 'default'. References resolve within same scope.
+    root: menu
+    timeout: 300                   # Session TTL (seconds) — session dies after inactivity
+    fallback: invalid         # Where to go if user sends an unexpected response
+    initial_context:                # Initial graph context — persists across nodes
+      customer_name: ""
+      visit_count: 0
+    nodes:
+      menu:
+        on_enter:
+          - menu
+        on_exit:
+          - log_navigation
+        edges:
+          - match: "1, hours, schedule, time, hours"
+            fuzzy_threshold: 0.3    # 0.3=strict, 0.6=moderate (default), 0.9=loose
+            goto: hours
+          - match: "2, catalog, product, brochure"
+            goto: catalog
+          - match: "3, human, agent, person, talk, speak"
+            goto: escalate
+          - match: "4, price, pricing, cost"
+            goto: pricing
+          - match: "0, exit, bye, goodbye, end"
+            goto: farewell
+          - goto: invalid           # Default edge (no 'match'): catches everything else
+
+      hours:
+        on_enter:
+          - hours
+        edges:
+          - match: "menu, back, return, volver"
+            goto: menu
+          - match: "0, exit"
+            goto: farewell
+          - goto: invalid
+
+      catalog:
+        on_enter:
+          - catalog
+        can_use:
+          - search_catalog
+        edges:
+          - match: "menu, back"
+            goto: menu
+          - match: "0, exit"
+            goto: farewell
+          - goto: invalid
+
+      escalate:
+        on_enter:
+          - escalate            # This action has cooldown guard
+        edges:
+          - match: "menu, back"
+            goto: menu
+          - match: "0, exit"
+            goto: farewell
+          - goto: invalid
+
+      pricing:
+        on_enter:
+          - pricing
+        initial_context:               # Per-node context — resets on every re-entry
+          plan: ""
+          budget: 0
+        edges:
+          - match: "menu, back"
+            goto: menu
+          - match: "0, exit"
+            goto: farewell
+          - match: "interested, buy, order, quote"
+            goto: lead
+          - goto: invalid
+
+      lead:
+        on_enter:
+          - lead-notify
+        edges:
+          - match: "menu, back"
+            goto: menu
+          - goto: farewell
+
+      invalid:
+        on_enter:
+          - invalid
+        edges:
+          - goto: menu               # Always return to menu after invalid input
+
+      farewell:
+        on_enter:
+          - farewell
+        edges: []                    # No edges — session stays alive until timeout
+
+  # Minimal single-node graph
+  ping-pong:
+    root: ping
+    nodes:
+      ping:
+        on_enter:
+          - pong
+        edges: []
+
+bots:
+  support-bot:
+    graph: faq-support
+    settings:
+      queue_delay: 1500
+      ignore_groups: true           # Ignore group messages
+      # allowed_senders:            # Whitelist — only these senders trigger a response
+      #   - "521234567890"          # Empty or undefined = all senders allowed
+      ignored_senders:              # Senders to ignore entirely
+        - "status@broadcast"        # WhatsApp status broadcasts
+
+  # Sales bot reusing the same faq-support graph
+  sales-bot:
+    graph: faq-support
+    settings:
+      queue_delay: 1000
+      ignore_groups: false          # Sales bot might engage in groups
+      ignored_senders: []
+
+# Notes:
+# - Each bot references exactly one graph by name
+# - names can only contain lowercase letters, numbers, and hyphens (no start/end hyphens, no consecutive)
+# - bot phone numbers are automatically filled after WhatsApp QR code authentication
+# - Edge match phrases are comma-separated, fuzzy-matched, if fails and ai enabled, llm tries to resolve
+# - fuzzy_threshold: 0.3=strict, 0.6=moderate (default), 0.9=loose
+# - Action cooldowns prevent spam (per sender per action)
+# - Graph sessions automatically expire after timeout seconds of inactivity
+# - fallback handles unexpected user responses without breaking the graph
+# - Graph initial_context defines initial graph context (persists across nodes); node initial_context resets on re-entry
+# - Node fields:
+#     on_enter: actions executed automatically when entering the node
+#     on_exit:  actions executed automatically just before leaving the node
+#     can_use:  actions the LLM can optionally invoke, each independently (only when AI is enabled)
+#     initial_context:    initial per-node context — reset every time the node is entered
+# - Template variables use context-based paths: {{context.path.to.property}}
+#   Read/write contexts (variables can be declared and modified at runtime):
+#     graph:  {{graph.field}} — persistent across nodes, defined in graph initial_context
+#     node:     {{node.field}} — local to current node, defined in node initial_context, resets on re-entry.
+#               Request results are also stored here: {{node.request-name.resp.body.field}}
+#   Read-only contexts (system-provided):
+#     sender:     {{sender.phone}}, {{sender.name}}
+#     message:    {{message.body}}, {{message.at}}
+#     bot:        {{bot.id}}, {{bot.phone}}, {{bot.graph}}
+# - Location actions send a WhatsApp location pin; fields: latitude, longitude, name, address, url, description
+# - Scope field is optional on actions, graphs, and bots. Defaults to 'default'.
+#   Uniqueness key = (type, scope, name). References always resolve within the same scope.
+# - For multi-tenant setups, use the 'include' field to organize files as you wish:
+#   include:
+#     - ./tenants/support.yml    # Single file
+#     - ./tenants/*.yml          # Glob
+#     - ./mydir/                 # All *.yml in directory
+#   Included files are fragments: they can only define actions, graphs, and/or bots.
+#   Global settings (like port, log_level) are only valid in config.yml.
