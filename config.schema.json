@@ -216,7 +216,7 @@
             "intent": {
               "type": "string",
               "minLength": 1,
-              "description": "What the reply should accomplish; enables LLM realization"
+              "description": "What the reply should accomplish; short, clear text; enables LLM realization"
             },
             "policy": {
               "type": "string",
@@ -415,12 +415,12 @@
     },
     "EdgeDefinition": {
       "type": "object",
-      "description": "A directed edge from one node to another. An edge with no intent and no examples is the default (catch-all) edge",
+      "description": "A directed edge from one node to another. Every edge has a user-side intent, except the default (catch-all) edge, which has only goto. examples is an optional deterministic fast path",
       "properties": {
         "intent": {
           "type": "string",
           "minLength": 1,
-          "description": "User trigger label used by LLM routing, for example wants_human"
+          "description": "User trigger, short and clear text such as \"wants a human\"; required except on the default edge"
         },
         "examples": {
           "type": "array",
@@ -428,7 +428,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Phrases that trigger this transition; used as fast-path match and as classifier examples"
+          "description": "Optional phrases that trigger this transition without the LLM; also used as classifier examples"
         },
         "goto": {
           "type": "string",
@@ -437,6 +437,23 @@
         }
       },
       "required": ["goto"],
+      "oneOf": [
+        {
+          "required": ["intent"]
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": ["intent"]
+              },
+              {
+                "required": ["examples"]
+              }
+            ]
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "BotDefinition": {

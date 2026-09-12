@@ -25,8 +25,9 @@ needs a channel; an LLM is optional and only used when configured.
 - Graph — state machine with root, fallback, timeout, and a map of nodes.
 - Node — goal, policy, entry/exit actions, agent tools, and optional
   node-local context.
-- Edge — transition matched by intent, text, or condition. LLM routing
-  resolves unmatched input when a provider is configured.
+- Edge — transition with a required user intent, except the default
+  (catch-all) edge. `examples` is an optional deterministic fast path; LLM
+  routing resolves input that matches no example.
 - Action — ordered steps (`message`, `request`, `location`) with guards and
   declared `inputs`; exposed to the agent when a node lists it in `tools`.
 - Tool — an action the agent may invoke with validated arguments.

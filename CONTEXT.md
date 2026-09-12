@@ -77,9 +77,10 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
 - Node — a state: goal, policy, entry/exit actions, agent tools, and
   optional node-local context.
 - Goal — the agent's objective in a node, short and clear.
-- Edge — transition between nodes, matched by intent, text, or condition.
-- Intent — on an edge, the user trigger for the transition (for example
-  wants_human); on a message, what the reply should accomplish.
+- Edge — transition between nodes with a required user intent, except the
+  default (catch-all) edge; examples is an optional deterministic fast path.
+- Intent — on an edge, the user trigger; on a message, the reply's goal.
+  Short, clear text (not snake_case), like goal.
 - Action — reusable pipeline of steps (`message`, `request`, `location`)
   with guards and optional declared inputs.
 - Tool — an action a node exposes to the agent, invoked with validated

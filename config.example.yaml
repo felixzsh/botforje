@@ -48,7 +48,7 @@ actions:
     scope: "support"
     steps:
       - message:
-          intent: explain_return_policy
+          intent: "explain the return policy"
           policy: "Friendly and clear. Maximum three sentences. Never promise refunds."
 
   # LLM generates anchored on body; body is also the fallback (ADR 0003)
@@ -57,7 +57,7 @@ actions:
     steps:
       - message:
           body: "Your order is confirmed."
-          intent: confirm_order
+          intent: "confirm the order"
           policy: "Friendly, one short sentence, no extra promises."
 
   # Tool with declared inputs: the agent fills product before invoking it
@@ -107,7 +107,7 @@ actions:
     steps:
       - message:
           body: "Which product would you like, and how many units?"
-          intent: ask_product
+          intent: "ask which product they want"
           policy: "One short question; ask for product and quantity together."
 
   # Request with payload; response captured for later templates
@@ -229,17 +229,22 @@ graphs:
         on_enter: ["menu"]
         on_exit: ["nav-log"]
         edges:
-          - examples: ["1", "hours", "schedule", "when are you open"]
+          - intent: "wants support hours"
+            examples: ["1", "hours", "schedule", "when are you open"]
             goto: "hours"
-          - examples: ["2", "catalog", "products"]
+          - intent: "wants the catalog"
+            examples: ["2", "catalog", "products"]
             goto: "catalog"
-          - intent: wants_to_buy     # LLM routing when no example matches
+          - intent: "wants to buy"
+            examples: ["buy", "order", "purchase"]
             goto: "purchase"
-          - intent: wants_human
+          - intent: "wants a human"
             goto: "escalate"
-          - examples: ["4", "price", "pricing", "cost"]
+          - intent: "wants pricing"
+            examples: ["4", "price", "pricing", "cost"]
             goto: "pricing"
-          - examples: ["0", "exit", "bye", "goodbye"]
+          - intent: "wants to leave"
+            examples: ["0", "exit", "bye", "goodbye"]
             goto: "farewell"
           - goto: "invalid"       # Default edge: catches everything else
 
@@ -247,7 +252,8 @@ graphs:
         goal: "show support hours"
         on_enter: ["hours"]
         edges:
-          - examples: ["menu", "back"]
+          - intent: "wants the menu"
+            examples: ["menu", "back"]
             goto: "menu"
           - goto: "invalid"
 
@@ -255,7 +261,8 @@ graphs:
         goal: "show the catalog"
         on_enter: ["catalog"]
         edges:
-          - examples: ["menu", "back"]
+          - intent: "wants the menu"
+            examples: ["menu", "back"]
             goto: "menu"
           - goto: "invalid"
 
@@ -265,9 +272,10 @@ graphs:
         on_enter: ["ask-product"]
         tools: ["product-info", "start-order"]
         edges:
-          - examples: ["menu", "back", "cancel"]
+          - intent: "wants the menu"
+            examples: ["menu", "back", "cancel"]
             goto: "menu"
-          - intent: wants_human
+          - intent: "wants a human"
             goto: "escalate"
           - goto: "invalid"
 
@@ -278,9 +286,10 @@ graphs:
           plan: ""
           budget: 0
         edges:
-          - examples: ["menu", "back"]
+          - intent: "wants the menu"
+            examples: ["menu", "back"]
             goto: "menu"
-          - intent: ready_to_buy
+          - intent: "is ready to buy"
             goto: "lead"
           - goto: "invalid"
 
@@ -288,7 +297,8 @@ graphs:
         goal: "capture the lead"
         on_enter: ["lead-notify"]
         edges:
-          - examples: ["menu", "back"]
+          - intent: "wants the menu"
+            examples: ["menu", "back"]
             goto: "menu"
           - goto: "farewell"
 
@@ -296,7 +306,8 @@ graphs:
         goal: "hand off to a human"
         on_enter: ["escalate"]    # Cooldown guard applies here
         edges:
-          - examples: ["menu", "back"]
+          - intent: "wants the menu"
+            examples: ["menu", "back"]
             goto: "menu"
           - goto: "invalid"
 
@@ -341,8 +352,8 @@ bots:
 # Notes
 # - Hybrid model (ADR 0003): a node declares a goal (context for the agent),
 #   policy and tools, and how it transitions (edges).
-# - Naming: goal describes the agent's objective in the state; edge intent
-#   describes the user trigger. Both short and clear.
+# - Naming: goal is the agent's objective; edge intent is the user trigger;
+#   message intent is the reply's goal. All short, clear text, not snake_case.
 # - Policies compose: node policy always applies; a message policy refines it.
 # - Message modes:
 #     body only              deterministic text (string or list of variants)

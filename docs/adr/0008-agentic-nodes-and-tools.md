@@ -21,8 +21,9 @@ in that state:
 - `tools`: actions available in this node. Each action declares `inputs`
   (type, required, default, description) and consumes them in its steps as
   `{{input.<name>}}`.
-- `edges`: the only allowed transitions. The agent never invents a
-  transition outside them.
+- `edges`: the only allowed transitions, each with a user intent (or the
+  default edge) and optional examples. The agent never invents a transition
+  outside them.
 
 Flow for one incoming message in a node:
 
