@@ -6,59 +6,113 @@
   "type": "object",
   "required": ["version"],
   "properties": {
-    "$schema": { "type": "string", "description": "Points to this schema file for IDE autocompletion and validation" },
-    "version": { "type": "integer", "minimum": 1, "description": "Schema version. Code uses this to select the correct parser. Increment when making incompatible changes." },
-    "address": { "type": "string", "description": "REST API bind address" },
-    "port": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "REST API port (0 = disabled)" },
-    "log_level": { "type": "string", "enum": ["debug", "info", "warn", "error"], "description": "Logging verbosity" },
-    "default_timeout": { "type": "integer", "minimum": 0, "description": "Default graph session timeout in seconds" },
-    "llm": { "$ref": "#/definitions/LLM" },
+    "$schema": {
+      "type": "string",
+      "description": "Points to this schema file for IDE autocompletion and validation"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version. Code uses this to select the correct parser. Increment when making incompatible changes."
+    },
+    "address": {
+      "type": "string",
+      "description": "REST API bind address"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535,
+      "description": "REST API port (0 = disabled)"
+    },
+    "log_level": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "description": "Logging verbosity"
+    },
+    "default_timeout": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Default graph session timeout in seconds"
+    },
+    "llm": {
+      "$ref": "#/definitions/LLM"
+    },
     "include": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Glob patterns or file paths to fragment YAML files. Each fragment can define actions, graphs, and/or bots — any mix, any organization. Global settings are not allowed in fragments."
     },
-    "actions": { "$ref": "#/definitions/ActionCatalog" },
-    "graphs": { "$ref": "#/definitions/GraphCatalog" },
-    "bots": { "$ref": "#/definitions/BotCatalog" }
+    "actions": {
+      "$ref": "#/definitions/ActionCatalog"
+    },
+    "graphs": {
+      "$ref": "#/definitions/GraphCatalog"
+    },
+    "bots": {
+      "$ref": "#/definitions/BotCatalog"
+    }
   },
   "definitions": {
     "Fragment": {
       "type": "object",
       "description": "Schema for included YAML fragment files. Only catalogs allowed — no global settings or include.",
       "properties": {
-        "actions": { "$ref": "#/definitions/ActionCatalog" },
-        "graphs": { "$ref": "#/definitions/GraphCatalog" },
-        "bots": { "$ref": "#/definitions/BotCatalog" }
+        "actions": {
+          "$ref": "#/definitions/ActionCatalog"
+        },
+        "graphs": {
+          "$ref": "#/definitions/GraphCatalog"
+        },
+        "bots": {
+          "$ref": "#/definitions/BotCatalog"
+        }
       },
       "additionalProperties": false
     },
     "ActionCatalog": {
       "type": "object",
       "description": "Map of action name to action definition",
-      "additionalProperties": { "$ref": "#/definitions/ActionDefinition" }
+      "additionalProperties": {
+        "$ref": "#/definitions/ActionDefinition"
+      }
     },
     "GraphCatalog": {
       "type": "object",
       "description": "Map of graph name to graph definition",
-      "additionalProperties": { "$ref": "#/definitions/GraphDefinition" }
+      "additionalProperties": {
+        "$ref": "#/definitions/GraphDefinition"
+      }
     },
     "BotCatalog": {
       "type": "object",
       "description": "Map of bot name to bot definition",
-      "additionalProperties": { "$ref": "#/definitions/BotDefinition" }
+      "additionalProperties": {
+        "$ref": "#/definitions/BotDefinition"
+      }
     },
     "ActionDefinition": {
       "type": "object",
       "description": "A reusable action composed of sequential steps",
       "properties": {
-        "scope": { "type": "string", "description": "Scope name. Defaults to 'default'. Entities with the same name can coexist in different scopes." },
-        "inputs": { "$ref": "#/definitions/Inputs" },
-        "guards": { "$ref": "#/definitions/Guards" },
+        "scope": {
+          "type": "string",
+          "description": "Scope name. Defaults to 'default'. Entities with the same name can coexist in different scopes."
+        },
+        "inputs": {
+          "$ref": "#/definitions/Inputs"
+        },
+        "guards": {
+          "$ref": "#/definitions/Guards"
+        },
         "steps": {
           "type": "array",
           "description": "Steps executed in sequence when the action triggers",
-          "items": { "$ref": "#/definitions/Step" }
+          "items": {
+            "$ref": "#/definitions/Step"
+          }
         }
       },
       "required": ["steps"],
@@ -67,15 +121,30 @@
     "Inputs": {
       "type": "object",
       "description": "Named arguments for this tool. Steps consume them as {{input.<name>}}",
-      "additionalProperties": { "$ref": "#/definitions/Input" }
+      "additionalProperties": {
+        "$ref": "#/definitions/Input"
+      }
     },
     "Input": {
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["string", "integer", "number", "boolean"], "description": "Value type expected from the agent" },
-        "required": { "type": "boolean", "description": "Whether the agent must provide this argument" },
-        "default": { "description": "Value used when the agent omits the argument" },
-        "description": { "type": "string", "minLength": 1, "description": "How the agent should fill this argument" }
+        "type": {
+          "type": "string",
+          "enum": ["string", "integer", "number", "boolean"],
+          "description": "Value type expected from the agent"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the agent must provide this argument"
+        },
+        "default": {
+          "description": "Value used when the agent omits the argument"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the agent should fill this argument"
+        }
       },
       "required": ["type", "description"],
       "additionalProperties": false
@@ -87,11 +156,17 @@
         "cooldown": {
           "type": "object",
           "properties": {
-            "duration": { "type": "integer", "minimum": 0, "description": "Seconds before the same sender can re-trigger this action" },
+            "duration": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Seconds before the same sender can re-trigger this action"
+            },
             "on_blocked": {
               "type": "array",
               "description": "Steps to run when cooldown blocks the action",
-              "items": { "$ref": "#/definitions/Step" }
+              "items": {
+                "$ref": "#/definitions/Step"
+              }
             }
           },
           "required": ["duration"],
@@ -102,9 +177,15 @@
     },
     "Step": {
       "oneOf": [
-        { "$ref": "#/definitions/MessageStep" },
-        { "$ref": "#/definitions/RequestStep" },
-        { "$ref": "#/definitions/LocationStep" }
+        {
+          "$ref": "#/definitions/MessageStep"
+        },
+        {
+          "$ref": "#/definitions/RequestStep"
+        },
+        {
+          "$ref": "#/definitions/LocationStep"
+        }
       ],
       "description": "One of: message (text reply), request (HTTP call), location (map pin)"
     },
@@ -117,21 +198,39 @@
           "properties": {
             "body": {
               "oneOf": [
-                { "type": "string", "minLength": 1 },
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
                 {
                   "type": "array",
-                  "items": { "type": "string", "minLength": 1 },
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "minItems": 1
                 }
               ],
               "description": "Deterministic reply text. With intent it is the factual anchor and the fallback. A list means random variants and is only allowed without intent"
             },
-            "intent": { "type": "string", "minLength": 1, "description": "What the reply should accomplish; enables LLM realization" },
-            "policy": { "type": "string", "minLength": 1, "description": "Constraints for generated or rewritten text: tone, length, prohibitions. Requires intent or body plus intent" }
+            "intent": {
+              "type": "string",
+              "minLength": 1,
+              "description": "What the reply should accomplish; enables LLM realization"
+            },
+            "policy": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Constraints for generated or rewritten text: tone, length, prohibitions. Requires intent or body plus intent"
+            }
           },
           "anyOf": [
-            { "required": ["body"] },
-            { "required": ["intent"] }
+            {
+              "required": ["body"]
+            },
+            {
+              "required": ["intent"]
+            }
           ],
           "additionalProperties": false
         }
@@ -145,17 +244,41 @@
         "request": {
           "type": "object",
           "properties": {
-            "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$", "description": "Identifier for this request; used in template resolution as {{node.name.resp.body.*}}" },
-            "url": { "type": "string", "minLength": 1, "description": "Request URL (supports template variables)" },
-            "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$",
+              "description": "Identifier for this request; used in template resolution as {{node.name.resp.body.*}}"
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Request URL (supports template variables)"
+            },
+            "method": {
+              "type": "string",
+              "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+            },
             "headers": {
               "type": "object",
               "description": "Free-form HTTP headers",
-              "additionalProperties": { "type": "string" }
+              "additionalProperties": {
+                "type": "string"
+              }
             },
-            "timeout": { "type": "integer", "minimum": 0, "description": "Request timeout in milliseconds" },
-            "retry": { "type": "integer", "minimum": 0, "description": "Number of retry attempts on failure" },
-            "body": { "type": "string", "description": "Request payload (supports template variables)" }
+            "timeout": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Request timeout in milliseconds"
+            },
+            "retry": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of retry attempts on failure"
+            },
+            "body": {
+              "type": "string",
+              "description": "Request payload (supports template variables)"
+            }
           },
           "required": ["name", "url", "method"],
           "additionalProperties": false
@@ -170,12 +293,29 @@
         "location": {
           "type": "object",
           "properties": {
-            "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
-            "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
-            "name": { "type": "string" },
-            "address": { "type": "string" },
-            "url": { "type": "string", "format": "uri" },
-            "description": { "type": "string" }
+            "latitude": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "longitude": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "name": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": {
+              "type": "string"
+            }
           },
           "required": ["latitude", "longitude"],
           "additionalProperties": false
@@ -188,10 +328,24 @@
       "type": "object",
       "description": "A conversation state machine with named nodes and directed edges",
       "properties": {
-        "scope": { "type": "string", "description": "Scope name. Defaults to 'default'. References resolve within the same scope." },
-        "root": { "type": "string", "minLength": 1, "description": "Entry node name" },
-        "timeout": { "type": "integer", "minimum": 1, "description": "Session TTL in seconds (overrides global default_timeout)" },
-        "fallback": { "type": "string", "description": "Node to route to when no edge matches" },
+        "scope": {
+          "type": "string",
+          "description": "Scope name. Defaults to 'default'. References resolve within the same scope."
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Entry node name"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Session TTL in seconds (overrides global default_timeout)"
+        },
+        "fallback": {
+          "type": "string",
+          "description": "Node to route to when no edge matches"
+        },
         "initial_context": {
           "type": "object",
           "description": "Free-form key-value pairs, persists across nodes within the session",
@@ -200,7 +354,9 @@
         "nodes": {
           "type": "object",
           "description": "Map of node name to node definition",
-          "additionalProperties": { "$ref": "#/definitions/NodeDefinition" }
+          "additionalProperties": {
+            "$ref": "#/definitions/NodeDefinition"
+          }
         }
       },
       "required": ["root", "nodes"],
@@ -210,13 +366,24 @@
       "type": "object",
       "description": "A single graph state. Describes what the conversation is doing here and how it transitions",
       "properties": {
-        "goal": { "type": "string", "minLength": 1, "description": "What this state is trying to achieve; agent context, not a routing target" },
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What this state is trying to achieve; agent context, not a routing target"
+        },
         "examples": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "description": "Phrases that lead to this node; used as fast-path match and as classifier examples"
         },
-        "policy": { "type": "string", "minLength": 1, "description": "Constraints for any text generated while in this node: tone, length, prohibitions" },
+        "policy": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Constraints for any text generated while in this node: tone, length, prohibitions"
+        },
         "initial_context": {
           "type": "object",
           "description": "Free-form key-value pairs, resets every time the node is entered",
@@ -225,22 +392,30 @@
         "on_enter": {
           "type": "array",
           "description": "Actions to run automatically when entering this node",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "on_exit": {
           "type": "array",
           "description": "Actions to run automatically when leaving this node",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "tools": {
           "type": "array",
           "description": "Actions the agent may invoke while in this node (ADR 0008); arguments are validated against each action's inputs",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "edges": {
           "type": "array",
           "description": "Outgoing edges evaluated in order; first match wins",
-          "items": { "$ref": "#/definitions/EdgeDefinition" }
+          "items": {
+            "$ref": "#/definitions/EdgeDefinition"
+          }
         }
       },
       "required": ["edges"],
@@ -250,13 +425,24 @@
       "type": "object",
       "description": "A directed edge from one node to another. An edge with no intent and no examples is the default (catch-all) edge",
       "properties": {
-        "intent": { "type": "string", "minLength": 1, "description": "Transition label used by LLM routing, for example ask_human" },
+        "intent": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Transition label used by LLM routing, for example ask_human"
+        },
         "examples": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "description": "Phrases that trigger this transition; used as fast-path match and as classifier examples"
         },
-        "goto": { "type": "string", "minLength": 1, "description": "Target node name" }
+        "goto": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target node name"
+        }
       },
       "required": ["goto"],
       "additionalProperties": false
@@ -265,9 +451,18 @@
       "type": "object",
       "description": "A bot instance that connects a transport (WhatsApp) to a graph",
       "properties": {
-        "scope": { "type": "string", "description": "Scope name. Bot and its referenced graph must share the same scope." },
-        "graph": { "type": "string", "minLength": 1, "description": "Name of the graph this bot uses (must exist in the same scope)" },
-        "settings": { "$ref": "#/definitions/BotSettings" }
+        "scope": {
+          "type": "string",
+          "description": "Scope name. Bot and its referenced graph must share the same scope."
+        },
+        "graph": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the graph this bot uses (must exist in the same scope)"
+        },
+        "settings": {
+          "$ref": "#/definitions/BotSettings"
+        }
       },
       "required": ["graph"],
       "additionalProperties": false
@@ -275,16 +470,27 @@
     "BotSettings": {
       "type": "object",
       "properties": {
-        "queue_delay": { "type": "integer", "minimum": 0, "description": "Milliseconds between outbound messages (engine default applies when omitted)" },
-        "ignore_groups": { "type": "boolean", "description": "Ignore group messages (engine default applies when omitted)" },
+        "queue_delay": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Milliseconds between outbound messages (engine default applies when omitted)"
+        },
+        "ignore_groups": {
+          "type": "boolean",
+          "description": "Ignore group messages (engine default applies when omitted)"
+        },
         "allowed_senders": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Whitelist of sender phone numbers; empty/null = all allowed"
         },
         "ignored_senders": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Senders to ignore (e.g. status@broadcast)"
         }
       },
@@ -294,18 +500,50 @@
       "type": "object",
       "description": "Language model integration. Optional: bots run deterministically with no provider configured. Draft shape; final details close in Phase 4/7",
       "properties": {
-        "provider": { "type": "string", "minLength": 1, "description": "Provider id, for example openai, anthropic, or ollama" },
-        "model": { "type": "string", "minLength": 1, "description": "Model name passed to the provider" },
-        "api_key_env": { "type": "string", "minLength": 1, "description": "Name of the environment variable holding the API key. Never store keys in config" },
-        "base_url": { "type": "string", "format": "uri", "description": "Endpoint override for local or self-hosted providers" },
-        "routing": { "type": "string", "enum": ["off", "fallback", "always"], "description": "Intent classification for input that matches no deterministic edge" },
-        "realization": { "type": "string", "enum": ["off", "auto"], "description": "Whether nodes and messages that declare an intent may generate text" },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Provider id, for example openai, anthropic, or ollama"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model name passed to the provider"
+        },
+        "api_key_env": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the environment variable holding the API key. Never store keys in config"
+        },
+        "base_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Endpoint override for local or self-hosted providers"
+        },
+        "routing": {
+          "type": "string",
+          "enum": ["off", "fallback", "always"],
+          "description": "Intent classification for input that matches no deterministic edge"
+        },
+        "realization": {
+          "type": "string",
+          "enum": ["off", "auto"],
+          "description": "Whether nodes and messages that declare an intent may generate text"
+        },
         "agent": {
           "type": "object",
           "description": "Bounds for agentic tool use inside a node",
           "properties": {
-            "max_tools_per_message": { "type": "integer", "minimum": 1, "description": "Maximum tool calls the agent may make for one incoming message" },
-            "timeout": { "type": "integer", "minimum": 0, "description": "Agent loop timeout in milliseconds" }
+            "max_tools_per_message": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum tool calls the agent may make for one incoming message"
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Agent loop timeout in milliseconds"
+            }
           },
           "additionalProperties": false
         }
