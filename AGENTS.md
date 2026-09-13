@@ -32,10 +32,14 @@ which document owns what, read `README.md`.
 
 ## Commands
 
-- `go build ./...`, `go test ./...`, `go vet ./...`, `gofmt -l .` — Go checks.
-- `go run ./cmd/botforje validate --config <file>` — validate a config.
-- `go run ./cmd/botforje schema -o config.schema.json` — regenerate the
-  schema; run it from the repository root so Go comments resolve.
+Prefer the Make targets; they wrap the underlying Go commands.
+
+- `make check` — `go vet`, `gofmt` check, and `go test ./...`.
+- `make build` — build `bin/botforje`.
+- `make schema` — regenerate `config.schema.json` (run from the repository
+  root so Go comments resolve).
+- `make validate CONFIG=<file>` — validate a config.
+- `make help` — list every target.
 
 `auth`, `daemon`, `status`, and `reload` arrive with their phases.
 

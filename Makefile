@@ -1,0 +1,44 @@
+GO ?= go
+BIN := bin/botforje
+CONFIG ?= config.example.yaml
+ARGS ?=
+
+.DEFAULT_GOAL := help
+.PHONY: help build run test vet fmt fmt-check check schema validate tidy clean
+
+help: ## Show this help
+	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+		| sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+build: ## Build the binary into bin/botforje
+	$(GO) build -o $(BIN) ./cmd/botforje
+
+run: ## Run the CLI: make run ARGS="validate --config config.example.yaml"
+	$(GO) run ./cmd/botforje $(ARGS)
+
+test: ## Run all tests
+	$(GO) test ./...
+
+vet: ## Run go vet
+	$(GO) vet ./...
+
+fmt: ## Format the source
+	gofmt -w cmd internal
+
+fmt-check: ## Fail if any file is not gofmt'd
+	@out=$$(gofmt -l cmd internal); \
+	if [ -n "$$out" ]; then echo "not formatted:"; echo "$$out"; exit 1; fi
+
+check: vet fmt-check test ## Run vet, format check, and tests
+
+schema: ## Regenerate config.schema.json (run from the repo root)
+	$(GO) run ./cmd/botforje schema -o config.schema.json
+
+validate: ## Validate a config: make validate CONFIG=path
+	$(GO) run ./cmd/botforje validate --config $(CONFIG)
+
+tidy: ## Tidy go.mod and go.sum
+	$(GO) mod tidy
+
+clean: ## Remove build artifacts
+	rm -rf bin
