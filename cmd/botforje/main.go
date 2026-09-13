@@ -15,7 +15,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
+		print_help()
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -24,15 +24,15 @@ func main() {
 	case "schema":
 		os.Exit(runSchema(os.Args[2:]))
 	case "help", "-h", "--help":
-		usage()
+		print_help()
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
-		usage()
+		print_help()
 		os.Exit(2)
 	}
 }
 
-func usage() {
+func print_help() {
 	fmt.Fprint(os.Stderr, `botforje <command>
 
 Commands:
