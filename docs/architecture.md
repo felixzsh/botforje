@@ -22,7 +22,8 @@ needs a channel; an LLM is optional and only used when configured.
 ## Domain model
 
 - Bot — identity (account) plus settings and the reference to one graph.
-- Graph — state machine with root, fallback, timeout, and a map of nodes.
+- Graph — state machine with root, fallback, timeout, a routing override,
+  and a map of nodes.
 - Node — goal, policy, entry/exit actions, agent tools, and optional
   node-local context.
 - Edge — transition with a required user intent, except the default
@@ -55,9 +56,10 @@ Inbound:
    first) plus the current node last (ADR 0010). Edges with triggers are
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
-5. If nothing matches and LLM routing is enabled, the agent loop starts
-   (ADR 0008): the agent may call node tools with arguments validated
-   against each action's `inputs`, and may produce a reply.
+5. When the graph routing mode is `always`, or nothing matched and the mode
+   is `fallback`, the agent loop starts (ADR 0008): the agent may call node
+   tools with arguments validated against each action's `inputs`, and may
+   produce a reply.
 6. Tool results return to the agent as context; missing required arguments
    return a tool error and the agent asks the user, storing the answer in the
    bound variable. The agent can chain calls, stay in the node, or take a

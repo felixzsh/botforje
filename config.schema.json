@@ -355,6 +355,11 @@
           "type": "string",
           "description": "Node to route to when no edge matches"
         },
+        "routing": {
+          "type": "string",
+          "enum": ["off", "fallback", "always"],
+          "description": "Overrides the instance llm.routing for this graph; always makes the agent decide even when a trigger matches"
+        },
         "initial_context": {
           "type": "object",
           "description": "Session context: free-form key-value pairs that persist across nodes; tools can bind inputs to these variables",
@@ -541,7 +546,7 @@
         "routing": {
           "type": "string",
           "enum": ["off", "fallback", "always"],
-          "description": "Intent classification for input that matches no deterministic edge"
+          "description": "off: deterministic only; fallback: agent routes input that matches no trigger; always: agent routes every message. Graphs may override this"
         },
         "realization": {
           "type": "string",

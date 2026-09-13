@@ -89,7 +89,8 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
 - Fleet — the set of bots a single BotForje instance runs.
 - Scope — generic isolation namespace; references and sessions never cross
   scopes.
-- Graph — conversation state machine owned by one bot.
+- Graph — conversation state machine owned by one bot; may override the
+  instance routing mode.
 - Node — a state: goal, policy, entry/exit actions, agent tools, and
   optional node-local context.
 - Goal — the agent's objective in a node, short and clear.

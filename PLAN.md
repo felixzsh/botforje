@@ -60,9 +60,9 @@ with precise errors.
 Deliverables:
 
 - Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
-  action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope, `llm`
-  section). Align `config.example.yaml` and the draft `config.schema.json`
-  with it.
+  action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
+  graph `routing`, `llm` section). Align `config.example.yaml` and the draft
+  `config.schema.json` with it.
 - Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
 - Loader: main config plus `include` fragments (file, glob, directory),
   merge, and scope handling.
@@ -175,6 +175,8 @@ Deliverables:
 - `LLMProvider` implementations: at least one cloud provider and one local
   option, selected by config.
 - Intent classification as fallback for unmatched input.
+- Per-graph routing override: `off` | `fallback` | `always`; `always` gives
+  the agent the decision even when a trigger matches.
 - Agentic tool calling (ADR 0008): the agent invokes node `tools` with
   arguments validated against their `inputs`, chains calls, and stays in or
   leaves the node through declared edges only.

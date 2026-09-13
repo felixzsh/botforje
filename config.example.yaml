@@ -233,6 +233,7 @@ graphs:
     root: "menu"
     timeout: 300                  # Session TTL (seconds)
     fallback: "invalid"           # Target when no edge matches and LLM is off
+    routing: "fallback"           # off | fallback | always (always = agent-first)
     initial_context:              # Persists across nodes for the session
       customer_name: ""
       visit_count: 0
@@ -388,7 +389,8 @@ bots:
 # - Tool inputs are typed arguments; bind: node.<var> or graph.<var> reads and
 #   writes a declared context variable, so the agent does not re-ask.
 # - Matching runs deterministically first (edge triggers). LLM routing
-#   handles the rest when the llm section is configured.
+#   handles the rest when the llm section is configured; a graph can
+#   override with routing: off | fallback | always (always = agent-first).
 # - Scope is an explicit field; uniqueness key is (type, scope, name).
 # - Template contexts: {{graph.*}}, {{node.*}}, {{sender.*}}, {{message.*}},
 #   {{bot.*}}, tool inputs as {{input.<name>}}, and request results as
