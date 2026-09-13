@@ -5,6 +5,8 @@ which document owns what, read `README.md`.
 
 ## Working rules
 
+- Start a new session by reading `docs/glossary.md`; it defines the terms used
+  across every document.
 - Write only inside this repository. Do not modify sibling repositories.
 - Read `PLAN.md` and work on the current phase; check its deliverables in the
   same commit that completes them.
