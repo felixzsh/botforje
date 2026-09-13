@@ -16,8 +16,7 @@ Pre-code; implementation has not started.
 
 - `CONTEXT.md` — identity, principles, MVP, decisions index, glossary.
 - `PLAN.md` — phase-by-phase plan to the MVP.
-- `docs/architecture.md` — components, boundaries, message lifecycle.
-- `docs/adr/` — why each decision was made.
+- `docs/README.md` — documentation map: developer docs and the user guide.
 - `config.example.yaml` — reference configuration.
 - `CONTRIBUTING.md` — design principles.
 - `AGENTS.md` — rules for agent-assisted development.
