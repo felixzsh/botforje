@@ -53,25 +53,27 @@ with precise errors.
 
 Deliverables:
 
-- [ ] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
+- [x] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
   graph `routing`, `llm` section). Align `config.example.yaml` and the draft
   `config.schema.json` with it.
-- [ ] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
-- [ ] Loader: main config plus `include` fragments (file, glob, directory),
+- [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
+  LLM. They live in `internal/config` for now; split out when the engine
+  needs a YAML-free domain.
+- [x] Loader: main config plus `include` fragments (file, glob, directory),
   merge, and scope handling.
-- [ ] Runtime validation in Go: strict YAML decoding plus semantic checks.
+- [x] Runtime validation in Go: strict YAML decoding plus semantic checks.
   The JSON Schema is generated from the Go types for editors only (ADR 0007).
-- [ ] Environment interpolation: expand `${ENV_VAR}` in config strings after
+- [x] Environment interpolation: expand `${ENV_VAR}` in config strings after
   decoding; missing variables fail validation (ADR 0014).
-- [ ] Secret values use a type that masks itself in logs and errors
+- [x] Secret values use a type that masks itself in logs and errors
   (ADR 0014).
-- [ ] Semantic validation: reference resolution, scope isolation, uniqueness by
+- [x] Semantic validation: reference resolution, scope isolation, uniqueness by
   (type, scope, name), node reachability, and message mode rules.
-- [ ] Schema generation: pick and approve a generator (candidate:
+- [x] Schema generation: pick and approve a generator (candidate:
   `invopop/jsonschema`) and wire the regeneration step.
-- [ ] CLI command `validate` with readable output and a `--json` mode.
-- [ ] Fixtures: valid and invalid cases for every rule.
+- [x] CLI command `validate` with readable output and a `--json` mode.
+- [x] Fixtures: valid and invalid cases for every rule.
 
 Gate: `validate` accepts valid fixtures and rejects every invalid fixture
 with an error naming file, entity, and reason. Unit tests for merge and
@@ -283,7 +285,7 @@ Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
 
-Candidate dependencies from the earlier plan (`gopkg.in/yaml.v3`) are
-candidates, not commitments. Confirm in Phase 0/1. `urfave/cli/v3` and
+Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
+`gopkg.in/yaml.v3`) and `github.com/invopop/jsonschema`. `urfave/cli/v3` and
 `google/jsonschema-go` are no longer needed: the CLI uses the standard
 library (ADR 0012) and runtime validation is in Go (ADR 0007).

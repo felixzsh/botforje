@@ -1,600 +1,450 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "config.schema.json",
-  "title": "BotForje Configuration Schema (v1 draft)",
-  "description": "Editor schema for BotForje YAML configuration. Draft v1: once generation from Go structs exists (ADR 0007) this file is generated and never edited by hand.",
-  "type": "object",
-  "required": ["version"],
-  "properties": {
-    "$schema": {
-      "type": "string",
-      "description": "Points to this schema file for IDE autocompletion and validation"
-    },
-    "version": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Schema version. Code uses this to select the correct parser. Increment when making incompatible changes."
-    },
-    "address": {
-      "type": "string",
-      "description": "REST API bind address"
-    },
-    "port": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 65535,
-      "description": "REST API port (0 = disabled)"
-    },
-    "log_level": {
-      "type": "string",
-      "enum": ["debug", "info", "warn", "error"],
-      "description": "Logging verbosity"
-    },
-    "default_timeout": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Default graph session timeout in seconds"
-    },
-    "data_dir": {
-      "type": "string",
-      "description": "Directory for the SQLite database; defaults to the XDG data directory"
-    },
-    "llm": {
-      "$ref": "#/definitions/LLM"
-    },
-    "include": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Glob patterns or file paths to fragment YAML files. Each fragment can define actions, graphs, and/or bots — any mix, any organization. Global settings are not allowed in fragments."
-    },
-    "actions": {
-      "$ref": "#/definitions/ActionCatalog"
-    },
-    "graphs": {
-      "$ref": "#/definitions/GraphCatalog"
-    },
-    "bots": {
-      "$ref": "#/definitions/BotCatalog"
-    }
-  },
-  "definitions": {
-    "Fragment": {
-      "type": "object",
-      "description": "Schema for included YAML fragment files. Only catalogs allowed — no global settings or include.",
-      "properties": {
-        "actions": {
-          "$ref": "#/definitions/ActionCatalog"
-        },
-        "graphs": {
-          "$ref": "#/definitions/GraphCatalog"
-        },
-        "bots": {
-          "$ref": "#/definitions/BotCatalog"
-        }
-      },
-      "additionalProperties": false
-    },
-    "ActionCatalog": {
-      "type": "object",
-      "description": "Map of action name to action definition",
-      "additionalProperties": {
-        "$ref": "#/definitions/ActionDefinition"
-      }
-    },
-    "GraphCatalog": {
-      "type": "object",
-      "description": "Map of graph name to graph definition",
-      "additionalProperties": {
-        "$ref": "#/definitions/GraphDefinition"
-      }
-    },
-    "BotCatalog": {
-      "type": "object",
-      "description": "Map of bot name to bot definition",
-      "additionalProperties": {
-        "$ref": "#/definitions/BotDefinition"
-      }
-    },
-    "ActionDefinition": {
-      "type": "object",
-      "description": "A reusable action composed of sequential steps",
+  "$ref": "#/$defs/Config",
+  "$defs": {
+    "Action": {
       "properties": {
         "scope": {
-          "type": "string",
-          "description": "Optional isolation namespace. Defaults to 'default'. Entities in different scopes can share names and never reference each other"
+          "type": "string"
         },
         "inputs": {
-          "$ref": "#/definitions/Inputs"
+          "additionalProperties": {
+            "$ref": "#/$defs/Input"
+          },
+          "type": "object"
         },
         "guards": {
-          "$ref": "#/definitions/Guards"
+          "$ref": "#/$defs/Guards"
         },
         "steps": {
-          "type": "array",
-          "description": "Steps executed in sequence when the action triggers",
           "items": {
-            "$ref": "#/definitions/Step"
-          }
-        }
-      },
-      "required": ["steps"],
-      "additionalProperties": false
-    },
-    "Inputs": {
-      "type": "object",
-      "description": "Named arguments for this tool. Steps consume them as {{input.<name>}}. An input may bind to a node or graph variable to read and write it",
-      "additionalProperties": {
-        "$ref": "#/definitions/Input"
-      }
-    },
-    "Input": {
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": ["string", "integer", "number", "boolean"],
-          "description": "Value type expected from the agent"
-        },
-        "required": {
-          "type": "boolean",
-          "description": "Whether the agent must provide this argument"
-        },
-        "default": {
-          "description": "Value used when the agent omits the argument"
-        },
-        "bind": {
-          "type": "string",
-          "pattern": "^(node|graph)\\.[A-Za-z][A-Za-z0-9_]*$",
-          "description": "Context variable this argument reads from and writes to, for example node.product; must be declared in initial_context"
-        },
-        "description": {
-          "type": "string",
-          "minLength": 1,
-          "description": "How the agent should fill this argument"
-        }
-      },
-      "required": ["type", "description"],
-      "additionalProperties": false
-    },
-    "Guards": {
-      "type": "object",
-      "description": "Pre-execution guards that can block an action",
-      "properties": {
-        "cooldown": {
-          "type": "object",
-          "properties": {
-            "duration": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Seconds before the same sender can re-trigger this action"
-            },
-            "on_blocked": {
-              "type": "array",
-              "description": "Steps to run when cooldown blocks the action",
-              "items": {
-                "$ref": "#/definitions/Step"
-              }
-            }
+            "$ref": "#/$defs/Step"
           },
-          "required": ["duration"],
-          "additionalProperties": false
+          "type": "array"
         }
       },
-      "additionalProperties": false
-    },
-    "Step": {
-      "oneOf": [
-        {
-          "$ref": "#/definitions/MessageStep"
-        },
-        {
-          "$ref": "#/definitions/RequestStep"
-        },
-        {
-          "$ref": "#/definitions/LocationStep"
-        }
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "steps"
       ],
-      "description": "One of: message (text reply), request (HTTP call), location (map pin)"
+      "description": "Action is a reusable pipeline of steps, optionally exposed as a tool."
     },
-    "MessageStep": {
-      "type": "object",
+    "Agent": {
       "properties": {
-        "message": {
-          "type": "object",
-          "description": "Reply text. body only: deterministic. intent only: LLM realization with no fallback. body plus intent: LLM generates with body as anchor and sends body when generation is unavailable or the policy check fails",
-          "properties": {
-            "body": {
-              "oneOf": [
-                {
-                  "type": "string",
-                  "minLength": 1
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "minItems": 1
-                }
-              ],
-              "description": "Deterministic reply text. With intent it is the factual anchor and the fallback. A list means random variants and is only allowed without intent"
-            },
-            "intent": {
-              "type": "string",
-              "minLength": 1,
-              "description": "What the reply should accomplish; short, clear text; enables LLM realization"
-            },
-            "policy": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Optional refinement of the node policy for this reply; the node policy still applies. Requires intent"
-            }
-          },
-          "anyOf": [
-            {
-              "required": ["body"]
-            },
-            {
-              "required": ["intent"]
-            }
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": ["message"],
-      "additionalProperties": false
-    },
-    "RequestStep": {
-      "type": "object",
-      "properties": {
-        "request": {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string",
-              "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$",
-              "description": "Identifier for this request; used in template resolution as {{node.<request-name>.resp.body.*}}, {{node.<request-name>.resp.headers.*}}, {{node.<request-name>.status}}, and {{node.<request-name>.duration}}"
-            },
-            "url": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Request URL (supports template variables)"
-            },
-            "method": {
-              "type": "string",
-              "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
-            },
-            "headers": {
-              "type": "object",
-              "description": "Free-form HTTP headers; values may interpolate ${ENV_VAR} (ADR 0014)",
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
-            "timeout": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Request timeout in milliseconds"
-            },
-            "retry": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Number of retry attempts on failure"
-            },
-            "body": {
-              "type": "string",
-              "description": "Request payload (supports template variables); when omitted, no body is sent"
-            }
-          },
-          "required": ["name", "url", "method"],
-          "additionalProperties": false
-        }
-      },
-      "required": ["request"],
-      "additionalProperties": false
-    },
-    "LocationStep": {
-      "type": "object",
-      "properties": {
-        "location": {
-          "type": "object",
-          "properties": {
-            "latitude": {
-              "type": "number",
-              "minimum": -90,
-              "maximum": 90
-            },
-            "longitude": {
-              "type": "number",
-              "minimum": -180,
-              "maximum": 180
-            },
-            "name": {
-              "type": "string"
-            },
-            "address": {
-              "type": "string"
-            },
-            "url": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": {
-              "type": "string"
-            }
-          },
-          "required": ["latitude", "longitude"],
-          "additionalProperties": false
-        }
-      },
-      "required": ["location"],
-      "additionalProperties": false
-    },
-    "GraphDefinition": {
-      "type": "object",
-      "description": "A conversation state machine with named nodes and directed edges",
-      "properties": {
-        "scope": {
-          "type": "string",
-          "description": "Optional isolation namespace. Defaults to 'default'. References resolve only within the same scope"
-        },
-        "root": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Entry node name"
+        "max_tools_per_message": {
+          "type": "integer"
         },
         "timeout": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Session TTL in seconds (overrides global default_timeout)"
-        },
-        "fallback": {
-          "type": "string",
-          "description": "Node to route to when no edge matches"
-        },
-        "routing": {
-          "type": "string",
-          "enum": ["off", "fallback", "always"],
-          "description": "Overrides the instance llm.routing for this graph; always makes the agent decide even when a trigger matches"
-        },
-        "initial_context": {
-          "type": "object",
-          "description": "Session context: free-form key-value pairs that persist across nodes; tools can bind inputs to these variables",
-          "additionalProperties": true
-        },
-        "nodes": {
-          "type": "object",
-          "description": "Map of node name to node definition",
-          "additionalProperties": {
-            "$ref": "#/definitions/NodeDefinition"
-          }
+          "type": "integer"
         }
       },
-      "required": ["root", "nodes"],
-      "additionalProperties": false
-    },
-    "NodeDefinition": {
+      "additionalProperties": false,
       "type": "object",
-      "description": "A single graph state. Describes what the conversation is doing here and how it transitions",
-      "properties": {
-        "goal": {
-          "type": "string",
-          "minLength": 1,
-          "description": "What the agent must achieve in this state, short and clear; names the agent's objective, not a routing target"
-        },
-        "policy": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Ambient constraints for the state: agent decisions, tool selection, and generated text"
-        },
-        "initial_context": {
-          "type": "object",
-          "description": "Node context: free-form key-value pairs that reset every time the node is entered; tools can bind inputs to these variables",
-          "additionalProperties": true
-        },
-        "on_enter": {
-          "type": "array",
-          "description": "Actions to run automatically when entering this node",
-          "items": {
-            "type": "string"
-          }
-        },
-        "on_exit": {
-          "type": "array",
-          "description": "Actions to run automatically when leaving this node",
-          "items": {
-            "type": "string"
-          }
-        },
-        "tools": {
-          "type": "array",
-          "description": "Actions the agent may invoke while in this node (ADR 0008); arguments are validated against each action's inputs",
-          "items": {
-            "type": "string"
-          }
-        },
-        "edges": {
-          "type": "array",
-          "description": "Outgoing edges evaluated in order; first match wins",
-          "items": {
-            "$ref": "#/definitions/EdgeDefinition"
-          }
-        }
-      },
-      "required": ["edges"],
-      "additionalProperties": false
+      "description": "Agent bounds the tool loop inside a node (ADR 0008)."
     },
-    "EdgeDefinition": {
-      "type": "object",
-      "description": "A directed edge from one node to another. Every edge has a user-side intent, except the default (catch-all) edge, which has only goto. triggers is an optional deterministic fast path",
-      "properties": {
-        "intent": {
-          "type": "string",
-          "minLength": 1,
-          "description": "User trigger, short and clear text such as \"wants a human\"; required except on the default edge"
-        },
-        "triggers": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "description": "Optional phrases that trigger this transition without the LLM; the match is fuzzy, so variations count too, and they double as classifier examples"
-        },
-        "goto": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Target node name"
-        }
-      },
-      "required": ["goto"],
-      "oneOf": [
-        {
-          "required": ["intent"]
-        },
-        {
-          "not": {
-            "anyOf": [
-              {
-                "required": ["intent"]
-              },
-              {
-                "required": ["triggers"]
-              }
-            ]
-          }
-        }
-      ],
-      "additionalProperties": false
-    },
-    "BotDefinition": {
-      "type": "object",
-      "description": "A bot instance that connects a transport (WhatsApp) to a graph",
+    "Bot": {
       "properties": {
         "scope": {
-          "type": "string",
-          "description": "Optional isolation namespace. Defaults to 'default'. The bot and its referenced graph must share the same scope"
+          "type": "string"
         },
         "graph": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Name of the graph this bot uses (must exist in the same scope)"
+          "type": "string"
         },
         "settings": {
-          "$ref": "#/definitions/BotSettings"
+          "$ref": "#/$defs/BotSettings"
         }
       },
-      "required": ["graph"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "graph"
+      ],
+      "description": "Bot binds one WhatsApp account to a graph and its settings."
     },
     "BotSettings": {
-      "type": "object",
       "properties": {
         "queue_delay": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Milliseconds between outbound messages (default 1000)"
+          "type": "integer"
         },
         "queue_jitter": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Extra random delay (0..N ms) added per message to avoid fixed pacing (default 300; ADR 0011)"
+          "type": "integer"
         },
         "simulate_typing": {
-          "type": "boolean",
-          "description": "Send a composing presence before each reply (default true; ADR 0011)"
+          "type": "boolean"
         },
         "typing_delay": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Milliseconds the composing presence lasts before the reply (default 1000; ADR 0011)"
+          "type": "integer"
         },
         "read_receipts": {
-          "type": "boolean",
-          "description": "Mark inbound messages as read before replying (default true; ADR 0011)"
+          "type": "boolean"
         },
         "max_messages_per_minute": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Optional per-bot outbound ceiling; 0 means no limit (default 0; ADR 0011)"
+          "type": "integer"
         },
         "ignore_groups": {
-          "type": "boolean",
-          "description": "Ignore group messages (default false)"
+          "type": "boolean"
         },
         "allowed_senders": {
-          "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Whitelist of sender phone numbers; empty/null = all allowed"
+          "type": "array"
         },
         "ignored_senders": {
-          "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Senders to ignore (e.g. status@broadcast)"
+          "type": "array"
         }
       },
-      "additionalProperties": false
-    },
-    "LLM": {
+      "additionalProperties": false,
       "type": "object",
-      "description": "Language model integration. Optional: bots run deterministically with no provider configured. Draft shape; final details close in Phase 4/7",
+      "description": "BotSettings controls pacing and inbound filters (ADR 0011)."
+    },
+    "Config": {
       "properties": {
-        "provider": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Provider id, for example openai, anthropic, or ollama"
+        "$schema": {
+          "type": "string"
         },
-        "model": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Model name passed to the provider"
+        "version": {
+          "type": "integer"
         },
-        "api_key": {
-          "type": "string",
-          "description": "API key. Use ${ENV_VAR} so the secret lives in the environment, not in config (ADR 0014)"
+        "address": {
+          "type": "string"
         },
-        "base_url": {
-          "type": "string",
-          "format": "uri",
-          "description": "Endpoint override for local or self-hosted providers"
+        "port": {
+          "type": "integer"
+        },
+        "log_level": {
+          "type": "string"
+        },
+        "default_timeout": {
+          "type": "integer"
+        },
+        "data_dir": {
+          "type": "string"
+        },
+        "llm": {
+          "$ref": "#/$defs/LLM"
+        },
+        "include": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "actions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Action"
+          },
+          "type": "object"
+        },
+        "graphs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Graph"
+          },
+          "type": "object"
+        },
+        "bots": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Bot"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "description": "Config is the root document."
+    },
+    "Cooldown": {
+      "properties": {
+        "duration": {
+          "type": "integer"
+        },
+        "on_blocked": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "duration"
+      ],
+      "description": "Cooldown blocks the same sender for Duration seconds and runs OnBlocked."
+    },
+    "Edge": {
+      "properties": {
+        "intent": {
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "goto": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "goto"
+      ],
+      "description": "Edge is a transition."
+    },
+    "Graph": {
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "fallback": {
+          "type": "string"
         },
         "routing": {
-          "type": "string",
-          "enum": ["off", "fallback", "always"],
-          "description": "off: deterministic only; fallback: agent routes input that matches no trigger; always: agent routes every message. Graphs may override this"
+          "type": "string"
         },
-        "realization": {
-          "type": "string",
-          "enum": ["off", "auto"],
-          "description": "Whether nodes and messages that declare an intent may generate text"
+        "initial_context": {
+          "type": "object"
         },
-        "agent": {
-          "type": "object",
-          "description": "Bounds for agentic tool use inside a node",
-          "properties": {
-            "max_tools_per_message": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum tool calls the agent may make for one incoming message"
-            },
-            "timeout": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Agent loop timeout in milliseconds"
-            }
+        "nodes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Node"
           },
-          "additionalProperties": false
+          "type": "object"
         }
       },
-      "required": ["provider", "model"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "root",
+        "nodes"
+      ],
+      "description": "Graph is a conversation state machine (ADR 0010, ADR 0015)."
+    },
+    "Guards": {
+      "properties": {
+        "cooldown": {
+          "$ref": "#/$defs/Cooldown"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Guards limit how often an action runs."
+    },
+    "Input": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": true,
+        "description": {
+          "type": "string"
+        },
+        "bind": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Input is a named, typed argument of a tool (ADR 0008)."
+    },
+    "LLM": {
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "api_key": {
+          "$ref": "#/$defs/Secret"
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "routing": {
+          "type": "string"
+        },
+        "realization": {
+          "type": "string"
+        },
+        "agent": {
+          "$ref": "#/$defs/Agent"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "LLM is the optional language-model integration (ADR 0003, ADR 0015)."
+    },
+    "Location": {
+      "properties": {
+        "latitude": {
+          "type": "number"
+        },
+        "longitude": {
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "latitude",
+        "longitude"
+      ],
+      "description": "Location is a map pin."
+    },
+    "Message": {
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/Text"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Message is a reply: deterministic, LLM-realized, or anchored (ADR 0003)."
+    },
+    "Node": {
+      "properties": {
+        "goal": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "on_enter": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "on_exit": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "initial_context": {
+          "type": "object"
+        },
+        "tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Node is a state (ADR 0003, ADR 0008)."
+    },
+    "Request": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "body": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "retry": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "url"
+      ],
+      "description": "Request is an HTTP call whose result is addressable by Name."
+    },
+    "Secret": {
+      "type": "string"
+    },
+    "Step": {
+      "properties": {
+        "message": {
+          "$ref": "#/$defs/Message"
+        },
+        "request": {
+          "$ref": "#/$defs/Request"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Step is exactly one of message, request, or location."
+    },
+    "Text": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ]
     }
   }
 }

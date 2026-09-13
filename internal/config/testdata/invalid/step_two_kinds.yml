@@ -1,0 +1,9 @@
+version: 1
+actions:
+  a:
+    steps:
+      - message:
+          body: "hi"
+        location:
+          latitude: 1
+          longitude: 2

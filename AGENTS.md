@@ -32,12 +32,12 @@ which document owns what, read `README.md`.
 
 ## Commands
 
-- `go build ./...` — build every package.
-- `go test ./...` — run tests.
-- `go vet ./...` and `gofmt -l .` — static checks.
+- `go build ./...`, `go test ./...`, `go vet ./...`, `gofmt -l .` — Go checks.
+- `go run ./cmd/botforje validate --config <file>` — validate a config.
+- `go run ./cmd/botforje schema -o config.schema.json` — regenerate the
+  schema; run it from the repository root so Go comments resolve.
 
-Product commands (`validate`, `auth`, `daemon`, `status`, `reload`) arrive
-with their phases; do not document them before they exist.
+`auth`, `daemon`, `status`, and `reload` arrive with their phases.
 
 ## Structure
 

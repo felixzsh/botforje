@@ -1,0 +1,9 @@
+version: 1
+graphs:
+  g:
+    root: a
+    nodes:
+      a:
+        edges: []
+      b:
+        edges: []
