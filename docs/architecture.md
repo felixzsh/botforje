@@ -69,8 +69,16 @@ Outbound:
 
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
 `{{sender.*}}`, `{{message.*}}`, `{{bot.*}}`, tool arguments as
-`{{input.<name>}}`, and request results as `{{node.<request>.resp.body.*}}`.
-Tool result syntax is still open (Phase 4).
+`{{input.<name>}}`, and request results as `{{node.<request>.resp.body.*}}`,
+`{{node.<request>.status}}`, and `{{node.<request>.duration}}`. Tool result
+syntax is still open (Phase 4).
+
+## Sessions
+
+A session is one (bot, sender) conversation. It starts at the graph root and
+expires after the graph timeout (or `default_timeout`). An expired session is
+destroyed together with its state; the next message starts a new session at
+root. Conversation state, including graph and node contexts, lives in SQLite.
 
 ## Concurrency
 

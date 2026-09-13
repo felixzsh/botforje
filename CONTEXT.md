@@ -12,6 +12,16 @@ that supersedes `botforje-js` (Node.js + `whatsapp-web.js`). It is not a
 port: the goal is to keep the good ideas (config-driven behavior, cooldowns,
 queues, guards) and make better decisions from the start.
 
+## Principles
+
+- Declarative first: behavior lives in YAML; changing a bot never means
+  changing the runtime.
+- One runtime: a single binary, no mandatory auxiliary processes.
+- The graph is the core: the LLM drives and enriches it, but never replaces
+  it.
+- Config can be authored by hand, by a UI, or AI-assisted; the runtime does
+  not change for any of them.
+
 ## Why Go and whatsmeow
 
 - whatsmeow speaks the WhatsApp Multi-Device protocol natively over

@@ -195,12 +195,18 @@ Goal: operate a fleet without hand-editing config for daily operations.
 Deliverables:
 
 - CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
+- Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
+  `/etc/botforje/config.yml` (first match wins).
+- `status` reports uptime, per-bot connection state, outbox depth, and
+  active sessions; a `--json` mode serves scripts.
+- Signals: SIGINT/SIGTERM graceful shutdown; SIGHUP reloads config.
 - REST API: status, bots, sessions, conversations, messages, and config.
 - Auth: single admin key, hashed at rest, regenerable; session cookie for
   the future UI.
-- Config reload: revalidate and apply safe changes; defer incompatible
-  changes to a maintenance mode.
-- Tests: API handlers, auth, and reload behavior.
+- Config reload (ADR 0009): failed validation keeps the previous config;
+  safe changes apply immediately; incompatible changes wait in a pending
+  queue for maintenance mode.
+- Tests: API handlers, auth, config discovery, and both reload classes.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
@@ -227,11 +233,14 @@ knowledge.
   database with YAML import/export (ADR 0002).
 - Automatic graph extraction from chat history: opt-in only, limited to the
   history sync WhatsApp provides plus new conversations.
+- Autonomous graph evolution: limits, validation, approval, deployment, and
+  rollback, whether changes come from chat history or an admin prompt.
 - SaaS infrastructure: login, tenant onboarding, scoped dashboards. Separate
   project built on BotForje; scope isolation is already in the model.
 - Additional channels (Telegram, SMS) behind `MessageChannel`.
-- Script step and sandboxing.
-- Scheduled maintenance mode for incompatible config changes.
+- Script step: language, sandbox, permissions, timeouts, memory, network,
+  and filesystem access are undecided.
+- Scheduled maintenance windows for incompatible config changes.
 - Metrics and tracing beyond structured logs.
 
 ## Open decisions
@@ -246,6 +255,8 @@ knowledge.
 - Confirmation guard for tools with side effects (Phase 7).
 - Agent bounds defaults: max tools per message and timeout (Phase 7).
 - Which LLM providers ship first (close in Phase 7).
+- Whether the CLI acts as a client of the REST API for daemon operations
+  (Phase 8).
 - API shape and auth details (close in Phase 8).
 
 Resolved: Go structs are the schema source and runtime validation happens in

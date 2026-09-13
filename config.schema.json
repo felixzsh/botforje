@@ -35,6 +35,10 @@
       "minimum": 0,
       "description": "Default graph session timeout in seconds"
     },
+    "data_dir": {
+      "type": "string",
+      "description": "Directory for the SQLite database; defaults to the XDG data directory"
+    },
     "llm": {
       "$ref": "#/definitions/LLM"
     },
@@ -487,11 +491,11 @@
         "queue_delay": {
           "type": "integer",
           "minimum": 0,
-          "description": "Milliseconds between outbound messages (engine default applies when omitted)"
+          "description": "Milliseconds between outbound messages (default 1000)"
         },
         "ignore_groups": {
           "type": "boolean",
-          "description": "Ignore group messages (engine default applies when omitted)"
+          "description": "Ignore group messages (default false)"
         },
         "allowed_senders": {
           "type": "array",

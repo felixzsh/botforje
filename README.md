@@ -10,6 +10,9 @@ BotForje is the definitive implementation of the idea behind
 exists to run large fleets in one process with predictable memory use and no
 browser instance per account.
 
+The graph is the core: the LLM drives and enriches conversations, but it
+never replaces the state machine. Behavior stays declarative and inspectable.
+
 ## Status
 
 Pre-code. Architecture, decisions, and the phase plan are settled; the

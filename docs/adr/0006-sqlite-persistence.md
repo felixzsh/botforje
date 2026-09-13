@@ -10,10 +10,12 @@ no external database should be required.
 
 ## Decision
 
-SQLite is the project database. One file per instance, WAL mode, and schema
-migrations on startup. Tables: whatsmeow device store, sessions,
+SQLite is the project database. One file per instance, located through the
+`data_dir` setting (XDG default), in WAL mode, with schema migrations on
+startup. Tables: bots (identity), senders, whatsmeow device store, sessions,
 conversations, messages, and (with the API) web sessions and admin keys.
-The domain depends on repository interfaces, not on SQL.
+Graph and node contexts are stored as JSON on the session. The domain depends
+on repository interfaces, not on SQL.
 
 ## Consequences
 
