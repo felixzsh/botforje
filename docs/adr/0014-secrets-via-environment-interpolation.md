@@ -26,9 +26,11 @@ environment. Interpolation happens once, when the config is loaded.
   so logs, errors, and the API never print them.
 - There is one mechanism: no `api_key_env`. The LLM key is
   `api_key: "${OPENAI_API_KEY}"`.
-- Secrets come from the process environment (systemd `EnvironmentFile`, a
-  container secret, or a secret manager injecting env), never from the
-  database: reading secrets must not depend on the state they configure.
+- Config secrets come from the process environment (systemd
+  `EnvironmentFile`, a container secret, or a secret manager injecting env),
+  never from the database: reading them must not depend on the state they
+  configure. They are separate from runtime credentials the engine generates
+  and stores itself (for example, the whatsmeow device store, ADR 0006).
 
 ## Consequences
 
@@ -36,5 +38,5 @@ environment. Interpolation happens once, when the config is loaded.
 - Startup fails fast when a secret is missing; no half-configured bot runs.
 - Operators wire secrets through systemd or the container runtime.
 - Redaction is a type-level guarantee, not a convention.
-- Per-tenant secrets in the database are deferred to the SaaS phase
+- Per-tenant config secrets in the database are deferred to the SaaS phase
   (ADR 0005).

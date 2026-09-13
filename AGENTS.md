@@ -26,6 +26,8 @@ which document owns what, read `README.md`.
 
 - The domain never imports YAML, SQL, whatsmeow, or LLM SDK types.
 - Define interfaces at the consumer; keep them small and intentional.
+- Tests are table-driven with `t.Run`; fixtures live in `testdata/`; prefer
+  hand-written fakes over a mocking library.
 - Keep code, comments, logs, and documentation in English.
 
 ## Commands

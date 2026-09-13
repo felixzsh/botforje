@@ -11,10 +11,9 @@ would freeze a database schema for entities that are still changing shape.
 ## Decision
 
 During the MVP, YAML files are the only source of truth for bot behavior
-(bots, graphs, actions). SQLite stores runtime state only: the whatsmeow
-device store, sessions, conversations, and messages. When the dashboard can
-edit behavior, behavior moves to the database and YAML becomes import and
-export.
+(bots, graphs, actions). Runtime state lives in SQLite (ADR 0006). When the
+dashboard can edit behavior, behavior moves to the database and YAML becomes
+import and export.
 
 ## Consequences
 

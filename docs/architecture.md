@@ -23,8 +23,8 @@ needs a channel; an LLM is optional and only used when configured.
 ## Domain model
 
 - Bot — identity (account) plus settings and the reference to one graph.
-- Graph — state machine with root, fallback, timeout, a routing override,
-  and a map of nodes.
+- Graph — state machine with root, fallback, timeout, a routing override
+  (ADR 0015), and a map of nodes.
 - Node — goal, policy, entry/exit actions, agent tools, and optional
   node-local context.
 - Edge — transition with a required user intent, except the default

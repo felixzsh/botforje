@@ -37,11 +37,10 @@ Deliverables:
 
 - [x] Documentation set: `README.md`, `PLAN.md`, `docs/scope.md`,
   `docs/glossary.md`, `docs/architecture.md`, `docs/adr/`, `AGENTS.md`.
-- [x] Toolchain decisions recorded: Go version, CLI approach, test layout
-  (ADR 0012).
+- [x] Toolchain decisions recorded: Go version and CLI approach (ADR 0012).
 - [x] Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
   device store, receive and send one message. Throwaway code, not merged.
-- [x] Test conventions: table-driven tests and fixture layout (ADR 0012).
+- [x] Test conventions: table-driven tests and fixture layout (AGENTS.md).
 
 Gate: the spike proves pairing and messaging work; conventions are written.
 
@@ -182,8 +181,8 @@ Deliverables:
 - [ ] `LLMProvider` implementations: at least one cloud provider and one local
   option, selected by config.
 - [ ] Intent classification as fallback for unmatched input.
-- [ ] Per-graph routing override: `off` | `fallback` | `always`; `always` gives
-  the agent the decision even when a trigger matches.
+- [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015);
+  `always` gives the agent the decision even when a trigger matches.
 - [ ] Agentic tool calling (ADR 0008): the agent invokes node `tools` with
   arguments validated against their `inputs`, chains calls, and stays in or
   leaves the node through declared edges only.
@@ -281,8 +280,8 @@ knowledge.
 - API shape and auth details (close in Phase 8).
 
 Resolved: Go structs are the schema source and runtime validation happens in
-Go (ADR 0007); the toolchain, CLI approach, and test layout are in ADR 0012.
-The config v1 shape is frozen in Phase 1.
+Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
+conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
 
 Candidate dependencies from the earlier plan (`gopkg.in/yaml.v3`) are
 candidates, not commitments. Confirm in Phase 0/1. `urfave/cli/v3` and
