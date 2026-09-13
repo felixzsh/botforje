@@ -1,6 +1,6 @@
 # BotForje — Plan
 
-Phase-by-phase plan to the MVP. The MVP scope is defined in `CONTEXT.md`;
+Phase-by-phase plan to the MVP. The MVP scope is defined in `docs/scope.md`;
 settled decisions live in `docs/adr/`; open decisions are listed at the end.
 
 ## How to read this plan
@@ -33,8 +33,8 @@ Goal: repository ready to receive code, with the riskiest dependency tested.
 
 Deliverables:
 
-- Documentation set: `README.md`, `CONTEXT.md`, `PLAN.md`,
-  `docs/architecture.md`, `docs/adr/`, `AGENTS.md`.
+- Documentation set: `README.md`, `CONTEXT.md`, `PLAN.md`, `docs/scope.md`,
+  `docs/glossary.md`, `docs/architecture.md`, `docs/adr/`, `AGENTS.md`.
 - Toolchain decisions recorded: Go version, CLI approach, test layout.
 - Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
   device store, receive and send one message. Throwaway code, not merged.
@@ -230,7 +230,8 @@ Deliverables:
   and account-safety practices (warmup for new accounts, no bulk outreach,
   human fallback when a bot is restricted) (ADR 0011).
 - Log and error review: actionable messages, no secrets in logs.
-- Documentation pass: README, CONTEXT, and architecture match the code.
+- Documentation pass: README, scope, CONTEXT, and architecture match the
+  code.
 - Release checklist and version tag.
 
 Gate: a clean-machine run of the documented path works without tribal

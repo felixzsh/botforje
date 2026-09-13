@@ -1,6 +1,13 @@
 # Documentation
 
-Map of the documentation. Two areas:
+Map of the documentation.
+
+## Project references
+
+- `scope.md` — what the MVP includes.
+- `glossary.md` — terms used across the docs.
+- `../CONTEXT.md` — current work state.
+- `../PLAN.md` — phases and open decisions.
 
 ## Developer docs
 
@@ -16,8 +23,10 @@ is frozen (Phase 1), then finalized when the CLI and API exist.
 
 ## Where things live
 
-- Identity, principles, MVP, glossary: `../CONTEXT.md`.
-- Plan and open decisions: `../PLAN.md`.
+- Identity and principles: `../README.md`.
+- Scope: `scope.md`.
+- Mechanics: `architecture.md`.
+- Rationale: `adr/`.
 - Config shapes: `../config.schema.json` and `../config.example.yaml`.
 - Working rules for agents: `../AGENTS.md`.
 
