@@ -30,7 +30,12 @@
 - Policy — constraints for agent decisions, tool selection, and generated
   text. Node policy is ambient; message policy refines it.
 - Session — per-sender conversation state stored in SQLite.
-- Channel — messaging transport implementation (WhatsApp today).
-- Provider — LLM implementation (cloud or local) used for routing and replies.
+- Messaging provider — the service end users are on (WhatsApp today); one
+  provider is reached through one or more channels.
+- Channel — one implementation that reaches a messaging provider. WhatsApp
+  has several: whatsmeow today, other clients or the official Cloud API
+  later.
+- LLM provider — language model implementation (cloud or local) used for
+  routing and replies.
 - Inbox — routes inbound events to the right bot and session.
 - Outbox — per-bot FIFO queue that paces outbound messages.

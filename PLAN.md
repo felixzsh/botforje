@@ -248,7 +248,8 @@ knowledge.
   rollback, whether changes come from chat history or an admin prompt.
 - SaaS infrastructure: login, tenant onboarding, scoped dashboards. Separate
   project built on BotForje; scope isolation is already in the model.
-- Additional channels (Telegram, SMS) behind `MessageChannel`.
+- Additional messaging providers (Telegram, SMS) and other WhatsApp channels
+  (official Cloud API) behind `MessageChannel`.
 - Script step: language, sandbox, permissions, timeouts, memory, network,
   and filesystem access are undecided.
 - Scheduled maintenance windows for incompatible config changes.

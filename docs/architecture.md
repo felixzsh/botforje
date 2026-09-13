@@ -7,8 +7,9 @@ describes intent; update it as the code exists.
 
 Two independent ports sit beside the config engine and persistence:
 
-- `MessageChannel` — transport port. The first implementation is WhatsApp via
-  whatsmeow. Other channels (Telegram, SMS) become future packages.
+- `MessageChannel` — transport port. A channel is one implementation that
+  reaches a messaging provider; the provider (WhatsApp) can have several
+  channels, such as whatsmeow today or the official Cloud API later.
 - `LLMProvider` — provider port for classification and reply realization.
   Cloud and local providers sit behind the same interface.
 

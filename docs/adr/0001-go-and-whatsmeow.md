@@ -28,5 +28,6 @@ encryption. No browser is involved.
 - whatsmeow is an unofficial client. WhatsApp ban and ToS risk remains and is
   handled operationally (pacing, guards, no unsolicited bulk messaging), not
   by the protocol choice.
-- Transport sits behind a `MessageChannel` port, so other channels can be
-  added later (see ADR 0004).
+- Transport sits behind a `MessageChannel` port, so other channel
+  implementations (for example the official Cloud API) or messaging
+  providers can be added later (see ADR 0004).
