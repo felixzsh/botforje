@@ -46,7 +46,8 @@ needs a channel; an LLM is optional and only used when configured.
 
 Inbound:
 
-1. Channel receives an event and maps it to an `IncomingMessage`.
+1. Channel receives an event, maps it to an `IncomingMessage`, and resolves
+   the sender to a phone number when possible (ADR 0013).
 2. Inbox filters it (groups, allow/ignore lists, dedup) and routes it to the
    right bot and session.
 3. Graph engine loads the session, or creates one at the graph root. On
@@ -100,10 +101,12 @@ Phase 4/7.
 
 ## Sessions
 
-A session is one (bot, sender) conversation. It starts at the graph root and
-expires after the graph timeout (or `default_timeout`). An expired session is
-destroyed together with its state; the next message starts a new session at
-root. Conversation state, including graph and node contexts, lives in SQLite.
+A session is one (bot, sender) conversation, where `sender` is the resolved
+phone number (ADR 0013); the LID is stored when known. It starts at the graph
+root and expires after the graph timeout (or `default_timeout`). An expired
+session is destroyed together with its state; the next message starts a new
+session at root. Conversation state, including graph and node contexts, lives
+in SQLite.
 
 The session also keeps node memory (ADR 0010): the ordered list of visited
 nodes used for routing and handed to the agent as context, bounded to a

@@ -39,7 +39,7 @@ Deliverables:
   `docs/glossary.md`, `docs/architecture.md`, `docs/adr/`, `AGENTS.md`.
 - [x] Toolchain decisions recorded: Go version, CLI approach, test layout
   (ADR 0012).
-- [ ] Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
+- [x] Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
   device store, receive and send one message. Throwaway code, not merged.
 - [x] Test conventions: table-driven tests and fixture layout (ADR 0012).
 
@@ -93,7 +93,8 @@ Goal: runtime state survives restarts.
 
 Deliverables:
 
-- [ ] SQLite setup with WAL mode and migrations from the first table.
+- [ ] SQLite setup with migrations from the first table; pure-Go driver, WAL,
+  foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
 - [ ] Stores: whatsmeow device store, sessions, conversations, messages.
 - [ ] Repository interfaces owned by the domain; SQL stays in the adapter.
 - [ ] Tests: migrations, store round-trips, and session resume after restart.
@@ -137,6 +138,8 @@ Deliverables:
 - [ ] QR pairing, device store persistence, and reconnect with capped
   exponential backoff plus jitter (ADR 0011).
 - [ ] Inbound event mapping to `IncomingMessage` plus deduplication.
+- [ ] Sender identity: resolve LID to PN via `SenderAlt` and the LID store
+  before sessions and filters (ADR 0013).
 - [ ] Outbound send: text and location; mark inbound read and show composing
   presence before replies (ADR 0011).
 - [ ] Logout and ban detection: stop the bot, keep the session, and report
