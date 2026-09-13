@@ -4,9 +4,6 @@
   "$defs": {
     "Action": {
       "properties": {
-        "scope": {
-          "type": "string"
-        },
         "inputs": {
           "additionalProperties": {
             "$ref": "#/$defs/Input"
@@ -45,9 +42,6 @@
     },
     "Bot": {
       "properties": {
-        "scope": {
-          "type": "string"
-        },
         "graph": {
           "type": "string"
         },
@@ -108,7 +102,8 @@
           "type": "string"
         },
         "version": {
-          "type": "integer"
+          "type": "integer",
+          "description": "must be 1"
         },
         "address": {
           "type": "string"
@@ -134,21 +129,9 @@
           },
           "type": "array"
         },
-        "actions": {
+        "scopes": {
           "additionalProperties": {
-            "$ref": "#/$defs/Action"
-          },
-          "type": "object"
-        },
-        "graphs": {
-          "additionalProperties": {
-            "$ref": "#/$defs/Graph"
-          },
-          "type": "object"
-        },
-        "bots": {
-          "additionalProperties": {
-            "$ref": "#/$defs/Bot"
+            "$ref": "#/$defs/Scope"
           },
           "type": "object"
         }
@@ -156,9 +139,10 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "version"
+        "version",
+        "scopes"
       ],
-      "description": "Config is the root document."
+      "description": "Config is the root document: global settings plus scopes (ADR 0016)."
     },
     "Cooldown": {
       "properties": {
@@ -203,9 +187,6 @@
     },
     "Graph": {
       "properties": {
-        "scope": {
-          "type": "string"
-        },
         "root": {
           "type": "string"
         },
@@ -413,6 +394,31 @@
         "url"
       ],
       "description": "Request is an HTTP call whose result is addressable by Name."
+    },
+    "Scope": {
+      "properties": {
+        "actions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Action"
+          },
+          "type": "object"
+        },
+        "graphs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Graph"
+          },
+          "type": "object"
+        },
+        "bots": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Bot"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Scope is an isolation namespace holding its own entities (ADR 0016)."
     },
     "Secret": {
       "type": "string"

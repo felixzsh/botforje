@@ -1,6 +1,7 @@
 # ADR 0005 — Scope is an explicit entity field
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09). The entity `scope` field is superseded by
+ADR 0016; the rest of this decision stands.
 
 ## Context
 

@@ -1,5 +1,7 @@
-actions:
-  extra:
-    steps:
-      - message:
-          body: "extra"
+scopes:
+  default:
+    actions:
+      extra:
+        steps:
+          - message:
+              body: "extra"

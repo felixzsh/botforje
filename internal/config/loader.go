@@ -27,23 +27,18 @@ func (l Loader) lookup(name string) (string, bool) {
 	return os.LookupEnv(name)
 }
 
-// Load reads the main file, merges its includes, and expands ${ENV_VAR}.
-// It does not run semantic validation; call Validate for that.
+// Load reads the main file, merges its includes (recursively), and expands
+// ${ENV_VAR}. It does not run semantic validation; call Validate for that.
 func (l Loader) Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	abs, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, err
 	}
 	cfg := &Config{origin: map[string]string{}}
-	if err := decodeStrict(path, data, cfg); err != nil {
+	state := &includeState{loaded: map[string]bool{abs: true}}
+	if err := state.loadMain(abs, cfg); err != nil {
 		return nil, err
 	}
-	recordOrigins(cfg, path, cfg.Actions, cfg.Graphs, cfg.Bots)
-
-	if err := l.loadIncludes(path, cfg); err != nil {
-		return nil, err
-	}
-
 	if misses := expandValue(reflect.ValueOf(cfg).Elem(), l.lookup); len(misses) > 0 {
 		sort.Strings(misses)
 		return nil, fmt.Errorf("%s: missing environment variable(s): %s",
@@ -52,25 +47,36 @@ func (l Loader) Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-func (l Loader) loadIncludes(mainPath string, cfg *Config) error {
-	for _, inc := range cfg.Include {
-		files, err := resolveInclude(filepath.Dir(mainPath), inc)
+// includeState tracks loaded files so diamond includes merge once and cycles
+// terminate (ADR 0016).
+type includeState struct {
+	loaded map[string]bool
+}
+
+func (s *includeState) loadMain(path string, cfg *Config) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := decodeStrict(path, data, cfg); err != nil {
+		return err
+	}
+	recordOrigins(cfg, path)
+	return s.runIncludes(path, cfg.Include, cfg)
+}
+
+func (s *includeState) runIncludes(from string, includes []string, cfg *Config) error {
+	dir := filepath.Dir(from)
+	for _, inc := range includes {
+		files, err := resolveInclude(dir, inc)
 		if err != nil {
-			return fmt.Errorf("%s: include %q: %w", mainPath, inc, err)
+			return fmt.Errorf("%s: include %q: %w", from, inc, err)
 		}
 		if len(files) == 0 {
-			return fmt.Errorf("%s: include %q matched no files", mainPath, inc)
+			return fmt.Errorf("%s: include %q matched no files", from, inc)
 		}
 		for _, file := range files {
-			data, err := os.ReadFile(file)
-			if err != nil {
-				return fmt.Errorf("%s: %w", file, err)
-			}
-			var frag Fragment
-			if err := decodeStrict(file, data, &frag); err != nil {
-				return err
-			}
-			if err := mergeFragment(cfg, file, &frag); err != nil {
+			if err := s.loadFragment(file, cfg); err != nil {
 				return err
 			}
 		}
@@ -78,61 +84,113 @@ func (l Loader) loadIncludes(mainPath string, cfg *Config) error {
 	return nil
 }
 
-func mergeFragment(cfg *Config, file string, frag *Fragment) error {
-	for _, name := range sortedKeys(frag.Actions) {
-		if cfg.Actions == nil {
-			cfg.Actions = map[string]Action{}
-		}
-		action := frag.Actions[name]
-		if _, exists := cfg.Actions[name]; exists {
-			return duplicateError(cfg, file, "action", action.Scope, name)
-		}
-		cfg.Actions[name] = action
-		cfg.origin[originKey("action", action.Scope, name)] = file
+func (s *includeState) loadFragment(path string, cfg *Config) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
 	}
-	for _, name := range sortedKeys(frag.Graphs) {
-		if cfg.Graphs == nil {
-			cfg.Graphs = map[string]Graph{}
-		}
-		graph := frag.Graphs[name]
-		if _, exists := cfg.Graphs[name]; exists {
-			return duplicateError(cfg, file, "graph", graph.Scope, name)
-		}
-		cfg.Graphs[name] = graph
-		cfg.origin[originKey("graph", graph.Scope, name)] = file
+	if s.loaded[abs] {
+		return nil
 	}
-	for _, name := range sortedKeys(frag.Bots) {
-		if cfg.Bots == nil {
-			cfg.Bots = map[string]Bot{}
+	s.loaded[abs] = true
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	var frag Fragment
+	if err := decodeStrict(path, data, &frag); err != nil {
+		return err
+	}
+	if err := mergeScopes(cfg, path, frag.Scopes); err != nil {
+		return err
+	}
+	return s.runIncludes(path, frag.Include, cfg)
+}
+
+func mergeScopes(cfg *Config, file string, scopes map[string]Scope) error {
+	for _, scopeName := range sortedKeys(scopes) {
+		src := scopes[scopeName]
+		if cfg.Scopes == nil {
+			cfg.Scopes = map[string]Scope{}
 		}
-		bot := frag.Bots[name]
-		if _, exists := cfg.Bots[name]; exists {
-			return duplicateError(cfg, file, "bot", bot.Scope, name)
+		dst := cfg.Scopes[scopeName]
+		if err := mergeActions(cfg, file, scopeName, &dst, src.Actions); err != nil {
+			return err
 		}
-		cfg.Bots[name] = bot
-		cfg.origin[originKey("bot", bot.Scope, name)] = file
+		if err := mergeGraphs(cfg, file, scopeName, &dst, src.Graphs); err != nil {
+			return err
+		}
+		if err := mergeBots(cfg, file, scopeName, &dst, src.Bots); err != nil {
+			return err
+		}
+		cfg.Scopes[scopeName] = dst
+	}
+	return nil
+}
+
+func mergeActions(cfg *Config, file, scope string, dst *Scope, src map[string]Action) error {
+	for _, name := range sortedKeys(src) {
+		if dst.Actions == nil {
+			dst.Actions = map[string]Action{}
+		}
+		if _, exists := dst.Actions[name]; exists {
+			return duplicateError(cfg, file, "action", scope, name)
+		}
+		dst.Actions[name] = src[name]
+		cfg.origin[originKey("action", scope, name)] = file
+	}
+	return nil
+}
+
+func mergeGraphs(cfg *Config, file, scope string, dst *Scope, src map[string]Graph) error {
+	for _, name := range sortedKeys(src) {
+		if dst.Graphs == nil {
+			dst.Graphs = map[string]Graph{}
+		}
+		if _, exists := dst.Graphs[name]; exists {
+			return duplicateError(cfg, file, "graph", scope, name)
+		}
+		dst.Graphs[name] = src[name]
+		cfg.origin[originKey("graph", scope, name)] = file
+	}
+	return nil
+}
+
+func mergeBots(cfg *Config, file, scope string, dst *Scope, src map[string]Bot) error {
+	for _, name := range sortedKeys(src) {
+		if dst.Bots == nil {
+			dst.Bots = map[string]Bot{}
+		}
+		if _, exists := dst.Bots[name]; exists {
+			return duplicateError(cfg, file, "bot", scope, name)
+		}
+		dst.Bots[name] = src[name]
+		cfg.origin[originKey("bot", scope, name)] = file
 	}
 	return nil
 }
 
 func duplicateError(cfg *Config, file, kind, scope, name string) error {
-	key := originKey(kind, scope, name)
-	if prev := cfg.origin[key]; prev != "" {
+	if prev := cfg.origin[originKey(kind, scope, name)]; prev != "" {
 		return fmt.Errorf("%s: duplicate %s %q in scope %q (already defined in %s)",
-			file, kind, name, scopeOf(scope), prev)
+			file, kind, name, scope, prev)
 	}
-	return fmt.Errorf("%s: duplicate %s %q in scope %q", file, kind, name, scopeOf(scope))
+	return fmt.Errorf("%s: duplicate %s %q in scope %q", file, kind, name, scope)
 }
 
-func recordOrigins(cfg *Config, path string, actions map[string]Action, graphs map[string]Graph, bots map[string]Bot) {
-	for name := range actions {
-		cfg.origin[originKey("action", actions[name].Scope, name)] = path
-	}
-	for name := range graphs {
-		cfg.origin[originKey("graph", graphs[name].Scope, name)] = path
-	}
-	for name := range bots {
-		cfg.origin[originKey("bot", bots[name].Scope, name)] = path
+func recordOrigins(cfg *Config, path string) {
+	for _, scopeName := range sortedKeys(cfg.Scopes) {
+		scope := cfg.Scopes[scopeName]
+		for name := range scope.Actions {
+			cfg.origin[originKey("action", scopeName, name)] = path
+		}
+		for name := range scope.Graphs {
+			cfg.origin[originKey("graph", scopeName, name)] = path
+		}
+		for name := range scope.Bots {
+			cfg.origin[originKey("bot", scopeName, name)] = path
+		}
 	}
 }
 
@@ -186,15 +244,8 @@ func resolveInclude(dir, entry string) ([]string, error) {
 	return files, nil
 }
 
-func scopeOf(scope string) string {
-	if scope == "" {
-		return "default"
-	}
-	return scope
-}
-
 func originKey(kind, scope, name string) string {
-	return kind + "/" + scopeOf(scope) + "/" + name
+	return kind + "/" + scope + "/" + name
 }
 
 func (c *Config) originOf(kind, scope, name string) string {

@@ -28,7 +28,7 @@ func (c *Config) fileOf(kind, scope, name string) string {
 }
 
 // Validate runs the semantic checks that a JSON Schema cannot express
-// (ADR 0007, ADR 0008, ADR 0010, ADR 0015).
+// (ADR 0007, ADR 0008, ADR 0010, ADR 0015, ADR 0016).
 func Validate(cfg *Config) []ValidationError {
 	if cfg == nil {
 		return []ValidationError{{Reason: "nil config"}}
@@ -49,14 +49,18 @@ func Validate(cfg *Config) []ValidationError {
 	if cfg.LLM != nil {
 		validateLLM(cfg.LLM, add)
 	}
-	for _, name := range sortedKeys(cfg.Actions) {
-		validateAction(cfg, name, cfg.Actions[name], add)
-	}
-	for _, name := range sortedKeys(cfg.Graphs) {
-		validateGraph(cfg, name, cfg.Graphs[name], add)
-	}
-	for _, name := range sortedKeys(cfg.Bots) {
-		validateBot(cfg, name, cfg.Bots[name], add)
+
+	for _, scopeName := range sortedKeys(cfg.Scopes) {
+		scope := cfg.Scopes[scopeName]
+		for _, name := range sortedKeys(scope.Actions) {
+			validateAction(cfg, scopeName, name, scope.Actions[name], add)
+		}
+		for _, name := range sortedKeys(scope.Graphs) {
+			validateGraph(cfg, scopeName, scope, name, scope.Graphs[name], add)
+		}
+		for _, name := range sortedKeys(scope.Bots) {
+			validateBot(cfg, scopeName, scope, name, scope.Bots[name], add)
+		}
 	}
 	return errs
 }
@@ -88,9 +92,9 @@ var httpMethods = map[string]bool{
 	"PATCH": true, "HEAD": true, "OPTIONS": true,
 }
 
-func validateAction(cfg *Config, name string, a Action, add func(file, entity, format string, args ...any)) {
-	file := cfg.fileOf("action", a.Scope, name)
-	entity := fmt.Sprintf("action %q (scope %q)", name, scopeOf(a.Scope))
+func validateAction(cfg *Config, scope, name string, a Action, add func(file, entity, format string, args ...any)) {
+	file := cfg.fileOf("action", scope, name)
+	entity := fmt.Sprintf("action %q (scope %q)", name, scope)
 
 	for _, in := range sortedKeys(a.Inputs) {
 		input := a.Inputs[in]
@@ -172,9 +176,9 @@ func validateRequest(file, entity, prefix string, i int, r Request, names map[st
 	}
 }
 
-func validateGraph(cfg *Config, name string, g Graph, add func(file, entity, format string, args ...any)) {
-	file := cfg.fileOf("graph", g.Scope, name)
-	entity := fmt.Sprintf("graph %q (scope %q)", name, scopeOf(g.Scope))
+func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Graph, add func(file, entity, format string, args ...any)) {
+	file := cfg.fileOf("graph", scopeName, name)
+	entity := fmt.Sprintf("graph %q (scope %q)", name, scopeName)
 
 	switch g.Routing {
 	case "", "off", "fallback", "always":
@@ -199,7 +203,7 @@ func validateGraph(cfg *Config, name string, g Graph, add func(file, entity, for
 	for _, nodeName := range sortedKeys(g.Nodes) {
 		node := g.Nodes[nodeName]
 		nodeEntity := fmt.Sprintf("%s node %q", entity, nodeName)
-		validateNodeRefs(cfg, g, node, file, nodeEntity, add)
+		validateNodeRefs(scope, g, node, file, nodeEntity, add)
 		defaults := 0
 		for _, edge := range node.Edges {
 			if edge.Intent == "" {
@@ -224,19 +228,19 @@ func validateGraph(cfg *Config, name string, g Graph, add func(file, entity, for
 	}
 }
 
-func validateNodeRefs(cfg *Config, g Graph, node Node, file, entity string, add func(string, string, string, ...any)) {
+func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add func(string, string, string, ...any)) {
 	for _, group := range []struct {
 		label  string
 		values []string
 	}{{"on_enter", node.OnEnter}, {"on_exit", node.OnExit}} {
 		for _, ref := range group.values {
-			if _, reason := lookupAction(cfg, g.Scope, ref); reason != "" {
+			if _, reason := lookupAction(scope, ref); reason != "" {
 				add(file, entity, "%s action %q: %s", group.label, ref, reason)
 			}
 		}
 	}
 	for _, tool := range node.Tools {
-		action, reason := lookupAction(cfg, g.Scope, tool)
+		action, reason := lookupAction(scope, tool)
 		if reason != "" {
 			add(file, entity, "tool %q: %s", tool, reason)
 			continue
@@ -264,12 +268,12 @@ func validateNodeRefs(cfg *Config, g Graph, node Node, file, entity string, add 
 	}
 }
 
-func validateBot(cfg *Config, name string, b Bot, add func(file, entity, format string, args ...any)) {
-	file := cfg.fileOf("bot", b.Scope, name)
-	entity := fmt.Sprintf("bot %q (scope %q)", name, scopeOf(b.Scope))
+func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot, add func(file, entity, format string, args ...any)) {
+	file := cfg.fileOf("bot", scopeName, name)
+	entity := fmt.Sprintf("bot %q (scope %q)", name, scopeName)
 	if b.Graph == "" {
 		add(file, entity, "no graph")
-	} else if _, reason := lookupGraph(cfg, b.Scope, b.Graph); reason != "" {
+	} else if _, reason := lookupGraph(scope, b.Graph); reason != "" {
 		add(file, entity, "graph %q: %s", b.Graph, reason)
 	}
 	if s := b.Settings; s != nil {
@@ -289,33 +293,20 @@ func validateBot(cfg *Config, name string, b Bot, add func(file, entity, format 
 	}
 }
 
-func (c *Config) actionInScope(scope, name string) (Action, string) {
-	a, ok := c.Actions[name]
+func lookupAction(scope Scope, name string) (Action, string) {
+	a, ok := scope.Actions[name]
 	if !ok {
 		return Action{}, "not found"
-	}
-	if scopeOf(a.Scope) != scopeOf(scope) {
-		return a, fmt.Sprintf("defined in scope %q, not %q", scopeOf(a.Scope), scopeOf(scope))
 	}
 	return a, ""
 }
 
-func (c *Config) graphInScope(scope, name string) (Graph, string) {
-	g, ok := c.Graphs[name]
+func lookupGraph(scope Scope, name string) (Graph, string) {
+	g, ok := scope.Graphs[name]
 	if !ok {
 		return Graph{}, "not found"
 	}
-	if scopeOf(g.Scope) != scopeOf(scope) {
-		return g, fmt.Sprintf("defined in scope %q, not %q", scopeOf(g.Scope), scopeOf(scope))
-	}
 	return g, ""
-}
-
-func lookupAction(cfg *Config, scope, name string) (Action, string) {
-	return cfg.actionInScope(scope, name)
-}
-func lookupGraph(cfg *Config, scope, name string) (Graph, string) {
-	return cfg.graphInScope(scope, name)
 }
 
 func splitBind(bind string) (kind, name string, ok bool) {

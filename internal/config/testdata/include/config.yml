@@ -1,8 +1,10 @@
 version: 1
 include:
   - ./extra/*.yml
-actions:
-  base:
-    steps:
-      - message:
-          body: "base"
+scopes:
+  default:
+    actions:
+      base:
+        steps:
+          - message:
+              body: "base"

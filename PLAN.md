@@ -60,8 +60,8 @@ Deliverables:
 - [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
   LLM. They live in `internal/config` for now; split out when the engine
   needs a YAML-free domain.
-- [x] Loader: main config plus `include` fragments (file, glob, directory),
-  merge, and scope handling.
+- [x] Loader: main config plus `include` fragments (file, glob, directory,
+  recursive), scope merging, and cycle-safe dedupe (ADR 0016).
 - [x] Runtime validation in Go: strict YAML decoding plus semantic checks.
   The JSON Schema is generated from the Go types for editors only (ADR 0007).
 - [x] Environment interpolation: expand `${ENV_VAR}` in config strings after

@@ -1,10 +1,12 @@
 version: 1
-actions:
-  a:
-    steps:
-      - request:
-          name: r
-          url: "https://example.com/a"
-      - request:
-          name: r
-          url: "https://example.com/b"
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - request:
+              name: r
+              url: "https://example.com/a"
+          - request:
+              name: r
+              url: "https://example.com/b"

@@ -2,8 +2,8 @@
 
 - Bot — one WhatsApp account plus the graph that gives it behavior.
 - Fleet — the set of bots a single BotForje instance runs.
-- Scope — generic isolation namespace; references and sessions never cross
-  scopes.
+- Scope — the top-level config namespace that isolates entities, references,
+  and sessions (ADR 0016); a free name, never derived from folders.
 - Graph — conversation state machine owned by one bot; may override the
   instance routing mode.
 - Node — a state: goal, policy, entry/exit actions, agent tools, and

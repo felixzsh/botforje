@@ -1,7 +1,9 @@
 version: 1
-actions:
-  a:
-    steps:
-      - message:
-          body: ["one", "two"]
-          intent: "greet"
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - message:
+              body: ["one", "two"]
+              intent: "greet"

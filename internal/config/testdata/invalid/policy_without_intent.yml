@@ -1,7 +1,9 @@
 version: 1
-actions:
-  a:
-    steps:
-      - message:
-          body: "hi"
-          policy: "be nice"
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - message:
+              body: "hi"
+              policy: "be nice"

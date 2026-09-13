@@ -84,30 +84,33 @@ func (Secret) JSONSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "string"}
 }
 
-// Config is the root document.
+// Config is the root document: global settings plus scopes (ADR 0016).
 type Config struct {
-	Schema         string            `yaml:"$schema" json:"$schema,omitempty"`
-	Version        int               `yaml:"version" json:"version"`
-	Address        string            `yaml:"address" json:"address,omitempty"`
-	Port           int               `yaml:"port" json:"port,omitempty"`
-	LogLevel       string            `yaml:"log_level" json:"log_level,omitempty"`
-	DefaultTimeout int               `yaml:"default_timeout" json:"default_timeout,omitempty"`
-	DataDir        string            `yaml:"data_dir" json:"data_dir,omitempty"`
-	LLM            *LLM              `yaml:"llm" json:"llm,omitempty"`
-	Include        []string          `yaml:"include" json:"include,omitempty"`
-	Actions        map[string]Action `yaml:"actions" json:"actions,omitempty"`
-	Graphs         map[string]Graph  `yaml:"graphs" json:"graphs,omitempty"`
-	Bots           map[string]Bot    `yaml:"bots" json:"bots,omitempty"`
+	Schema         string           `yaml:"$schema" json:"$schema,omitempty"`
+	Version        int              `yaml:"version" json:"version"` // must be 1
+	Address        string           `yaml:"address" json:"address,omitempty"`
+	Port           int              `yaml:"port" json:"port,omitempty"`
+	LogLevel       string           `yaml:"log_level" json:"log_level,omitempty"`
+	DefaultTimeout int              `yaml:"default_timeout" json:"default_timeout,omitempty"`
+	DataDir        string           `yaml:"data_dir" json:"data_dir,omitempty"`
+	LLM            *LLM             `yaml:"llm" json:"llm,omitempty"`
+	Include        []string         `yaml:"include" json:"include,omitempty"`
+	Scopes         map[string]Scope `yaml:"scopes" json:"scopes"`
 
 	origin map[string]string `yaml:"-" json:"-"`
 }
 
-// Fragment is an included file: entities only, no global settings (ADR 0005).
-type Fragment struct {
-	Include []string          `yaml:"include" json:"include,omitempty"`
+// Scope is an isolation namespace holding its own entities (ADR 0016).
+type Scope struct {
 	Actions map[string]Action `yaml:"actions" json:"actions,omitempty"`
 	Graphs  map[string]Graph  `yaml:"graphs" json:"graphs,omitempty"`
 	Bots    map[string]Bot    `yaml:"bots" json:"bots,omitempty"`
+}
+
+// Fragment is an included file: scopes only, no global settings (ADR 0016).
+type Fragment struct {
+	Include []string         `yaml:"include" json:"include,omitempty"`
+	Scopes  map[string]Scope `yaml:"scopes" json:"scopes,omitempty"`
 }
 
 // LLM is the optional language-model integration (ADR 0003, ADR 0015).
@@ -129,7 +132,6 @@ type Agent struct {
 
 // Action is a reusable pipeline of steps, optionally exposed as a tool.
 type Action struct {
-	Scope  string           `yaml:"scope" json:"scope,omitempty"`
 	Inputs map[string]Input `yaml:"inputs" json:"inputs,omitempty"`
 	Guards *Guards          `yaml:"guards" json:"guards,omitempty"`
 	Steps  []Step           `yaml:"steps" json:"steps"`
@@ -192,7 +194,6 @@ type Location struct {
 
 // Graph is a conversation state machine (ADR 0010, ADR 0015).
 type Graph struct {
-	Scope          string          `yaml:"scope" json:"scope,omitempty"`
 	Root           string          `yaml:"root" json:"root"`
 	Timeout        int             `yaml:"timeout" json:"timeout,omitempty"`
 	Fallback       string          `yaml:"fallback" json:"fallback,omitempty"`
@@ -221,7 +222,6 @@ type Edge struct {
 
 // Bot binds one WhatsApp account to a graph and its settings.
 type Bot struct {
-	Scope    string       `yaml:"scope" json:"scope,omitempty"`
 	Graph    string       `yaml:"graph" json:"graph"`
 	Settings *BotSettings `yaml:"settings" json:"settings,omitempty"`
 }

@@ -1,10 +1,12 @@
 version: 1
-graphs:
-  g:
-    root: a
-    nodes:
-      a:
-        edges: []
-bots:
-  b:
-    graph: nope
+scopes:
+  default:
+    graphs:
+      g:
+        root: a
+        nodes:
+          a:
+            edges: []
+    bots:
+      b:
+        graph: nope

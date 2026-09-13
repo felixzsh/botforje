@@ -39,8 +39,9 @@ needs a channel; an LLM is optional and only used when configured.
   routing and as agent context; reordered on each visit, never reset by
   navigation.
 - Graph context — session-wide variables that persist across nodes.
-- Scope — generic isolation namespace applied to actions, graphs, and bots
-  (a tenant is one use). References and sessions never cross scopes.
+- Scope — the top-level config namespace holding its own actions, graphs, and
+  bots (ADR 0016). A tenant is one use; the name is free. References and
+  sessions never cross scopes.
 
 ## Message lifecycle
 
@@ -128,6 +129,15 @@ configured maximum.
 - Reconnect uses capped exponential backoff with jitter; a bot that is
   logged out or banned stops and reports instead of retrying (ADR 0011).
 - A fleet supervisor starts, stops, and reports bot actors.
+
+## Config layout
+
+A config file is global settings plus `scopes` (ADR 0016). Each scope holds
+its own actions, graphs, and bots. `include` pulls other files that use the
+same shape; several files may extend one scope, paths resolve relative to the
+including file, and a file loaded twice is skipped, so diamond includes and
+cycles are safe. Global settings are only valid in the main file, and scope
+is never derived from folders (ADR 0005).
 
 ## Configuration pipeline
 

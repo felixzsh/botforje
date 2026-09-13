@@ -1,17 +1,19 @@
 version: 1
-actions:
-  t:
-    inputs:
-      x:
-        type: string
-        bind: bogus.x
-    steps:
-      - message:
-          body: "hi"
-graphs:
-  g:
-    root: a
-    nodes:
-      a:
-        tools: ["t"]
-        edges: []
+scopes:
+  default:
+    actions:
+      t:
+        inputs:
+          x:
+            type: string
+            bind: bogus.x
+        steps:
+          - message:
+              body: "hi"
+    graphs:
+      g:
+        root: a
+        nodes:
+          a:
+            tools: ["t"]
+            edges: []
