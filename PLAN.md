@@ -214,6 +214,9 @@ Goal: operate a fleet without hand-editing config for daily operations.
 Deliverables:
 
 - [ ] CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
+- [ ] `init`: create `config_dir` with a minimal `config.yml` and a
+  `config.schema.json` generated at runtime; do not overwrite without
+  `--force`.
 - [ ] Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
   `/etc/botforje/config.yml` (first match wins).
 - [ ] `status` reports uptime, per-bot connection state, outbox depth, and
@@ -281,6 +284,8 @@ knowledge.
 - Whether the CLI acts as a client of the REST API for daemon operations
   (Phase 8).
 - API shape and auth details (close in Phase 8).
+- `init` behavior: non-interactive minimum (recommended) or prompting for
+  provider and model (Phase 8).
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
