@@ -15,5 +15,5 @@ SaaS infrastructure:
 - CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
 - REST API with key-based auth.
 - Hybrid LLM support designed in from the start: deterministic routing works
-  with no LLM configured; intents, providers, and agentic tools are
+  with no LLM configured; intents, providers, and tools are
   first-class when enabled.

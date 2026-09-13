@@ -26,18 +26,18 @@ needs a channel; an LLM is optional and only used when configured.
   optional reference to one llm (ADR 0017).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0015), and a map of nodes.
-- Node — goal, policy, entry/exit actions, agent tools, and optional
-  node-local context.
+- Node — goal, policy, entry/exit actions, tools, and optional node-local
+  context.
 - Edge — transition with a required user intent, except the default
   (catch-all) edge. `triggers` is an optional deterministic fast path; LLM
   routing resolves input that matches no trigger.
 - Action — ordered steps (`message`, `request`, `location`) with guards and
-  declared `inputs`; exposed to the agent when a node lists it in `tools`.
-- Tool — an action the agent may invoke with validated arguments; an input
+  declared `inputs`; exposed to the LLM when a node lists it in `tools`.
+- Tool — an action the LLM may invoke with validated arguments; an input
   may bind to a node or graph variable (read and write).
 - Node context — node variables that reset when the node is entered again.
 - Node memory — ordered list of visited nodes (current last) used for
-  routing and as agent context; reordered on each visit, never reset by
+  routing and as LLM context; reordered on each visit, never reset by
   navigation.
 - Graph context — session-wide variables that persist across nodes.
 - Scope — the top-level config namespace holding its own actions, graphs, and
@@ -63,12 +63,12 @@ Inbound:
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
 5. When the graph routing mode is `always`, or nothing matched and the mode
-   is `fallback`, the agent loop starts (ADR 0008): the agent may call node
+   is `fallback`, the tool loop starts (ADR 0008): the LLM may call node
    tools with arguments validated against each action's `inputs`, and may
    produce a reply.
-6. Tool results return to the agent as context; missing required arguments
-   return a tool error and the agent asks the user, storing the answer in the
-   bound variable. The agent can chain calls, stay in the node, or take a
+6. Tool results return to the LLM as context; missing required arguments
+   return a tool error and the LLM asks the user, storing the answer in the
+   bound variable. The LLM can chain calls, stay in the node, or take a
    declared edge; it never invents a transition.
 7. Engine runs the selected transition: exit actions, target node, entry
    actions.
@@ -102,10 +102,9 @@ template context: config strings interpolate `${ENV_VAR}` once at load
 ## Async requests
 
 APIs that answer asynchronously (202 plus a status endpoint) are polled
-within bounds: the agent calls the operation, then checks its status up to
-its tool budget; longer waits continue on later messages. A deterministic
-polling step (interval, timeout, success condition) is an open decision for
-Phase 4/7.
+within bounds: the LLM calls the operation, then checks its status up to its
+tool budget; longer waits continue on later messages. A deterministic polling
+step (interval, timeout, success condition) is an open decision for Phase 4/7.
 
 ## Sessions
 
@@ -117,14 +116,14 @@ session at root. Conversation state, including graph and node contexts, lives
 in SQLite.
 
 The session also keeps node memory (ADR 0010): the ordered list of visited
-nodes used for routing and handed to the agent as context, bounded to a
+nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
 
 ## Concurrency
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
-- The agent loop runs inside the bot actor and is bounded (max tools per
+- The tool loop runs inside the bot actor and is bounded (max tools per
   message, timeout); a slow provider cannot stall other bots.
 - Bounded queues between inbox, engine, and outbox provide backpressure.
 - No shared mutable state between bots; shared services are read-only or
@@ -136,11 +135,11 @@ configured maximum.
 ## Config layout
 
 A config file is global settings plus `scopes` (ADR 0016). Each scope holds
-its own actions, graphs, and bots. `include` pulls other files that use the
-same shape; several files may extend one scope, paths resolve relative to the
-including file, and a file loaded twice is skipped, so diamond includes and
-cycles are safe. Global settings are only valid in the main file, and scope
-is never derived from folders (ADR 0005).
+its own llms, actions, graphs, and bots. `include` pulls other files that use
+the same shape; several files may extend one scope, paths resolve relative to
+the including file, and a file loaded twice is skipped, so diamond includes
+and cycles are safe. Global settings are only valid in the main file, and
+scope is never derived from folders (ADR 0005).
 
 ## Configuration pipeline
 

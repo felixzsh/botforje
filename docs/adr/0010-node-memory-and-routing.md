@@ -14,7 +14,7 @@ it is adopted here with explicit rules.
 Routing may consult previously visited nodes, not only the current one. Each
 session keeps an ordered list of visited nodes with the current one last; it
 is reordered, never reset by navigation, and used both for matching and as
-agent context. On session creation, the incoming message is evaluated before
+LLM context. On session creation, the incoming message is evaluated before
 the root's entry actions.
 
 Candidate order, tie-breaking, and default-edge rules live in

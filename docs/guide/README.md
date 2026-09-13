@@ -9,6 +9,6 @@ and API exist.
 - Getting Started — install, first bot, pair an account.
 - Concepts — bot, graph, node, edge, action, tool, session, contexts,
   routing, hybrid behavior.
-- Guides — task walkthroughs: a support menu bot, an agentic order builder.
+- Guides — task walkthroughs: a support menu bot, an order builder with tools.
 - Reference — config, CLI, and REST API. Generated from code, not written by
   hand.

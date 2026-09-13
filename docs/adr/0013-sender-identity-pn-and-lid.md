@@ -38,7 +38,7 @@ the group.
 ## Consequences
 
 - One session per person despite the LID/PN split.
-- Domain logic and the agent can rely on a phone number.
+- Domain logic can rely on a phone number.
 - A first message from an unknown contact may open an unresolved session
   until the LID store catches up.
 - The identity rule lives in the channel adapter; the domain sees a resolved

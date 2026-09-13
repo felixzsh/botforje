@@ -9,8 +9,8 @@ The instance had a single `llm` section. With scope as the isolation unit
 provider, model, and key (BYOK). A single instance-level section cannot
 express that.
 
-"Agent" is reserved for a graph plus an LLM acting together (the agent loop,
-ADR 0008); the configured model profile is an LLM.
+A graph plus an LLM plus settings is a bot. "Agent" is reserved for a
+conventional external agent runtime, a possible future integration.
 
 ## Decision
 

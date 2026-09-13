@@ -16,7 +16,7 @@ so on). It also let a forgotten `scope` silently place an entity in
 ## Decision
 
 A config file is global settings plus a `scopes` map. Each scope holds its
-own `actions`, `graphs`, and `bots` (agents later). Scope names are free
+own `llms`, `actions`, `graphs`, and `bots` (ADR 0017). Scope names are free
 strings; `default` is just a name, with no special behavior.
 
 ```yaml

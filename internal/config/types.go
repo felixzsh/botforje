@@ -124,7 +124,7 @@ type LLM struct {
 	Bounds      *Bounds `yaml:"bounds" json:"bounds,omitempty"`
 }
 
-// Bounds limits the agent loop inside a node (ADR 0008).
+// Bounds limits the tool loop inside a node (ADR 0008).
 type Bounds struct {
 	MaxToolsPerMessage int `yaml:"max_tools_per_message" json:"max_tools_per_message,omitempty"`
 	Timeout            int `yaml:"timeout" json:"timeout,omitempty"`

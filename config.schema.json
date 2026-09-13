@@ -97,7 +97,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Bounds limits the agent loop inside a node (ADR 0008)."
+      "description": "Bounds limits the tool loop inside a node (ADR 0008)."
     },
     "Config": {
       "properties": {

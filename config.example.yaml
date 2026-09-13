@@ -36,9 +36,9 @@ scopes:
         # base_url: "http://localhost:11434"  # Local / self-hosted
         routing: "fallback"       # off | fallback | always
         realization: "auto"       # off | auto
-        bounds:                   # Agent loop limits (ADR 0008)
+        bounds:                   # Tool loop limits (ADR 0008)
           max_tools_per_message: 3
-          timeout: 30000          # Agent loop timeout in milliseconds
+          timeout: 30000          # Tool loop timeout in milliseconds
     actions:
       # Deterministic reply
       greet:
@@ -70,7 +70,7 @@ scopes:
               intent: "confirm the order"
               policy: "Friendly, one short sentence, no extra promises."
 
-      # Tool with a bound input: the agent fills node.product once and it is
+      # Tool with a bound input: the LLM fills node.product once and it is
       # remembered for later tool calls in the same node
       product-info:
         inputs:
@@ -218,7 +218,7 @@ scopes:
         root: "menu"
         timeout: 300                  # Session TTL (seconds)
         fallback: "invalid"           # Target when no edge matches and LLM is off
-        routing: "fallback"           # off | fallback | always (always = agent-first)
+        routing: "fallback"           # off | fallback | always (always = LLM decides first)
         initial_context:              # Persists across nodes for the session
           customer_name: ""
           visit_count: 0
