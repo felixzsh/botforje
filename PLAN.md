@@ -103,6 +103,8 @@ Deliverables:
 - [ ] Stores: whatsmeow device store, sessions, conversations, messages.
 - [ ] Repository interfaces owned by the domain; SQL stays in the adapter.
 - [ ] Tests: migrations, store round-trips, and session resume after restart.
+- [ ] Race testing: `make test-race` (`go test -race ./...`) and use it
+  whenever concurrency is involved.
 
 Gate: a session persisted by one process resumes in a new process.
 

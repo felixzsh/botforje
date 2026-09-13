@@ -30,6 +30,16 @@ which document owns what, read `README.md`.
   hand-written fakes over a mocking library.
 - Keep code, comments, logs, and documentation in English.
 
+## Go
+
+- Errors are values: wrap them with context (`%w`); never ignore one; do not
+  `panic` in library code.
+- Pass `context.Context` first and honor cancellation and timeouts.
+- Every goroutine must have a way to exit; give each channel one clear owner.
+- Avoid `init()` and package-level mutable state.
+- Do not share maps or slices across goroutines without synchronization.
+- Use generics only to remove real duplication.
+
 ## Commands
 
 Prefer the Make targets; they wrap the underlying Go commands.
