@@ -7,10 +7,8 @@ bots, conversation graphs, actions, and guards. The engine runs many WhatsApp
 accounts (a fleet) in a single process through the native Multi-Device
 protocol provided by `go.mau.fi/whatsmeow`.
 
-This repository is the definitive BotForje, a from-scratch implementation
-that supersedes `botforje-js` (Node.js + `whatsapp-web.js`). It is not a
-port: the goal is to keep the good ideas (config-driven behavior, cooldowns,
-queues, guards) and make better decisions from the start.
+This repository is the definitive BotForje: a from-scratch implementation
+built around config-driven behavior, cooldowns, queues, and guards.
 
 ## Principles
 
@@ -35,9 +33,8 @@ Details: `docs/adr/0001-go-and-whatsmeow.md`.
 
 ## MVP definition
 
-A config-driven fleet runner roughly equivalent to `botforje-js` in
-capability, without dashboard or SaaS infrastructure, and built on the new
-architecture:
+A config-driven fleet runner with these capabilities, without dashboard or
+SaaS infrastructure:
 
 - One instance runs multiple WhatsApp bots.
 - Bots, graphs, and actions defined in YAML; YAML is the behavior source of
@@ -58,7 +55,7 @@ than WhatsApp.
 
 ## Key decisions (short)
 
-- Go + whatsmeow over Node.js + whatsapp-web.js. See ADR 0001.
+- Go and whatsmeow as the runtime foundation. See ADR 0001.
 - YAML is the behavior source of truth; SQLite stores runtime state. A later
   dashboard phase may migrate behavior to the database. See ADR 0002.
 - Hybrid intent model: nodes describe a goal, policy, and tools; replies are
@@ -76,7 +73,6 @@ than WhatsApp.
 - SQLite is the only persistence technology in the MVP. See ADR 0006.
 - Go structs are the source for the config schema; runtime validation is in
   Go and the JSON Schema is generated for editors. See ADR 0007.
-- `botforje-js` is reference only: no code port, no fixture port.
 
 ## Current state
 

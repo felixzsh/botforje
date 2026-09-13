@@ -4,10 +4,9 @@ Status: Accepted (2026-09)
 
 ## Context
 
-`botforje-js` planned multi-tenancy by deriving scope from directory
-structure: `actions/client-a/greet.yml` belongs to scope `client-a`. That
-couples a domain concept to file layout and complicates identifiers,
-tooling, and validation.
+Deriving scope from directory structure, where `actions/client-a/greet.yml`
+belongs to scope `client-a`, couples a domain concept to file layout and
+complicates identifiers, tooling, and validation.
 
 ## Decision
 
@@ -27,5 +26,5 @@ file.
 - Scope isolation is enforced by semantic validation.
 - Sessions are isolated per scope, so two scopes never share conversation
   state.
-- Configs written for the path-derived scheme are not compatible; this is a
-  deliberate break from the legacy design.
+- Paths never define the namespace; configs that relied on directory-derived
+  scope are not compatible.

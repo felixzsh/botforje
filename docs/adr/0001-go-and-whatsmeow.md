@@ -4,13 +4,12 @@ Status: Accepted (2026-09)
 
 ## Context
 
-`botforje-js` runs WhatsApp bots on Node.js with `whatsapp-web.js`, which
-drives a real browser session per account. That costs hundreds of MB of RSS
-and several seconds of startup per account, needs a pile of system libraries,
-and makes large fleets expensive to host.
+Driving WhatsApp through a browser session per account costs hundreds of MB
+of RSS and several seconds of startup per account, needs a pile of system
+libraries, and makes large fleets expensive to host.
 
-The definitive BotForje must run many WhatsApp accounts from one process with
-predictable resource use.
+BotForje must run many WhatsApp accounts from one process with predictable
+resource use.
 
 ## Decision
 

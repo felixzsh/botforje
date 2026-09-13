@@ -5,10 +5,8 @@ graphs, and actions in YAML; one BotForje instance runs a fleet of WhatsApp
 accounts through the native Multi-Device protocol (`go.mau.fi/whatsmeow`).
 No browser, no Chromium, no Puppeteer.
 
-BotForje is the definitive implementation of the idea behind
-[`botforje-js`](../botforje-js) (Node.js + `whatsapp-web.js`). The rewrite
-exists to run large fleets in one process with predictable memory use and no
-browser instance per account.
+BotForje is built to run large fleets in one process with predictable memory
+use and no browser instance per account.
 
 The graph is the core: the LLM drives and enriches conversations, but it
 never replaces the state machine. Behavior stays declarative and inspectable.

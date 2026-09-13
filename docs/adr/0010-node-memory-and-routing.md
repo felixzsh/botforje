@@ -5,9 +5,9 @@ Status: Accepted (2026-09)
 ## Context
 
 Conversations often need to return to earlier nodes ("menu", "back") without
-declaring the same edge in every node. `botforje-js` solved this by matching
-input against the edges of previously visited nodes; the behavior proved
-useful in production, so it is adopted here with explicit rules.
+declaring the same edge in every node. Matching input against the edges of
+previously visited nodes solves this and has proven useful in practice, so
+it is adopted here with explicit rules.
 
 ## Decision
 

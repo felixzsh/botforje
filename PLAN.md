@@ -1,8 +1,7 @@
 # BotForje — Plan
 
-Phase-by-phase plan to the MVP. This file replaces the earlier sprint plan
-and the legacy `CURRENT_PLAN.md` snapshot. Settled decisions live in
-`docs/adr/`; open decisions are listed at the end.
+Phase-by-phase plan to the MVP. Settled decisions live in `docs/adr/`; open
+decisions are listed at the end.
 
 ## How to read this plan
 
@@ -16,9 +15,9 @@ and the legacy `CURRENT_PLAN.md` snapshot. Settled decisions live in
 
 ## MVP
 
-A config-driven fleet runner roughly equivalent to `botforje-js` in
-capability: multiple WhatsApp bots from one process, YAML-defined behavior,
-SQLite-backed sessions, hybrid LLM support, CLI, and REST API. No dashboard.
+A config-driven fleet runner: multiple WhatsApp bots from one process,
+YAML-defined behavior, SQLite-backed sessions, hybrid LLM support, CLI, and
+REST API. No dashboard.
 
 ## Phase map
 

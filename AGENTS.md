@@ -7,10 +7,6 @@ is defined in YAML: bots, conversation graphs, actions, and guards. One
 instance runs a fleet of WhatsApp accounts through the native Multi-Device
 protocol (`go.mau.fi/whatsmeow`) with no browser automation.
 
-This repository is the definitive implementation and will supersede
-`botforje-js`. The JS project is reference material only: read it for ideas
-and lessons, never copy code and never modify it.
-
 ## Sources of truth
 
 - `CONTEXT.md` — identity, decisions, glossary, current state.
@@ -26,12 +22,10 @@ When documents disagree, `CONTEXT.md` and the ADRs win over this file.
 
 ## Repositories and boundaries
 
-Write only inside this repository.
+Write only inside this repository. Do not modify sibling repositories.
 
-- `../botforje-js` — legacy reference. Read-only. Never modify, never port
-  code or fixtures.
-- `../botforje-docs` — snapshot of legacy docs for the JS project. Do not
-  update it; all current documentation lives here.
+- `../botforje-docs` — legacy docs snapshot. Do not update it; all current
+  documentation lives here.
 
 ## Commands
 
