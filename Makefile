@@ -2,9 +2,10 @@ GO ?= go
 BIN := bin/botforje
 CONFIG ?= config.example.yaml
 ARGS ?=
+LINE_MAX := 100
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test vet fmt fmt-check check schema validate tidy clean
+.PHONY: help build run test vet fmt fmt-check lines-check check schema validate tidy clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -29,7 +30,15 @@ fmt-check: ## Fail if any file is not gofmt'd
 	@out=$$(gofmt -l cmd internal); \
 	if [ -n "$$out" ]; then echo "not formatted:"; echo "$$out"; exit 1; fi
 
-check: vet fmt-check test ## Run vet, format check, and tests
+lines-check: ## Fail if a tracked file has a line longer than LINE_MAX
+	@bad=$$(git ls-files -z | xargs -0 awk -v max=$(LINE_MAX) \
+		'FILENAME != "config.schema.json" \
+		&& length > max {printf "%s:%d (%d)\n", FILENAME, FNR, length}'); \
+	if [ -n "$$bad" ]; then \
+		echo "lines over $(LINE_MAX) characters:"; echo "$$bad"; exit 1; \
+	fi
+
+check: vet fmt-check lines-check test ## Run vet, format check, line check, and tests
 
 schema: ## Regenerate config.schema.json (run from the repo root)
 	$(GO) run ./cmd/botforje schema -o config.schema.json
