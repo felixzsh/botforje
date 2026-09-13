@@ -35,12 +35,13 @@ Goal: repository ready to receive code, with the riskiest dependency tested.
 
 Deliverables:
 
-- [ ] Documentation set: `README.md`, `PLAN.md`, `docs/scope.md`,
+- [x] Documentation set: `README.md`, `PLAN.md`, `docs/scope.md`,
   `docs/glossary.md`, `docs/architecture.md`, `docs/adr/`, `AGENTS.md`.
-- [ ] Toolchain decisions recorded: Go version, CLI approach, test layout.
+- [x] Toolchain decisions recorded: Go version, CLI approach, test layout
+  (ADR 0012).
 - [ ] Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
   device store, receive and send one message. Throwaway code, not merged.
-- [ ] Test conventions: table-driven tests and fixture layout.
+- [x] Test conventions: table-driven tests and fixture layout (ADR 0012).
 
 Gate: the spike proves pairing and messaging work; conventions are written.
 
@@ -257,7 +258,6 @@ knowledge.
 
 ## Open decisions
 
-- CLI approach: standard library flags versus a CLI library (Phase 0/1).
 - Schema generator choice and approval (Phase 1; candidate:
   `invopop/jsonschema`).
 - Fuzzy matching algorithm and defaults (close in Phase 4).
@@ -274,9 +274,10 @@ knowledge.
 - API shape and auth details (close in Phase 8).
 
 Resolved: Go structs are the schema source and runtime validation happens in
-Go (ADR 0007). The config v1 shape is frozen in Phase 1.
+Go (ADR 0007); the toolchain, CLI approach, and test layout are in ADR 0012.
+The config v1 shape is frozen in Phase 1.
 
-Candidate dependencies from the earlier plan (`gopkg.in/yaml.v3`,
-`urfave/cli/v3`) are candidates, not commitments. Confirm each in Phase 0/1.
-`google/jsonschema-go` is no longer needed: runtime validation is in Go
-(ADR 0007).
+Candidate dependencies from the earlier plan (`gopkg.in/yaml.v3`) are
+candidates, not commitments. Confirm in Phase 0/1. `urfave/cli/v3` and
+`google/jsonschema-go` are no longer needed: the CLI uses the standard
+library (ADR 0012) and runtime validation is in Go (ADR 0007).

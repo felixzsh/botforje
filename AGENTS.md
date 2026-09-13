@@ -30,13 +30,18 @@ which document owns what, read `README.md`.
 
 ## Commands
 
-TBD. Fill with the real commands (build, test, validate, run) once code
-exists. Until then, do not invent commands.
+- `go build ./...` — build every package.
+- `go test ./...` — run tests.
+- `go vet ./...` and `gofmt -l .` — static checks.
+
+Product commands (`validate`, `auth`, `daemon`, `status`, `reload`) arrive
+with their phases; do not document them before they exist.
 
 ## Structure
 
-TBD. Expected shape: `cmd/` for entrypoints and `internal/` for packages.
-Replace this guess with the real layout.
+- `cmd/` — entrypoints.
+- `internal/` — packages grouped by concern; adapters never leak into the
+  domain (ADR 0004).
 
 ## Never
 
