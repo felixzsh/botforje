@@ -20,7 +20,6 @@ rules; this file explains the reasoning behind them.
 - Prefer boring and proven solutions.
 - Keep concurrency contained and intentional.
 - Minimize shared mutable state.
-- Prefer the standard library unless a dependency provides significant value.
 - Package boundaries should remain clear and easy to explain.
 
 ## Always
