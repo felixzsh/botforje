@@ -35,7 +35,7 @@ func TestLoadExample(t *testing.T) {
 	if errs := Validate(cfg); len(errs) != 0 {
 		t.Fatalf("validate returned errors: %v", errs)
 	}
-	if cfg.LLM == nil || cfg.LLM.APIKey.Reveal() != "sk-test" {
+	if llm := cfg.Scopes["support"].LLMs["primary"]; llm.APIKey.Reveal() != "sk-test" {
 		t.Fatalf("api_key was not interpolated from the environment")
 	}
 	if len(cfg.Scopes["support"].Actions) == 0 {
@@ -45,7 +45,7 @@ func TestLoadExample(t *testing.T) {
 
 func TestInterpolationMissing(t *testing.T) {
 	path := writeTemp(t, t.TempDir(), "config.yml",
-		"version: 1\nllm:\n  api_key: \"${MISSING_VAR}\"\n")
+		"version: 1\nscopes:\n  default:\n    llms:\n      a:\n        model: gpt\n        api_key: \"${MISSING_VAR}\"\n")
 	_, err := testLoader().Load(path)
 	if err == nil || !strings.Contains(err.Error(), "MISSING_VAR") {
 		t.Fatalf("want missing variable error, got %v", err)

@@ -1,3 +1,8 @@
 version: 1
-llm:
-  routing: "sometimes"
+scopes:
+  default:
+    llms:
+      a:
+        provider: "openai"
+        model: "gpt-4o-mini"
+        routing: "sometimes"

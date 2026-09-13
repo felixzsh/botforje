@@ -16,7 +16,7 @@ func TestSchema(t *testing.T) {
 		t.Fatalf("schema is not valid JSON: %v", err)
 	}
 	text := string(data)
-	for _, want := range []string{"graphs", "actions", "bots", "api_key"} {
+	for _, want := range []string{"graphs", "actions", "bots", "llms", "api_key"} {
 		if !strings.Contains(text, `"`+want+`"`) {
 			t.Errorf("schema is missing %q", want)
 		}

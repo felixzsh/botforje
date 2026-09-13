@@ -15,18 +15,6 @@ log_level: "info"                 # debug, info, warn, error
 default_timeout: 300              # Default graph session timeout in seconds
 data_dir: "~/.local/share/botforje"  # SQLite location (XDG default when omitted)
 
-# LLM integration (optional). Without this section bots run deterministically.
-llm:
-  provider: "openai"              # openai, anthropic, ollama, ...
-  model: "gpt-4o-mini"
-  api_key: "${OPENAI_API_KEY}"    # Resolved from env at load (ADR 0014)
-  # base_url: "http://localhost:11434"   # Local / self-hosted providers
-  routing: "fallback"             # off | fallback | always
-  realization: "auto"             # off | auto
-  agent:                          # Bounds for agentic tool use (ADR 0008)
-    max_tools_per_message: 3
-    timeout: 30000                # Agent loop timeout in milliseconds
-
 # Multi-file organization (ADR 0016): every file uses the `scopes` shape, and
 # several files may contribute to the same scope under the same rules as one.
 # Global settings are only valid in the main file.
@@ -39,6 +27,18 @@ llm:
 # sessions never cross scopes. "support" is just a name, like any other.
 scopes:
   support:
+    # LLM profiles (optional). A bot without `llm` runs deterministically.
+    llms:
+      primary:
+        provider: "openai"        # openai, anthropic, ollama, ...
+        model: "gpt-4o-mini"
+        api_key: "${OPENAI_API_KEY}"  # Resolved from env at load (ADR 0014)
+        # base_url: "http://localhost:11434"  # Local / self-hosted
+        routing: "fallback"       # off | fallback | always
+        realization: "auto"       # off | auto
+        bounds:                   # Agent loop limits (ADR 0008)
+          max_tools_per_message: 3
+          timeout: 30000          # Agent loop timeout in milliseconds
     actions:
       # Deterministic reply
       greet:
@@ -338,6 +338,7 @@ scopes:
     bots:
       support-bot:
         graph: "faq-support"
+        llm: "primary"              # Must exist in this scope
         settings:
           queue_delay: 1500           # Milliseconds between outbound messages
           queue_jitter: 400           # Extra random 0-400 ms, avoids fixed pacing
@@ -350,7 +351,7 @@ scopes:
           ignored_senders: ["status@broadcast"]
 
       sales-bot:
-        graph: "faq-support"
+        graph: "faq-support"        # No llm: this bot is deterministic
         settings:
           queue_delay: 1000
           ignore_groups: false

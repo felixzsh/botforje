@@ -1,6 +1,10 @@
 version: 1
-llm:
-  provider: "openai"
-  agent:
-    max_tools_per_message: -1
-    timeout: -5
+scopes:
+  default:
+    llms:
+      a:
+        provider: "openai"
+        model: "gpt-4o-mini"
+        bounds:
+          max_tools_per_message: -1
+          timeout: -5

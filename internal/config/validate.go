@@ -46,12 +46,11 @@ func Validate(cfg *Config) []ValidationError {
 	default:
 		add("", "config", "invalid log_level %q", cfg.LogLevel)
 	}
-	if cfg.LLM != nil {
-		validateLLM(cfg.LLM, add)
-	}
-
 	for _, scopeName := range sortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
+		for _, name := range sortedKeys(scope.LLMs) {
+			validateLLM(cfg, scopeName, name, scope.LLMs[name], add)
+		}
 		for _, name := range sortedKeys(scope.Actions) {
 			validateAction(cfg, scopeName, name, scope.Actions[name], add)
 		}
@@ -65,23 +64,31 @@ func Validate(cfg *Config) []ValidationError {
 	return errs
 }
 
-func validateLLM(llm *LLM, add func(file, entity, format string, args ...any)) {
+func validateLLM(cfg *Config, scope, name string, llm LLM, add func(file, entity, format string, args ...any)) {
+	file := cfg.fileOf("llm", scope, name)
+	entity := fmt.Sprintf("llm %q (scope %q)", name, scope)
+	if llm.Provider == "" {
+		add(file, entity, "provider is required")
+	}
+	if llm.Model == "" {
+		add(file, entity, "model is required")
+	}
 	switch llm.Routing {
 	case "", "off", "fallback", "always":
 	default:
-		add("", "llm", "invalid routing %q (want off, fallback, or always)", llm.Routing)
+		add(file, entity, "invalid routing %q (want off, fallback, or always)", llm.Routing)
 	}
 	switch llm.Realization {
 	case "", "off", "auto":
 	default:
-		add("", "llm", "invalid realization %q (want off or auto)", llm.Realization)
+		add(file, entity, "invalid realization %q (want off or auto)", llm.Realization)
 	}
-	if llm.Agent != nil {
-		if llm.Agent.MaxToolsPerMessage < 0 {
-			add("", "llm.agent", "max_tools_per_message must be >= 0")
+	if llm.Bounds != nil {
+		if llm.Bounds.MaxToolsPerMessage < 0 {
+			add(file, entity, "max_tools_per_message must be >= 0")
 		}
-		if llm.Agent.Timeout < 0 {
-			add("", "llm.agent", "timeout must be >= 0")
+		if llm.Bounds.Timeout < 0 {
+			add(file, entity, "timeout must be >= 0")
 		}
 	}
 }
@@ -276,6 +283,11 @@ func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot,
 	} else if _, reason := lookupGraph(scope, b.Graph); reason != "" {
 		add(file, entity, "graph %q: %s", b.Graph, reason)
 	}
+	if b.LLM != "" {
+		if _, reason := lookupLLM(scope, b.LLM); reason != "" {
+			add(file, entity, "llm %q: %s", b.LLM, reason)
+		}
+	}
 	if s := b.Settings; s != nil {
 		for _, v := range []struct {
 			field string
@@ -307,6 +319,14 @@ func lookupGraph(scope Scope, name string) (Graph, string) {
 		return Graph{}, "not found"
 	}
 	return g, ""
+}
+
+func lookupLLM(scope Scope, name string) (LLM, string) {
+	l, ok := scope.LLMs[name]
+	if !ok {
+		return LLM{}, "not found"
+	}
+	return l, ""
 }
 
 func splitBind(bind string) (kind, name string, ok bool) {

@@ -12,8 +12,8 @@ a sales graph wants the agent to roam.
 
 ## Decision
 
-`llm.routing` sets the instance default. Each graph may override it with
-`routing: off | fallback | always`.
+`llms.<name>.routing` sets the default for bots using that llm. Each graph
+may override it with `routing: off | fallback | always`.
 
 - `off`: no LLM routing; transitions come from triggers and the default edge.
 - `fallback`: deterministic matching first; the agent resolves input that

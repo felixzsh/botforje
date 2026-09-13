@@ -1,0 +1,6 @@
+version: 1
+scopes:
+  default:
+    llms:
+      a:
+        model: "gpt-4o-mini"

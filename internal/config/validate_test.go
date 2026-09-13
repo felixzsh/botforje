@@ -21,6 +21,7 @@ var invalidFixtures = []fixtureCase{
 	{"bad_llm_routing.yml", "routing"},
 	{"bad_llm_realization.yml", "realization"},
 	{"bad_llm_bounds.yml", ">= 0"},
+	{"llm_no_provider.yml", "provider is required"},
 	{"action_no_steps.yml", "no steps"},
 	{"bad_input_type.yml", "invalid type"},
 	{"bad_cooldown.yml", "cooldown duration"},
@@ -48,6 +49,7 @@ var invalidFixtures = []fixtureCase{
 	{"unknown_tool.yml", "tool"},
 	{"missing_graph.yml", "not found"},
 	{"bot_no_graph.yml", "no graph"},
+	{"bot_unknown_llm.yml", "not found"},
 	{"bot_negative_settings.yml", "must be >= 0"},
 }
 

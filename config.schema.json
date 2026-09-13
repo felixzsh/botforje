@@ -27,22 +27,12 @@
       ],
       "description": "Action is a reusable pipeline of steps, optionally exposed as a tool."
     },
-    "Agent": {
-      "properties": {
-        "max_tools_per_message": {
-          "type": "integer"
-        },
-        "timeout": {
-          "type": "integer"
-        }
-      },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Agent bounds the tool loop inside a node (ADR 0008)."
-    },
     "Bot": {
       "properties": {
         "graph": {
+          "type": "string"
+        },
+        "llm": {
           "type": "string"
         },
         "settings": {
@@ -54,7 +44,7 @@
       "required": [
         "graph"
       ],
-      "description": "Bot binds one WhatsApp account to a graph and its settings."
+      "description": "Bot binds one WhatsApp account to a graph, an optional llm, and settings."
     },
     "BotSettings": {
       "properties": {
@@ -96,6 +86,19 @@
       "type": "object",
       "description": "BotSettings controls pacing and inbound filters (ADR 0011)."
     },
+    "Bounds": {
+      "properties": {
+        "max_tools_per_message": {
+          "type": "integer"
+        },
+        "timeout": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "Bounds limits the agent loop inside a node (ADR 0008)."
+    },
     "Config": {
       "properties": {
         "$schema": {
@@ -119,9 +122,6 @@
         },
         "data_dir": {
           "type": "string"
-        },
-        "llm": {
-          "$ref": "#/$defs/LLM"
         },
         "include": {
           "items": {
@@ -267,13 +267,17 @@
         "realization": {
           "type": "string"
         },
-        "agent": {
-          "$ref": "#/$defs/Agent"
+        "bounds": {
+          "$ref": "#/$defs/Bounds"
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "LLM is the optional language-model integration (ADR 0003, ADR 0015)."
+      "required": [
+        "provider",
+        "model"
+      ],
+      "description": "LLM is a named, scoped model profile referenced by a bot (ADR 0017)."
     },
     "Location": {
       "properties": {
@@ -397,6 +401,12 @@
     },
     "Scope": {
       "properties": {
+        "llms": {
+          "additionalProperties": {
+            "$ref": "#/$defs/LLM"
+          },
+          "type": "object"
+        },
         "actions": {
           "additionalProperties": {
             "$ref": "#/$defs/Action"

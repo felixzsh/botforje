@@ -115,6 +115,9 @@ func mergeScopes(cfg *Config, file string, scopes map[string]Scope) error {
 			cfg.Scopes = map[string]Scope{}
 		}
 		dst := cfg.Scopes[scopeName]
+		if err := mergeLLMs(cfg, file, scopeName, &dst, src.LLMs); err != nil {
+			return err
+		}
 		if err := mergeActions(cfg, file, scopeName, &dst, src.Actions); err != nil {
 			return err
 		}
@@ -125,6 +128,20 @@ func mergeScopes(cfg *Config, file string, scopes map[string]Scope) error {
 			return err
 		}
 		cfg.Scopes[scopeName] = dst
+	}
+	return nil
+}
+
+func mergeLLMs(cfg *Config, file, scope string, dst *Scope, src map[string]LLM) error {
+	for _, name := range sortedKeys(src) {
+		if dst.LLMs == nil {
+			dst.LLMs = map[string]LLM{}
+		}
+		if _, exists := dst.LLMs[name]; exists {
+			return duplicateError(cfg, file, "llm", scope, name)
+		}
+		dst.LLMs[name] = src[name]
+		cfg.origin[originKey("llm", scope, name)] = file
 	}
 	return nil
 }
@@ -182,6 +199,9 @@ func duplicateError(cfg *Config, file, kind, scope, name string) error {
 func recordOrigins(cfg *Config, path string) {
 	for _, scopeName := range sortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
+		for name := range scope.LLMs {
+			cfg.origin[originKey("llm", scopeName, name)] = path
+		}
 		for name := range scope.Actions {
 			cfg.origin[originKey("action", scopeName, name)] = path
 		}

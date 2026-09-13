@@ -55,7 +55,7 @@ Deliverables:
 
 - [x] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
-  graph `routing`, `llm` section). Align `config.example.yaml` and the draft
+  graph `routing`, `llms`). Align `config.example.yaml` and the draft
   `config.schema.json` with it.
 - [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
   LLM. They live in `internal/config` for now; split out when the engine
@@ -194,7 +194,8 @@ Deliverables:
 - [ ] Reply realization within node policy; `body` plus `intent` uses the body
   as anchor and fallback; policy checks before queueing.
 - [ ] Deterministic fallback when no provider is configured or a call fails.
-- [ ] Bounded agent loop: max tools per message and timeout from `llm.agent`.
+- [ ] Bounded agent loop: max tools per message and timeout from the llm
+  `bounds`.
 - [ ] Async APIs: agent-driven polling within the tool budget (call, check
   status, retry); longer waits continue on later messages.
 - [ ] Per-message logging of node, intent, tools called, provider, and policy

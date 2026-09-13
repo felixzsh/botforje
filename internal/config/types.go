@@ -93,7 +93,6 @@ type Config struct {
 	LogLevel       string           `yaml:"log_level" json:"log_level,omitempty"`
 	DefaultTimeout int              `yaml:"default_timeout" json:"default_timeout,omitempty"`
 	DataDir        string           `yaml:"data_dir" json:"data_dir,omitempty"`
-	LLM            *LLM             `yaml:"llm" json:"llm,omitempty"`
 	Include        []string         `yaml:"include" json:"include,omitempty"`
 	Scopes         map[string]Scope `yaml:"scopes" json:"scopes"`
 
@@ -102,6 +101,7 @@ type Config struct {
 
 // Scope is an isolation namespace holding its own entities (ADR 0016).
 type Scope struct {
+	LLMs    map[string]LLM    `yaml:"llms" json:"llms,omitempty"`
 	Actions map[string]Action `yaml:"actions" json:"actions,omitempty"`
 	Graphs  map[string]Graph  `yaml:"graphs" json:"graphs,omitempty"`
 	Bots    map[string]Bot    `yaml:"bots" json:"bots,omitempty"`
@@ -113,19 +113,19 @@ type Fragment struct {
 	Scopes  map[string]Scope `yaml:"scopes" json:"scopes,omitempty"`
 }
 
-// LLM is the optional language-model integration (ADR 0003, ADR 0015).
+// LLM is a named, scoped model profile referenced by a bot (ADR 0017).
 type LLM struct {
-	Provider    string `yaml:"provider" json:"provider,omitempty"`
-	Model       string `yaml:"model" json:"model,omitempty"`
-	APIKey      Secret `yaml:"api_key" json:"api_key,omitempty"`
-	BaseURL     string `yaml:"base_url" json:"base_url,omitempty"`
-	Routing     string `yaml:"routing" json:"routing,omitempty"`
-	Realization string `yaml:"realization" json:"realization,omitempty"`
-	Agent       *Agent `yaml:"agent" json:"agent,omitempty"`
+	Provider    string  `yaml:"provider" json:"provider"`
+	Model       string  `yaml:"model" json:"model"`
+	APIKey      Secret  `yaml:"api_key" json:"api_key,omitempty"`
+	BaseURL     string  `yaml:"base_url" json:"base_url,omitempty"`
+	Routing     string  `yaml:"routing" json:"routing,omitempty"`
+	Realization string  `yaml:"realization" json:"realization,omitempty"`
+	Bounds      *Bounds `yaml:"bounds" json:"bounds,omitempty"`
 }
 
-// Agent bounds the tool loop inside a node (ADR 0008).
-type Agent struct {
+// Bounds limits the agent loop inside a node (ADR 0008).
+type Bounds struct {
 	MaxToolsPerMessage int `yaml:"max_tools_per_message" json:"max_tools_per_message,omitempty"`
 	Timeout            int `yaml:"timeout" json:"timeout,omitempty"`
 }
@@ -220,9 +220,10 @@ type Edge struct {
 	Goto     string   `yaml:"goto" json:"goto"`
 }
 
-// Bot binds one WhatsApp account to a graph and its settings.
+// Bot binds one WhatsApp account to a graph, an optional llm, and settings.
 type Bot struct {
 	Graph    string       `yaml:"graph" json:"graph"`
+	LLM      string       `yaml:"llm" json:"llm,omitempty"`
 	Settings *BotSettings `yaml:"settings" json:"settings,omitempty"`
 }
 

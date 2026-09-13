@@ -22,7 +22,8 @@ needs a channel; an LLM is optional and only used when configured.
 
 ## Domain model
 
-- Bot — identity (account) plus settings and the reference to one graph.
+- Bot — identity (account) plus settings, the reference to one graph, and an
+  optional reference to one llm (ADR 0017).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0015), and a map of nodes.
 - Node — goal, policy, entry/exit actions, agent tools, and optional
@@ -42,6 +43,8 @@ needs a channel; an LLM is optional and only used when configured.
 - Scope — the top-level config namespace holding its own actions, graphs, and
   bots (ADR 0016). A tenant is one use; the name is free. References and
   sessions never cross scopes.
+- LLM — a named, scoped model profile (provider, model, credentials, routing
+  defaults, bounds) referenced by a bot (ADR 0017).
 
 ## Message lifecycle
 

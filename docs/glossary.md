@@ -41,6 +41,9 @@
 - Channel — one implementation that reaches a messaging provider. WhatsApp
   has several: whatsmeow today, other clients or the official Cloud API
   later.
+- LLM — a named, scoped model profile (provider, model, credentials, routing
+  defaults, bounds); a bot references one or runs deterministically without
+  it (ADR 0017).
 - LLM provider — language model implementation (cloud or local) used for
   routing and replies.
 - Inbox — routes inbound events to the right bot and session.
