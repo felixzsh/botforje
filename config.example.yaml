@@ -394,8 +394,8 @@ bots:
 # - Scope is an explicit field; uniqueness key is (type, scope, name).
 # - Template contexts: {{graph.*}}, {{node.*}}, {{sender.*}}, {{message.*}},
 #   {{bot.*}}, tool inputs as {{input.<name>}}, and request results as
-#   {{node.<name>.resp.body.*}}, {{node.<name>.resp.headers.*}},
-#   {{node.<name>.status}}, and {{node.<name>.duration}} (tool result syntax
-#   is still open).
+#   {{node.<request-name>.resp.body.*}},
+#   {{node.<request-name>.resp.headers.*}}, {{node.<request-name>.status}},
+#   and {{node.<request-name>.duration}} (tool result syntax is still open).
 # - Matching thresholds and structured policy details stay open until the
 #   algorithms and the engine exist (Phase 1/4).

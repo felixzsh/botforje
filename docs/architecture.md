@@ -80,9 +80,11 @@ Outbound:
 
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
 `{{sender.*}}`, `{{message.*}}`, `{{bot.*}}`, tool arguments as
-`{{input.<name>}}`, and request results as `{{node.<request>.resp.body.*}}`,
-`{{node.<request>.resp.headers.*}}`, `{{node.<request>.status}}`, and
-`{{node.<request>.duration}}`. Tool result syntax is still open (Phase 4).
+`{{input.<name>}}`, and request results as
+`{{node.<request-name>.resp.body.*}}`,
+`{{node.<request-name>.resp.headers.*}}`, `{{node.<request-name>.status}}`,
+and `{{node.<request-name>.duration}}`. Tool result syntax is still open
+(Phase 4).
 
 ## Async requests
 

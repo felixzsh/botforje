@@ -256,7 +256,7 @@
             "name": {
               "type": "string",
               "pattern": "^[a-zA-Z][a-zA-Z0-9-]*$",
-              "description": "Identifier for this request; used in template resolution as {{node.name.resp.body.*}}, {{node.name.resp.headers.*}}, {{node.name.status}}, and {{node.name.duration}}"
+              "description": "Identifier for this request; used in template resolution as {{node.<request-name>.resp.body.*}}, {{node.<request-name>.resp.headers.*}}, {{node.<request-name>.status}}, and {{node.<request-name>.duration}}"
             },
             "url": {
               "type": "string",
