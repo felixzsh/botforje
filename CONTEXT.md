@@ -3,12 +3,9 @@
 ## What it is
 
 A declarative WhatsApp bot framework written in Go. Behavior lives in YAML:
-bots, conversation graphs, actions, and guards. The engine runs many WhatsApp
-accounts (a fleet) in a single process through the native Multi-Device
-protocol provided by `go.mau.fi/whatsmeow`.
-
-This repository is the definitive BotForje: a from-scratch implementation
-built around config-driven behavior, cooldowns, queues, and guards.
+bots, conversation graphs, actions, and guards. The engine runs a fleet of
+WhatsApp accounts in a single process through the native Multi-Device
+protocol (`go.mau.fi/whatsmeow`).
 
 ## Principles
 
@@ -20,16 +17,9 @@ built around config-driven behavior, cooldowns, queues, and guards.
 - Config can be authored by hand, by a UI, or AI-assisted; the runtime does
   not change for any of them.
 
-## Why Go and whatsmeow
+## Runtime choice
 
-- whatsmeow speaks the WhatsApp Multi-Device protocol natively over
-  WebSocket. No Chromium, no Puppeteer, no xvfb, no browser process per
-  account.
-- Go fits the workload: many independent account actors in one process, each
-  with bounded queues and controlled resource use.
-- A single static binary keeps deployment and operations simple.
-
-Details: `docs/adr/0001-go-and-whatsmeow.md`.
+Go and whatsmeow. Rationale and trade-offs: `docs/adr/0001-go-and-whatsmeow.md`.
 
 ## MVP definition
 
@@ -49,35 +39,29 @@ SaaS infrastructure:
   with no LLM configured; intents, providers, and agentic tools are
   first-class when enabled.
 
-Not in the MVP: dashboard, behavior stored in a database, automatic graph
-extraction from chat history, SaaS/login infrastructure, and channels other
-than WhatsApp.
+Deferred work and out-of-scope items: `PLAN.md`.
 
-## Key decisions (short)
+## Decisions
 
-- Go and whatsmeow as the runtime foundation. See ADR 0001.
-- YAML is the behavior source of truth; SQLite stores runtime state. A later
-  dashboard phase may migrate behavior to the database. See ADR 0002.
-- Hybrid intent model: nodes describe a goal, policy, and tools; replies are
-  deterministic, LLM-realized, or both (anchor plus fallback). See ADR 0003.
-- Nodes are agentic: the agent invokes tools with validated inputs (which may
-  bind to node or graph variables) inside a node; edges remain the only
-  transitions. See ADR 0008.
-- Routing considers visited nodes: best trigger match wins, ties go to the
-  most recent; node memory is reordered, never reset by navigation.
-  See ADR 0010.
-- Messaging channel and LLM provider are two separate ports. See ADR 0004.
-- Scope is an explicit isolation namespace per entity, not derived from file
-  paths; a tenant is one use, not the definition.
-  See ADR 0005.
-- SQLite is the only persistence technology in the MVP. See ADR 0006.
-- Go structs are the source for the config schema; runtime validation is in
-  Go and the JSON Schema is generated for editors. See ADR 0007.
+Settled decisions live in `docs/adr/`:
+
+| ADR | Decision |
+|---|---|
+| 0001 | Go and whatsmeow as the runtime foundation |
+| 0002 | YAML is the behavior source of truth; SQLite stores runtime state |
+| 0003 | Hybrid intent model |
+| 0004 | Messaging channel and LLM provider are separate ports |
+| 0005 | Scope is an explicit entity field |
+| 0006 | SQLite as the only persistence technology in the MVP |
+| 0007 | Config schema generated from Go types; validation in Go |
+| 0008 | Agentic nodes with parameterized tools |
+| 0009 | Config reload semantics |
+| 0010 | Node memory and routing across visited nodes |
 
 ## Current state
 
 Pre-code. The config v1 shape is drafted in `config.example.yaml` and
-`config.schema.json` (intents included); no implementation started.
+`config.schema.json`; no implementation started.
 
 ## Glossary
 

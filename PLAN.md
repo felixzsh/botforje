@@ -1,7 +1,7 @@
 # BotForje — Plan
 
-Phase-by-phase plan to the MVP. Settled decisions live in `docs/adr/`; open
-decisions are listed at the end.
+Phase-by-phase plan to the MVP. The MVP scope is defined in `CONTEXT.md`;
+settled decisions live in `docs/adr/`; open decisions are listed at the end.
 
 ## How to read this plan
 
@@ -11,13 +11,6 @@ decisions are listed at the end.
   phase is not done until its gate passes.
 - The plan is not a contract. Adjust it when real needs appear, and record
   course changes as ADRs.
-- No dashboard, no SaaS, and no behavior in the database during the MVP.
-
-## MVP
-
-A config-driven fleet runner: multiple WhatsApp bots from one process,
-YAML-defined behavior, SQLite-backed sessions, hybrid LLM support, CLI, and
-REST API. No dashboard.
 
 ## Phase map
 

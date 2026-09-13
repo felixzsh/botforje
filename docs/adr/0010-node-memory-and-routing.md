@@ -11,29 +11,14 @@ it is adopted here with explicit rules.
 
 ## Decision
 
-Each session keeps an ordered list of visited nodes, most recent last,
-including the current node at the end. Visits are reordered, never reset by
-navigation: returning to the root does not clear the list. The list is
-persisted with the session.
+Routing may consult previously visited nodes, not only the current one. Each
+session keeps an ordered list of visited nodes with the current one last; it
+is reordered, never reset by navigation, and used both for matching and as
+agent context. On session creation, the incoming message is evaluated before
+the root's entry actions.
 
-Deterministic matching considers candidate nodes in this order:
-
-1. Visited nodes, oldest to most recent.
-2. The current node, last.
-
-Every edge with `triggers` in those nodes is fuzzy matched. The best score
-wins, regardless of which node it came from; ties go to the later candidate
-(the current node, then the most recent). The default edge is only taken from
-the current node. If nothing matches and LLM routing is enabled, the agent
-chooses among the same candidates by `intent`; otherwise the graph `fallback`
-applies.
-
-On session creation, the incoming message is evaluated before the root's
-entry actions: if it transitions, the root message is skipped; if not, the
-root's `on_enter` runs.
-
-The visited list is also passed to the agent as conversation context,
-bounded to a configured maximum.
+Candidate order, tie-breaking, and default-edge rules live in
+`docs/architecture.md`.
 
 ## Consequences
 

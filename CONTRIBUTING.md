@@ -32,12 +32,9 @@ rules; this file explains the reasoning behind them.
 - Prefer explicitness over magic.
 - Keep public APIs small and intentional.
 - Leave the codebase at least as maintainable as you found it.
-- Discuss architectural changes before implementing them, or record them in
-  `docs/adr/` once they are settled.
+- Discuss architectural changes before implementing them.
 
 ## Never
 
 - Introduce abstractions without a demonstrated need.
-- Perform unrequested refactors or fixes.
 - Hide dependencies behind globals or service locators.
-- Add dependencies without explicit approval.

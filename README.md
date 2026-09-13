@@ -1,36 +1,23 @@
 # BotForje
 
 Declarative WhatsApp bot framework written in Go. Define bots, conversation
-graphs, and actions in YAML; one BotForje instance runs a fleet of WhatsApp
-accounts through the native Multi-Device protocol (`go.mau.fi/whatsmeow`).
-No browser, no Chromium, no Puppeteer.
+graphs, and actions in YAML; one instance runs a fleet of WhatsApp accounts
+through the native Multi-Device protocol (`go.mau.fi/whatsmeow`), with no
+browser automation.
 
-BotForje is built to run large fleets in one process with predictable memory
-use and no browser instance per account.
-
-The graph is the core: the LLM drives and enriches conversations, but it
-never replaces the state machine. Behavior stays declarative and inspectable.
+The graph is the core: the LLM drives and enriches conversations but never
+replaces the state machine.
 
 ## Status
 
-Pre-code. Architecture, decisions, and the phase plan are settled; the
-config v1 shape is drafted in `config.example.yaml`. Implementation has not
-started. See `PLAN.md` for the phases and `CONTEXT.md` for the current state.
+Pre-code; implementation has not started.
 
 ## Documentation
 
-- `CONTEXT.md` — what BotForje is, key decisions, glossary.
+- `CONTEXT.md` — identity, principles, MVP, decisions index, glossary.
 - `PLAN.md` — phase-by-phase plan to the MVP.
 - `docs/architecture.md` — components, boundaries, message lifecycle.
-- `docs/adr/` — architecture decision records.
+- `docs/adr/` — why each decision was made.
 - `config.example.yaml` — reference configuration.
+- `CONTRIBUTING.md` — design principles.
 - `AGENTS.md` — rules for agent-assisted development.
-
-## Scope
-
-MVP: a config-driven fleet runner with multiple WhatsApp bots per instance,
-SQLite-backed sessions, hybrid LLM support, a CLI, and a REST API.
-
-Out of scope for now: dashboard, behavior stored in a database, automatic
-graph extraction from chat history, SaaS infrastructure, and channels other
-than WhatsApp.
