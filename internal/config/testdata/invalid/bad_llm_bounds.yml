@@ -1,0 +1,6 @@
+version: 1
+llm:
+  provider: "openai"
+  agent:
+    max_tools_per_message: -1
+    timeout: -5

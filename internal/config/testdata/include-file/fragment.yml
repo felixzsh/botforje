@@ -1,0 +1,7 @@
+scopes:
+  default:
+    actions:
+      from-file:
+        steps:
+          - message:
+              body: "file"

@@ -1,0 +1,9 @@
+version: 1
+scopes:
+  default:
+    graphs:
+      g:
+        root: nope
+        nodes:
+          a:
+            edges: []

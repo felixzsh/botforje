@@ -1,0 +1,10 @@
+version: 1
+include:
+  - ./parts/
+scopes:
+  default:
+    actions:
+      base:
+        steps:
+          - message:
+              body: "base"

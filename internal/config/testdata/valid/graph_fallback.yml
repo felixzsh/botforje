@@ -1,0 +1,31 @@
+version: 1
+scopes:
+  default:
+    actions:
+      welcome:
+        steps:
+          - message:
+              body: "hi"
+    graphs:
+      g:
+        root: start
+        timeout: 60
+        fallback: end
+        initial_context:
+          customer: ""
+        nodes:
+          start:
+            goal: "greet"
+            on_enter: ["welcome"]
+            edges:
+              - intent: "leave"
+                triggers: ["bye"]
+                goto: end
+          end:
+            goal: "close"
+            edges: []
+    bots:
+      b:
+        graph: g
+        settings:
+          queue_delay: 100

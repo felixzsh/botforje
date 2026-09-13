@@ -1,0 +1,11 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        guards:
+          cooldown:
+            duration: 0
+        steps:
+          - message:
+              body: "hi"

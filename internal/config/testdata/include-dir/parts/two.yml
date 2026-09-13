@@ -1,0 +1,7 @@
+scopes:
+  support:
+    actions:
+      two:
+        steps:
+          - message:
+              body: "two"

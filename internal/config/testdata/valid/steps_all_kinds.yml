@@ -1,0 +1,14 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - message:
+              body: "hi"
+          - request:
+              name: r
+              url: "https://example.com"
+          - location:
+              latitude: 1
+              longitude: 2

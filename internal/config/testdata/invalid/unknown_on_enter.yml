@@ -1,0 +1,10 @@
+version: 1
+scopes:
+  default:
+    graphs:
+      g:
+        root: a
+        nodes:
+          a:
+            on_enter: ["missing"]
+            edges: []

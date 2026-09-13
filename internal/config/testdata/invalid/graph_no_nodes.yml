@@ -1,0 +1,6 @@
+version: 1
+scopes:
+  default:
+    graphs:
+      g:
+        root: a

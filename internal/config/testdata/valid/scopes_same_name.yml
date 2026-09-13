@@ -1,0 +1,14 @@
+version: 1
+scopes:
+  client-a:
+    actions:
+      pricing:
+        steps:
+          - message:
+              body: "a"
+  client-b:
+    actions:
+      pricing:
+        steps:
+          - message:
+              body: "b"

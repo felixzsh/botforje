@@ -1,0 +1,11 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        inputs:
+          x:
+            type: "float"
+        steps:
+          - message:
+              body: "hi"

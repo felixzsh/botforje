@@ -149,6 +149,31 @@ scopes:
 	}
 }
 
+func TestIncludeFileAndDir(t *testing.T) {
+	fileCfg, err := testLoader().Load("testdata/include-file/config.yml")
+	if err != nil {
+		t.Fatalf("load file include: %v", err)
+	}
+	for _, want := range []string{"base", "from-file"} {
+		if _, ok := fileCfg.Scopes["default"].Actions[want]; !ok {
+			t.Errorf("file include missing action %q", want)
+		}
+	}
+
+	dirCfg, err := testLoader().Load("testdata/include-dir/config.yml")
+	if err != nil {
+		t.Fatalf("load dir include: %v", err)
+	}
+	for _, want := range []string{"base", "one"} {
+		if _, ok := dirCfg.Scopes["default"].Actions[want]; !ok {
+			t.Errorf("dir include missing default action %q", want)
+		}
+	}
+	if _, ok := dirCfg.Scopes["support"].Actions["two"]; !ok {
+		t.Error("dir include did not bring the support scope")
+	}
+}
+
 func TestSecretMasks(t *testing.T) {
 	s := Secret("super-secret")
 	if s.String() != "***" || s.GoString() != "***" {

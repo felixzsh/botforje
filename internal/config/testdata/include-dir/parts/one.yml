@@ -1,0 +1,7 @@
+scopes:
+  default:
+    actions:
+      one:
+        steps:
+          - message:
+              body: "one"
