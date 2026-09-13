@@ -45,3 +45,5 @@
   routing and replies.
 - Inbox — routes inbound events to the right bot and session.
 - Outbox — per-bot FIFO queue that paces outbound messages.
+- Secret reference — a `${ENV_VAR}` placeholder in config, resolved from the
+  process environment at load and masked in logs (ADR 0014).

@@ -91,6 +91,10 @@ Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
 and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 (Phase 4).
 
+The engine resolves only runtime conversation values here. Secrets are not a
+template context: config strings interpolate `${ENV_VAR}` once at load
+(ADR 0014).
+
 ## Async requests
 
 APIs that answer asynchronously (202 plus a status endpoint) are polled
@@ -128,8 +132,11 @@ configured maximum.
 ## Configuration pipeline
 
 ```
-YAML -> strict decode -> typed model -> semantic validation -> engine
+YAML -> strict decode -> ${ENV_VAR} expansion -> semantic validation -> engine
 ```
+
+Environment interpolation runs on decoded strings, so secret characters
+cannot break the YAML.
 
 Runtime validation happens in Go only: strict YAML decoding rejects unknown
 fields and wrong types, and semantic checks cover reference resolution,

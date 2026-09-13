@@ -63,6 +63,10 @@ Deliverables:
   merge, and scope handling.
 - [ ] Runtime validation in Go: strict YAML decoding plus semantic checks.
   The JSON Schema is generated from the Go types for editors only (ADR 0007).
+- [ ] Environment interpolation: expand `${ENV_VAR}` in config strings after
+  decoding; missing variables fail validation (ADR 0014).
+- [ ] Secret values use a type that masks itself in logs and errors
+  (ADR 0014).
 - [ ] Semantic validation: reference resolution, scope isolation, uniqueness by
   (type, scope, name), node reachability, and message mode rules.
 - [ ] Schema generation: pick and approve a generator (candidate:

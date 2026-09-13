@@ -269,7 +269,7 @@
             },
             "headers": {
               "type": "object",
-              "description": "Free-form HTTP headers",
+              "description": "Free-form HTTP headers; values may interpolate ${ENV_VAR} (ADR 0014)",
               "additionalProperties": {
                 "type": "string"
               }
@@ -556,10 +556,9 @@
           "minLength": 1,
           "description": "Model name passed to the provider"
         },
-        "api_key_env": {
+        "api_key": {
           "type": "string",
-          "minLength": 1,
-          "description": "Name of the environment variable holding the API key. Never store keys in config"
+          "description": "API key. Use ${ENV_VAR} so the secret lives in the environment, not in config (ADR 0014)"
         },
         "base_url": {
           "type": "string",

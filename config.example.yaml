@@ -19,7 +19,7 @@ data_dir: "~/.local/share/botforje"  # SQLite location (XDG default when omitted
 llm:
   provider: "openai"              # openai, anthropic, ollama, ...
   model: "gpt-4o-mini"
-  api_key_env: "OPENAI_API_KEY"   # Env var name; never put keys in config
+  api_key: "${OPENAI_API_KEY}"    # Resolved from env at load (ADR 0014)
   # base_url: "http://localhost:11434"   # Local / self-hosted providers
   routing: "fallback"             # off | fallback | always
   realization: "auto"             # off | auto
@@ -85,7 +85,7 @@ actions:
           url: "https://api.example.com/products?q={{input.product}}"
           method: GET
           headers:
-            Authorization: "Bearer your-api-token"
+            Authorization: "Bearer ${API_TOKEN}"
           timeout: 5000
           retry: 1
 
@@ -109,7 +109,7 @@ actions:
           url: "https://api.example.com/orders"
           method: POST
           headers:
-            Authorization: "Bearer your-api-token"
+            Authorization: "Bearer ${API_TOKEN}"
           body: '{"product": "{{input.product}}", "qty": {{input.quantity}}}'
           timeout: 10000
           retry: 2
@@ -156,7 +156,7 @@ actions:
           url: "https://api.example.com/support/escalate"
           method: POST
           headers:
-            Authorization: "Bearer your-api-token"
+            Authorization: "Bearer ${API_TOKEN}"
           body: '{"phone": "{{sender.phone}}"}'
           timeout: 10000
           retry: 3
@@ -376,6 +376,7 @@ bots:
 # Notes
 # - This example exercises every v1 field; field shapes are in
 #   config.schema.json.
+# - Secrets never go in config: use ${ENV_VAR}, resolved at load (ADR 0014).
 # - Concepts and rules: docs/architecture.md.
 # - Why each decision: docs/adr/.
 # - Config v1 is a draft; matching thresholds and policy details are open
