@@ -11,6 +11,8 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
   phase is not done until its gate passes.
 - The plan is not a contract. Adjust it when real needs appear, and record
   course changes as ADRs.
+- Deliverables are checkboxes. Check one in the same commit that completes it;
+  the first unchecked box is the current work.
 
 ## Phase map
 
@@ -33,12 +35,12 @@ Goal: repository ready to receive code, with the riskiest dependency tested.
 
 Deliverables:
 
-- Documentation set: `README.md`, `CONTEXT.md`, `PLAN.md`, `docs/scope.md`,
+- [ ] Documentation set: `README.md`, `PLAN.md`, `docs/scope.md`,
   `docs/glossary.md`, `docs/architecture.md`, `docs/adr/`, `AGENTS.md`.
-- Toolchain decisions recorded: Go version, CLI approach, test layout.
-- Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
+- [ ] Toolchain decisions recorded: Go version, CLI approach, test layout.
+- [ ] Time-boxed spike: pair a WhatsApp account with whatsmeow, persist the
   device store, receive and send one message. Throwaway code, not merged.
-- Test conventions: table-driven tests and fixture layout.
+- [ ] Test conventions: table-driven tests and fixture layout.
 
 Gate: the spike proves pairing and messaging work; conventions are written.
 
@@ -51,21 +53,21 @@ with precise errors.
 
 Deliverables:
 
-- Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
+- [ ] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
   graph `routing`, `llm` section). Align `config.example.yaml` and the draft
   `config.schema.json` with it.
-- Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
-- Loader: main config plus `include` fragments (file, glob, directory),
+- [ ] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard, LLM.
+- [ ] Loader: main config plus `include` fragments (file, glob, directory),
   merge, and scope handling.
-- Runtime validation in Go: strict YAML decoding plus semantic checks.
+- [ ] Runtime validation in Go: strict YAML decoding plus semantic checks.
   The JSON Schema is generated from the Go types for editors only (ADR 0007).
-- Semantic validation: reference resolution, scope isolation, uniqueness by
+- [ ] Semantic validation: reference resolution, scope isolation, uniqueness by
   (type, scope, name), node reachability, and message mode rules.
-- Schema generation: pick and approve a generator (candidate:
+- [ ] Schema generation: pick and approve a generator (candidate:
   `invopop/jsonschema`) and wire the regeneration step.
-- CLI command `validate` with readable output and a `--json` mode.
-- Fixtures: valid and invalid cases for every rule.
+- [ ] CLI command `validate` with readable output and a `--json` mode.
+- [ ] Fixtures: valid and invalid cases for every rule.
 
 Gate: `validate` accepts valid fixtures and rejects every invalid fixture
 with an error naming file, entity, and reason. Unit tests for merge and
@@ -77,10 +79,10 @@ Goal: `{{...}}` values resolve correctly in messages and requests.
 
 Deliverables:
 
-- Syntax and resolver for `{{path.to.value}}`.
-- Contexts: graph, node, sender, message, bot, and request results.
-- Read/write versus read-only context rules; node context resets on re-entry.
-- Tests: resolution, missing paths, escaping, and request result capture.
+- [ ] Syntax and resolver for `{{path.to.value}}`.
+- [ ] Contexts: graph, node, sender, message, bot, and request results.
+- [ ] Read/write versus read-only context rules; node context resets on re-entry.
+- [ ] Tests: resolution, missing paths, escaping, and request result capture.
 
 Gate: message steps render correctly from a simulated context.
 
@@ -90,10 +92,10 @@ Goal: runtime state survives restarts.
 
 Deliverables:
 
-- SQLite setup with WAL mode and migrations from the first table.
-- Stores: whatsmeow device store, sessions, conversations, messages.
-- Repository interfaces owned by the domain; SQL stays in the adapter.
-- Tests: migrations, store round-trips, and session resume after restart.
+- [ ] SQLite setup with WAL mode and migrations from the first table.
+- [ ] Stores: whatsmeow device store, sessions, conversations, messages.
+- [ ] Repository interfaces owned by the domain; SQL stays in the adapter.
+- [ ] Tests: migrations, store round-trips, and session resume after restart.
 
 Gate: a session persisted by one process resumes in a new process.
 
@@ -103,22 +105,22 @@ Goal: conversations run fully in memory, testable with no channel.
 
 Deliverables:
 
-- Session lifecycle: create at root, resume, and expire by timeout.
-- Node memory: ordered list of visited nodes (current last), persisted and
+- [ ] Session lifecycle: create at root, resume, and expire by timeout.
+- [ ] Node memory: ordered list of visited nodes (current last), persisted and
   never reset by navigation (ADR 0010).
-- Routing: candidates are visited nodes plus the current node (last); best
+- [ ] Routing: candidates are visited nodes plus the current node (last); best
   trigger match wins, ties go to the most recent. Default edge only from the
   current node; `LLMProvider` port defined with a null implementation.
-- First message: on session creation, evaluate the message against the root
+- [ ] First message: on session creation, evaluate the message against the root
   edges before running the root's `on_enter` (ADR 0010).
-- Transitions: exit actions, `goto`, entry actions, and fallback node.
-- Steps: `message`, `location`, and `request` with retry and result capture
+- [ ] Transitions: exit actions, `goto`, entry actions, and fallback node.
+- [ ] Steps: `message`, `location`, and `request` with retry and result capture
   (body, headers, status, duration).
-- Guards: cooldown per sender per action; blocked-action behavior.
-- Hybrid intent semantics: classification fallback, rendering modes with
+- [ ] Guards: cooldown per sender per action; blocked-action behavior.
+- [ ] Hybrid intent semantics: classification fallback, rendering modes with
   anchor plus fallback, and policy checks (shape frozen in Phase 1;
   ADR 0003).
-- Tests: simulated conversations including fallback, timeout, guards,
+- [ ] Tests: simulated conversations including fallback, timeout, guards,
   request failures, and same input with different visit histories.
 
 Gate: a fixture graph produces the expected message sequence for a scripted
@@ -130,16 +132,16 @@ Goal: one real bot talks to WhatsApp end to end.
 
 Deliverables:
 
-- `MessageChannel` port and the whatsmeow adapter behind it.
-- QR pairing, device store persistence, and reconnect with capped
+- [ ] `MessageChannel` port and the whatsmeow adapter behind it.
+- [ ] QR pairing, device store persistence, and reconnect with capped
   exponential backoff plus jitter (ADR 0011).
-- Inbound event mapping to `IncomingMessage` plus deduplication.
-- Outbound send: text and location; mark inbound read and show composing
+- [ ] Inbound event mapping to `IncomingMessage` plus deduplication.
+- [ ] Outbound send: text and location; mark inbound read and show composing
   presence before replies (ADR 0011).
-- Logout and ban detection: stop the bot, keep the session, and report
+- [ ] Logout and ban detection: stop the bot, keep the session, and report
   through `status` instead of retrying forever (ADR 0011).
-- CLI `auth <bot>` and `status`.
-- Tests: adapter unit tests with fakes; a manual end-to-end checklist.
+- [ ] CLI `auth <bot>` and `status`.
+- [ ] Tests: adapter unit tests with fakes; a manual end-to-end checklist.
 
 Gate: one configured bot answers a real WhatsApp message and survives a
 restart without re-pairing. The rest of the system still runs without
@@ -151,13 +153,13 @@ Goal: multiple bots in one process, paced and isolated.
 
 Deliverables:
 
-- Fleet supervisor that builds one actor per bot from config.
-- Inbox: routing, dedup, and filters (ignore groups, allow/ignore senders).
-- Outbox: per-bot FIFO with `queue_delay` plus random `queue_jitter`, an
+- [ ] Fleet supervisor that builds one actor per bot from config.
+- [ ] Inbox: routing, dedup, and filters (ignore groups, allow/ignore senders).
+- [ ] Outbox: per-bot FIFO with `queue_delay` plus random `queue_jitter`, an
   optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
-- Daemon command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
+- [ ] Daemon command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
-- Tests: two bots with independent sessions and queues; filter behavior;
+- [ ] Tests: two bots with independent sessions and queues; filter behavior;
   shutdown drains queues.
 
 Gate: two or more bot accounts run concurrently; messages from each are
@@ -169,26 +171,26 @@ Goal: the LLM-first design becomes usable without making LLMs mandatory.
 
 Deliverables:
 
-- `LLMProvider` implementations: at least one cloud provider and one local
+- [ ] `LLMProvider` implementations: at least one cloud provider and one local
   option, selected by config.
-- Intent classification as fallback for unmatched input.
-- Per-graph routing override: `off` | `fallback` | `always`; `always` gives
+- [ ] Intent classification as fallback for unmatched input.
+- [ ] Per-graph routing override: `off` | `fallback` | `always`; `always` gives
   the agent the decision even when a trigger matches.
-- Agentic tool calling (ADR 0008): the agent invokes node `tools` with
+- [ ] Agentic tool calling (ADR 0008): the agent invokes node `tools` with
   arguments validated against their `inputs`, chains calls, and stays in or
   leaves the node through declared edges only.
-- Slot filling: missing required inputs return a tool error; the agent asks
+- [ ] Slot filling: missing required inputs return a tool error; the agent asks
   the user and bound variables remember the answer. `bind` targets are
   validated against node and graph `initial_context`.
-- Reply realization within node policy; `body` plus `intent` uses the body
+- [ ] Reply realization within node policy; `body` plus `intent` uses the body
   as anchor and fallback; policy checks before queueing.
-- Deterministic fallback when no provider is configured or a call fails.
-- Bounded agent loop: max tools per message and timeout from `llm.agent`.
-- Async APIs: agent-driven polling within the tool budget (call, check
+- [ ] Deterministic fallback when no provider is configured or a call fails.
+- [ ] Bounded agent loop: max tools per message and timeout from `llm.agent`.
+- [ ] Async APIs: agent-driven polling within the tool budget (call, check
   status, retry); longer waits continue on later messages.
-- Per-message logging of node, intent, tools called, provider, and policy
+- [ ] Per-message logging of node, intent, tools called, provider, and policy
   version.
-- Tests: provider fakes, classification cases, tool argument validation,
+- [ ] Tests: provider fakes, classification cases, tool argument validation,
   policy rejection fallback, and evaluation fixtures (golden conversations).
 
 Gate: the same graph runs with no LLM (deterministic) and with an LLM
@@ -201,19 +203,19 @@ Goal: operate a fleet without hand-editing config for daily operations.
 
 Deliverables:
 
-- CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
-- Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
+- [ ] CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
+- [ ] Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
   `/etc/botforje/config.yml` (first match wins).
-- `status` reports uptime, per-bot connection state, outbox depth, and
+- [ ] `status` reports uptime, per-bot connection state, outbox depth, and
   active sessions; a `--json` mode serves scripts.
-- Signals: SIGINT/SIGTERM graceful shutdown; SIGHUP reloads config.
-- REST API: status, bots, sessions, conversations, messages, and config.
-- Auth: single admin key, hashed at rest, regenerable; session cookie for
+- [ ] Signals: SIGINT/SIGTERM graceful shutdown; SIGHUP reloads config.
+- [ ] REST API: status, bots, sessions, conversations, messages, and config.
+- [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
   the future UI.
-- Config reload (ADR 0009): failed validation keeps the previous config;
+- [ ] Config reload (ADR 0009): failed validation keeps the previous config;
   safe changes apply immediately; incompatible changes wait in a pending
   queue for maintenance mode.
-- Tests: API handlers, auth, config discovery, and both reload classes.
+- [ ] Tests: API handlers, auth, config discovery, and both reload classes.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
@@ -224,15 +226,14 @@ Goal: an MVP someone can run from a clean machine.
 
 Deliverables:
 
-- Reference bot: a small support menu graph with intents and one `request`
+- [ ] Reference bot: a small support menu graph with intents and one `request`
   step.
-- Operational notes: systemd unit, backup of SQLite and the device store,
+- [ ] Operational notes: systemd unit, backup of SQLite and the device store,
   and account-safety practices (warmup for new accounts, no bulk outreach,
   human fallback when a bot is restricted) (ADR 0011).
-- Log and error review: actionable messages, no secrets in logs.
-- Documentation pass: README, scope, CONTEXT, and architecture match the
-  code.
-- Release checklist and version tag.
+- [ ] Log and error review: actionable messages, no secrets in logs.
+- [ ] Documentation pass: README, scope, and architecture match the code.
+- [ ] Release checklist and version tag.
 
 Gate: a clean-machine run of the documented path works without tribal
 knowledge.

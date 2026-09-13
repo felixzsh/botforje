@@ -6,8 +6,8 @@ which document owns what, read `README.md`.
 ## Working rules
 
 - Write only inside this repository. Do not modify sibling repositories.
-- Read `CONTEXT.md` first, and keep it current when the work state changes
-  (focus, in progress, next, blockers). It is not a changelog.
+- Read `PLAN.md` and work on the current phase; check its deliverables in the
+  same commit that completes them.
 - Read the document that owns a topic before changing it, and update that
   document instead of repeating content elsewhere. Cross-reference files or
   sections.

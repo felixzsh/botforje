@@ -6,8 +6,7 @@ Map of the documentation.
 
 - `scope.md` — what the MVP includes.
 - `glossary.md` — terms used across the docs.
-- `../CONTEXT.md` — current work state.
-- `../PLAN.md` — phases and open decisions.
+- `../PLAN.md` — phases, progress checkboxes, and open decisions.
 
 ## Developer docs
 

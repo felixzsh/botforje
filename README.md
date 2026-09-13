@@ -21,8 +21,7 @@ Pre-code; implementation has not started.
 
 ## Documentation
 
-- `CONTEXT.md` — current work state: what is in progress and what is next.
-- `PLAN.md` — phase-by-phase plan to the MVP.
+- `PLAN.md` — phases, progress checkboxes, and open decisions.
 - `docs/README.md` — documentation map: references, developer docs, guide.
 - `config.example.yaml` — reference configuration.
 - `CONTRIBUTING.md` — design principles.
