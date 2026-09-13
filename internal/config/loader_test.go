@@ -44,8 +44,14 @@ func TestLoadExample(t *testing.T) {
 }
 
 func TestInterpolationMissing(t *testing.T) {
-	path := writeTemp(t, t.TempDir(), "config.yml",
-		"version: 1\nscopes:\n  default:\n    llms:\n      a:\n        model: gpt\n        api_key: \"${MISSING_VAR}\"\n")
+	path := writeTemp(t, t.TempDir(), "config.yml", `version: 1
+scopes:
+  default:
+    llms:
+      a:
+        model: gpt
+        api_key: "${MISSING_VAR}"
+`)
 	_, err := testLoader().Load(path)
 	if err == nil || !strings.Contains(err.Error(), "MISSING_VAR") {
 		t.Fatalf("want missing variable error, got %v", err)

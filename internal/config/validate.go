@@ -12,6 +12,9 @@ type ValidationError struct {
 	Reason string
 }
 
+// addError records one validation failure for a file and entity.
+type addError func(file, entity, format string, args ...any)
+
 func (e ValidationError) Error() string {
 	file := e.File
 	if file == "" {
@@ -35,7 +38,11 @@ func Validate(cfg *Config) []ValidationError {
 	}
 	var errs []ValidationError
 	add := func(file, entity, format string, args ...any) {
-		errs = append(errs, ValidationError{File: file, Entity: entity, Reason: fmt.Sprintf(format, args...)})
+		errs = append(errs, ValidationError{
+			File:   file,
+			Entity: entity,
+			Reason: fmt.Sprintf(format, args...),
+		})
 	}
 
 	if cfg.Version != SchemaVersion {
@@ -64,7 +71,7 @@ func Validate(cfg *Config) []ValidationError {
 	return errs
 }
 
-func validateLLM(cfg *Config, scope, name string, llm LLM, add func(file, entity, format string, args ...any)) {
+func validateLLM(cfg *Config, scope, name string, llm LLM, add addError) {
 	file := cfg.fileOf("llm", scope, name)
 	entity := fmt.Sprintf("llm %q (scope %q)", name, scope)
 	if llm.Provider == "" {
@@ -99,7 +106,7 @@ var httpMethods = map[string]bool{
 	"PATCH": true, "HEAD": true, "OPTIONS": true,
 }
 
-func validateAction(cfg *Config, scope, name string, a Action, add func(file, entity, format string, args ...any)) {
+func validateAction(cfg *Config, scope, name string, a Action, add addError) {
 	file := cfg.fileOf("action", scope, name)
 	entity := fmt.Sprintf("action %q (scope %q)", name, scope)
 
@@ -127,7 +134,7 @@ func validateAction(cfg *Config, scope, name string, a Action, add func(file, en
 	}
 }
 
-func validateSteps(file, entity string, steps []Step, add func(string, string, string, ...any), where string) {
+func validateSteps(file, entity string, steps []Step, add addError, where string) {
 	prefix := ""
 	if where != "" {
 		prefix = where + ": "
@@ -152,7 +159,7 @@ func validateSteps(file, entity string, steps []Step, add func(string, string, s
 	}
 }
 
-func validateMessage(file, entity, prefix string, i int, m Message, add func(string, string, string, ...any)) {
+func validateMessage(file, entity, prefix string, i int, m Message, add addError) {
 	if len(m.Body) == 0 && m.Intent == "" {
 		add(file, entity, "%sstep %d: message needs body or intent", prefix, i)
 	}
@@ -164,7 +171,9 @@ func validateMessage(file, entity, prefix string, i int, m Message, add func(str
 	}
 }
 
-func validateRequest(file, entity, prefix string, i int, r Request, names map[string]bool, add func(string, string, string, ...any)) {
+func validateRequest(
+	file, entity, prefix string, i int, r Request, names map[string]bool, add addError,
+) {
 	if r.Name == "" {
 		add(file, entity, "%sstep %d: request needs a name", prefix, i)
 	} else if names[r.Name] {
@@ -183,7 +192,7 @@ func validateRequest(file, entity, prefix string, i int, r Request, names map[st
 	}
 }
 
-func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Graph, add func(file, entity, format string, args ...any)) {
+func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Graph, add addError) {
 	file := cfg.fileOf("graph", scopeName, name)
 	entity := fmt.Sprintf("graph %q (scope %q)", name, scopeName)
 
@@ -235,7 +244,7 @@ func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Gr
 	}
 }
 
-func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add func(string, string, string, ...any)) {
+func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add addError) {
 	for _, group := range []struct {
 		label  string
 		values []string
@@ -269,13 +278,15 @@ func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add 
 				_, declared = g.InitialContext[varName]
 			}
 			if !declared {
-				add(file, entity, "input %q of tool %q binds %s, not declared in initial_context", in, tool, input.Bind)
+				add(file, entity,
+					"input %q of tool %q binds %s, not declared in initial_context",
+					in, tool, input.Bind)
 			}
 		}
 	}
 }
 
-func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot, add func(file, entity, format string, args ...any)) {
+func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot, add addError) {
 	file := cfg.fileOf("bot", scopeName, name)
 	entity := fmt.Sprintf("bot %q (scope %q)", name, scopeName)
 	if b.Graph == "" {
@@ -296,7 +307,7 @@ func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot,
 			{"queue_delay", s.QueueDelay},
 			{"queue_jitter", s.QueueJitter},
 			{"typing_delay", s.TypingDelay},
-			{"max_messages_per_minute", s.MaxMessagesPerMinute},
+			{"max_messages_per_minute", s.MaxMsgPerMinute},
 		} {
 			if v.value < 0 {
 				add(file, entity, "%s must be >= 0", v.field)

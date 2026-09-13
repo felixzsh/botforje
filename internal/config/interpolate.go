@@ -67,7 +67,11 @@ func walk(v reflect.Value, lookup func(string) (string, bool), missing func(stri
 	}
 }
 
-func expandString(s string, lookup func(string) (string, bool), missing func(string)) (string, bool) {
+func expandString(
+	s string,
+	lookup func(string) (string, bool),
+	missing func(string),
+) (string, bool) {
 	if !strings.Contains(s, "${") {
 		return s, false
 	}
