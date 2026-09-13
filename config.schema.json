@@ -286,7 +286,7 @@
             },
             "body": {
               "type": "string",
-              "description": "Request payload (supports template variables)"
+              "description": "Request payload (supports template variables); when omitted, no body is sent"
             }
           },
           "required": ["name", "url", "method"],

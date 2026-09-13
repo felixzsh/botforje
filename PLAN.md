@@ -112,16 +112,21 @@ Goal: conversations run fully in memory, testable with no channel.
 Deliverables:
 
 - Session lifecycle: create at root, resume, and expire by timeout.
-- Routing: deterministic text match first; `LLMProvider` port defined with a
-  null implementation.
+- Node memory: ordered list of visited nodes (current last), persisted and
+  never reset by navigation (ADR 0010).
+- Routing: candidates are visited nodes plus the current node (last); best
+  trigger match wins, ties go to the most recent. Default edge only from the
+  current node; `LLMProvider` port defined with a null implementation.
+- First message: on session creation, evaluate the message against the root
+  edges before running the root's `on_enter` (ADR 0010).
 - Transitions: exit actions, `goto`, entry actions, and fallback node.
 - Steps: `message`, `location`, and `request` with retry and result capture.
 - Guards: cooldown per sender per action; blocked-action behavior.
 - Hybrid intent semantics: classification fallback, rendering modes with
   anchor plus fallback, and policy checks (shape frozen in Phase 1;
   ADR 0003).
-- Tests: simulated conversations including fallback, timeout, guards, and
-  request failures.
+- Tests: simulated conversations including fallback, timeout, guards,
+  request failures, and same input with different visit histories.
 
 Gate: a fixture graph produces the expected message sequence for a scripted
 conversation with no channel and no LLM.

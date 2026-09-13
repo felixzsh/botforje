@@ -375,6 +375,8 @@ bots:
 # - Scope is an optional isolation namespace (default "default"); entities in
 #   different scopes never reference each other or share sessions.
 # - Policies compose: node policy always applies; a message policy refines it.
+# - Routing considers visited nodes: best trigger match wins, ties go to the
+#   most recent; node memory is never cleared by navigation (ADR 0010).
 # - Message modes:
 #     body only              deterministic text (string or list of variants)
 #     intent only            LLM realization; no fallback, fails with no provider

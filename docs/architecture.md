@@ -33,6 +33,9 @@ needs a channel; an LLM is optional and only used when configured.
 - Tool — an action the agent may invoke with validated arguments; an input
   may bind to a node or graph variable (read and write).
 - Node context — node variables that reset when the node is entered again.
+- Node memory — ordered list of visited nodes (current last) used for
+  routing and as agent context; reordered on each visit, never reset by
+  navigation.
 - Graph context — session-wide variables that persist across nodes.
 - Scope — generic isolation namespace applied to actions, graphs, and bots
   (a tenant is one use). References and sessions never cross scopes.
@@ -44,21 +47,27 @@ Inbound:
 1. Channel receives an event and maps it to an `IncomingMessage`.
 2. Inbox filters it (groups, allow/ignore lists, dedup) and routes it to the
    right bot and session.
-3. Graph engine loads or creates the session. Deterministic matching runs
-   first: the current node's edges are evaluated against their triggers.
-4. If nothing matches and LLM routing is enabled, the agent loop starts
+3. Graph engine loads the session, or creates one at the graph root. On
+   creation the incoming message is evaluated before the root's entry
+   actions: if it transitions, the root message is skipped; if not, the
+   root's `on_enter` runs.
+4. Deterministic matching runs over candidate nodes: visited nodes (oldest
+   first) plus the current node last (ADR 0010). Edges with triggers are
+   fuzzy matched; the best score wins and ties go to the later candidate.
+   The default edge is only taken from the current node.
+5. If nothing matches and LLM routing is enabled, the agent loop starts
    (ADR 0008): the agent may call node tools with arguments validated
    against each action's `inputs`, and may produce a reply.
-5. Tool results return to the agent as context; missing required arguments
+6. Tool results return to the agent as context; missing required arguments
    return a tool error and the agent asks the user, storing the answer in the
    bound variable. The agent can chain calls, stay in the node, or take a
    declared edge; it never invents a transition.
-6. Engine runs the selected transition: exit actions, target node, entry
+7. Engine runs the selected transition: exit actions, target node, entry
    actions.
-7. Effective policy composes node policy (always) and message policy
+8. Effective policy composes node policy (always) and message policy
    (optional refinement). Reply text is deterministic, LLM-realized, or both
    (anchor plus fallback); a policy check runs before anything is queued.
-8. Results are queued in the bot's outbox and the session is persisted.
+9. Results are queued in the bot's outbox and the session is persisted.
 
 Outbound:
 
@@ -79,6 +88,10 @@ A session is one (bot, sender) conversation. It starts at the graph root and
 expires after the graph timeout (or `default_timeout`). An expired session is
 destroyed together with its state; the next message starts a new session at
 root. Conversation state, including graph and node contexts, lives in SQLite.
+
+The session also keeps node memory (ADR 0010): the ordered list of visited
+nodes used for routing and handed to the agent as context, bounded to a
+configured maximum.
 
 ## Concurrency
 

@@ -66,6 +66,9 @@ than WhatsApp.
 - Nodes are agentic: the agent invokes tools with validated inputs (which may
   bind to node or graph variables) inside a node; edges remain the only
   transitions. See ADR 0008.
+- Routing considers visited nodes: best trigger match wins, ties go to the
+  most recent; node memory is reordered, never reset by navigation.
+  See ADR 0010.
 - Messaging channel and LLM provider are two separate ports. See ADR 0004.
 - Scope is an explicit isolation namespace per entity, not derived from file
   paths; a tenant is one use, not the definition.
@@ -102,6 +105,8 @@ Pre-code. The config v1 shape is drafted in `config.example.yaml` and
   variable to read and write it.
 - Node context — node variables; reset when the node is entered again.
 - Graph context — session-wide variables; persist across nodes.
+- Node memory — ordered list of visited nodes per session, current last; used
+  for routing and as agent context.
 - Agent loop — bounded sequence of tool calls and replies the LLM runs for
   one incoming message inside a node.
 - Step — single operation inside an action.
