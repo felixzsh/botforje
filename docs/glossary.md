@@ -1,7 +1,7 @@
 # Glossary
 
-- Bot — one WhatsApp account bound to a graph, an optional llm, and settings;
-  the deployable unit.
+- Bot — one WhatsApp account bound to a graph, its settings, and an optional
+  llm; the deployable unit.
 - Fleet — the set of bots a single BotForje instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
   and sessions (ADR 0016); a free name, never derived from folders.
