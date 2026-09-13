@@ -79,8 +79,16 @@ Outbound:
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
 `{{sender.*}}`, `{{message.*}}`, `{{bot.*}}`, tool arguments as
 `{{input.<name>}}`, and request results as `{{node.<request>.resp.body.*}}`,
-`{{node.<request>.status}}`, and `{{node.<request>.duration}}`. Tool result
-syntax is still open (Phase 4).
+`{{node.<request>.resp.headers.*}}`, `{{node.<request>.status}}`, and
+`{{node.<request>.duration}}`. Tool result syntax is still open (Phase 4).
+
+## Async requests
+
+APIs that answer asynchronously (202 plus a status endpoint) are polled
+within bounds: the agent calls the operation, then checks its status up to
+its tool budget; longer waits continue on later messages. A deterministic
+polling step (interval, timeout, success condition) is an open decision for
+Phase 4/7.
 
 ## Sessions
 

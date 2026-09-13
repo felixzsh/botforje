@@ -120,7 +120,8 @@ Deliverables:
 - First message: on session creation, evaluate the message against the root
   edges before running the root's `on_enter` (ADR 0010).
 - Transitions: exit actions, `goto`, entry actions, and fallback node.
-- Steps: `message`, `location`, and `request` with retry and result capture.
+- Steps: `message`, `location`, and `request` with retry and result capture
+  (body, headers, status, duration).
 - Guards: cooldown per sender per action; blocked-action behavior.
 - Hybrid intent semantics: classification fallback, rendering modes with
   anchor plus fallback, and policy checks (shape frozen in Phase 1;
@@ -184,6 +185,8 @@ Deliverables:
   as anchor and fallback; policy checks before queueing.
 - Deterministic fallback when no provider is configured or a call fails.
 - Bounded agent loop: max tools per message and timeout from `llm.agent`.
+- Async APIs: agent-driven polling within the tool budget (call, check
+  status, retry); longer waits continue on later messages.
 - Per-message logging of node, intent, tools called, provider, and policy
   version.
 - Tests: provider fakes, classification cases, tool argument validation,
@@ -256,6 +259,8 @@ knowledge.
 - Fuzzy matching algorithm and defaults (close in Phase 4).
 - Structured policy shape and conflict precedence (Phase 4; free string now).
 - Tool result template syntax (close in Phase 4/7).
+- Deterministic polling step shape for async APIs: interval, timeout,
+  success condition (Phase 4/7).
 - Context variable typing and empty-versus-default semantics (Phase 4).
 - Confirmation guard for tools with side effects (Phase 7).
 - Agent bounds defaults: max tools per message and timeout (Phase 7).
