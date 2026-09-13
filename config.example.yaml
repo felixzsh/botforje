@@ -357,6 +357,11 @@ bots:
     graph: "faq-support"
     settings:
       queue_delay: 1500           # Milliseconds between outbound messages
+      queue_jitter: 400           # Extra random 0-400 ms, avoids fixed pacing
+      simulate_typing: true       # Composing presence before replies
+      typing_delay: 1200          # Composing duration in milliseconds
+      read_receipts: true         # Mark inbound as read before replying
+      max_messages_per_minute: 0  # Outbound ceiling; 0 means no limit
       ignore_groups: true
       allowed_senders: []         # Empty means all senders allowed
       ignored_senders: ["status@broadcast"]

@@ -73,8 +73,11 @@ Inbound:
 
 Outbound:
 
-1. Outbox paces messages with the bot's configured delay.
-2. Channel sends them; failures are surfaced, never silently dropped.
+1. Outbox paces messages with the bot's configured delay plus random jitter,
+   one message at a time per bot (ADR 0011).
+2. When presence is enabled, the bot marks the inbound message read and shows
+   a composing indicator for `typing_delay` before sending.
+3. Channel sends them; failures are surfaced, never silently dropped.
 
 ## Templates
 
@@ -114,6 +117,8 @@ configured maximum.
 - Bounded queues between inbox, engine, and outbox provide backpressure.
 - No shared mutable state between bots; shared services are read-only or
   synchronized.
+- Reconnect uses capped exponential backoff with jitter; a bot that is
+  logged out or banned stops and reports instead of retrying (ADR 0011).
 - A fleet supervisor starts, stops, and reports bot actors.
 
 ## Configuration pipeline

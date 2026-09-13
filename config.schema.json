@@ -498,6 +498,29 @@
           "minimum": 0,
           "description": "Milliseconds between outbound messages (default 1000)"
         },
+        "queue_jitter": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Extra random delay (0..N ms) added per message to avoid fixed pacing (default 300; ADR 0011)"
+        },
+        "simulate_typing": {
+          "type": "boolean",
+          "description": "Send a composing presence before each reply (default true; ADR 0011)"
+        },
+        "typing_delay": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Milliseconds the composing presence lasts before the reply (default 1000; ADR 0011)"
+        },
+        "read_receipts": {
+          "type": "boolean",
+          "description": "Mark inbound messages as read before replying (default true; ADR 0011)"
+        },
+        "max_messages_per_minute": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional per-bot outbound ceiling; 0 means no limit (default 0; ADR 0011)"
+        },
         "ignore_groups": {
           "type": "boolean",
           "description": "Ignore group messages (default false)"

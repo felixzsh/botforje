@@ -131,9 +131,13 @@ Goal: one real bot talks to WhatsApp end to end.
 Deliverables:
 
 - `MessageChannel` port and the whatsmeow adapter behind it.
-- QR pairing, device store persistence, and reconnect with state reporting.
+- QR pairing, device store persistence, and reconnect with capped
+  exponential backoff plus jitter (ADR 0011).
 - Inbound event mapping to `IncomingMessage` plus deduplication.
-- Outbound send: text, location, and read receipts.
+- Outbound send: text and location; mark inbound read and show composing
+  presence before replies (ADR 0011).
+- Logout and ban detection: stop the bot, keep the session, and report
+  through `status` instead of retrying forever (ADR 0011).
 - CLI `auth <bot>` and `status`.
 - Tests: adapter unit tests with fakes; a manual end-to-end checklist.
 
@@ -149,7 +153,8 @@ Deliverables:
 
 - Fleet supervisor that builds one actor per bot from config.
 - Inbox: routing, dedup, and filters (ignore groups, allow/ignore senders).
-- Outbox: per-bot FIFO with `queue_delay` and backpressure.
+- Outbox: per-bot FIFO with `queue_delay` plus random `queue_jitter`, an
+  optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
 - Daemon command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
 - Tests: two bots with independent sessions and queues; filter behavior;
@@ -221,7 +226,9 @@ Deliverables:
 
 - Reference bot: a small support menu graph with intents and one `request`
   step.
-- Operational notes: systemd unit, backup of SQLite and the device store.
+- Operational notes: systemd unit, backup of SQLite and the device store,
+  and account-safety practices (warmup for new accounts, no bulk outreach,
+  human fallback when a bot is restricted) (ADR 0011).
 - Log and error review: actionable messages, no secrets in logs.
 - Documentation pass: README, CONTEXT, and architecture match the code.
 - Release checklist and version tag.

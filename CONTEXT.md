@@ -32,7 +32,7 @@ SaaS infrastructure:
 - Graph conversations with sessions persisted in SQLite.
 - Actions with `message`, `request`, and `location` steps; cooldown guards.
 - Inbound filters (groups, allow/ignore senders) and a per-bot outbox with
-  configurable delay.
+  configurable delay and jitter, plus human-like presence (ADR 0011).
 - CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
 - REST API with key-based auth.
 - Hybrid LLM support designed in from the start: deterministic routing works
@@ -57,6 +57,7 @@ Settled decisions live in `docs/adr/`:
 | 0008 | Agentic nodes with parameterized tools |
 | 0009 | Config reload semantics |
 | 0010 | Node memory and routing across visited nodes |
+| 0011 | Account safety and human-like pacing |
 
 ## Current state
 
