@@ -100,7 +100,7 @@ Deliverables:
 
 - [ ] SQLite setup with migrations from the first table; pure-Go driver, WAL,
   foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
-- [ ] Stores: whatsmeow device store, sessions, conversations, messages.
+- [ ] Stores: sessions, conversations, and messages.
 - [ ] Repository interfaces owned by the domain; SQL stays in the adapter.
 - [ ] Tests: migrations, store round-trips, and session resume after restart.
 - [ ] Race testing: `make test-race` (`go test -race ./...`) and use it
@@ -114,6 +114,9 @@ Goal: conversations run fully in memory, testable with no channel.
 
 Deliverables:
 
+- [ ] `MessageChannel` port: connect, disconnect, send, and the inbound
+  stream, owned by the engine; the whatsmeow adapter arrives in Phase 5
+  (ADR 0004).
 - [ ] Session lifecycle: create at root, resume, and expire by timeout.
 - [ ] Node memory: ordered list of visited nodes (current last), persisted and
   never reset by navigation (ADR 0010).
@@ -147,9 +150,10 @@ Goal: one real bot talks to WhatsApp end to end.
 
 Deliverables:
 
-- [ ] `MessageChannel` port and the whatsmeow adapter behind it.
-- [ ] QR pairing, device store persistence, and reconnect with capped
-  exponential backoff plus jitter (ADR 0011).
+- [ ] whatsmeow adapter implementing the `MessageChannel` port (ADR 0004).
+- [ ] QR pairing, the whatsmeow device store on the shared SQLite connection
+  (ADR 0006), and reconnect with capped exponential backoff plus jitter
+  (ADR 0011).
 - [ ] Inbound event mapping to `IncomingMessage` plus deduplication.
 - [ ] Sender identity: resolve LID to PN via `SenderAlt` and the LID store
   before sessions and filters (ADR 0013).
