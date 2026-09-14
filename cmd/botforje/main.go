@@ -255,7 +255,6 @@ func runDaemon(args []string) int {
 		return code
 	}
 	logger := logging.New(cfg.LogLevel, os.Stderr)
-	logger.Debug("debug logging enabled", "level", cfg.LogLevel)
 
 	db, err := openDatabase(cfg)
 	if err != nil {
