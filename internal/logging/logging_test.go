@@ -96,6 +96,19 @@ func TestOffSilences(t *testing.T) {
 	}
 }
 
+func TestMultilineValueStaysOnOneLine(t *testing.T) {
+	var buffer bytes.Buffer
+	New("info", &buffer).Info("msg", "body", "line1\nline2")
+
+	lines := strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("record spans %d lines: %q", len(lines), buffer.String())
+	}
+	if !strings.Contains(lines[0], `body="line1\nline2"`) {
+		t.Fatalf("body not quoted: %q", lines[0])
+	}
+}
+
 func TestDiscard(t *testing.T) {
 	if Discard().Enabled(context.Background(), slog.LevelError) {
 		t.Fatal("discard must disable every level")

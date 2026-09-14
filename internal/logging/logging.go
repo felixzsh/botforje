@@ -166,7 +166,7 @@ func formatValue(value slog.Value) string {
 }
 
 func quoteIfNeeded(value string) string {
-	if value == "" || strings.ContainsAny(value, " \t\"=") {
+	if value == "" || strings.ContainsAny(value, " \t\n\r\"=") {
 		return strconv.Quote(value)
 	}
 	return value
