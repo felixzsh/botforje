@@ -98,12 +98,12 @@ Goal: runtime state survives restarts.
 
 Deliverables:
 
-- [ ] SQLite setup with migrations from the first table; pure-Go driver, WAL,
+- [x] SQLite setup with migrations from the first table; pure-Go driver, WAL,
   foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
-- [ ] Stores: sessions, conversations, and messages.
-- [ ] Repository interfaces owned by the domain; SQL stays in the adapter.
-- [ ] Tests: migrations, store round-trips, and session resume after restart.
-- [ ] Race testing: `make test-race` (`go test -race ./...`) and use it
+- [x] Stores: sessions, conversations, and messages.
+- [x] Repository interfaces owned by the domain; SQL stays in the adapter.
+- [x] Tests: migrations, store round-trips, and session resume after restart.
+- [x] Race testing: `make test-race` (`go test -race ./...`) and use it
   whenever concurrency is involved.
 
 Gate: a session persisted by one process resumes in a new process.
@@ -114,30 +114,30 @@ Goal: conversations run fully in memory, testable with no channel.
 
 Deliverables:
 
-- [ ] `MessageChannel` port: connect, disconnect, send, and the inbound
+- [x] `MessageChannel` port: connect, disconnect, send, and the inbound
   stream, owned by the engine; the whatsmeow adapter arrives in Phase 5
   (ADR 0004).
-- [ ] Session lifecycle: create at root, resume, and expire by timeout.
-- [ ] Node memory: ordered list of visited nodes (current last), persisted and
+- [x] Session lifecycle: create at root, resume, and expire by timeout.
+- [x] Node memory: ordered list of visited nodes (current last), persisted and
   never reset by navigation (ADR 0010).
-- [ ] Routing: candidates are visited nodes plus the current node (last); best
+- [x] Routing: candidates are visited nodes plus the current node (last); best
   trigger match wins, ties go to the most recent. Default edge only from the
   current node; `LLMProvider` port defined with a null implementation.
-- [ ] First message: on session creation, evaluate the message against the root
+- [x] First message: on session creation, evaluate the message against the root
   edges before running the root's `on_enter` (ADR 0010).
-- [ ] Transitions: exit actions, `goto`, entry actions, and fallback node.
-- [ ] Steps: `message`, `location`, and `request` with retry and result capture
+- [x] Transitions: exit actions, `goto`, entry actions, and fallback node.
+- [x] Steps: `message`, `location`, and `request` with retry and result capture
   (body, headers, status, duration).
-- [ ] Template references: resolve `{{...}}` in message bodies and request
+- [x] Template references: resolve `{{...}}` in message bodies and request
   URLs, headers, and bodies from the runtime context; at load, reject unknown
   roots, bad paths, and references to variables not declared in
   `initial_context` or tool `inputs`, with valid and invalid fixtures
   (ADR 0018).
-- [ ] Guards: cooldown per sender per action; blocked-action behavior.
-- [ ] Hybrid intent semantics: classification fallback, rendering modes with
+- [x] Guards: cooldown per sender per action; blocked-action behavior.
+- [x] Hybrid intent semantics: classification fallback, rendering modes with
   anchor plus fallback, and policy checks (shape frozen in Phase 1;
   ADR 0003).
-- [ ] Tests: simulated conversations including fallback, timeout, guards,
+- [x] Tests: simulated conversations including fallback, timeout, guards,
   request failures, template reference errors, and the same input with
   different visit histories.
 
@@ -284,7 +284,6 @@ knowledge.
 
 - Schema generator choice and approval (Phase 1; candidate:
   `invopop/jsonschema`).
-- Fuzzy matching algorithm and defaults (close in Phase 4).
 - Structured policy shape and conflict precedence (Phase 4; free string now).
 - Tool result template syntax (close in Phase 4/7).
 - Deterministic polling step shape for async APIs: interval, timeout,
@@ -302,8 +301,10 @@ knowledge.
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
+Trigger matching and its threshold are in ADR 0019.
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
-`gopkg.in/yaml.v3`) and `github.com/invopop/jsonschema`. `urfave/cli/v3` and
+`gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, and the pure-Go SQLite
+driver `modernc.org/sqlite` (ADR 0006). `urfave/cli/v3` and
 `google/jsonschema-go` are no longer needed: the CLI uses the standard
 library (ADR 0012) and runtime validation is in Go (ADR 0007).
