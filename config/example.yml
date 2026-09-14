@@ -349,7 +349,7 @@ scopes:
           max_messages_per_minute: 0  # Outbound ceiling; 0 means no limit
           ignore_groups: true
           allowed_senders: []         # Empty means all senders allowed
-          ignored_senders: ["status@broadcast"]
+          ignored_senders: ["5215500000000"]  # Plain phone numbers, no JID suffix
 
       sales-bot:
         graph: "faq-support"        # No llm: this bot is deterministic

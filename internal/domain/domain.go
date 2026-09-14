@@ -30,34 +30,16 @@ const (
 	Outbound Direction = "out"
 )
 
-// IncomingMessage is one inbound message with its sender resolved by the
-// channel adapter (ADR 0013).
+// IncomingMessage is one inbound message. Sender is the resolved phone number
+// in plain digits (e.g. "5215500000000"); the JID and any LID stay inside the
+// channel adapter (ADR 0020).
 type IncomingMessage struct {
-	Bot       string
-	Sender    string // resolved PN; a LID while the session is unresolved
-	SenderLID string
-	ReplyTo   string // JID the message arrived from; empty falls back to Sender
-	Body      string
-	ID        string
-	IsGroup   bool
-	At        time.Time
-}
-
-// Phone is the resolved phone number, or empty while the sender is still a LID
-// (unresolved). It never returns a LID, so it is safe to log (ADR 0013).
-func (m IncomingMessage) Phone() string {
-	if m.SenderLID != "" && m.Sender == m.SenderLID {
-		return ""
-	}
-	return m.Sender
-}
-
-// Display is Phone for logs, or "unresolved" when only a LID is known.
-func (m IncomingMessage) Display() string {
-	if phone := m.Phone(); phone != "" {
-		return phone
-	}
-	return "unresolved"
+	Bot     string
+	Sender  string
+	Body    string
+	ID      string
+	IsGroup bool
+	At      time.Time
 }
 
 // Location is a map pin sent as its own message.
@@ -71,13 +53,12 @@ type Location struct {
 }
 
 // OutgoingMessage is one message the engine asks the channel to deliver.
+// Recipient is the plain phone number the reply is for; the adapter maps it to
+// the transport address (ADR 0020).
 type OutgoingMessage struct {
-	Bot  string
-	To   string // transport address (may be a LID; never log it)
-	Kind OutgoingKind
-	// Recipient is the resolved phone number for logs and audit; empty when
-	// only a LID is known. Never a LID.
+	Bot       string
 	Recipient string
+	Kind      OutgoingKind
 	Body      string
 	Location  *Location
 }
@@ -86,7 +67,6 @@ type OutgoingMessage struct {
 type Session struct {
 	Bot          string
 	Sender       string
-	SenderLID    string
 	Scope        string
 	Node         string
 	Memory       []string

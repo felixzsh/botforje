@@ -5,29 +5,21 @@ import "go.mau.fi/whatsmeow/types"
 // pnLookup resolves a LID to its phone number through the LID store (ADR 0013).
 type pnLookup func(lid types.JID) (types.JID, bool)
 
-// resolveSender returns the session sender and, when known, its LID. The
-// sender is a phone number whenever one can be resolved; otherwise it stays
-// the LID and the session is unresolved (ADR 0013).
-func resolveSender(info types.MessageInfo, lookup pnLookup) (sender, lid types.JID) {
-	from := info.Sender
-	alt := info.SenderAlt
-
-	if from.Server == types.DefaultUserServer {
-		if alt.Server == types.HiddenUserServer && !alt.IsEmpty() {
-			return from, alt
-		}
-		return from, types.JID{}
+// resolveSender returns the sender's phone number JID. It uses the JID itself
+// when it is a phone number, then SenderAlt, then the LID store. It returns
+// false when no phone number is known, so the caller drops the message instead
+// of keying anything on a LID (ADR 0020).
+func resolveSender(info types.MessageInfo, lookup pnLookup) (types.JID, bool) {
+	if info.Sender.Server == types.DefaultUserServer {
+		return info.Sender, true
 	}
-	if alt.Server == types.DefaultUserServer && !alt.IsEmpty() {
-		return alt, from
+	if info.SenderAlt.Server == types.DefaultUserServer && !info.SenderAlt.IsEmpty() {
+		return info.SenderAlt, true
 	}
 	if lookup != nil {
-		if pn, ok := lookup(from); ok && !pn.IsEmpty() {
-			return pn, from
+		if pn, ok := lookup(info.Sender); ok && !pn.IsEmpty() {
+			return pn, true
 		}
 	}
-	if from.Server == types.HiddenUserServer {
-		return from, from
-	}
-	return from, types.JID{}
+	return types.JID{}, false
 }

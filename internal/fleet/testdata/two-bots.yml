@@ -19,4 +19,4 @@ scopes:
       beta:
         graph: "menu"
         settings:
-          ignored_senders: ["blocked@s.whatsapp.net"]
+          ignored_senders: ["999"]

@@ -47,7 +47,6 @@ var migrations = []migration{
 	{"sessions", `CREATE TABLE sessions (
 		bot           TEXT NOT NULL,
 		sender        TEXT NOT NULL,
-		sender_lid    TEXT NOT NULL DEFAULT '',
 		scope         TEXT NOT NULL,
 		node          TEXT NOT NULL,
 		memory        TEXT NOT NULL,

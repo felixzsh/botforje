@@ -60,37 +60,33 @@ func TestResolveSender(t *testing.T) {
 	missing := func(types.JID) (types.JID, bool) { return types.JID{}, false }
 
 	cases := []struct {
-		name       string
-		info       types.MessageInfo
-		lookup     pnLookup
-		wantSender types.JID
-		wantLID    types.JID
+		name   string
+		info   types.MessageInfo
+		lookup pnLookup
+		want   types.JID
+		ok     bool
 	}{
-		{"pn only",
+		{"phone number jid",
 			types.MessageInfo{MessageSource: types.MessageSource{Sender: pn}},
-			nil, pn, types.JID{}},
-		{"pn with lid",
-			types.MessageInfo{MessageSource: types.MessageSource{Sender: pn, SenderAlt: lid}},
-			nil, pn, lid},
-		{"lid with alternative pn",
+			nil, pn, true},
+		{"phone number via the alternative address",
 			types.MessageInfo{MessageSource: types.MessageSource{Sender: lid, SenderAlt: pn}},
-			nil, pn, lid},
-		{"lid via the lid store",
+			nil, pn, true},
+		{"phone number via the lid store",
 			types.MessageInfo{MessageSource: types.MessageSource{Sender: lid}},
-			found, pn, lid},
+			found, pn, true},
 		{"unresolved lid",
 			types.MessageInfo{MessageSource: types.MessageSource{Sender: lid}},
-			nil, lid, lid},
+			nil, types.JID{}, false},
 		{"store without a match",
 			types.MessageInfo{MessageSource: types.MessageSource{Sender: lid}},
-			missing, lid, lid},
+			missing, types.JID{}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sender, gotLID := resolveSender(tc.info, tc.lookup)
-			if sender != tc.wantSender || gotLID != tc.wantLID {
-				t.Fatalf("resolveSender = (%s, %s), want (%s, %s)",
-					sender, gotLID, tc.wantSender, tc.wantLID)
+			got, ok := resolveSender(tc.info, tc.lookup)
+			if got != tc.want || ok != tc.ok {
+				t.Fatalf("resolveSender = (%s, %v), want (%s, %v)", got, ok, tc.want, tc.ok)
 			}
 		})
 	}
@@ -196,8 +192,8 @@ func TestOnMessageMapsAndDedups(t *testing.T) {
 		if message.Bot != "support-bot" || message.Body != "hello" {
 			t.Fatalf("message = %#v", message)
 		}
-		if message.Sender != "5215500000000@s.whatsapp.net" || message.ReplyTo != message.Sender {
-			t.Fatalf("sender/reply = %q / %q", message.Sender, message.ReplyTo)
+		if message.Sender != "5215500000000" {
+			t.Fatalf("sender = %q, want the plain phone number", message.Sender)
 		}
 	default:
 		t.Fatal("no message was delivered")
@@ -207,8 +203,27 @@ func TestOnMessageMapsAndDedups(t *testing.T) {
 		t.Fatalf("duplicate was delivered: %#v", message)
 	default:
 	}
-	if _, ok := a.last["5215500000000@s.whatsapp.net"]; !ok {
+	if _, ok := a.last["5215500000000"]; !ok {
 		t.Fatal("the last inbound message was not tracked")
+	}
+}
+
+func TestOnMessageDropsUnresolvedLID(t *testing.T) {
+	a := newTestAdapter()
+	lid := types.NewJID("212150010273830", types.HiddenUserServer)
+	event := &events.Message{
+		Info: types.MessageInfo{
+			MessageSource: types.MessageSource{Sender: lid, Chat: lid},
+			ID:            types.MessageID("XYZ"),
+			Timestamp:     t0,
+		},
+		Message: &waE2E.Message{Conversation: proto.String("hi")},
+	}
+	a.onMessage(event)
+	select {
+	case message := <-a.incoming:
+		t.Fatalf("an unresolved message was delivered: %#v", message)
+	default:
 	}
 }
 

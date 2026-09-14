@@ -67,8 +67,7 @@ func (r *run) message(m config.Message) error {
 	}
 	r.out = append(r.out, domain.OutgoingMessage{
 		Bot:       r.engine.bot,
-		To:        replyTo(r.msg),
-		Recipient: r.msg.Phone(),
+		Recipient: r.msg.Sender,
 		Body:      body,
 		Kind:      domain.KindText,
 	})
@@ -179,8 +178,7 @@ func (r *run) location(loc config.Location) error {
 	}
 	r.out = append(r.out, domain.OutgoingMessage{
 		Bot:       r.engine.bot,
-		To:        replyTo(r.msg),
-		Recipient: r.msg.Phone(),
+		Recipient: r.msg.Sender,
 		Kind:      domain.KindLocation,
 		Location: &domain.Location{
 			Latitude:    loc.Latitude,

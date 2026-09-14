@@ -155,7 +155,6 @@ func (e *Engine) start(msg domain.IncomingMessage, now time.Time) *domain.Sessio
 	return &domain.Session{
 		Bot:          e.bot,
 		Sender:       msg.Sender,
-		SenderLID:    msg.SenderLID,
 		Scope:        e.scope,
 		Node:         e.graph.Root,
 		Memory:       []string{e.graph.Root},
@@ -192,7 +191,6 @@ func (e *Engine) contextOf(
 	_ = tctx.Reset(template.RootNode, session.NodeContext)
 	_ = tctx.Reset(template.RootSender, map[string]any{
 		"phone": session.Sender,
-		"lid":   session.SenderLID,
 	})
 	_ = tctx.Reset(template.RootMessage, map[string]any{
 		"body": msg.Body,
@@ -283,13 +281,6 @@ func reorder(memory []string, node string) []string {
 		}
 	}
 	return append(out, node)
-}
-
-func replyTo(msg domain.IncomingMessage) string {
-	if msg.ReplyTo != "" {
-		return msg.ReplyTo
-	}
-	return msg.Sender
 }
 
 func formatAt(t time.Time) string {

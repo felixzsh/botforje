@@ -218,7 +218,7 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["beta"].incoming <- domain.IncomingMessage{
-		Bot: "beta", Sender: "blocked@s.whatsapp.net", Body: "hi",
+		Bot: "beta", Sender: "999", Body: "hi",
 	}
 	select {
 	case reply := <-channels["beta"].sent:
@@ -227,7 +227,7 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	}
 
 	channels["beta"].incoming <- domain.IncomingMessage{
-		Bot: "beta", Sender: "ok@s.whatsapp.net", Body: "hi",
+		Bot: "beta", Sender: "1", Body: "hi",
 	}
 	if reply := receive(t, channels["beta"].sent); reply.Body != "hello from beta" {
 		t.Fatalf("beta reply = %q", reply.Body)

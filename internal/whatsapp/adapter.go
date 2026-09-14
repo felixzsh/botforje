@@ -94,7 +94,6 @@ type lastInbound struct {
 	id     types.MessageID
 	chat   types.JID
 	sender types.JID
-	at     time.Time
 }
 
 // New builds the adapter and its device store on the shared connection.
@@ -193,18 +192,23 @@ func (a *Adapter) Disconnect(context.Context) error {
 }
 
 // Send delivers one message, marking the inbound read and showing composing
-// presence first when configured (ADR 0011).
+// presence first when configured (ADR 0011). The recipient is a plain phone
+// number; the adapter maps it to the JID the message arrived from, or to the
+// phone-number JID when that is unknown (ADR 0020).
 func (a *Adapter) Send(ctx context.Context, msg domain.OutgoingMessage) error {
 	a.mu.Lock()
 	client := a.client
-	last := a.last[msg.To]
+	last := a.last[msg.Recipient]
 	a.mu.Unlock()
 	if client == nil || !client.IsConnected() {
 		return errors.New("whatsapp: not connected")
 	}
-	to, err := types.ParseJID(msg.To)
-	if err != nil {
-		return fmt.Errorf("whatsapp: recipient %q: %w", msg.To, err)
+	if msg.Recipient == "" {
+		return errors.New("whatsapp: message has no recipient")
+	}
+	to := last.chat
+	if to.IsEmpty() {
+		to = types.NewJID(msg.Recipient, types.DefaultUserServer)
 	}
 	if a.settings.ReadReceipts && !last.chat.IsEmpty() {
 		if err := client.MarkRead(ctx, []types.MessageID{last.id}, a.now(),
@@ -313,29 +317,32 @@ func (a *Adapter) onMessage(event *events.Message) {
 	if !a.seen.fresh(id) {
 		return
 	}
-	sender, lid := resolveSender(event.Info, a.lookupPN)
+	pn, ok := resolveSender(event.Info, a.lookupPN)
+	if !ok {
+		a.log.Warn("dropping message: sender has no known phone number")
+		return
+	}
+	sender := pn.User
 	chat := event.Info.Chat
 
 	a.mu.Lock()
-	a.last[chat.String()] = lastInbound{
-		id: event.Info.ID, chat: chat, sender: event.Info.Sender, at: event.Info.Timestamp,
+	a.last[sender] = lastInbound{
+		id: event.Info.ID, chat: chat, sender: event.Info.Sender,
 	}
 	a.mu.Unlock()
 
 	message := domain.IncomingMessage{
-		Bot:       a.bot,
-		Sender:    sender.String(),
-		SenderLID: lidString(lid),
-		ReplyTo:   chat.String(),
-		Body:      body,
-		ID:        id,
-		IsGroup:   event.Info.IsGroup,
-		At:        event.Info.Timestamp,
+		Bot:     a.bot,
+		Sender:  sender,
+		Body:    body,
+		ID:      id,
+		IsGroup: event.Info.IsGroup,
+		At:      event.Info.Timestamp,
 	}
 	select {
 	case a.incoming <- message:
 	default:
-		a.log.Warn("incoming queue full, dropping message", "sender", message.Display())
+		a.log.Warn("incoming queue full, dropping message", "sender", sender)
 	}
 }
 
@@ -410,11 +417,4 @@ func messageText(message *waE2E.Message) string {
 		return extended.GetText()
 	}
 	return ""
-}
-
-func lidString(lid types.JID) string {
-	if lid.IsEmpty() {
-		return ""
-	}
-	return lid.String()
 }

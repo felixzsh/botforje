@@ -14,7 +14,7 @@ import (
 // SessionStore persists sessions (ADR 0006).
 type SessionStore struct{ db *sql.DB }
 
-const sessionColumns = `bot, sender, sender_lid, scope, node, memory,
+const sessionColumns = `bot, sender, scope, node, memory,
 	graph_context, node_context, cooldowns, created_at, updated_at, expires_at`
 
 // Get loads the session for (scope, bot, sender) or returns domain.ErrNotFound.
@@ -30,7 +30,7 @@ func (s *SessionStore) Get(
 		expires                     string
 	)
 	err := s.db.QueryRowContext(ctx, query, scope, bot, sender).Scan(
-		&session.Bot, &session.Sender, &session.SenderLID, &session.Scope,
+		&session.Bot, &session.Sender, &session.Scope,
 		&session.Node, &memory, &graphCtx, &nodeCtx, &cooldowns,
 		&created, &updated, &expires,
 	)
@@ -77,9 +77,8 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 		return fmt.Errorf("sqlite: cooldowns: %w", err)
 	}
 	query := `INSERT INTO sessions (` + sessionColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (scope, bot, sender) DO UPDATE SET
-			sender_lid = excluded.sender_lid,
 			scope = excluded.scope,
 			node = excluded.node,
 			memory = excluded.memory,
@@ -90,7 +89,7 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 			updated_at = excluded.updated_at,
 			expires_at = excluded.expires_at`
 	_, err = s.db.ExecContext(ctx, query,
-		session.Bot, session.Sender, session.SenderLID, session.Scope, session.Node,
+		session.Bot, session.Sender, session.Scope, session.Node,
 		memory, graphCtx, nodeCtx, cooldowns,
 		formatTime(session.CreatedAt), formatTime(session.UpdatedAt),
 		formatTime(session.ExpiresAt),

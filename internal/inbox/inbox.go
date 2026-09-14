@@ -6,7 +6,7 @@ package inbox
 import "github.com/felixzsh/botforje/internal/domain"
 
 // Filter holds one bot's inbound rules: ignore groups, and an allow/ignore
-// list of sender identities.
+// list of sender phone numbers.
 type Filter struct {
 	IgnoreGroups bool
 	Allowed      []string
@@ -27,11 +27,10 @@ func (f Filter) Allow(msg domain.IncomingMessage) bool {
 	return true
 }
 
-// matches compares the lists against the sender, its LID, and the chat JID,
-// so ids like a broadcast address work too.
+// matches compares the lists against the sender phone number.
 func matches(list []string, msg domain.IncomingMessage) bool {
 	for _, id := range list {
-		if id == msg.Sender || id == msg.SenderLID || id == msg.ReplyTo {
+		if id == msg.Sender {
 			return true
 		}
 	}

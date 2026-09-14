@@ -31,9 +31,9 @@ func open(t *testing.T, path string) *DB {
 
 func testSession() *domain.Session {
 	return &domain.Session{
-		Bot:          "support-bot",
-		Sender:       "5215500000000",
-		SenderLID:    "212150010273830",
+		Bot:    "support-bot",
+		Sender: "5215500000000",
+
 		Scope:        "support",
 		Node:         "purchase",
 		Memory:       []string{"menu", "purchase"},
