@@ -1,11 +1,14 @@
 GO ?= go
 BIN := bin/botforje
 CONFIG ?= config.example.yaml
+DEV_CONFIG ?= config/dev.yml
+DEV_DATA ?= .dev-data
 ARGS ?=
 LINE_MAX := 100
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test test-race vet fmt fmt-check lines-check check schema validate tidy clean
+.PHONY: help build run dev dev-reset test test-race vet fmt fmt-check \
+	lines-check check schema validate tidy clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -14,8 +17,15 @@ help: ## Show this help
 build: ## Build the binary into bin/botforje
 	$(GO) build -o $(BIN) ./cmd/botforje
 
-run: ## Run the CLI: make run ARGS="validate --config config.example.yaml"
+run: ## Run the CLI against the real config: make run ARGS="validate"
 	$(GO) run ./cmd/botforje $(ARGS)
+
+dev: ## Run the CLI in development: make dev ARGS="status"
+	BOTFORJE_CONFIG=$(DEV_CONFIG) $(GO) run ./cmd/botforje $(ARGS)
+
+dev-reset: ## Delete the development database (.dev-data), never the real one
+	@test -n "$(DEV_DATA)" || { echo "refusing: DEV_DATA is empty"; exit 1; }
+	rm -rf $(DEV_DATA)
 
 test: ## Run all tests
 	$(GO) test ./...
