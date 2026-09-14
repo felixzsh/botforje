@@ -36,6 +36,7 @@ type IncomingMessage struct {
 	Bot       string
 	Sender    string // resolved PN; a LID while the session is unresolved
 	SenderLID string
+	ReplyTo   string // JID the message arrived from; empty falls back to Sender
 	Body      string
 	ID        string
 	At        time.Time

@@ -1,0 +1,79 @@
+version: 1
+scopes:
+  support:
+    actions:
+      greet:
+        steps:
+          - message:
+              body: "Main menu: 1 hours, 2 catalog, 0 exit"
+      hours:
+        steps:
+          - message:
+              body: "Support hours: Monday to Friday, 9:00-18:00"
+      catalog:
+        steps:
+          - message:
+              body: "Catalog: https://example.com/catalog"
+      farewell:
+        steps:
+          - message:
+              body: "Bye {{graph.customer_name}}!"
+      invalid:
+        steps:
+          - message:
+              body: "Choose a number from the menu."
+      leave-log:
+        steps:
+          - message:
+              body: "leaving hours"
+    graphs:
+      faq:
+        root: "menu"
+        fallback: "invalid"
+        timeout: 300
+        initial_context:
+          customer_name: "Ana"
+        nodes:
+          menu:
+            goal: "show the menu"
+            on_enter: ["greet"]
+            edges:
+              - intent: "wants hours"
+                triggers: ["1", "hours", "schedule"]
+                goto: "hours"
+              - intent: "wants the catalog"
+                triggers: ["2", "catalog"]
+                goto: "catalog"
+              - intent: "wants to leave"
+                triggers: ["0", "bye", "goodbye"]
+                goto: "farewell"
+              - goto: "invalid"
+          hours:
+            goal: "show support hours"
+            on_enter: ["hours"]
+            on_exit: ["leave-log"]
+            edges:
+              - intent: "wants the menu"
+                triggers: ["menu", "back"]
+                goto: "menu"
+              - goto: "invalid"
+          catalog:
+            goal: "show the catalog"
+            on_enter: ["catalog"]
+            edges:
+              - intent: "wants the menu"
+                triggers: ["menu", "back"]
+                goto: "menu"
+              - goto: "invalid"
+          invalid:
+            goal: "recover from invalid input"
+            on_enter: ["invalid"]
+            edges:
+              - goto: "menu"
+          farewell:
+            goal: "close the conversation"
+            on_enter: ["farewell"]
+            edges: []
+    bots:
+      support-bot:
+        graph: "faq"

@@ -169,6 +169,16 @@ func step(value any, segment string) (any, error) {
 	}
 }
 
+// Values returns the live map behind a root so the engine can persist it back
+// after running a step. The caller must not mutate it once the context is
+// reused.
+func (c *Context) Values(root Root) map[string]any {
+	if !root.Known() {
+		return nil
+	}
+	return c.values[root]
+}
+
 // RequestResult is the captured outcome of a request step. Phase 4 fills it in
 // when it runs the HTTP call.
 type RequestResult struct {
