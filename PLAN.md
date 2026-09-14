@@ -261,6 +261,8 @@ Deliverables:
   human fallback when a bot is restricted) (ADR 0011).
 - [ ] Log and error review: actionable messages, no secrets in logs.
 - [ ] Documentation pass: README, scope, and architecture match the code.
+- [ ] Schema baseline: freeze the current schema as migration 1 and add the
+  versioned, append-only migration runner (ADR 0006).
 - [ ] Release checklist and version tag.
 
 Gate: a clean-machine run of the documented path works without tribal
