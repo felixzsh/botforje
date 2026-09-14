@@ -9,12 +9,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/felixzsh/botforje/internal/config"
 	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/fleet"
 	"github.com/felixzsh/botforje/internal/sqlite"
 	"github.com/felixzsh/botforje/internal/whatsapp"
 )
@@ -33,6 +37,8 @@ func main() {
 		os.Exit(runAuth(os.Args[2:]))
 	case "status":
 		os.Exit(runStatus(os.Args[2:]))
+	case "daemon":
+		os.Exit(runDaemon(os.Args[2:]))
 	case "help", "-h", "--help":
 		print_help()
 	default:
@@ -50,6 +56,7 @@ Commands:
   schema     print the generated config JSON Schema (-o file)
   auth       pair a bot by scanning a QR code (auth <bot> [--scope name])
   status     show each configured bot's pairing state
+  daemon     run every configured bot until interrupted
 `)
 }
 
@@ -234,6 +241,75 @@ func runStatus(args []string) int {
 		}
 	}
 	return 0
+}
+
+func runDaemon(args []string) int {
+	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
+	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, code := loadConfig(*configPath)
+	if code != 0 {
+		return code
+	}
+	db, err := openDatabase(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer db.Close()
+
+	runner, err := fleet.New(cfg, fleet.Options{
+		Store:          db.Sessions(),
+		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
+		NewChannel: func(spec fleet.BotSpec) (domain.MessageChannel, error) {
+			return whatsapp.New(whatsapp.Options{
+				Scope:    spec.Scope,
+				Bot:      spec.Name,
+				DB:       db.DB,
+				Accounts: db.Accounts(),
+				Settings: whatsappSettings(spec.Settings),
+			})
+		},
+		OnError: func(scope, bot string, err error) {
+			fmt.Fprintf(os.Stderr, "%s/%s: %v\n", scope, bot, err)
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	statuses := runner.Status()
+	fmt.Printf("botforje daemon: %d bot(s)\n", len(statuses))
+	for _, status := range statuses {
+		fmt.Printf("  %s/%s\n", status.Scope, status.Bot)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := runner.Run(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	for _, status := range runner.Status() {
+		fmt.Printf("stopped %s/%s (state=%s, outbox=%d)\n",
+			status.Scope, status.Bot, status.State, status.OutboxDepth)
+	}
+	return 0
+}
+
+func whatsappSettings(settings config.BotSettings) whatsapp.Settings {
+	typing := 1200 * time.Millisecond
+	if settings.TypingDelay > 0 {
+		typing = time.Duration(settings.TypingDelay) * time.Millisecond
+	}
+	return whatsapp.Settings{
+		ReadReceipts:   settings.ReadReceipts != nil && *settings.ReadReceipts,
+		SimulateTyping: settings.SimulateTyping != nil && *settings.SimulateTyping,
+		TypingDelay:    typing,
+	}
 }
 
 // loadConfig discovers and validates the config, returning an exit code on
