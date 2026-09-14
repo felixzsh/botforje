@@ -64,6 +64,24 @@ func TestErrorQuoting(t *testing.T) {
 	}
 }
 
+func TestFitSource(t *testing.T) {
+	if got := fitSource("ab.go:7", 20); len(got) != 20 ||
+		!strings.HasPrefix(got, "[ab.go:7]") {
+		t.Fatalf("fitSource short = %q", got)
+	}
+	long := strings.Repeat("a", 40) + ".go:1234"
+	got := fitSource(long, 26)
+	if len(got) != 26 {
+		t.Fatalf("fitSource long length = %d (%q)", len(got), got)
+	}
+	if !strings.HasPrefix(got, "[") || !strings.HasSuffix(got, ":1234]") {
+		t.Fatalf("fitSource long = %q", got)
+	}
+	if !strings.Contains(got, "~") {
+		t.Fatalf("fitSource long did not mark the truncation: %q", got)
+	}
+}
+
 func TestDiscard(t *testing.T) {
 	if Discard().Enabled(context.Background(), slog.LevelError) {
 		t.Fatal("discard must disable every level")

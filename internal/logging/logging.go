@@ -18,7 +18,7 @@ import (
 const (
 	timeFormat = "2006-01-02 15:04:05"
 	levelWidth = 5
-	fileWidth  = 24
+	fileWidth  = 26
 )
 
 // New returns a logger at the given level writing to w. The level accepts
@@ -70,7 +70,7 @@ func (h *handler) Handle(_ context.Context, record slog.Record) error {
 	builder.WriteString("] ")
 	builder.WriteString(pad(record.Level.String(), levelWidth))
 	builder.WriteByte(' ')
-	builder.WriteString(pad("["+source(record)+"]", fileWidth))
+	builder.WriteString(fitSource(source(record), fileWidth))
 	builder.WriteByte(' ')
 	builder.WriteString(record.Message)
 	for _, attr := range h.attrs {
@@ -111,6 +111,30 @@ func pad(value string, width int) string {
 	if len(value) >= width {
 		return value
 	}
+	return value + strings.Repeat(" ", width-len(value))
+}
+
+// fitSource renders "[file.go:line]" in exactly width characters. When it would
+// overflow, the file name is truncated (keeping the line) so the column never
+// shifts and every row stays aligned.
+func fitSource(source string, width int) string {
+	value := "[" + source + "]"
+	if len(value) <= width {
+		return value + strings.Repeat(" ", width-len(value))
+	}
+	line := ""
+	if index := strings.LastIndexByte(source, ':'); index >= 0 {
+		line = source[index:]
+		source = source[:index]
+	}
+	allowed := width - 2 - len(line)
+	if allowed < 1 {
+		return value[:width]
+	}
+	if len(source) > allowed-1 {
+		source = source[:allowed-1] + "~"
+	}
+	value = "[" + source + line + "]"
 	return value + strings.Repeat(" ", width-len(value))
 }
 
