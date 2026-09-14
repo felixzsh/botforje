@@ -287,7 +287,7 @@ func runDaemon(args []string) int {
 	statuses := runner.Status()
 	logger.Info("daemon starting", "bots", len(statuses))
 	for _, status := range statuses {
-		logger.Info("bot configured", "scope", status.Scope, "bot", status.Bot)
+		logger.Debug("bot configured", "scope", status.Scope, "bot", status.Bot)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
