@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"math/rand"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/felixzsh/botforje/internal/config"
 	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/logging"
 	"github.com/felixzsh/botforje/internal/template"
 )
 
@@ -29,6 +31,7 @@ type Options struct {
 	Now            func() time.Time
 	Rand           *rand.Rand
 	DefaultTimeout time.Duration
+	Log            *slog.Logger
 }
 
 // Engine runs one graph for one bot. It is not safe for concurrent use; one
@@ -45,6 +48,7 @@ type Engine struct {
 	now            func() time.Time
 	rand           *rand.Rand
 	defaultTimeout time.Duration
+	log            *slog.Logger
 }
 
 // New builds an Engine and fills in its optional collaborators.
@@ -61,6 +65,10 @@ func New(opts Options) *Engine {
 		now:            opts.Now,
 		rand:           opts.Rand,
 		defaultTimeout: opts.DefaultTimeout,
+		log:            opts.Log,
+	}
+	if e.log == nil {
+		e.log = logging.Discard()
 	}
 	if e.llm == nil {
 		e.llm = domain.NullLLM{}
@@ -106,9 +114,12 @@ func (e *Engine) Handle(
 	switch {
 	case target == "":
 		if created {
+			e.log.Debug("entered root node", "node", session.Node)
 			if err := r.enter(); err != nil {
 				return nil, err
 			}
+		} else {
+			e.log.Debug("no transition", "node", session.Node)
 		}
 	default:
 		if err := r.move(target, !created); err != nil {
@@ -213,6 +224,7 @@ func (r *run) move(target string, runExit bool) error {
 			return err
 		}
 	}
+	r.engine.log.Debug("transition", "from", r.session.Node, "to", target, "exit", runExit)
 	r.session.Node = target
 	r.session.NodeContext = maps.Clone(r.engine.graph.Nodes[target].InitialContext)
 	if err := r.tctx.Reset(template.RootNode, r.session.NodeContext); err != nil {
