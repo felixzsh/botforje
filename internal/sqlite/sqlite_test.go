@@ -86,7 +86,7 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err := db.Sessions().Save(ctx, want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	got, err := db.Sessions().Get(ctx, want.Bot, want.Sender)
+	got, err := db.Sessions().Get(ctx, want.Scope, want.Bot, want.Sender)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestSessionResumeAcrossRestart(t *testing.T) {
 		t.Fatalf("second open: %v", err)
 	}
 	defer second.Close()
-	got, err := second.Sessions().Get(ctx, want.Bot, want.Sender)
+	got, err := second.Sessions().Get(ctx, want.Scope, want.Bot, want.Sender)
 	if err != nil {
 		t.Fatalf("Get after restart: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestSessionSaveUpdates(t *testing.T) {
 	if err := db.Sessions().Save(ctx, session); err != nil {
 		t.Fatalf("second Save: %v", err)
 	}
-	got, err := db.Sessions().Get(ctx, session.Bot, session.Sender)
+	got, err := db.Sessions().Get(ctx, session.Scope, session.Bot, session.Sender)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -149,17 +149,17 @@ func TestSessionSaveUpdates(t *testing.T) {
 func TestSessionNotFoundAndDelete(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.Sessions().Get(ctx, "b", "s"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Sessions().Get(ctx, "default", "b", "s"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("Get missing = %v, want ErrNotFound", err)
 	}
 	session := testSession()
 	if err := db.Sessions().Save(ctx, session); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if err := db.Sessions().Delete(ctx, session.Bot, session.Sender); err != nil {
+	if err := db.Sessions().Delete(ctx, session.Scope, session.Bot, session.Sender); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := db.Sessions().Get(ctx, session.Bot, session.Sender); !errors.Is(
+	if _, err := db.Sessions().Get(ctx, session.Scope, session.Bot, session.Sender); !errors.Is(
 		err, domain.ErrNotFound,
 	) {
 		t.Fatalf("Get after delete = %v, want ErrNotFound", err)
@@ -212,10 +212,14 @@ func TestConversationAndMessages(t *testing.T) {
 func TestAccountRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.Accounts().Get(ctx, "support-bot"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Accounts().Get(ctx, "support", "support-bot"); !errors.Is(
+		err, domain.ErrNotFound,
+	) {
 		t.Fatalf("Get missing = %v, want ErrNotFound", err)
 	}
-	account := &domain.Account{Bot: "support-bot", JID: "5215500000000@s.whatsapp.net"}
+	account := &domain.Account{
+		Scope: "support", Bot: "support-bot", JID: "5215500000000@s.whatsapp.net",
+	}
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
@@ -223,17 +227,19 @@ func TestAccountRoundTrip(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatalf("Put update: %v", err)
 	}
-	got, err := db.Accounts().Get(ctx, "support-bot")
+	got, err := db.Accounts().Get(ctx, "support", "support-bot")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if got.JID != "5215599999999@s.whatsapp.net" {
 		t.Fatalf("JID = %q", got.JID)
 	}
-	if err := db.Accounts().Delete(ctx, "support-bot"); err != nil {
+	if err := db.Accounts().Delete(ctx, "support", "support-bot"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := db.Accounts().Get(ctx, "support-bot"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Accounts().Get(ctx, "support", "support-bot"); !errors.Is(
+		err, domain.ErrNotFound,
+	) {
 		t.Fatalf("Get after delete = %v, want ErrNotFound", err)
 	}
 }

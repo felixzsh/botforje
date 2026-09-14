@@ -47,11 +47,13 @@ var migrations = []string{
 		created_at    TEXT NOT NULL,
 		updated_at    TEXT NOT NULL,
 		expires_at    TEXT NOT NULL,
-		PRIMARY KEY (bot, sender)
+		PRIMARY KEY (scope, bot, sender)
 	)`,
 	`CREATE TABLE accounts (
-		bot TEXT PRIMARY KEY,
-		jid TEXT NOT NULL
+		scope TEXT NOT NULL,
+		bot   TEXT NOT NULL,
+		jid   TEXT NOT NULL,
+		PRIMARY KEY (scope, bot)
 	)`,
 }
 

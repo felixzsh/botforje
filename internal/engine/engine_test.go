@@ -24,10 +24,10 @@ func newMemStore() *memStore {
 	return &memStore{sessions: map[string]*domain.Session{}}
 }
 
-func storeKey(bot, sender string) string { return bot + "\x00" + sender }
+func storeKey(scope, bot, sender string) string { return scope + "\x00" + bot + "\x00" + sender }
 
-func (s *memStore) Get(_ context.Context, bot, sender string) (*domain.Session, error) {
-	session, ok := s.sessions[storeKey(bot, sender)]
+func (s *memStore) Get(_ context.Context, scope, bot, sender string) (*domain.Session, error) {
+	session, ok := s.sessions[storeKey(scope, bot, sender)]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
@@ -35,12 +35,12 @@ func (s *memStore) Get(_ context.Context, bot, sender string) (*domain.Session, 
 }
 
 func (s *memStore) Save(_ context.Context, session *domain.Session) error {
-	s.sessions[storeKey(session.Bot, session.Sender)] = session
+	s.sessions[storeKey(session.Scope, session.Bot, session.Sender)] = session
 	return nil
 }
 
-func (s *memStore) Delete(_ context.Context, bot, sender string) error {
-	delete(s.sessions, storeKey(bot, sender))
+func (s *memStore) Delete(_ context.Context, scope, bot, sender string) error {
+	delete(s.sessions, storeKey(scope, bot, sender))
 	return nil
 }
 
@@ -115,7 +115,7 @@ func TestConversationScenario(t *testing.T) {
 		}
 	}
 
-	session, err := store.Get(context.Background(), "support-bot", sender)
+	session, err := store.Get(context.Background(), "support", "support-bot", sender)
 	if err != nil {
 		t.Fatalf("get session: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	if want := []string{"Main menu: 1 hours, 2 catalog, 0 exit"}; !slices.Equal(got, want) {
 		t.Fatalf("after expiry = %q, want %q", got, want)
 	}
-	session, err := store.Get(context.Background(), "support-bot", sender)
+	session, err := store.Get(context.Background(), "support", "support-bot", sender)
 	if err != nil {
 		t.Fatalf("get session: %v", err)
 	}

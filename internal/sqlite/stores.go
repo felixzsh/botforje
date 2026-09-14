@@ -17,16 +17,19 @@ type SessionStore struct{ db *sql.DB }
 const sessionColumns = `bot, sender, sender_lid, scope, node, memory,
 	graph_context, node_context, cooldowns, created_at, updated_at, expires_at`
 
-// Get loads the session for (bot, sender) or returns domain.ErrNotFound.
-func (s *SessionStore) Get(ctx context.Context, bot, sender string) (*domain.Session, error) {
-	query := "SELECT " + sessionColumns + " FROM sessions WHERE bot = ? AND sender = ?"
+// Get loads the session for (scope, bot, sender) or returns domain.ErrNotFound.
+func (s *SessionStore) Get(
+	ctx context.Context, scope, bot, sender string,
+) (*domain.Session, error) {
+	query := "SELECT " + sessionColumns +
+		" FROM sessions WHERE scope = ? AND bot = ? AND sender = ?"
 	var (
 		session                     domain.Session
 		memory, graphCtx, nodeCtx   string
 		cooldowns, created, updated string
 		expires                     string
 	)
-	err := s.db.QueryRowContext(ctx, query, bot, sender).Scan(
+	err := s.db.QueryRowContext(ctx, query, scope, bot, sender).Scan(
 		&session.Bot, &session.Sender, &session.SenderLID, &session.Scope,
 		&session.Node, &memory, &graphCtx, &nodeCtx, &cooldowns,
 		&created, &updated, &expires,
@@ -75,7 +78,7 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 	}
 	query := `INSERT INTO sessions (` + sessionColumns + `)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (bot, sender) DO UPDATE SET
+		ON CONFLICT (scope, bot, sender) DO UPDATE SET
 			sender_lid = excluded.sender_lid,
 			scope = excluded.scope,
 			node = excluded.node,
@@ -98,10 +101,11 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 	return nil
 }
 
-// Delete removes the session for (bot, sender); a missing row is not an error.
-func (s *SessionStore) Delete(ctx context.Context, bot, sender string) error {
+// Delete removes the session for (scope, bot, sender); a missing row is not an
+// error.
+func (s *SessionStore) Delete(ctx context.Context, scope, bot, sender string) error {
 	_, err := s.db.ExecContext(ctx,
-		"DELETE FROM sessions WHERE bot = ? AND sender = ?", bot, sender)
+		"DELETE FROM sessions WHERE scope = ? AND bot = ? AND sender = ?", scope, bot, sender)
 	if err != nil {
 		return fmt.Errorf("sqlite: delete session: %w", err)
 	}
@@ -193,12 +197,12 @@ func (s *MessageStore) List(
 // AccountStore persists paired channel accounts (ADR 0006).
 type AccountStore struct{ db *sql.DB }
 
-// Get loads the paired account for a bot or returns domain.ErrNotFound.
-func (s *AccountStore) Get(ctx context.Context, bot string) (*domain.Account, error) {
+// Get loads the paired account for (scope, bot) or returns domain.ErrNotFound.
+func (s *AccountStore) Get(ctx context.Context, scope, bot string) (*domain.Account, error) {
 	var account domain.Account
 	err := s.db.QueryRowContext(ctx,
-		"SELECT bot, jid FROM accounts WHERE bot = ?", bot).
-		Scan(&account.Bot, &account.JID)
+		"SELECT scope, bot, jid FROM accounts WHERE scope = ? AND bot = ?", scope, bot).
+		Scan(&account.Scope, &account.Bot, &account.JID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -211,18 +215,19 @@ func (s *AccountStore) Get(ctx context.Context, bot string) (*domain.Account, er
 // Put inserts or replaces the paired account.
 func (s *AccountStore) Put(ctx context.Context, account *domain.Account) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO accounts (bot, jid) VALUES (?, ?)
-		 ON CONFLICT (bot) DO UPDATE SET jid = excluded.jid`,
-		account.Bot, account.JID)
+		`INSERT INTO accounts (scope, bot, jid) VALUES (?, ?, ?)
+		 ON CONFLICT (scope, bot) DO UPDATE SET jid = excluded.jid`,
+		account.Scope, account.Bot, account.JID)
 	if err != nil {
 		return fmt.Errorf("sqlite: put account: %w", err)
 	}
 	return nil
 }
 
-// Delete removes the paired account for a bot.
-func (s *AccountStore) Delete(ctx context.Context, bot string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM accounts WHERE bot = ?", bot)
+// Delete removes the paired account for (scope, bot).
+func (s *AccountStore) Delete(ctx context.Context, scope, bot string) error {
+	_, err := s.db.ExecContext(ctx,
+		"DELETE FROM accounts WHERE scope = ? AND bot = ?", scope, bot)
 	if err != nil {
 		return fmt.Errorf("sqlite: delete account: %w", err)
 	}

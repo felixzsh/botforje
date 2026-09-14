@@ -129,7 +129,7 @@ func (e *Engine) Handle(
 func (e *Engine) load(
 	ctx context.Context, msg domain.IncomingMessage, now time.Time,
 ) (*domain.Session, bool, error) {
-	session, err := e.store.Get(ctx, e.bot, msg.Sender)
+	session, err := e.store.Get(ctx, e.scope, e.bot, msg.Sender)
 	if err == nil && !session.Expired(now) {
 		return session, false, nil
 	}

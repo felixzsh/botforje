@@ -6,11 +6,12 @@ import (
 )
 
 // SessionStore persists conversation state. The domain owns the interface; an
-// adapter implements it (ADR 0006).
+// adapter implements it (ADR 0006). Sessions are keyed by (scope, bot, sender)
+// so two scopes never share conversation state (ADR 0005).
 type SessionStore interface {
-	Get(ctx context.Context, bot, sender string) (*Session, error)
+	Get(ctx context.Context, scope, bot, sender string) (*Session, error)
 	Save(ctx context.Context, session *Session) error
-	Delete(ctx context.Context, bot, sender string) error
+	Delete(ctx context.Context, scope, bot, sender string) error
 }
 
 // Conversation is a thread between one bot and one sender.
@@ -39,17 +40,19 @@ type ConversationStore interface {
 	Touch(ctx context.Context, id int64, at time.Time) error
 }
 
-// Account is a bot's paired channel identity, the whatsmeow device JID.
+// Account is a bot's paired channel identity, the whatsmeow device JID. It is
+// keyed by (scope, bot) like every entity (ADR 0016).
 type Account struct {
-	Bot string
-	JID string
+	Scope string
+	Bot   string
+	JID   string
 }
 
 // AccountStore records paired channel accounts (ADR 0006).
 type AccountStore interface {
-	Get(ctx context.Context, bot string) (*Account, error)
+	Get(ctx context.Context, scope, bot string) (*Account, error)
 	Put(ctx context.Context, account *Account) error
-	Delete(ctx context.Context, bot string) error
+	Delete(ctx context.Context, scope, bot string) error
 }
 
 // MessageStore records message history.
