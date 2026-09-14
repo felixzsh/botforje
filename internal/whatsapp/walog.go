@@ -13,14 +13,16 @@ import (
 
 // waLog forwards whatsmeow's logger into the structured logger, so protocol
 // warnings and errors land in journalctl/Docker without ANSI colors. It builds
-// the record itself so the source is whatsmeow's call site, not this adapter.
+// the record itself so the source is whatsmeow's call site, not this adapter,
+// and drops anything below the dependency log level.
 type waLog struct {
 	logger *slog.Logger
 	module string
+	level  slog.Level
 }
 
-func newWaLog(logger *slog.Logger) walog.Logger {
-	return waLog{logger: logger, module: "whatsmeow"}
+func newWaLog(logger *slog.Logger, level slog.Level) walog.Logger {
+	return waLog{logger: logger, module: "whatsmeow", level: level}
 }
 
 func (l waLog) Debugf(msg string, args ...any) { l.emit(slog.LevelDebug, msg, args...) }
@@ -29,7 +31,7 @@ func (l waLog) Warnf(msg string, args ...any)  { l.emit(slog.LevelWarn, msg, arg
 func (l waLog) Errorf(msg string, args ...any) { l.emit(slog.LevelError, msg, args...) }
 
 func (l waLog) Sub(module string) walog.Logger {
-	return waLog{logger: l.logger, module: l.module + "/" + module}
+	return waLog{logger: l.logger, module: l.module + "/" + module, level: l.level}
 }
 
 func (l waLog) emit(level slog.Level, msg string, args ...any) {
@@ -39,6 +41,9 @@ func (l waLog) emit(level slog.Level, msg string, args ...any) {
 	// at debug instead of warning on every clean exit.
 	if level == slog.LevelWarn && strings.HasPrefix(message, "Error sending close to websocket") {
 		level = slog.LevelDebug
+	}
+	if level < l.level {
+		return
 	}
 	handler := l.logger.Handler()
 	ctx := context.Background()

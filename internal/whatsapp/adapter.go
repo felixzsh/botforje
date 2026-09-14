@@ -44,17 +44,20 @@ type Settings struct {
 
 // Options configures an Adapter. Bot, Scope, DB, and Accounts are required.
 type Options struct {
-	Scope      string
-	Bot        string
-	DB         *sql.DB
-	Accounts   domain.AccountStore
-	Settings   Settings
-	Log        *slog.Logger
-	Queue      int
-	MinBackoff time.Duration
-	MaxBackoff time.Duration
-	Now        func() time.Time
-	Rand       *rand.Rand
+	Scope    string
+	Bot      string
+	DB       *sql.DB
+	Accounts domain.AccountStore
+	Settings Settings
+	Log      *slog.Logger
+	// DepsLogLevel is the minimum level for logs forwarded from dependencies
+	// (whatsmeow). The zero value is info.
+	DepsLogLevel slog.Level
+	Queue        int
+	MinBackoff   time.Duration
+	MaxBackoff   time.Duration
+	Now          func() time.Time
+	Rand         *rand.Rand
 	// OnState is called when the channel lifecycle changes, for status.
 	OnState func(State)
 }
@@ -117,7 +120,7 @@ func New(opts Options) (*Adapter, error) {
 	if queue <= 0 {
 		queue = 64
 	}
-	waLogger := newWaLog(log)
+	waLogger := newWaLog(log, opts.DepsLogLevel)
 	a := &Adapter{
 		scope:     opts.Scope,
 		bot:       opts.Bot,

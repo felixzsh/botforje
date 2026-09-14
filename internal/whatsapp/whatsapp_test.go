@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"bytes"
+	"log/slog"
 	"math/rand"
 	"strings"
 	"testing"
@@ -112,6 +113,23 @@ func TestRenderQRFitsATerminal(t *testing.T) {
 	}
 	if widest > 100 {
 		t.Fatalf("the QR is %d columns wide; too wide to scan on a terminal", widest)
+	}
+}
+
+func TestWaLoGFiltersBelowMinimum(t *testing.T) {
+	var buffer bytes.Buffer
+	wa := newWaLog(logging.New("debug", &buffer), slog.LevelWarn)
+	wa.Debugf("dropped-debug")
+	wa.Infof("dropped-info")
+	wa.Warnf("kept-warn")
+	wa.Errorf("kept-error")
+
+	out := buffer.String()
+	if strings.Contains(out, "dropped") {
+		t.Fatalf("below minimum leaked: %q", out)
+	}
+	if !strings.Contains(out, "kept-warn") || !strings.Contains(out, "kept-error") {
+		t.Fatalf("at or above minimum dropped: %q", out)
 	}
 }
 
