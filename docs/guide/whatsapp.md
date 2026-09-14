@@ -12,7 +12,10 @@ need a consumer of the adapter.
    `./bin/botforje auth support-bot`
    Add `--scope name` when the bot name repeats across scopes. The QR is
    rendered half-block, so it stays narrow enough for a normal terminal; if
-   your font is very large, zoom out or widen the window first.
+   your font is very large, zoom out or widen the window first. The code
+   rotates every ~20 seconds and the screen clears between codes, so the
+   visible one is always current. After you scan, `auth` reconnects once to
+   confirm the companion is online before it exits.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
 5. `auth` prints the paired JID and exits.
 

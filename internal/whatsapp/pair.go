@@ -24,7 +24,8 @@ type PairOptions struct {
 	DB       *sql.DB
 	Accounts domain.AccountStore
 	Logger   walog.Logger
-	// RenderQR prints one pairing code; defaults to an ASCII QR on stdout.
+	// RenderQR draws one pairing code; the default clears the terminal and
+	// writes a compact QR on stdout.
 	RenderQR func(code string)
 	Timeout  time.Duration
 }
@@ -46,7 +47,7 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	}
 	render := opts.RenderQR
 	if render == nil {
-		render = func(code string) { renderQR(code, os.Stdout) }
+		render = func(code string) { renderPairingQR(code, os.Stdout) }
 	}
 	timeout := opts.Timeout
 	if timeout <= 0 {
@@ -78,7 +79,12 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 			return "", fmt.Errorf("whatsapp: pairing timed out after %s", timeout)
 		case item, ok := <-qrChannel:
 			if !ok {
-				return saveAccount(ctx, opts, client)
+				jid, err := saveAccount(ctx, opts, client)
+				if err != nil {
+					return "", err
+				}
+				confirmLink(client, logger)
+				return jid, nil
 			}
 			switch item.Event {
 			case whatsmeow.QRChannelEventCode:
@@ -95,6 +101,43 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 // terminal, which makes the code impossible to scan.
 func renderQR(code string, w io.Writer) {
 	qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
+}
+
+// renderPairingQR clears the previous code so only the current one is visible:
+// stale codes expire and make the phone report a failed link, and the client
+// rotates them every ~20 seconds.
+func renderPairingQR(code string, w io.Writer) {
+	fmt.Fprint(w, "\033[2J\033[H")
+	fmt.Fprintln(w, "Scan with WhatsApp > Linked devices. The code refreshes on its own.")
+	renderQR(code, w)
+}
+
+// confirmLink waits for the server to drop the pairing socket, reconnects, and
+// waits until the companion is online. The server accepts the link at
+// pair-success, but the phone reports failure if the companion never comes
+// online; exiting right after pairing caused exactly that.
+func confirmLink(client *whatsmeow.Client, logger walog.Logger) {
+	if !waitUntilDisconnected(client, 5*time.Second) {
+		logger.Debugf("pairing socket still open; confirming anyway")
+	}
+	if err := client.Connect(); err != nil && !errors.Is(err, whatsmeow.ErrAlreadyConnected) {
+		logger.Errorf("reconnect after pairing failed: %v", err)
+		return
+	}
+	if !client.WaitForConnection(20 * time.Second) {
+		logger.Errorf("paired, but the confirmation connection did not come up")
+	}
+}
+
+func waitUntilDisconnected(client *whatsmeow.Client, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !client.IsConnected() {
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
 }
 
 func saveAccount(ctx context.Context, opts PairOptions, client *whatsmeow.Client) (string, error) {
