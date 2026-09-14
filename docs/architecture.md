@@ -143,6 +143,13 @@ configured maximum.
   logged out or banned stops and reports instead of retrying (ADR 0011).
 - A fleet supervisor starts, stops, and reports bot actors.
 
+## Logging
+
+One structured logger (`log/slog`) writes plain, column-aligned lines with no
+ANSI escapes, so `journalctl` and `docker logs` show them verbatim:
+`[time] LEVEL [file.go:line] message key=value`. `log_level` sets the level;
+message bodies are debug-only, and secrets stay masked by type (ADR 0014).
+
 ## Config layout
 
 A config file is global settings plus `scopes` (ADR 0016). Each scope holds

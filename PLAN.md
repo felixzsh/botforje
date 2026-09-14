@@ -181,6 +181,8 @@ Deliverables:
   optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
 - [x] Daemon command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
+- [x] Logging: one structured logger (`log/slog`) with plain, column-aligned
+  lines and no ANSI escapes, level from `log_level`, and whatsmeow forwarded.
 - [x] Tests: two bots with independent sessions and queues; filter behavior;
   shutdown drains queues.
 
