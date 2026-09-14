@@ -13,58 +13,58 @@ scopes:
         steps:
           - message:
               body: |-
-                Hola {{graph.customer_name}}, soy el bot de pruebas.
-                ¿Qué necesitas?
-                1. Precios
-                2. Horarios
-                3. Catálogo
-                4. Ubicación
-                0. Salir
+                Hi {{graph.customer_name}}, I'm the test bot.
+                What do you need?
+                1. Pricing
+                2. Hours
+                3. Catalog
+                4. Location
+                0. Exit
       prices:
         steps:
           - message:
               body: |-
-                Planes:
-                - Básico: $9/mes
-                - Pro: $29/mes
-                - Empresa: a medida
+                Plans:
+                - Basic: $9/month
+                - Pro: $29/month
+                - Enterprise: custom
       hours:
         steps:
           - message:
-              body: "Atendemos de lunes a viernes, de 9:00 a 18:00."
+              body: "We are open Monday to Friday, 9:00-18:00."
       catalog:
         steps:
           - message:
-              body: "Catálogo: https://example.com/catalog.pdf"
+              body: "Catalog: https://example.com/catalog.pdf"
       office:
         steps:
           - message:
-              body: "Estamos aquí:"
+              body: "We are here:"
           - location:
               latitude: 19.4326
               longitude: -99.1332
-              name: "Oficina BotForje (dev)"
-              address: "Av. Reforma 123, CDMX"
+              name: "BotForje Office (dev)"
+              address: "123 Example St, CDMX"
               url: "https://example.com/office"
-              description: "Segundo piso."
+              description: "Second floor."
       agent:
         guards:
           cooldown:
             duration: 120
             on_blocked:
               - message:
-                  body: "Ya pediste un humano hace poco; dame un momento."
+                  body: "You already asked for a human; give me a moment."
         steps:
           - message:
-              body: "Te paso con un humano. Un momento, por favor."
+              body: "Connecting you to a human. One moment please."
       farewell:
         steps:
           - message:
-              body: "¡Gracias por escribir, {{graph.customer_name}}! Hasta pronto."
+              body: "Thanks for writing, {{graph.customer_name}}! See you soon."
       invalid:
         steps:
           - message:
-              body: 'No entendí "{{message.body}}". Escribe un número del 1 al 4, o 0 para salir.'
+              body: 'I did not understand "{{message.body}}". Type 1-4, or 0 to exit.'
     graphs:
       support:
         root: "menu"
@@ -72,81 +72,81 @@ scopes:
         timeout: 300
         routing: "off"
         initial_context:
-          customer_name: "Invitado"
+          customer_name: "Guest"
         nodes:
           menu:
-            goal: "mostrar el menú"
+            goal: "show the menu"
             on_enter: ["greet"]
             edges:
-              - intent: "quiere precios"
-                triggers: ["1", "precios", "planes", "cuánto cuesta", "cuanto cuesta"]
+              - intent: "wants pricing"
+                triggers: ["1", "pricing", "price", "plans", "how much"]
                 goto: "prices"
-              - intent: "quiere horarios"
-                triggers: ["2", "horarios", "horario", "abierto", "cuándo abren"]
+              - intent: "wants opening hours"
+                triggers: ["2", "hours", "opening", "schedule", "when are you open"]
                 goto: "hours"
-              - intent: "quiere el catálogo"
-                triggers: ["3", "catálogo", "catalogo", "productos"]
+              - intent: "wants the catalog"
+                triggers: ["3", "catalog", "catalogue", "products"]
                 goto: "catalog"
-              - intent: "quiere la ubicación"
-                triggers: ["4", "ubicación", "ubicacion", "oficina", "dirección"]
+              - intent: "wants the location"
+                triggers: ["4", "location", "address", "office", "where are you"]
                 goto: "office"
-              - intent: "quiere hablar con un humano"
-                triggers: ["humano", "agente", "persona", "soporte", "ayuda"]
+              - intent: "wants a human"
+                triggers: ["human", "agent", "person", "support", "help"]
                 goto: "agent"
-              - intent: "quiere salir"
-                triggers: ["0", "salir", "adiós", "adios", "bye", "gracias"]
+              - intent: "wants to leave"
+                triggers: ["0", "exit", "bye", "goodbye", "thanks"]
                 goto: "farewell"
               - goto: "invalid"
           prices:
-            goal: "responder precios"
+            goal: "answer pricing questions"
             on_enter: ["prices"]
             edges:
-              - intent: "quiere contratar"
-                triggers: ["contratar", "comprar", "suscribir", "quiero el pro"]
+              - intent: "wants to buy"
+                triggers: ["buy", "subscribe", "sign up", "i want pro"]
                 goto: "agent"
-              - intent: "quiere el menú"
-                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+              - intent: "wants the menu"
+                triggers: ["menu", "back", "return"]
                 goto: "menu"
               - goto: "invalid"
           hours:
-            goal: "responder horarios"
+            goal: "answer opening hours"
             on_enter: ["hours"]
             edges:
-              - intent: "quiere el menú"
-                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+              - intent: "wants the menu"
+                triggers: ["menu", "back", "return"]
                 goto: "menu"
               - goto: "invalid"
           catalog:
-            goal: "enviar el catálogo"
+            goal: "send the catalog"
             on_enter: ["catalog"]
             edges:
-              - intent: "quiere el menú"
-                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+              - intent: "wants the menu"
+                triggers: ["menu", "back", "return"]
                 goto: "menu"
               - goto: "invalid"
           office:
-            goal: "compartir la ubicación"
+            goal: "share the location"
             on_enter: ["office"]
             edges:
-              - intent: "quiere el menú"
-                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+              - intent: "wants the menu"
+                triggers: ["menu", "back", "return"]
                 goto: "menu"
               - goto: "invalid"
           agent:
-            goal: "pasar con un humano"
+            goal: "hand off to a human"
             on_enter: ["agent"]
             edges:
-              - intent: "quiere el menú"
-                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+              - intent: "wants the menu"
+                triggers: ["menu", "back", "return"]
                 goto: "menu"
               - goto: "invalid"
           invalid:
-            goal: "recuperarse de una entrada inválida"
+            goal: "recover from invalid input"
             on_enter: ["invalid"]
             edges:
               - goto: "menu"
           farewell:
-            goal: "cerrar la conversación"
+            goal: "close the conversation"
             on_enter: ["farewell"]
             edges: []
     bots:
