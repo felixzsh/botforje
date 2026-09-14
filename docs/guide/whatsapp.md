@@ -16,11 +16,11 @@ end to end.
    visible one is always current. After you scan, `auth` reconnects once to
    confirm the companion is online before it exits.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
-5. `auth` prints the paired JID and exits.
+5. `auth` prints the paired phone number and exits.
 
 ## Check status
 
-`./bin/botforje status` lists every configured bot as `paired as <jid>` or
+`./bin/botforje status` lists every configured bot as `paired as <number>` or
 `not paired`.
 
 ## Run the bots
@@ -35,7 +35,7 @@ Deterministic flow (a bot with no `llm`):
 
 - [ ] `auth` prints a QR, pairing succeeds, and the device store is written
   under `data_dir`.
-- [ ] `status` reports the bot as `paired as <jid>`.
+- [ ] `status` reports the bot as `paired as <number>`.
 - [ ] `daemon` starts and a real inbound message is answered with the graph's
   messages.
 - [ ] Digits and triggers route as configured; unmatched input takes the
