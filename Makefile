@@ -5,7 +5,7 @@ ARGS ?=
 LINE_MAX := 100
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test vet fmt fmt-check lines-check check schema validate tidy clean
+.PHONY: help build run test test-race vet fmt fmt-check lines-check check schema validate tidy clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -20,6 +20,9 @@ run: ## Run the CLI: make run ARGS="validate --config config.example.yaml"
 test: ## Run all tests
 	$(GO) test ./...
 
+test-race: ## Run all tests with the race detector
+	$(GO) test -race ./...
+
 vet: ## Run go vet
 	$(GO) vet ./...
 
@@ -32,7 +35,7 @@ fmt-check: ## Fail if any file is not gofmt'd
 
 lines-check: ## Fail if a tracked file has a line longer than LINE_MAX
 	@bad=$$(git ls-files -z | xargs -0 awk -v max=$(LINE_MAX) \
-		'FILENAME != "config.schema.json" \
+		'FILENAME != "config.schema.json" && FILENAME != "go.sum" \
 		&& length > max {printf "%s:%d (%d)\n", FILENAME, FNR, length}'); \
 	if [ -n "$$bad" ]; then \
 		echo "lines over $(LINE_MAX) characters:"; echo "$$bad"; exit 1; \
