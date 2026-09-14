@@ -20,6 +20,9 @@ conversations, and messages.
 A messaging provider and an LLM provider are different things. A bot always
 needs a channel; an LLM is optional and only used when configured.
 
+The YAML-free domain types and ports live in `internal/domain`, the graph
+engine in `internal/engine`, and the SQLite adapter in `internal/sqlite`.
+
 ## Domain model
 
 - Bot — identity (account) plus settings, the reference to one graph, and an
