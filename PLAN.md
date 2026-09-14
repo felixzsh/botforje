@@ -85,10 +85,10 @@ Goal: `{{...}}` values resolve correctly in messages and requests.
 
 Deliverables:
 
-- [ ] Syntax and resolver for `{{path.to.value}}`.
-- [ ] Contexts: graph, node, sender, message, bot, and request results.
-- [ ] Read/write versus read-only context rules; node context resets on re-entry.
-- [ ] Tests: resolution, missing paths, escaping, and request result capture.
+- [x] Syntax and resolver for `{{path.to.value}}`.
+- [x] Contexts: graph, node, sender, message, bot, and request results.
+- [x] Read/write versus read-only context rules; node context resets on re-entry.
+- [x] Tests: resolution, missing paths, escaping, and request result capture.
 
 Gate: message steps render correctly from a simulated context.
 

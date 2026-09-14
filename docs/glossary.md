@@ -54,3 +54,7 @@
 - Outbox — per-bot FIFO queue that paces outbound messages.
 - Secret reference — a `${ENV_VAR}` placeholder in config, resolved from the
   process environment at load and masked in logs (ADR 0014).
+- Template — a string with `{{path.to.value}}` references resolved against the
+  runtime context; a missing path is an error (ADR 0018).
+- Runtime context — the values a template reads: graph and node variables,
+  sender, message, bot, tool inputs, and request results (ADR 0018).

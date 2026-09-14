@@ -95,6 +95,12 @@ Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
 and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 (Phase 4).
 
+`graph` and `node` are read-write; `sender`, `message`, `bot`, and `input` are
+read-only, and `node` resets on every node entry. A missing path, an unknown
+root, and a whole map or slice are errors, never empty or literal text; a
+literal `{{` is written `\{{` (ADR 0018). The context and the resolver both
+live in `internal/template`.
+
 The engine resolves only runtime conversation values here. Secrets are not a
 template context: config strings interpolate `${ENV_VAR}` once at load
 (ADR 0014).
