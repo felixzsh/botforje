@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strings"
 	"time"
 
 	walog "go.mau.fi/whatsmeow/util/log"
@@ -32,6 +33,13 @@ func (l waLog) Sub(module string) walog.Logger {
 }
 
 func (l waLog) emit(level slog.Level, msg string, args ...any) {
+	message := fmt.Sprintf(msg, args...)
+	// On shutdown whatsmeow warns when the close frame races a peer that has
+	// already closed the socket (framesocket.go); it is benign, so keep it but
+	// at debug instead of warning on every clean exit.
+	if level == slog.LevelWarn && strings.HasPrefix(message, "Error sending close to websocket") {
+		level = slog.LevelDebug
+	}
 	handler := l.logger.Handler()
 	ctx := context.Background()
 	if !handler.Enabled(ctx, level) {
@@ -39,7 +47,7 @@ func (l waLog) emit(level slog.Level, msg string, args ...any) {
 	}
 	// Skip emit and the Debugf/Infof/Warnf/Errorf wrapper.
 	pc, _, _, _ := runtime.Caller(2)
-	record := slog.NewRecord(time.Now(), level, fmt.Sprintf(msg, args...), pc)
+	record := slog.NewRecord(time.Now(), level, message, pc)
 	record.AddAttrs(slog.String("module", l.module))
 	_ = handler.Handle(ctx, record)
 }
