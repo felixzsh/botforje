@@ -189,7 +189,37 @@ Deliverables:
 Gate: two or more bot accounts run concurrently; messages from each are
 answered with the configured pacing.
 
-### Phase 7 — LLM providers, tools, and hybrid behavior
+### Phase 7 — CLI and REST API
+
+Goal: operate a fleet without hand-editing config for daily operations.
+
+Deliverables:
+
+- [ ] CLI: `validate`, `auth`, `daemon`, `status`, `messages`, `reload`.
+- [ ] `init`: create `config_dir` with a minimal `config.yml` and a
+  `config.schema.json` generated at runtime; do not overwrite without
+  `--force`.
+- [ ] Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
+  `/etc/botforje/config.yml` (first match wins).
+- [ ] `status` reports uptime, per-bot connection state, outbox depth, and
+  active sessions; a `--json` mode serves scripts.
+- [ ] Message history: persist each conversation thread and its inbound and
+  outbound messages as they flow through the actor, and list or tail one
+  thread with `messages <bot> <sender> [--limit n] [--follow]`. Only live
+  traffic is recorded; the history-sync backlog stays out of scope.
+- [ ] Signals: SIGINT/SIGTERM graceful shutdown; SIGHUP reloads config.
+- [ ] REST API: status, bots, sessions, conversations, messages, and config.
+- [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
+  the future UI.
+- [ ] Config reload (ADR 0009): failed validation keeps the previous config;
+  safe changes apply immediately; incompatible changes wait in a pending
+  queue for maintenance mode.
+- [ ] Tests: API handlers, auth, config discovery, and both reload classes.
+
+Gate: a fresh instance can be validated, authenticated, started, inspected,
+and reloaded through CLI and API only.
+
+### Phase 8 — LLM providers, tools, and hybrid behavior
 
 Goal: the LLM-first design becomes usable without making LLMs mandatory.
 
@@ -221,36 +251,6 @@ Deliverables:
 Gate: the same graph runs with no LLM (deterministic) and with an LLM
 (routing, realization, tool use, or a combination), with logs that explain
 each decision.
-
-### Phase 8 — CLI and REST API
-
-Goal: operate a fleet without hand-editing config for daily operations.
-
-Deliverables:
-
-- [ ] CLI: `validate`, `auth`, `daemon`, `status`, `messages`, `reload`.
-- [ ] `init`: create `config_dir` with a minimal `config.yml` and a
-  `config.schema.json` generated at runtime; do not overwrite without
-  `--force`.
-- [ ] Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
-  `/etc/botforje/config.yml` (first match wins).
-- [ ] `status` reports uptime, per-bot connection state, outbox depth, and
-  active sessions; a `--json` mode serves scripts.
-- [ ] Message history: persist each conversation thread and its inbound and
-  outbound messages as they flow through the actor, and list or tail one
-  thread with `messages <bot> <sender> [--limit n] [--follow]`. Only live
-  traffic is recorded; the history-sync backlog stays out of scope.
-- [ ] Signals: SIGINT/SIGTERM graceful shutdown; SIGHUP reloads config.
-- [ ] REST API: status, bots, sessions, conversations, messages, and config.
-- [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
-  the future UI.
-- [ ] Config reload (ADR 0009): failed validation keeps the previous config;
-  safe changes apply immediately; incompatible changes wait in a pending
-  queue for maintenance mode.
-- [ ] Tests: API handlers, auth, config discovery, and both reload classes.
-
-Gate: a fresh instance can be validated, authenticated, started, inspected,
-and reloaded through CLI and API only.
 
 ### Phase 9 — MVP hardening and release
 
@@ -294,18 +294,18 @@ knowledge.
 - Schema generator choice and approval (Phase 1; candidate:
   `invopop/jsonschema`).
 - Structured policy shape and conflict precedence (Phase 4; free string now).
-- Tool result template syntax (close in Phase 4/7).
+- Tool result template syntax (close in Phase 4/8).
 - Deterministic polling step shape for async APIs: interval, timeout,
-  success condition (Phase 4/7).
+  success condition (Phase 4/8).
 - Context variable typing and empty-versus-default semantics (Phase 4).
-- Confirmation guard for tools with side effects (Phase 7).
-- LLM bounds defaults: max tools per message and timeout (Phase 7).
-- Which LLM providers ship first (close in Phase 7).
+- Confirmation guard for tools with side effects (Phase 8).
+- LLM bounds defaults: max tools per message and timeout (Phase 8).
+- Which LLM providers ship first (close in Phase 8).
 - Whether the CLI acts as a client of the REST API for daemon operations
-  (Phase 8).
-- API shape and auth details (close in Phase 8).
+  (Phase 7).
+- API shape and auth details (close in Phase 7).
 - `init` behavior: non-interactive minimum (recommended) or prompting for
-  provider and model (Phase 8).
+  provider and model (Phase 7).
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test

@@ -32,6 +32,6 @@ and short triggers are exact matches, which keeps menu options predictable.
   typos within about a fifth of the text still match.
 - The threshold and the discrete scores live in one place and are pinned by
   tests.
-- No stemmer, synonyms, or embeddings: the LLM path (Phase 7) covers what
+- No stemmer, synonyms, or embeddings: the LLM path (Phase 8) covers what
   matching misses.
 - Ties prefer recent nodes, so "back" works without duplicating edges.

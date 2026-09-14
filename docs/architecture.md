@@ -116,7 +116,7 @@ template context: config strings interpolate `${ENV_VAR}` once at load
 APIs that answer asynchronously (202 plus a status endpoint) are polled
 within bounds: the LLM calls the operation, then checks its status up to its
 tool budget; longer waits continue on later messages. A deterministic polling
-step (interval, timeout, success condition) is an open decision for Phase 4/7.
+step (interval, timeout, success condition) is an open decision for Phase 4/8.
 
 ## Sessions
 

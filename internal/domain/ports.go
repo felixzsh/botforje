@@ -17,7 +17,7 @@ type StateReporter interface {
 }
 
 // LLMProvider classifies unmatched input and realizes replies (ADR 0003).
-// Phase 4 defines the port with a null implementation; Phase 7 adds real
+// Phase 4 defines the port with a null implementation; Phase 8 adds real
 // providers and may refine the request shapes.
 type LLMProvider interface {
 	Classify(ctx context.Context, req ClassifyRequest) (ClassifyResult, error)
