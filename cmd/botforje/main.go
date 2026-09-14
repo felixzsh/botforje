@@ -138,6 +138,12 @@ func printJSON(errs []config.ValidationError) {
 }
 
 func discoverConfig() (string, error) {
+	if path := os.Getenv("BOTFORJE_CONFIG"); path != "" {
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("BOTFORJE_CONFIG=%s: %w", path, err)
+		}
+		return path, nil
+	}
 	var candidates []string
 	if home, err := os.UserHomeDir(); err == nil {
 		candidates = append(candidates, filepath.Join(home, ".config", "botforje", "config.yml"))
@@ -256,39 +262,11 @@ func loadConfig(path string) (*config.Config, int) {
 }
 
 func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
-	dir, err := resolveDataDir(cfg)
+	dir, err := cfg.DataDirPath()
 	if err != nil {
 		return nil, err
 	}
 	return sqlite.Open(filepath.Join(dir, "botforje.db"))
-}
-
-func resolveDataDir(cfg *config.Config) (string, error) {
-	if cfg.DataDir != "" {
-		return expandHome(cfg.DataDir)
-	}
-	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
-		return filepath.Join(xdg, "botforje"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".local", "share", "botforje"), nil
-}
-
-func expandHome(path string) (string, error) {
-	if path != "~" && !strings.HasPrefix(path, "~/") {
-		return path, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	if path == "~" {
-		return home, nil
-	}
-	return filepath.Join(home, path[2:]), nil
 }
 
 func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {
