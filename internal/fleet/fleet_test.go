@@ -1,14 +1,36 @@
 package fleet
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botforje/internal/config"
 	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/logging"
 )
+
+// safeBuffer is an io.Writer the fleet goroutine and the test share.
+type safeBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *safeBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *safeBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
 
 var t0 = time.Date(2026, 9, 14, 10, 0, 0, 0, time.UTC)
 
@@ -110,7 +132,7 @@ func (s *memStore) Delete(_ context.Context, scope, bot, sender string) error {
 	return nil
 }
 
-func buildFleet(t *testing.T, blocking string) (*Fleet, map[string]*fakeChannel) {
+func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[string]*fakeChannel) {
 	t.Helper()
 	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
 	if err != nil {
@@ -124,6 +146,7 @@ func buildFleet(t *testing.T, blocking string) (*Fleet, map[string]*fakeChannel)
 		Store:          newStore(),
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
+		Log:            log,
 		NewChannel: func(spec BotSpec) (domain.MessageChannel, error) {
 			channel := newFakeChannel()
 			if spec.Name == blocking {
@@ -170,7 +193,7 @@ func receive(t *testing.T, messages <-chan domain.OutgoingMessage) domain.Outgoi
 }
 
 func TestTwoBotsAreIndependent(t *testing.T) {
-	runner, channels := buildFleet(t, "")
+	runner, channels := buildFleet(t, "", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go runner.Run(ctx)
@@ -188,7 +211,7 @@ func TestTwoBotsAreIndependent(t *testing.T) {
 }
 
 func TestFilterDropsIgnoredSender(t *testing.T) {
-	runner, channels := buildFleet(t, "")
+	runner, channels := buildFleet(t, "", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go runner.Run(ctx)
@@ -211,8 +234,25 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	}
 }
 
+func TestLogsIncomingBodyAtDebug(t *testing.T) {
+	var buffer safeBuffer
+	runner, channels := buildFleet(t, "", logging.New("debug", &buffer))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+
+	channels["alpha"].incoming <- domain.IncomingMessage{
+		Bot: "alpha", Sender: "s", Body: "hello there",
+	}
+	receive(t, channels["alpha"].sent)
+	if !strings.Contains(buffer.String(), `body="hello there"`) {
+		t.Fatalf("log did not include the incoming body: %q", buffer.String())
+	}
+}
+
 func TestShutdownDrainsBeforeDisconnect(t *testing.T) {
-	runner, channels := buildFleet(t, "alpha")
+	runner, channels := buildFleet(t, "alpha", nil)
 	alpha := channels["alpha"]
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

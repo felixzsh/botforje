@@ -205,6 +205,7 @@ func (b *Bot) run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
+			b.log.Debug("message body", "sender", msg.Sender, "id", msg.ID, "body", msg.Body)
 			if !b.filter.Allow(msg) {
 				b.log.Debug("message filtered", "sender", msg.Sender)
 				continue
