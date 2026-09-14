@@ -197,6 +197,11 @@ Deliverables:
 
 - [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
   `daemon run|status|stop|restart|reload`, `message list|tail`.
+- [x] CLI help: `usage`, description, commands, options, and examples for every
+  group and subcommand; `--help` exits 0 and usage errors exit 2.
+- [ ] CLI `--version` and a decision on global versus per-subcommand flags.
+- [ ] `--json` for `bot list` and `daemon status`.
+- [ ] Optional: `completion` for bash, zsh, and fish.
 - [ ] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`.

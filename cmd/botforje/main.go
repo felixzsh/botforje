@@ -25,29 +25,30 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		print_help()
+	args := os.Args[1:]
+	if len(args) == 0 {
+		printHelp(os.Stderr)
 		os.Exit(2)
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "config":
-		os.Exit(runConfig(os.Args[2:]))
+		os.Exit(runConfig(args[1:]))
 	case "bot":
-		os.Exit(runBot(os.Args[2:]))
+		os.Exit(runBot(args[1:]))
 	case "daemon":
-		os.Exit(runDaemonGroup(os.Args[2:]))
+		os.Exit(runDaemonGroup(args[1:]))
 	case "help", "-h", "--help":
-		print_help()
+		printHelp(os.Stdout)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", os.Args[1])
-		print_help()
+		fmt.Fprintf(os.Stderr, "unknown command %q\n\n", args[0])
+		printHelp(os.Stderr)
 		os.Exit(2)
 	}
 }
 
 func runConfig(args []string) int {
 	if len(args) == 0 {
-		printConfigHelp()
+		printHelp(os.Stderr, "config")
 		return 2
 	}
 	switch args[0] {
@@ -55,25 +56,19 @@ func runConfig(args []string) int {
 		return runValidate(args[1:])
 	case "schema":
 		return runSchema(args[1:])
+	case "help", "-h", "--help":
+		printHelp(os.Stdout, "config")
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown config subcommand %q\n\n", args[0])
-		printConfigHelp()
+		printHelp(os.Stderr, "config")
 		return 2
 	}
 }
 
-func printConfigHelp() {
-	fmt.Fprint(os.Stderr, `botforje config <subcommand>
-
-Subcommands:
-  validate   validate a config file
-  schema     print the generated config JSON Schema
-`)
-}
-
 func runBot(args []string) int {
 	if len(args) == 0 {
-		printBotHelp()
+		printHelp(os.Stderr, "bot")
 		return 2
 	}
 	switch args[0] {
@@ -83,70 +78,41 @@ func runBot(args []string) int {
 		return runPair(args[1:])
 	case "unpair":
 		return runUnpair(args[1:])
+	case "help", "-h", "--help":
+		printHelp(os.Stdout, "bot")
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown bot subcommand %q\n\n", args[0])
-		printBotHelp()
+		printHelp(os.Stderr, "bot")
 		return 2
 	}
 }
 
-func printBotHelp() {
-	fmt.Fprint(os.Stderr, `botforje bot <subcommand>
-
-Subcommands:
-  list       list configured bots and their pairing
-  pair       scan a QR code to pair a bot
-  unpair     remove a bot's local pairing
-`)
-}
-
 func runDaemonGroup(args []string) int {
 	if len(args) == 0 {
-		printDaemonHelp()
+		printHelp(os.Stderr, "daemon")
 		return 2
 	}
 	switch args[0] {
 	case "run":
 		return runDaemon(args[1:])
+	case "help", "-h", "--help":
+		printHelp(os.Stdout, "daemon")
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown daemon subcommand %q\n\n", args[0])
-		printDaemonHelp()
+		printHelp(os.Stderr, "daemon")
 		return 2
 	}
-}
-
-func printDaemonHelp() {
-	fmt.Fprint(os.Stderr, `botforje daemon <subcommand>
-
-Subcommands:
-  run        run every paired bot until interrupted
-`)
-}
-
-func print_help() {
-	fmt.Fprint(os.Stderr, `botforje <command>
-
-Commands:
-  config     manage configuration
-             validate | schema
-  bot        operate on bots
-             list | pair | unpair
-  daemon     run and manage the daemon
-             run
-
-Each command explains its own options in its help.
-`)
 }
 
 func runValidate(args []string) int {
-	fs := flag.NewFlagSet("config validate", flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
-	asJSON := fs.Bool("json", false, "machine-readable output")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	cmd := newValidateCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
 	}
 
-	path := *configPath
+	path := *cmd.config
 	if path == "" {
 		found, err := discoverConfig()
 		if err != nil {
@@ -158,7 +124,7 @@ func runValidate(args []string) int {
 
 	cfg, err := (config.Loader{}).Load(path)
 	if err != nil {
-		if *asJSON {
+		if *cmd.json {
 			printJSON([]config.ValidationError{{File: path, Reason: err.Error()}})
 		} else {
 			fmt.Fprintln(os.Stderr, err)
@@ -167,7 +133,7 @@ func runValidate(args []string) int {
 	}
 
 	if errs := config.Validate(cfg); len(errs) > 0 {
-		if *asJSON {
+		if *cmd.json {
 			printJSON(errs)
 		} else {
 			for _, e := range errs {
@@ -178,7 +144,7 @@ func runValidate(args []string) int {
 		return 1
 	}
 
-	if *asJSON {
+	if *cmd.json {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"valid": true, "config": path})
 	} else {
 		fmt.Printf("OK: %s\n", path)
@@ -187,25 +153,24 @@ func runValidate(args []string) int {
 }
 
 func runSchema(args []string) int {
-	fs := flag.NewFlagSet("config schema", flag.ContinueOnError)
-	out := fs.String("o", "", "output file (default: stdout)")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	cmd := newSchemaCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
 	}
 	data, err := config.JSONSchema()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if *out == "" {
+	if *cmd.out == "" {
 		_, _ = os.Stdout.Write(data)
 		return 0
 	}
-	if err := os.WriteFile(*out, data, 0o644); err != nil {
+	if err := os.WriteFile(*cmd.out, data, 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("wrote %s\n", *out)
+	fmt.Printf("wrote %s\n", *cmd.out)
 	return 0
 }
 
@@ -243,33 +208,119 @@ func discoverConfig() (string, error) {
 		strings.Join(candidates, ", "))
 }
 
-const (
-	pairUsage   = "usage: botforje bot pair [--force] [--scope name] [--config path] <bot>"
-	unpairUsage = "usage: botforje bot unpair [--scope name] [--config path] <bot>"
-)
+// configFlag registers the common --config flag shared by every subcommand.
+func configFlag(fs *flag.FlagSet) *string {
+	return fs.String("config", "", "`FILE` path to the config file (default: XDG discovery)")
+}
+
+// The constructors below keep each flag definition in one place: the run
+// functions parse them, and the help tree renders them.
+
+type validateCmd struct {
+	fs     *flag.FlagSet
+	config *string
+	json   *bool
+}
+
+func newValidateCmd() *validateCmd {
+	fs := flag.NewFlagSet("config validate", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &validateCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		json:   fs.Bool("json", false, "machine-readable output"),
+	}
+}
+
+type schemaCmd struct {
+	fs  *flag.FlagSet
+	out *string
+}
+
+func newSchemaCmd() *schemaCmd {
+	fs := flag.NewFlagSet("config schema", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &schemaCmd{
+		fs:  fs,
+		out: fs.String("o", "", "`FILE` output file (default: stdout)"),
+	}
+}
+
+type pairCmd struct {
+	fs     *flag.FlagSet
+	config *string
+	scope  *string
+	force  *bool
+}
+
+func newPairCmd() *pairCmd {
+	fs := flag.NewFlagSet("bot pair", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &pairCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
+		force:  fs.Bool("force", false, "replace an existing pairing"),
+	}
+}
+
+type unpairCmd struct {
+	fs     *flag.FlagSet
+	config *string
+	scope  *string
+}
+
+func newUnpairCmd() *unpairCmd {
+	fs := flag.NewFlagSet("bot unpair", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &unpairCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
+	}
+}
+
+type botListCmd struct {
+	fs     *flag.FlagSet
+	config *string
+}
+
+func newBotListCmd() *botListCmd {
+	fs := flag.NewFlagSet("bot list", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &botListCmd{fs: fs, config: configFlag(fs)}
+}
+
+type daemonRunCmd struct {
+	fs     *flag.FlagSet
+	config *string
+}
+
+func newDaemonRunCmd() *daemonRunCmd {
+	fs := flag.NewFlagSet("daemon run", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &daemonRunCmd{fs: fs, config: configFlag(fs)}
+}
 
 func runPair(args []string) int {
-	fs := flag.NewFlagSet("bot pair", flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
-	scope := fs.String("scope", "", "scope that owns the bot (needed if the name repeats)")
-	force := fs.Bool("force", false, "replace an existing pairing")
-	if err := fs.Parse(args); err != nil {
+	cmd := newPairCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
+	}
+	if cmd.fs.NArg() < 1 {
+		printHelp(os.Stderr, "bot", "pair")
 		return 2
 	}
-	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, pairUsage)
-		return 2
-	}
-	name := fs.Arg(0)
+	name := cmd.fs.Arg(0)
 
-	cfg, code := loadConfig(*configPath)
+	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
 	}
-	scopeName, _, err := findBot(cfg, name, *scope)
+	scopeName, _, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, pairUsage)
+		printHelp(os.Stderr, "bot", "pair")
 		return 1
 	}
 	db, err := openDatabase(cfg)
@@ -284,7 +335,7 @@ func runPair(args []string) int {
 		Bot:      name,
 		DB:       db.DB,
 		Accounts: db.Accounts(),
-		Force:    *force,
+		Force:    *cmd.force,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -295,12 +346,11 @@ func runPair(args []string) int {
 }
 
 func runBotList(args []string) int {
-	fs := flag.NewFlagSet("bot list", flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	cmd := newBotListCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
 	}
-	cfg, code := loadConfig(*configPath)
+	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
 	}
@@ -372,12 +422,11 @@ func formatLastChange(lastChange time.Time) string {
 }
 
 func runDaemon(args []string) int {
-	fs := flag.NewFlagSet("daemon run", flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	cmd := newDaemonRunCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
 	}
-	cfg, code := loadConfig(*configPath)
+	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
 	}
@@ -468,25 +517,23 @@ func runDaemon(args []string) int {
 }
 
 func runUnpair(args []string) int {
-	fs := flag.NewFlagSet("bot unpair", flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
-	scope := fs.String("scope", "", "scope that owns the bot (needed if the name repeats)")
-	if err := fs.Parse(args); err != nil {
+	cmd := newUnpairCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
+	}
+	if cmd.fs.NArg() < 1 {
+		printHelp(os.Stderr, "bot", "unpair")
 		return 2
 	}
-	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, unpairUsage)
-		return 2
-	}
-	cfg, code := loadConfig(*configPath)
+	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
 	}
-	name := fs.Arg(0)
-	scopeName, _, err := findBot(cfg, name, *scope)
+	name := cmd.fs.Arg(0)
+	scopeName, _, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, unpairUsage)
+		printHelp(os.Stderr, "bot", "unpair")
 		return 1
 	}
 	db, err := openDatabase(cfg)
