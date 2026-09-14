@@ -15,19 +15,19 @@ import (
 	"github.com/felixzsh/botforje/internal/whatsapp"
 )
 
-type daemonRunCmd struct {
+type fleetRunCmd struct {
 	fs     *flag.FlagSet
 	config *string
 }
 
-func newDaemonRunCmd() *daemonRunCmd {
-	fs := flag.NewFlagSet("daemon run", flag.ContinueOnError)
+func newFleetRunCmd() *fleetRunCmd {
+	fs := flag.NewFlagSet("fleet run", flag.ContinueOnError)
 	fs.Usage = func() {}
-	return &daemonRunCmd{fs: fs, config: configFlag(fs)}
+	return &fleetRunCmd{fs: fs, config: configFlag(fs)}
 }
 
-func runDaemon(args []string) int {
-	cmd := newDaemonRunCmd()
+func runFleet(args []string) int {
+	cmd := newFleetRunCmd()
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
@@ -97,7 +97,7 @@ func runDaemon(args []string) int {
 	}
 
 	statuses := runner.Status()
-	logger.Info("daemon starting", "bots", len(statuses), "skipped", skippedCount)
+	logger.Info("fleet starting", "bots", len(statuses), "skipped", skippedCount)
 	for _, status := range statuses {
 		logger.Debug("bot configured", "scope", status.Scope, "bot", status.Bot)
 	}
@@ -109,15 +109,15 @@ func runDaemon(args []string) int {
 		logger.Info("shutdown requested")
 	}()
 	if len(statuses) == 0 {
-		logger.Warn("no paired bots; daemon is idle")
+		logger.Warn("no paired bots; fleet is idle")
 		<-ctx.Done()
-		logger.Info("daemon stopped")
+		logger.Info("fleet stopped")
 		return 0
 	}
 	if err := runner.Run(ctx); err != nil {
 		return 1
 	}
-	logger.Info("daemon stopped")
+	logger.Info("fleet stopped")
 	return 0
 }
 

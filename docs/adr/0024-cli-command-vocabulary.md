@@ -12,7 +12,7 @@ word is needed for administration authentication in the API phase.
 
 - Action commands use a verb (`init`, `validate`, `pair`, `unpair`, `reload`).
 - Query commands use a noun (`schema`, `status`, `messages`); the long-running
-  process command is `daemon`.
+  process command is `fleet`.
 - Device pairing is `pair`; removing the local pairing is `unpair`. `link` and
   `unlink` are rejected because `unpair` is local and does not unlink the
   companion in WhatsApp.

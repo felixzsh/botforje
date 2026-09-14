@@ -4,14 +4,14 @@ Status: Accepted (2026-09)
 
 ## Context
 
-A running daemon should adopt config changes without dropping WhatsApp
+A running fleet should adopt config changes without dropping WhatsApp
 sessions, and it should never lose the last known-good configuration. Some
 changes are safe at any moment; others would break sessions that are in the
 middle of a conversation.
 
 ## Decision
 
-The daemon watches config files and reloads on SIGHUP. Every reload runs the
+The fleet watches config files and reloads on SIGHUP. Every reload runs the
 full validation pipeline. If validation fails, the previous valid config
 stays in effect and the error is logged.
 
@@ -37,5 +37,5 @@ settings; those require a restart.
 - Config can evolve in production without downtime for safe changes.
 - Incompatible changes are explicit, queued, and applied when safe.
 - The pending queue and maintenance mode add state to persist and expose
-  through the API (`daemon status`, `daemon reload`).
+  through the API (`fleet status`, `fleet reload`).
 - Tests must cover validation fallback and both change classes.

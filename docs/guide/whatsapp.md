@@ -22,13 +22,13 @@ end to end.
 For new pairings, WhatsApp should show the companion as `BotForje`. Existing
 links keep their old name until they are unlinked and paired again.
 
-To replace a local pairing, stop the daemon and run
+To replace a local pairing, stop the fleet and run
 `./bin/botforje bot pair --force support-bot`. This removes the old local device
 credentials but keeps sessions and message history.
 
 BotForje allows one bot per WhatsApp phone number. WhatsApp may list several
 linked devices, but assigning the same number to two bots can duplicate replies.
-The daemon and `bot pair` reject that configuration. To remove one local pairing
+The fleet and `bot pair` reject that configuration. To remove one local pairing
 while keeping sessions and message history, run
 `./bin/botforje bot unpair support-bot`. This does not unlink the old companion
 from WhatsApp; remove it from WhatsApp's Linked devices screen if it remains
@@ -45,19 +45,19 @@ otherwise it shows `-`. `not paired` means there is no account record;
 recorded. It is shown in local time, using the same format as the logs. Running
 `bot list` does not update it.
 
-The timestamp is persisted by pairing, unpair, and daemon operations. It reflects
+The timestamp is persisted by pairing, unpair, and fleet operations. It reflects
 when BotForje detected the transition, not necessarily when the phone changed it.
 
 ## Run the bots
 
-`./bin/botforje daemon run` (or `make dev ARGS="daemon run"`) starts every
+`./bin/botforje fleet run` (or `make dev ARGS="fleet run"`) starts every
 paired bot, answers inbound messages with the configured pacing, and stops on
 Ctrl-C after draining the outbox.
 
-Bots without a local pairing are not initialized (ADR 0022). The daemon logs a
+Bots without a local pairing are not initialized (ADR 0022). The fleet logs a
 `WARN` naming only `bot pair` and continues with the paired bots (ADR 0023); the
 command's own usage explains its flags and arguments. If none are paired, the
-daemon stays idle until Ctrl-C instead of failing.
+fleet stays idle until Ctrl-C instead of failing.
 
 ## Manual checklist
 
@@ -67,7 +67,7 @@ Deterministic flow (a bot with no `llm`):
   under `data_dir`.
 - [ ] `bot list` reports the bot as `paired` with its phone in the `PHONE`
   column.
-- [ ] `daemon run` starts and a real inbound message is answered with the graph's
+- [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
@@ -76,5 +76,5 @@ Deterministic flow (a bot with no `llm`):
 - [ ] Stop the process and start it again: it connects without a new QR.
 - [ ] With `read_receipts` and `simulate_typing` on, the inbound message is
   marked read and a composing indicator shows before the reply.
-- [ ] On logout or ban, the daemon stops that bot and reports the state
+- [ ] On logout or ban, the fleet stops that bot and reports the state
   instead of retrying forever.

@@ -13,7 +13,7 @@ and could send duplicate or conflicting replies.
 
 One normalized WhatsApp phone number may belong to only one `(scope, bot)` in a
 BotForje instance. The `bot pair` command rejects a number already owned by
-another bot, and daemon startup rejects duplicate legacy records. A bot may
+another bot, and fleet startup rejects duplicate legacy records. A bot may
 replace its own pairing with `bot pair --force`.
 
 The `unpair` command removes local credentials and account metadata without
@@ -23,6 +23,6 @@ explicit operation in WhatsApp.
 ## Consequences
 
 - A fleet has one clear owner for each WhatsApp account.
-- Existing duplicate records must be resolved before the daemon starts.
+- Existing duplicate records must be resolved before the fleet starts.
 - Intentional multi-bot use of one number is not supported; it needs a future
   shared-account channel design with explicit routing and deduplication.

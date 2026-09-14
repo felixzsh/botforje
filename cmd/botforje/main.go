@@ -25,8 +25,8 @@ func main() {
 		os.Exit(runConfig(args[1:]))
 	case "bot":
 		os.Exit(runBot(args[1:]))
-	case "daemon":
-		os.Exit(runDaemonGroup(args[1:]))
+	case "fleet":
+		os.Exit(runFleetGroup(args[1:]))
 	case "help", "-h", "--help":
 		printHelp(os.Stdout)
 	default:
@@ -78,20 +78,20 @@ func runBot(args []string) int {
 	}
 }
 
-func runDaemonGroup(args []string) int {
+func runFleetGroup(args []string) int {
 	if len(args) == 0 {
-		printHelp(os.Stderr, "daemon")
+		printHelp(os.Stderr, "fleet")
 		return 2
 	}
 	switch args[0] {
 	case "run":
-		return runDaemon(args[1:])
+		return runFleet(args[1:])
 	case "help", "-h", "--help":
-		printHelp(os.Stdout, "daemon")
+		printHelp(os.Stdout, "fleet")
 		return 0
 	default:
-		fmt.Fprintf(os.Stderr, "unknown daemon subcommand %q\n\n", args[0])
-		printHelp(os.Stderr, "daemon")
+		fmt.Fprintf(os.Stderr, "unknown fleet subcommand %q\n\n", args[0])
+		printHelp(os.Stderr, "fleet")
 		return 2
 	}
 }

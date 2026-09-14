@@ -32,7 +32,7 @@ func cliTree() *commandHelp {
 			"botforje config validate",
 			"botforje bot list",
 			"botforje bot pair support-bot",
-			"botforje daemon run",
+			"botforje fleet run",
 		},
 		moreHelp: "for more help on a command: botforje <command> --help",
 		sub: []commandHelp{
@@ -124,26 +124,26 @@ func cliTree() *commandHelp {
 				},
 			},
 			{
-				name:    "daemon",
-				summary: "run and manage the daemon",
-				long:    "Run the fleet and, in a later phase, inspect and control the running daemon.",
-				usage:   "botforje daemon <command> [options]",
+				name:    "fleet",
+				summary: "run and manage the fleet",
+				long:    "Run the fleet of paired bots and, in a later phase, inspect and control it.",
+				usage:   "botforje fleet <command> [options]",
 				examples: []string{
-					"botforje daemon run",
+					"botforje fleet run",
 				},
-				moreHelp: "for more help: botforje daemon <command> --help",
+				moreHelp: "for more help: botforje fleet <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "run",
 						summary: "run every paired bot until interrupted",
 						long: "Start every paired bot, answer inbound messages with the\n" +
 							"configured pacing, and stop on interrupt after draining the outbox.",
-						usage: "botforje daemon run [options]",
+						usage: "botforje fleet run [options]",
 						examples: []string{
-							"botforje daemon run",
-							"botforje daemon run --config etc/config.yml",
+							"botforje fleet run",
+							"botforje fleet run --config etc/config.yml",
 						},
-						flags: func() *flag.FlagSet { return newDaemonRunCmd().fs },
+						flags: func() *flag.FlagSet { return newFleetRunCmd().fs },
 					},
 				},
 			},

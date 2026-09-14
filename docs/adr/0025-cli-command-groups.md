@@ -15,13 +15,13 @@ Commands are grouped by resource, mirroring the API:
 
 - `config init | validate | schema`
 - `bot list | pair | unpair`
-- `daemon run | status | stop | restart | reload`
+- `fleet run | status | stop | restart | reload`
 - future: `message list | tail`, `session`, `conversation`
 
 A group invoked without a subcommand prints its help. Common flags such as
 `--config` stay on each subcommand. `bot list` shows stored pairing, while
-`daemon status` will report live fleet health. `daemon reload` reloads config
-(ADR 0009) and `daemon restart` is a full restart, so they stay distinct.
+`fleet status` will report live fleet health. `fleet reload` reloads config
+(ADR 0009) and `fleet restart` is a full restart, so they stay distinct.
 
 This supersedes ADR 0024, which defined the flat set; the verb/noun rule still
 holds inside each group.
@@ -30,4 +30,6 @@ holds inside each group.
 
 - CLI and API share resource names.
 - Common operations are one level deeper, for example `bot pair`.
-- `status` and `reload` live under `daemon`, leaving the root to groups.
+- `status` and `reload` live under `fleet`, leaving the root to groups.
+- The process group is `fleet`, matching the glossary and covering the bots
+  and the future API without naming just one of them.
