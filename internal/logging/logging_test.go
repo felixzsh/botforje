@@ -68,6 +68,34 @@ func TestErrorQuoting(t *testing.T) {
 	}
 }
 
+func TestParseLevel(t *testing.T) {
+	cases := []struct {
+		in   string
+		want slog.Level
+	}{
+		{"debug", slog.LevelDebug},
+		{"info", slog.LevelInfo},
+		{"warn", slog.LevelWarn},
+		{"error", slog.LevelError},
+		{"off", slog.LevelError + 1},
+		{"", slog.LevelInfo},
+		{"nonsense", slog.LevelInfo},
+	}
+	for _, tc := range cases {
+		if got := ParseLevel(tc.in); got != tc.want {
+			t.Fatalf("ParseLevel(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestOffSilences(t *testing.T) {
+	var buffer bytes.Buffer
+	New("off", &buffer).Error("nope")
+	if buffer.Len() != 0 {
+		t.Fatalf("output = %q", buffer.String())
+	}
+}
+
 func TestDiscard(t *testing.T) {
 	if Discard().Enabled(context.Background(), slog.LevelError) {
 		t.Fatal("discard must disable every level")

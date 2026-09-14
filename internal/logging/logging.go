@@ -18,9 +18,10 @@ import (
 const timeFormat = "2006-01-02 15:04:05"
 
 // New returns a logger at the given level writing to w. The level accepts
-// debug, info, warn, or error (anything else is info).
+// debug, info, warn, error, or off (anything else is info, and off drops
+// everything at that logger).
 func New(level string, w io.Writer) *slog.Logger {
-	return slog.New(&handler{w: w, level: parseLevel(level), mu: &sync.Mutex{}})
+	return slog.New(&handler{w: w, level: ParseLevel(level), mu: &sync.Mutex{}})
 }
 
 // Discard returns a logger that drops every record.
@@ -28,7 +29,9 @@ func Discard() *slog.Logger {
 	return slog.New(&handler{w: io.Discard, level: slog.LevelError + 1, mu: &sync.Mutex{}})
 }
 
-func parseLevel(level string) slog.Level {
+// ParseLevel maps a config level to a slog level: debug, info, warn, error, or
+// off (above error, so it disables the logger).
+func ParseLevel(level string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":
 		return slog.LevelDebug
@@ -36,6 +39,8 @@ func parseLevel(level string) slog.Level {
 		return slog.LevelWarn
 	case "error":
 		return slog.LevelError
+	case "off":
+		return slog.LevelError + 1
 	default:
 		return slog.LevelInfo
 	}
