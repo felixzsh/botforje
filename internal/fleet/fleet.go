@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/felixzsh/botforje/internal/domain"
 	"github.com/felixzsh/botforje/internal/engine"
 	"github.com/felixzsh/botforje/internal/inbox"
+	"github.com/felixzsh/botforje/internal/logging"
 	"github.com/felixzsh/botforje/internal/outbox"
 )
 
@@ -35,6 +37,7 @@ type Options struct {
 	Rand           *rand.Rand
 	DefaultTimeout time.Duration
 	OnError        func(scope, bot string, err error)
+	Log            *slog.Logger
 }
 
 // Fleet is the set of bot actors.
@@ -59,6 +62,7 @@ type Bot struct {
 	outbox  *outbox.Queue
 	filter  inbox.Filter
 	onError func(error)
+	log     *slog.Logger
 }
 
 // New builds the fleet from config. It starts nothing and connects nothing.
@@ -76,6 +80,10 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if seeds == nil {
 		seeds = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
+	baseLog := opts.Log
+	if baseLog == nil {
+		baseLog = logging.Discard()
+	}
 	fleet := &Fleet{}
 	for _, scopeName := range sortedScopes(cfg) {
 		scope := cfg.Scopes[scopeName]
@@ -87,6 +95,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 					botName, bot.Graph)
 			}
 			settings := settingsOf(bot.Settings)
+			botLog := baseLog.With("scope", scopeName, "bot", botName)
 			eng := engine.New(engine.Options{
 				Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
 				Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now,
@@ -105,13 +114,13 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 				MaxPerMinute: settings.MaxMsgPerMinute,
 				Now:          opts.Now,
 				Rand:         rand.New(rand.NewSource(seeds.Int63())),
+				Log:          botLog,
 				OnError: func(_ domain.OutgoingMessage, err error) {
 					if opts.OnError != nil {
 						opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
 					}
 				},
 			})
-			scopeName, botName := scopeName, botName
 			fleet.bots = append(fleet.bots, &Bot{
 				scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
 				filter: inbox.Filter{
@@ -119,6 +128,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 					Allowed:      settings.AllowedSenders,
 					Ignored:      settings.IgnoredSenders,
 				},
+				log: botLog,
 				onError: func(err error) {
 					if opts.OnError != nil {
 						opts.OnError(scopeName, botName, err)
@@ -175,13 +185,16 @@ func (f *Fleet) Status() []BotStatus {
 
 func (b *Bot) run(ctx context.Context) error {
 	if err := b.channel.Connect(ctx); err != nil {
+		b.log.Error("channel connect failed", "error", err)
 		return err
 	}
+	b.log.Info("bot started")
 	defer func() {
 		// Stop accepting, let queued messages go out, then disconnect.
 		b.outbox.Close()
 		b.outbox.Wait()
 		_ = b.channel.Disconnect(context.Background())
+		b.log.Info("bot stopped")
 	}()
 	incoming := b.channel.Incoming()
 	for {
@@ -193,10 +206,14 @@ func (b *Bot) run(ctx context.Context) error {
 				return nil
 			}
 			if !b.filter.Allow(msg) {
+				b.log.Debug("message filtered", "sender", msg.Sender)
 				continue
 			}
+			b.log.Info("message received",
+				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup)
 			replies, err := b.engine.Handle(ctx, msg)
 			if err != nil {
+				b.log.Error("engine failed", "sender", msg.Sender, "error", err)
 				b.onError(err)
 				continue
 			}
