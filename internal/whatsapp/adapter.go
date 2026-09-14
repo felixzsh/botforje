@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	walog "go.mau.fi/whatsmeow/util/log"
 
 	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/logging"
 )
 
 // State is the channel lifecycle reported to the fleet (ADR 0011).
@@ -47,7 +49,7 @@ type Options struct {
 	DB         *sql.DB
 	Accounts   domain.AccountStore
 	Settings   Settings
-	Logger     walog.Logger
+	Log        *slog.Logger
 	Queue      int
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
@@ -65,7 +67,8 @@ type Adapter struct {
 	accounts  domain.AccountStore
 	container *sqlstore.Container
 	settings  Settings
-	logger    walog.Logger
+	log       *slog.Logger
+	waLogger  walog.Logger
 	backoff   *Backoff
 	now       func() time.Time
 	onState   func(State)
@@ -97,13 +100,13 @@ func New(opts Options) (*Adapter, error) {
 		return nil, errors.New("whatsapp: no database")
 	}
 	var (
-		logger = opts.Logger
-		now    = opts.Now
-		rnd    = opts.Rand
-		queue  = opts.Queue
+		log   = opts.Log
+		now   = opts.Now
+		rnd   = opts.Rand
+		queue = opts.Queue
 	)
-	if logger == nil {
-		logger = walog.Noop
+	if log == nil {
+		log = logging.Discard()
 	}
 	if now == nil {
 		now = time.Now
@@ -114,12 +117,14 @@ func New(opts Options) (*Adapter, error) {
 	if queue <= 0 {
 		queue = 64
 	}
+	waLogger := newWaLog(log)
 	a := &Adapter{
 		scope:     opts.Scope,
 		bot:       opts.Bot,
 		accounts:  opts.Accounts,
 		settings:  opts.Settings,
-		logger:    logger,
+		log:       log,
+		waLogger:  waLogger,
 		backoff:   NewBackoff(opts.MinBackoff, opts.MaxBackoff, rnd),
 		now:       now,
 		onState:   opts.OnState,
@@ -131,7 +136,7 @@ func New(opts Options) (*Adapter, error) {
 		stop:      make(chan struct{}),
 		stopped:   make(chan struct{}),
 	}
-	a.container = sqlstore.NewWithDB(opts.DB, "sqlite", logger)
+	a.container = sqlstore.NewWithDB(opts.DB, "sqlite", a.waLogger)
 	if err := a.container.Upgrade(context.Background()); err != nil {
 		return nil, fmt.Errorf("whatsapp: device store: %w", err)
 	}
@@ -153,7 +158,7 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("whatsapp: load device %s: %w", account.JID, err)
 	}
-	client := whatsmeow.NewClient(device, a.logger)
+	client := whatsmeow.NewClient(device, a.waLogger)
 	// Reconnection is ours so it uses the capped backoff with jitter (ADR 0011).
 	client.DisableLoginAutoReconnect = true
 	client.AddEventHandler(a.handleEvent)
@@ -201,7 +206,7 @@ func (a *Adapter) Send(ctx context.Context, msg domain.OutgoingMessage) error {
 	if a.settings.ReadReceipts && !last.chat.IsEmpty() {
 		if err := client.MarkRead(ctx, []types.MessageID{last.id}, a.now(),
 			last.chat, last.sender); err != nil {
-			a.logger.Warnf("read receipt failed: %v", err)
+			a.log.Warn("read receipt failed", "error", err)
 		}
 	}
 	content, err := buildContent(msg)
@@ -239,7 +244,7 @@ func (a *Adapter) compose(
 	err := client.SendChatPresence(ctx, to, types.ChatPresenceComposing,
 		types.ChatPresenceMediaText)
 	if err != nil {
-		a.logger.Warnf("composing presence failed: %v", err)
+		a.log.Warn("composing presence failed", "error", err)
 		return false
 	}
 	timer := time.NewTimer(a.settings.TypingDelay)
@@ -257,7 +262,11 @@ func (a *Adapter) setState(state State) {
 	changed := a.state != state
 	a.state = state
 	a.mu.Unlock()
-	if changed && a.onState != nil {
+	if !changed {
+		return
+	}
+	a.log.Info("channel state", "state", string(state))
+	if a.onState != nil {
 		a.onState(state)
 	}
 }
@@ -318,7 +327,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	select {
 	case a.incoming <- message:
 	default:
-		a.logger.Warnf("incoming queue full, dropping message from %s", message.Sender)
+		a.log.Warn("incoming queue full, dropping message", "sender", message.Sender)
 	}
 }
 
@@ -364,7 +373,7 @@ func (a *Adapter) reconnectOnce() {
 		return
 	}
 	if err := client.Connect(); err != nil {
-		a.logger.Warnf("reconnect failed: %v", err)
+		a.log.Warn("reconnect failed", "error", err, "attempt", a.backoff.attempt)
 		a.signalReconnect()
 	}
 }

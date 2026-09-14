@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/logging"
 )
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
@@ -149,6 +150,7 @@ func newTestAdapter() *Adapter {
 		incoming: make(chan domain.IncomingMessage, 4),
 		seen:     newDedup(8),
 		last:     map[string]lastInbound{},
+		log:      logging.Discard(),
 	}
 }
 
