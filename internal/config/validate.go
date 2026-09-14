@@ -132,6 +132,7 @@ func validateAction(cfg *Config, scope, name string, a Action, add addError) {
 		}
 		validateSteps(file, entity, cd.OnBlocked, add, "cooldown.on_blocked")
 	}
+	validateTemplateSyntax(file, entity, a, add)
 }
 
 func validateSteps(file, entity string, steps []Step, add addError, where string) {
@@ -245,14 +246,31 @@ func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Gr
 }
 
 func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add addError) {
+	graphVars := keySet(g.InitialContext)
+	nodeVars := keySet(node.InitialContext)
+	requests := map[string]bool{}
+	for _, ref := range append(append([]string{}, node.OnEnter...), node.OnExit...) {
+		if action, reason := lookupAction(scope, ref); reason == "" {
+			mergeKeys(requests, requestNames(action))
+		}
+	}
+	for _, tool := range node.Tools {
+		if action, reason := lookupAction(scope, tool); reason == "" {
+			mergeKeys(requests, requestNames(action))
+		}
+	}
+
 	for _, group := range []struct {
 		label  string
 		values []string
 	}{{"on_enter", node.OnEnter}, {"on_exit", node.OnExit}} {
 		for _, ref := range group.values {
-			if _, reason := lookupAction(scope, ref); reason != "" {
+			action, reason := lookupAction(scope, ref)
+			if reason != "" {
 				add(file, entity, "%s action %q: %s", group.label, ref, reason)
+				continue
 			}
+			validateTemplateVars(file, entity, action, nodeVars, graphVars, requests, add)
 		}
 	}
 	for _, tool := range node.Tools {
@@ -261,6 +279,7 @@ func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add 
 			add(file, entity, "tool %q: %s", tool, reason)
 			continue
 		}
+		validateTemplateVars(file, entity, action, nodeVars, graphVars, requests, add)
 		for _, in := range sortedKeys(action.Inputs) {
 			input := action.Inputs[in]
 			if input.Bind == "" {

@@ -2,6 +2,7 @@ package template
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -120,6 +121,17 @@ func TestTemplateReuse(t *testing.T) {
 	got, err = tmpl.Render(ctx)
 	if err != nil || got != "Bob" {
 		t.Fatalf("second render = %q, %v", got, err)
+	}
+}
+
+func TestReferences(t *testing.T) {
+	tmpl, err := Parse("Hi {{graph.customer}}, {{ input.qty }} items")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []string{"graph.customer", "input.qty"}
+	if got := tmpl.References(); !slices.Equal(got, want) {
+		t.Fatalf("References() = %q, want %q", got, want)
 	}
 }
 

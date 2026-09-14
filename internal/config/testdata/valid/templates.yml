@@ -1,0 +1,43 @@
+version: 1
+scopes:
+  support:
+    actions:
+      greet:
+        steps:
+          - message:
+              body: "Hi {{sender.phone}}, welcome {{graph.customer_name}}."
+      lookup:
+        inputs:
+          query:
+            type: "string"
+            description: "search terms"
+        steps:
+          - request:
+              name: search
+              url: "https://api.example.com/search?q={{input.query}}"
+              method: GET
+              headers:
+                X-Bot: "{{bot.id}}"
+              body: '{"note": "{{message.body}}"}'
+      report:
+        steps:
+          - message:
+              body: "Found {{node.search.resp.body.id}}."
+    graphs:
+      faq:
+        root: "menu"
+        initial_context:
+          customer_name: "Ana"
+        nodes:
+          menu:
+            goal: "greet the customer"
+            on_enter: ["greet"]
+            edges:
+              - intent: "wants details"
+                triggers: ["details", "more"]
+                goto: "details"
+              - goto: "details"
+          details:
+            goal: "look something up"
+            on_enter: ["lookup", "report"]
+            edges: []

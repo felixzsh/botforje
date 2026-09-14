@@ -83,6 +83,17 @@ func (t Template) Render(ctx *Context) (string, error) {
 	return out.String(), nil
 }
 
+// References returns the reference paths this template resolves, in order.
+func (t Template) References() []string {
+	refs := make([]string, 0, len(t.parts))
+	for _, p := range t.parts {
+		if p.ref != "" {
+			refs = append(refs, p.ref)
+		}
+	}
+	return refs
+}
+
 // Render parses and renders s in one step.
 func Render(s string, ctx *Context) (string, error) {
 	t, err := Parse(s)

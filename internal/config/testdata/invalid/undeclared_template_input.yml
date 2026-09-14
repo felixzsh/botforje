@@ -1,0 +1,18 @@
+version: 1
+scopes:
+  default:
+    actions:
+      search:
+        inputs:
+          query:
+            type: "string"
+        steps:
+          - message:
+              body: "{{input.other}}"
+    graphs:
+      g:
+        root: "start"
+        nodes:
+          start:
+            on_enter: ["search"]
+            edges: []

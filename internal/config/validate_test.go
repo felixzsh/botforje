@@ -51,6 +51,9 @@ var invalidFixtures = []fixtureCase{
 	{"bot_no_graph.yml", "no graph"},
 	{"bot_unknown_llm.yml", "not found"},
 	{"bot_negative_settings.yml", "must be >= 0"},
+	{"bad_template_root.yml", "unknown root"},
+	{"undeclared_template_var.yml", "not declared in initial_context"},
+	{"undeclared_template_input.yml", "input"},
 }
 
 func TestInvalidFixtures(t *testing.T) {

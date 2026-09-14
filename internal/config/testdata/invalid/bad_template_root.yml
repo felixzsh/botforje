@@ -1,0 +1,15 @@
+version: 1
+scopes:
+  default:
+    actions:
+      greet:
+        steps:
+          - message:
+              body: "{{secret.api_key}}"
+    graphs:
+      g:
+        root: "start"
+        nodes:
+          start:
+            on_enter: ["greet"]
+            edges: []
