@@ -1,0 +1,22 @@
+version: 1
+scopes:
+  dev:
+    actions:
+      greet:
+        steps:
+          - message:
+              body: "hello from {{bot.id}}"
+    graphs:
+      menu:
+        root: "menu"
+        nodes:
+          menu:
+            on_enter: ["greet"]
+            edges: []
+    bots:
+      alpha:
+        graph: "menu"
+      beta:
+        graph: "menu"
+        settings:
+          ignored_senders: ["blocked@s.whatsapp.net"]
