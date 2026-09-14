@@ -12,9 +12,9 @@ and could send duplicate or conflicting replies.
 ## Decision
 
 One normalized WhatsApp phone number may belong to only one `(scope, bot)` in a
-BotForje instance. The `auth` command rejects a number already owned by another
+BotForje instance. The `pair` command rejects a number already owned by another
 bot, and daemon startup rejects duplicate legacy records. A bot may replace its
-own pairing with `auth --force`.
+own pairing with `pair --force`.
 
 The `unpair` command removes local credentials and account metadata without
 deleting sessions or message history. Remote linked-device removal remains an

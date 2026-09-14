@@ -150,7 +150,7 @@ func New(opts Options) (*Adapter, error) {
 func (a *Adapter) Connect(ctx context.Context) error {
 	account, err := a.accounts.Get(ctx, a.scope, a.bot)
 	if err != nil {
-		return fmt.Errorf("whatsapp: bot %q is not paired (use auth): %w", a.bot, err)
+		return fmt.Errorf("whatsapp: bot %q is not paired (use pair): %w", a.bot, err)
 	}
 	jid, err := types.ParseJID(account.JID)
 	if err != nil {

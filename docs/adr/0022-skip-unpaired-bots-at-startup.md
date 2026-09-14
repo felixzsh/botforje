@@ -22,6 +22,6 @@ The daemon checks each configured bot's local pairing before building its fleet:
 ## Consequences
 
 - A bot can remain in the configuration while its pairing is completed later.
-- The warning points to `auth`; its invocation details come from the CLI usage.
+- The warning points to `pair`; its invocation details come from the CLI usage.
 - Pairing a skipped bot requires restarting the daemon; runtime fleet reload is
   deferred to the reload phase.

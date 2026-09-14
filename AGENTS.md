@@ -51,7 +51,7 @@ Prefer the Make targets; they wrap the underlying Go commands.
 - `make validate CONFIG=<file>` — validate a config.
 - `make help` — list every target.
 
-`auth`, `daemon`, `status`, and `reload` arrive with their phases.
+`pair`, `daemon`, `status`, and `reload` arrive with their phases.
 
 ## Structure
 

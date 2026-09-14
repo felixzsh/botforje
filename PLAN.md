@@ -161,7 +161,7 @@ Deliverables:
   presence before replies (ADR 0011).
 - [x] Logout and ban detection: stop the bot, keep the session, and report
   through `status` instead of retrying forever (ADR 0011).
-- [x] CLI `auth <bot>` and `status`.
+- [x] CLI `pair <bot>` and `status`.
 - [x] Tests: adapter unit tests with fakes; a manual end-to-end checklist.
 
 Gate: one configured bot answers a real WhatsApp message and survives a
@@ -195,7 +195,7 @@ Goal: operate a fleet without hand-editing config for daily operations.
 
 Deliverables:
 
-- [ ] CLI: `validate`, `auth`, `unpair`, `daemon`, `status`, `messages`, `reload`.
+- [ ] CLI: `validate`, `pair`, `unpair`, `daemon`, `status`, `messages`, `reload`.
 - [ ] `init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`.

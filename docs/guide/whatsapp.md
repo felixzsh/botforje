@@ -8,27 +8,27 @@ end to end.
 1. Build: `make build`.
 2. Configure the bot and validate: `./bin/botforje validate`.
 3. Pair it; this prints an ASCII QR and waits:
-   `./bin/botforje auth support-bot`
+   `./bin/botforje pair support-bot`
    Add `--scope name` when the bot name repeats across scopes. The QR is
    rendered half-block, so it stays narrow enough for a normal terminal; if
    your font is very large, zoom out or widen the window first. The code
    rotates every ~20 seconds and the screen clears between codes, so the
-   visible one is always current. After you scan, `auth` reconnects once to
+   visible one is always current. After you scan, `pair` reconnects once to
    confirm the companion is online before it exits. If WhatsApp resets a scan,
-   `auth` automatically starts a fresh QR; keep the command running.
+   `pair` automatically starts a fresh QR; keep the command running.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
-5. `auth` prints the paired phone number and exits.
+5. `pair` prints the paired phone number and exits.
 
 For new pairings, WhatsApp should show the companion as `BotForje`. Existing
 links keep their old name until they are unlinked and paired again.
 
 To replace a local pairing, stop the daemon and run
-`./bin/botforje auth --force support-bot`. This removes the old local device
+`./bin/botforje pair --force support-bot`. This removes the old local device
 credentials but keeps sessions and message history.
 
 BotForje allows one bot per WhatsApp phone number. WhatsApp may list several
 linked devices, but assigning the same number to two bots can duplicate replies.
-The daemon and `auth` reject that configuration.
+The daemon and `pair` reject that configuration.
 
 To remove one local pairing while keeping sessions and message history, run
 `./bin/botforje unpair support-bot`. This does not unlink the old companion from
@@ -55,7 +55,7 @@ answers inbound messages with the configured pacing, and stops on Ctrl-C after
 draining the outbox.
 
 Bots without a local pairing are not initialized (ADR 0022). The daemon logs a
-`WARN` naming only `auth` and continues with the paired bots (ADR 0023); the
+`WARN` naming only `pair` and continues with the paired bots (ADR 0023); the
 command's own usage explains its flags and arguments. If none are paired, the
 daemon stays idle until Ctrl-C instead of failing.
 
@@ -63,7 +63,7 @@ daemon stays idle until Ctrl-C instead of failing.
 
 Deterministic flow (a bot with no `llm`):
 
-- [ ] `auth` prints a QR, pairing succeeds, and the device store is written
+- [ ] `pair` prints a QR, pairing succeeds, and the device store is written
   under `data_dir`.
 - [ ] `status` reports the bot as `paired` with its phone in the `PHONE` column.
 - [ ] `daemon` starts and a real inbound message is answered with the graph's

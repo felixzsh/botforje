@@ -34,8 +34,8 @@ func main() {
 		os.Exit(runValidate(os.Args[2:]))
 	case "schema":
 		os.Exit(runSchema(os.Args[2:]))
-	case "auth":
-		os.Exit(runAuth(os.Args[2:]))
+	case "pair":
+		os.Exit(runPair(os.Args[2:]))
 	case "unpair":
 		os.Exit(runUnpair(os.Args[2:]))
 	case "status":
@@ -57,7 +57,7 @@ func print_help() {
 Commands:
   validate   validate a config file
   schema     print the generated config JSON Schema
-  auth       pair a bot by scanning a QR code
+  pair       scan a QR code to pair a bot
   unpair     remove a bot's local pairing
   status     show each configured bot's pairing state
   daemon     run every paired bot until interrupted
@@ -172,12 +172,12 @@ func discoverConfig() (string, error) {
 }
 
 const (
-	authUsage   = "usage: botforje auth [--force] [--scope name] [--config path] <bot>"
+	pairUsage   = "usage: botforje pair [--force] [--scope name] [--config path] <bot>"
 	unpairUsage = "usage: botforje unpair [--scope name] [--config path] <bot>"
 )
 
-func runAuth(args []string) int {
-	fs := flag.NewFlagSet("auth", flag.ContinueOnError)
+func runPair(args []string) int {
+	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
 	scope := fs.String("scope", "", "scope that owns the bot (needed if the name repeats)")
 	force := fs.Bool("force", false, "replace an existing pairing")
@@ -185,7 +185,7 @@ func runAuth(args []string) int {
 		return 2
 	}
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, authUsage)
+		fmt.Fprintln(os.Stderr, pairUsage)
 		return 2
 	}
 	name := fs.Arg(0)
@@ -197,7 +197,7 @@ func runAuth(args []string) int {
 	scopeName, _, err := findBot(cfg, name, *scope)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, authUsage)
+		fmt.Fprintln(os.Stderr, pairUsage)
 		return 1
 	}
 	db, err := openDatabase(cfg)
@@ -341,7 +341,7 @@ func runDaemon(args []string) int {
 			}
 			skipped[scopeName][botName] = true
 			skippedCount++
-			logger.Warn("bot not initialized; use auth to pair it",
+			logger.Warn("bot not initialized; use pair",
 				"scope", scopeName, "bot", botName, "state", string(state))
 		}
 	}

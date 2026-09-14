@@ -12,7 +12,7 @@ SaaS infrastructure:
 - Actions with `message`, `request`, and `location` steps; cooldown guards.
 - Inbound filters (groups, allow/ignore senders) and a per-bot outbox with
   configurable delay and jitter, plus human-like presence (ADR 0011).
-- CLI: `validate`, `auth`, `daemon`, `status`, `reload`.
+- CLI: `validate`, `pair`, `daemon`, `status`, `reload`.
 - REST API with key-based auth.
 - Hybrid LLM support designed in from the start: deterministic routing works
   with no LLM configured; intents, providers, and tools are

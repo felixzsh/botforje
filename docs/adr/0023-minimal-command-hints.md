@@ -16,6 +16,6 @@ syntax, and each command guides the user when called incompletely or ambiguously
 
 ## Consequences
 
-- Messages point to `auth`, not to a specific invocation.
+- Messages point to `pair`, not to a specific invocation.
 - Commands own their guidance through help and usage.
 - Messages stay valid under scope or entity ambiguity.

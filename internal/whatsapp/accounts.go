@@ -238,7 +238,7 @@ func pairingNow(now func() time.Time) time.Time {
 func missingDeviceError(account *domain.Account) error {
 	return fmt.Errorf(
 		"whatsapp: bot %q (scope %q) has no local device credentials; "+
-			"use auth",
+			"use pair",
 		account.Bot, account.Scope,
 	)
 }
