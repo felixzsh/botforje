@@ -39,6 +39,19 @@ type ConversationStore interface {
 	Touch(ctx context.Context, id int64, at time.Time) error
 }
 
+// Account is a bot's paired channel identity, the whatsmeow device JID.
+type Account struct {
+	Bot string
+	JID string
+}
+
+// AccountStore records paired channel accounts (ADR 0006).
+type AccountStore interface {
+	Get(ctx context.Context, bot string) (*Account, error)
+	Put(ctx context.Context, account *Account) error
+	Delete(ctx context.Context, bot string) error
+}
+
 // MessageStore records message history.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
