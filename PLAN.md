@@ -98,11 +98,11 @@ Goal: runtime state survives restarts.
 
 Deliverables:
 
-- [x] SQLite setup with migrations from the first table; pure-Go driver, WAL,
+- [x] SQLite setup with the schema applied on open; pure-Go driver, WAL,
   foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
 - [x] Stores: sessions, conversations, and messages.
 - [x] Repository interfaces owned by the domain; SQL stays in the adapter.
-- [x] Tests: migrations, store round-trips, and session resume after restart.
+- [x] Tests: schema apply, store round-trips, and session resume after restart.
 - [x] Race testing: `make test-race` (`go test -race ./...`) and use it
   whenever concurrency is involved.
 

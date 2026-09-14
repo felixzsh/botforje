@@ -11,7 +11,7 @@ no external database should be required.
 ## Decision
 
 SQLite is the project database. One file per instance, located through the
-`data_dir` setting (XDG default), with schema migrations on startup. Tables:
+`data_dir` setting (XDG default), with the schema applied on startup. Tables:
 bots (identity), senders, whatsmeow device store, sessions, conversations,
 messages, and (with the API) web sessions and admin keys. Graph and node
 contexts are stored as JSON on the session. The domain depends on repository
@@ -26,6 +26,8 @@ by the per-bot actor model.
 
 - Zero external services; backup is copying files.
 - The single-writer model is acceptable for one process with short writes.
-- Migrations must exist from the first table; no manual schema edits.
+- The schema is one list applied on open. Pre-release it is edited in place
+  and the development database is recreated (`make dev-reset`); versioned,
+  append-only migrations begin at the first release.
 - Dashboard and SaaS phases may add tables and an import path; the storage
   engine stays SQLite.
