@@ -3,10 +3,12 @@ package engine
 import (
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,8 +233,10 @@ func TestCooldownGuard(t *testing.T) {
 		},
 	}
 	graph := config.Graph{
-		Root:  "menu",
-		Nodes: map[string]config.Node{"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}}},
+		Root: "menu",
+		Nodes: map[string]config.Node{
+			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
+		},
 	}
 	eng := newTestEngine(t, Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: newMemStore(),
@@ -310,6 +314,80 @@ func TestLocationStep(t *testing.T) {
 	}
 	if messages[0].Location == nil || messages[0].Location.Name != "Office" {
 		t.Fatalf("location = %#v", messages[0].Location)
+	}
+}
+
+// flakyTransport fails the first fail calls, then answers JSON.
+type flakyTransport struct {
+	calls int
+	fail  int
+}
+
+func (f *flakyTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	f.calls++
+	if f.calls <= f.fail {
+		return nil, errors.New("connection refused")
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"ok": true}`)),
+	}, nil
+}
+
+func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *Engine {
+	t.Helper()
+	actions := map[string]config.Action{
+		"call": {Steps: []config.Step{{Request: &config.Request{
+			Name: "ping", URL: "http://example.test", Retry: retry,
+		}}}},
+		"report": {Steps: []config.Step{{Message: &config.Message{
+			Body: config.Text{"ok={{node.ping.resp.body.ok}}"},
+		}}}},
+	}
+	graph := config.Graph{
+		Root:  "start",
+		Nodes: map[string]config.Node{"start": {OnEnter: []string{"call", "report"}}},
+	}
+	return newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: newMemStore(), HTTPClient: &http.Client{Transport: transport},
+	})
+}
+
+func TestRequestRetriesThenSucceeds(t *testing.T) {
+	transport := &flakyTransport{fail: 1}
+	got := outbound(t, retryEngine(t, 1, transport), "s", "hi")
+	if want := []string{"ok=true"}; !slices.Equal(got, want) {
+		t.Fatalf("retry result = %q, want %q", got, want)
+	}
+	if transport.calls != 2 {
+		t.Fatalf("attempts = %d, want 2", transport.calls)
+	}
+}
+
+func TestRequestFailureStopsTheRun(t *testing.T) {
+	eng := retryEngine(t, 1, &flakyTransport{fail: 5})
+	_, err := eng.Handle(context.Background(), domain.IncomingMessage{Sender: "s", Body: "hi"})
+	if err == nil {
+		t.Fatal("want an error when every attempt fails")
+	}
+}
+
+func TestSameInputDifferentHistory(t *testing.T) {
+	eng := fixtureEngine(t, newMemStore())
+
+	fresh := outbound(t, eng, "hist-fresh", "menu")
+	if want := []string{"Main menu: 1 hours, 2 catalog, 0 exit"}; !slices.Equal(fresh, want) {
+		t.Fatalf("fresh session = %q, want %q", fresh, want)
+	}
+
+	visited := "hist-visited"
+	outbound(t, eng, visited, "1")
+	got := outbound(t, eng, visited, "menu")
+	want := []string{"leaving hours", "Main menu: 1 hours, 2 catalog, 0 exit"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("after visiting hours = %q, want %q (ADR 0010)", got, want)
 	}
 }
 
