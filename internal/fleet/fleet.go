@@ -100,6 +100,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 				Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
 				Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now,
 				Rand: rand.New(rand.NewSource(seeds.Int63())), DefaultTimeout: opts.DefaultTimeout,
+				Log: botLog,
 			})
 			channel, err := opts.NewChannel(BotSpec{
 				Scope: scopeName, Name: botName, Settings: settings,
@@ -193,7 +194,9 @@ func (b *Bot) run(ctx context.Context) error {
 		// Stop accepting, let queued messages go out, then disconnect.
 		b.outbox.Close()
 		b.outbox.Wait()
-		_ = b.channel.Disconnect(context.Background())
+		if err := b.channel.Disconnect(context.Background()); err != nil {
+			b.log.Error("channel disconnect failed", "error", err)
+		}
 		b.log.Info("bot stopped")
 	}()
 	incoming := b.channel.Incoming()
@@ -205,13 +208,12 @@ func (b *Bot) run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			b.log.Debug("message body", "sender", msg.Sender, "id", msg.ID, "body", msg.Body)
+			b.log.Debug("message received",
+				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup, "body", msg.Body)
 			if !b.filter.Allow(msg) {
 				b.log.Debug("message filtered", "sender", msg.Sender)
 				continue
 			}
-			b.log.Info("message received",
-				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup)
 			replies, err := b.engine.Handle(ctx, msg)
 			if err != nil {
 				b.log.Error("engine failed", "sender", msg.Sender, "error", err)
@@ -220,6 +222,7 @@ func (b *Bot) run(ctx context.Context) error {
 			}
 			for _, reply := range replies {
 				if err := b.outbox.Push(ctx, reply); err != nil {
+					b.log.Debug("enqueue reply failed", "error", err)
 					return err
 				}
 			}
