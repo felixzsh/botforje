@@ -30,11 +30,13 @@ type PairOptions struct {
 	// RenderQR draws one pairing code; the default clears the terminal and
 	// writes a compact QR on stdout.
 	RenderQR func(code string)
-	Timeout  time.Duration
+	Timeout  time.Duration // maximum wait for one QR session
 }
 
 // Pair runs the QR login and records the account. If the bot is already
-// paired it returns the stored JID unless Force asks for a new pairing.
+// paired it returns the stored JID unless Force asks for a new pairing. QR
+// sessions that WhatsApp resets are retried with a new code until the context
+// is canceled or a non-retryable error occurs.
 func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	account, err := opts.Accounts.Get(ctx, opts.Scope, opts.Bot)
 	if err == nil && !opts.Force {
@@ -70,15 +72,37 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 			return "", err
 		}
 	}
+	for {
+		jid, retry, err := pairOnce(ctx, opts, container, logger, render, timeout)
+		if err != nil {
+			return "", err
+		}
+		if !retry {
+			return jid, nil
+		}
+		if err := waitForPairingRetry(ctx); err != nil {
+			return "", err
+		}
+	}
+}
+
+func pairOnce(
+	ctx context.Context,
+	opts PairOptions,
+	container *sqlstore.Container,
+	logger walog.Logger,
+	render func(string),
+	timeout time.Duration,
+) (string, bool, error) {
 	client := whatsmeow.NewClient(container.NewDevice(), logger)
 	defer client.Disconnect()
 
 	qrChannel, err := client.GetQRChannel(ctx)
 	if err != nil {
-		return "", fmt.Errorf("whatsapp: qr channel: %w", err)
+		return "", false, fmt.Errorf("whatsapp: qr channel: %w", err)
 	}
 	if err := client.Connect(); err != nil {
-		return "", fmt.Errorf("whatsapp: connect: %w", err)
+		return "", false, fmt.Errorf("whatsapp: connect: %w", err)
 	}
 
 	deadline := time.NewTimer(timeout)
@@ -86,15 +110,12 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	for {
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return "", false, ctx.Err()
 		case <-deadline.C:
-			return "", fmt.Errorf("whatsapp: pairing timed out after %s", timeout)
+			return "", true, nil
 		case item, ok := <-qrChannel:
 			if !ok {
-				return "", errors.New(
-					"whatsapp: pairing was not completed; run auth again and scan from " +
-						"WhatsApp > Linked devices > Link a device",
-				)
+				return "", true, nil
 			}
 			switch item.Event {
 			case whatsmeow.QRChannelEventCode:
@@ -102,25 +123,35 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 			case whatsmeow.QRChannelSuccess.Event:
 				jid, err := saveAccount(ctx, opts, client)
 				if err != nil {
-					return "", err
+					return "", false, err
 				}
 				confirmLink(client, logger)
-				return jid, nil
+				return jid, false, nil
 			case whatsmeow.QRChannelTimeout.Event:
-				return "", errors.New("whatsapp: pairing timed out; scan the code while it is shown")
+				return "", true, nil
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
-				return "", errors.New("whatsapp: QR scanned, but multi-device is not enabled")
-			case whatsmeow.QRChannelClientOutdated.Event:
-				return "", errors.New("whatsapp: this client version is out of date")
-			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
-				return "", errors.New(
-					"whatsapp: pairing was reset; run auth again and scan from " +
-						"WhatsApp > Linked devices > Link a device",
+				return "", false, errors.New(
+					"whatsapp: QR scanned, but multi-device is not enabled",
 				)
+			case whatsmeow.QRChannelClientOutdated.Event:
+				return "", false, errors.New("whatsapp: this client version is out of date")
+			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
+				return "", true, nil
 			case whatsmeow.QRChannelEventError:
-				return "", fmt.Errorf("whatsapp: pairing: %w", item.Error)
+				return "", false, fmt.Errorf("whatsapp: pairing: %w", item.Error)
 			}
 		}
+	}
+}
+
+func waitForPairingRetry(ctx context.Context) error {
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 

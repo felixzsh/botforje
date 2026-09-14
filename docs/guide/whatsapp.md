@@ -14,7 +14,8 @@ end to end.
    your font is very large, zoom out or widen the window first. The code
    rotates every ~20 seconds and the screen clears between codes, so the
    visible one is always current. After you scan, `auth` reconnects once to
-   confirm the companion is online before it exits.
+   confirm the companion is online before it exits. If WhatsApp resets a scan,
+   `auth` automatically starts a fresh QR; keep the command running.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
 5. `auth` prints the paired phone number and exits.
 
