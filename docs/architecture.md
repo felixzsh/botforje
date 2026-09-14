@@ -149,7 +149,9 @@ its own llms, actions, graphs, and bots. `include` pulls other files that use
 the same shape; several files may extend one scope, paths resolve relative to
 the including file, and a file loaded twice is skipped, so diamond includes
 and cycles are safe. Global settings are only valid in the main file, and
-scope is never derived from folders (ADR 0005).
+scope is never derived from folders (ADR 0005). A relative `data_dir` resolves
+against the directory of the config file, like include paths; an empty one
+falls back to the XDG data home.
 
 ## Configuration pipeline
 

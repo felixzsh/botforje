@@ -34,7 +34,7 @@ func (l Loader) Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg := &Config{origin: map[string]string{}}
+	cfg := &Config{origin: map[string]string{}, source: abs}
 	state := &includeState{loaded: map[string]bool{abs: true}}
 	if err := state.loadMain(abs, cfg); err != nil {
 		return nil, err

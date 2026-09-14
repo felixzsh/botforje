@@ -97,6 +97,7 @@ type Config struct {
 	Scopes         map[string]Scope `yaml:"scopes" json:"scopes"`
 
 	origin map[string]string `yaml:"-" json:"-"`
+	source string            `yaml:"-" json:"-"`
 }
 
 // Scope is an isolation namespace holding its own entities (ADR 0016).
