@@ -39,7 +39,10 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	}
 	logger := opts.Logger
 	if logger == nil {
-		logger = walog.Stdout("whatsmeow/"+opts.Bot, "warn", false)
+		// Pairing is interactive; keep whatsmeow's routine warnings (like the
+		// websocket close after a successful link) out of the terminal, but
+		// still surface real errors.
+		logger = walog.Stdout("whatsmeow/"+opts.Bot, "error", false)
 	}
 	render := opts.RenderQR
 	if render == nil {
