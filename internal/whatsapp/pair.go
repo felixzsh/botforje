@@ -91,7 +91,10 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 			return "", fmt.Errorf("whatsapp: pairing timed out after %s", timeout)
 		case item, ok := <-qrChannel:
 			if !ok {
-				return "", errors.New("whatsapp: pairing ended before a device linked")
+				return "", errors.New(
+					"whatsapp: pairing was not completed; run auth again and scan from " +
+						"WhatsApp > Linked devices > Link a device",
+				)
 			}
 			switch item.Event {
 			case whatsmeow.QRChannelEventCode:
@@ -110,7 +113,10 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 			case whatsmeow.QRChannelClientOutdated.Event:
 				return "", errors.New("whatsapp: this client version is out of date")
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
-				return "", errors.New("whatsapp: pairing failed with an unexpected event")
+				return "", errors.New(
+					"whatsapp: pairing was reset; run auth again and scan from " +
+						"WhatsApp > Linked devices > Link a device",
+				)
 			case whatsmeow.QRChannelEventError:
 				return "", fmt.Errorf("whatsapp: pairing: %w", item.Error)
 			}
