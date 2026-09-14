@@ -154,11 +154,11 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	}
 	jid, err := types.ParseJID(account.JID)
 	if err != nil {
-		return fmt.Errorf("whatsapp: stored account %q: %w", account.JID, err)
+		return fmt.Errorf("whatsapp: stored account %s: %w", Number(account.JID), err)
 	}
 	device, err := a.container.GetDevice(ctx, jid)
 	if err != nil {
-		return fmt.Errorf("whatsapp: load device %s: %w", account.JID, err)
+		return fmt.Errorf("whatsapp: load device %s: %w", Number(account.JID), err)
 	}
 	client := whatsmeow.NewClient(device, a.waLogger)
 	// Reconnection is ours so it uses the capped backoff with jitter (ADR 0011).
