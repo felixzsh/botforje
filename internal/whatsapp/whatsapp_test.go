@@ -2,20 +2,27 @@ package whatsapp
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"log/slog"
 	"math/rand"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+	walog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/felixzsh/botforje/internal/domain"
 	"github.com/felixzsh/botforje/internal/logging"
+	"github.com/felixzsh/botforje/internal/sqlite"
 )
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
@@ -123,6 +130,51 @@ func TestNumber(t *testing.T) {
 		if got := Number(in); got != want {
 			t.Fatalf("Number(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestClearPairing(t *testing.T) {
+	ctx := context.Background()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	container := sqlstore.NewWithDB(db.DB, "sqlite", walog.Noop)
+	if err := container.Upgrade(ctx); err != nil {
+		t.Fatal(err)
+	}
+	jid := types.NewADJID("5215500000000", 0, 1)
+	device := container.NewDevice()
+	device.ID = &jid
+	device.Account = &waAdv.ADVSignedDeviceIdentity{
+		Details:             []byte{},
+		AccountSignature:    make([]byte, 64),
+		AccountSignatureKey: make([]byte, 32),
+		DeviceSignature:     make([]byte, 64),
+	}
+	if err := device.Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	account := &domain.Account{Scope: "dev", Bot: "bot", JID: jid.String()}
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := clearPairing(ctx, container, db.Accounts(), account); err != nil {
+		t.Fatal(err)
+	}
+	got, err := container.GetDevice(ctx, jid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatal("device still exists after clearing pairing")
+	}
+	_, err = db.Accounts().Get(ctx, account.Scope, account.Bot)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("account error = %v, want not found", err)
 	}
 }
 

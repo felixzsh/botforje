@@ -21,6 +21,10 @@ end to end.
 For new pairings, WhatsApp should show the companion as `BotForje`. Existing
 links keep their old name until they are unlinked and paired again.
 
+To replace a local pairing, stop the daemon and run
+`./bin/botforje auth --force support-bot`. This removes the old local device
+credentials but keeps sessions and message history.
+
 ## Check status
 
 `./bin/botforje status` lists every configured bot as `paired as <number>` or

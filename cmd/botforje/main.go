@@ -55,7 +55,7 @@ func print_help() {
 Commands:
   validate   validate a config file (--config, --json)
   schema     print the generated config JSON Schema (-o file)
-  auth       pair a bot by scanning a QR code (auth <bot> [--scope name])
+  auth       pair a bot by scanning a QR code (auth [--force] <bot>)
   status     show each configured bot's pairing state
   daemon     run every configured bot until interrupted
 `)
@@ -170,11 +170,12 @@ func runAuth(args []string) int {
 	fs := flag.NewFlagSet("auth", flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
 	scope := fs.String("scope", "", "scope that owns the bot (needed if the name repeats)")
+	force := fs.Bool("force", false, "replace an existing pairing")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: botforje auth <bot> [--scope name] [--config path]")
+		fmt.Fprintln(os.Stderr, "usage: botforje auth [--force] [--scope name] [--config path] <bot>")
 		return 2
 	}
 	name := fs.Arg(0)
@@ -200,6 +201,7 @@ func runAuth(args []string) int {
 		Bot:      name,
 		DB:       db.DB,
 		Accounts: db.Accounts(),
+		Force:    *force,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
