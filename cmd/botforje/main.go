@@ -205,7 +205,7 @@ func runAuth(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName, jid)
+	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName, whatsapp.Number(jid))
 	return 0
 }
 
@@ -237,7 +237,7 @@ func runStatus(args []string) int {
 				return 1
 			default:
 				fmt.Printf("%-24s scope=%-12s paired as %s\n",
-					botName, scopeName, account.JID)
+					botName, scopeName, whatsapp.Number(account.JID))
 			}
 		}
 	}

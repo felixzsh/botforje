@@ -1,6 +1,24 @@
 package whatsapp
 
-import "go.mau.fi/whatsmeow/types"
+import (
+	"strings"
+
+	"go.mau.fi/whatsmeow/types"
+)
+
+// Number extracts the phone number from a stored account JID for display:
+// "5215500000000:65@s.whatsapp.net" becomes "5215500000000". The JID and its
+// device suffix stay internal (ADR 0020).
+func Number(jid string) string {
+	number := jid
+	if at := strings.IndexByte(number, '@'); at >= 0 {
+		number = number[:at]
+	}
+	if colon := strings.IndexByte(number, ':'); colon >= 0 {
+		number = number[:colon]
+	}
+	return number
+}
 
 // pnLookup resolves a LID to its phone number through the LID store (ADR 0013).
 type pnLookup func(lid types.JID) (types.JID, bool)
