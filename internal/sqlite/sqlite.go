@@ -7,24 +7,33 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
+// migration is one schema step. name is the object it creates, which lets
+// Open detect a database that already holds a different schema.
+type migration struct {
+	name string
+	sql  string
+}
+
 // migrations are applied in order and recorded, so each runs once per database
 // (ADR 0006). Never edit an applied migration; append a new one.
-var migrations = []string{
-	`CREATE TABLE conversations (
+var migrations = []migration{
+	{"conversations", `CREATE TABLE conversations (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		bot        TEXT NOT NULL,
 		sender     TEXT NOT NULL,
 		scope      TEXT NOT NULL,
 		started_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
-	)`,
-	`CREATE INDEX conversations_bot_sender ON conversations (bot, sender)`,
-	`CREATE TABLE messages (
+	)`},
+	{"conversations_bot_sender",
+		`CREATE INDEX conversations_bot_sender ON conversations (bot, sender)`},
+	{"messages", `CREATE TABLE messages (
 		id              INTEGER PRIMARY KEY AUTOINCREMENT,
 		conversation_id INTEGER NOT NULL
 			REFERENCES conversations (id) ON DELETE CASCADE,
@@ -32,9 +41,10 @@ var migrations = []string{
 		kind            TEXT NOT NULL,
 		body            TEXT NOT NULL,
 		sent_at         TEXT NOT NULL
-	)`,
-	`CREATE INDEX messages_conversation ON messages (conversation_id, id)`,
-	`CREATE TABLE sessions (
+	)`},
+	{"messages_conversation",
+		`CREATE INDEX messages_conversation ON messages (conversation_id, id)`},
+	{"sessions", `CREATE TABLE sessions (
 		bot           TEXT NOT NULL,
 		sender        TEXT NOT NULL,
 		sender_lid    TEXT NOT NULL DEFAULT '',
@@ -48,13 +58,13 @@ var migrations = []string{
 		updated_at    TEXT NOT NULL,
 		expires_at    TEXT NOT NULL,
 		PRIMARY KEY (scope, bot, sender)
-	)`,
-	`CREATE TABLE accounts (
+	)`},
+	{"accounts", `CREATE TABLE accounts (
 		scope TEXT NOT NULL,
 		bot   TEXT NOT NULL,
 		jid   TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
-	)`,
+	)`},
 }
 
 const migrationsTable = `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -86,7 +96,7 @@ func Open(path string) (*DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("sqlite: ping: %w", err)
 	}
-	if err := migrate(db); err != nil {
+	if err := migrate(db, path); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -107,24 +117,63 @@ func (d *DB) Messages() *MessageStore { return &MessageStore{db: d.DB} }
 // Accounts returns the paired-account repository.
 func (d *DB) Accounts() *AccountStore { return &AccountStore{db: d.DB} }
 
-func migrate(db *sql.DB) error {
-	if _, err := db.Exec(migrationsTable); err != nil {
-		return fmt.Errorf("sqlite: migrations table: %w", err)
-	}
-	applied, err := appliedVersions(db)
+func migrate(db *sql.DB, path string) error {
+	objects, err := objectNames(db)
 	if err != nil {
 		return err
 	}
-	for i, statement := range migrations {
+	applied := map[int]bool{}
+	if objects["schema_migrations"] {
+		if applied, err = appliedVersions(db); err != nil {
+			return err
+		}
+	}
+	var conflicts []string
+	for i, m := range migrations {
+		if applied[i+1] || !objects[m.name] {
+			continue
+		}
+		conflicts = append(conflicts, m.name)
+	}
+	if len(conflicts) > 0 {
+		return fmt.Errorf(
+			"%s: database already holds a different schema (%s); "+
+				"move it aside or set data_dir",
+			path, strings.Join(conflicts, ", "))
+	}
+	if _, err := db.Exec(migrationsTable); err != nil {
+		return fmt.Errorf("sqlite: migrations table: %w", err)
+	}
+	for i, m := range migrations {
 		version := i + 1
 		if applied[version] {
 			continue
 		}
-		if err := applyMigration(db, version, statement); err != nil {
+		if err := applyMigration(db, version, m.sql); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// objectNames lists every table and index so Open can detect a conflict before
+// running a migration.
+func objectNames(db *sql.DB) (map[string]bool, error) {
+	rows, err := db.Query(
+		"SELECT name FROM sqlite_master WHERE type IN ('table', 'index')")
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: read schema: %w", err)
+	}
+	defer rows.Close()
+	objects := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		objects[name] = true
+	}
+	return objects, rows.Err()
 }
 
 func appliedVersions(db *sql.DB) (map[int]bool, error) {
