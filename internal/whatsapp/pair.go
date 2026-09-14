@@ -11,6 +11,7 @@ import (
 
 	"github.com/mdp/qrterminal"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	walog "go.mau.fi/whatsmeow/util/log"
 
@@ -54,6 +55,9 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 		timeout = 3 * time.Minute
 	}
 
+	// WhatsApp shows this value as the linked-device name. It is sent only
+	// while registering a new device; existing links keep their old name.
+	store.SetOSInfo("BotForje", [3]uint32{0, 1, 0})
 	container := sqlstore.NewWithDB(opts.DB, "sqlite", logger)
 	if err := container.Upgrade(ctx); err != nil {
 		return "", fmt.Errorf("whatsapp: device store: %w", err)
@@ -93,6 +97,8 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 				return jid, nil
 			case whatsmeow.QRChannelTimeout.Event:
 				return "", errors.New("whatsapp: pairing timed out; scan the code while it is shown")
+			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
+				return "", errors.New("whatsapp: QR scanned, but multi-device is not enabled")
 			case whatsmeow.QRChannelClientOutdated.Event:
 				return "", errors.New("whatsapp: this client version is out of date")
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:

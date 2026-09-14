@@ -18,6 +18,9 @@ end to end.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
 5. `auth` prints the paired phone number and exits.
 
+For new pairings, WhatsApp should show the companion as `BotForje`. Existing
+links keep their old name until they are unlinked and paired again.
+
 ## Check status
 
 `./bin/botforje status` lists every configured bot as `paired as <number>` or
