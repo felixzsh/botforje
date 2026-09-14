@@ -19,6 +19,7 @@ import (
 	"github.com/felixzsh/botforje/internal/config"
 	"github.com/felixzsh/botforje/internal/domain"
 	"github.com/felixzsh/botforje/internal/fleet"
+	"github.com/felixzsh/botforje/internal/logging"
 	"github.com/felixzsh/botforje/internal/sqlite"
 	"github.com/felixzsh/botforje/internal/whatsapp"
 )
@@ -253,9 +254,11 @@ func runDaemon(args []string) int {
 	if code != 0 {
 		return code
 	}
+	logger := logging.New(cfg.LogLevel, os.Stderr)
+
 	db, err := openDatabase(cfg)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		logger.Error("open database", "error", err)
 		return 1
 	}
 	defer db.Close()
@@ -263,6 +266,7 @@ func runDaemon(args []string) int {
 	runner, err := fleet.New(cfg, fleet.Options{
 		Store:          db.Sessions(),
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
+		Log:            logger,
 		NewChannel: func(spec fleet.BotSpec) (domain.MessageChannel, error) {
 			return whatsapp.New(whatsapp.Options{
 				Scope:    spec.Scope,
@@ -270,36 +274,27 @@ func runDaemon(args []string) int {
 				DB:       db.DB,
 				Accounts: db.Accounts(),
 				Settings: whatsappSettings(spec.Settings),
-				OnState: func(state whatsapp.State) {
-					fmt.Printf("%s/%s: %s\n", spec.Scope, spec.Name, state)
-				},
+				Log:      logger.With("scope", spec.Scope, "bot", spec.Name),
 			})
-		},
-		OnError: func(scope, bot string, err error) {
-			fmt.Fprintf(os.Stderr, "%s/%s: %v\n", scope, bot, err)
 		},
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		logger.Error("build fleet", "error", err)
 		return 1
 	}
 
 	statuses := runner.Status()
-	fmt.Printf("botforje daemon: %d bot(s)\n", len(statuses))
+	logger.Info("daemon starting", "bots", len(statuses))
 	for _, status := range statuses {
-		fmt.Printf("  %s/%s\n", status.Scope, status.Bot)
+		logger.Info("bot configured", "scope", status.Scope, "bot", status.Bot)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := runner.Run(ctx); err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	for _, status := range runner.Status() {
-		fmt.Printf("stopped %s/%s (state=%s, outbox=%d)\n",
-			status.Scope, status.Bot, status.State, status.OutboxDepth)
-	}
+	logger.Info("daemon stopped")
 	return 0
 }
 
