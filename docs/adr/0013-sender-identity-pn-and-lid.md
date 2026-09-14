@@ -1,6 +1,7 @@
 # ADR 0013 — Sender identity: PN and LID
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09). The unresolved-session and LID-in-domain parts are
+superseded by ADR 0020; the rest stands.
 
 ## Context
 

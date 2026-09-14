@@ -56,7 +56,8 @@ whatsmeow channel in `internal/whatsapp`. The fleet, inbox, and outbox live in
 Inbound:
 
 1. Channel receives an event, maps it to an `IncomingMessage`, and resolves
-   the sender to a phone number when possible (ADR 0013).
+   the sender to a phone number; a message with no known phone number is
+   dropped (ADR 0020).
 2. Inbox filters it (groups, allow/ignore lists, dedup) and routes it to the
    right bot and session.
 3. Graph engine loads the session, or creates one at the graph root. On
@@ -120,7 +121,7 @@ step (interval, timeout, success condition) is an open decision for Phase 4/7.
 ## Sessions
 
 A session is one (bot, sender) conversation, where `sender` is the resolved
-phone number (ADR 0013); the LID is stored when known. It starts at the graph
+phone number in plain digits (ADR 0020). It starts at the graph
 root and expires after the graph timeout (or `default_timeout`). An expired
 session is destroyed together with its state; the next message starts a new
 session at root. Conversation state, including graph and node contexts, lives

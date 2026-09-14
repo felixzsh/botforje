@@ -31,12 +31,12 @@
 - Policy — constraints for LLM decisions, tool selection, and generated text.
   Node policy is ambient; message policy refines it.
 - Session — per-sender conversation state stored in SQLite.
-- PN (phone number) — the classic WhatsApp address `user@s.whatsapp.net`;
-  the identity BotForje uses to key sessions.
-- LID (hidden user) — WhatsApp's `user@lid` address, used as messages move
-  away from phone numbers.
-- Sender identity — the resolved PN for a sender, with the LID kept when
-  known (ADR 0013).
+- PN (phone number) — WhatsApp's phone-number address; BotForje keys sessions
+  on the plain number (`5215500000000`), without the JID suffix (ADR 0020).
+- LID (hidden user) — WhatsApp's `user@lid` address; confined to the channel
+  adapter for resolution and delivery (ADR 0020).
+- Sender identity — the resolved phone number in plain digits, resolved by the
+  channel adapter (ADR 0020).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp
