@@ -270,6 +270,9 @@ func runDaemon(args []string) int {
 				DB:       db.DB,
 				Accounts: db.Accounts(),
 				Settings: whatsappSettings(spec.Settings),
+				OnState: func(state whatsapp.State) {
+					fmt.Printf("%s/%s: %s\n", spec.Scope, spec.Name, state)
+				},
 			})
 		},
 		OnError: func(scope, bot string, err error) {

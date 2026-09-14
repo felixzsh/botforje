@@ -53,6 +53,8 @@ type Options struct {
 	MaxBackoff time.Duration
 	Now        func() time.Time
 	Rand       *rand.Rand
+	// OnState is called when the channel lifecycle changes, for status.
+	OnState func(State)
 }
 
 // Adapter is the whatsmeow implementation of domain.MessageChannel for one
@@ -66,6 +68,7 @@ type Adapter struct {
 	logger    walog.Logger
 	backoff   *Backoff
 	now       func() time.Time
+	onState   func(State)
 
 	incoming chan domain.IncomingMessage
 
@@ -119,6 +122,7 @@ func New(opts Options) (*Adapter, error) {
 		logger:    logger,
 		backoff:   NewBackoff(opts.MinBackoff, opts.MaxBackoff, rnd),
 		now:       now,
+		onState:   opts.OnState,
 		incoming:  make(chan domain.IncomingMessage, queue),
 		state:     StateStopped,
 		seen:      newDedup(2048),
@@ -156,8 +160,8 @@ func (a *Adapter) Connect(ctx context.Context) error {
 
 	a.mu.Lock()
 	a.client = client
-	a.state = StateConnecting
 	a.mu.Unlock()
+	a.setState(StateConnecting)
 
 	if err := client.Connect(); err != nil {
 		return fmt.Errorf("whatsapp: connect: %w", err)
@@ -250,8 +254,12 @@ func (a *Adapter) compose(
 
 func (a *Adapter) setState(state State) {
 	a.mu.Lock()
+	changed := a.state != state
 	a.state = state
 	a.mu.Unlock()
+	if changed && a.onState != nil {
+		a.onState(state)
+	}
 }
 
 func (a *Adapter) handleEvent(raw any) {
