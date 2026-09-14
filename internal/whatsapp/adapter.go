@@ -268,7 +268,12 @@ func (a *Adapter) setState(state State) {
 	if !changed {
 		return
 	}
-	a.log.Info("channel state", "state", string(state))
+	switch state {
+	case StateLoggedOut, StateBanned:
+		a.log.Warn("channel state", "state", string(state))
+	default:
+		a.log.Info("channel state", "state", string(state))
+	}
 	if a.onState != nil {
 		a.onState(state)
 	}
@@ -362,7 +367,9 @@ func (a *Adapter) loop() {
 }
 
 func (a *Adapter) reconnectOnce() {
-	timer := time.NewTimer(a.backoff.Next())
+	delay := a.backoff.Next()
+	a.log.Debug("reconnecting", "delay", delay)
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-a.stop:
