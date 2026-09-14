@@ -6,6 +6,7 @@ $schema: "../config.schema.json"
 version: 1
 data_dir: "../.dev-data"
 log_level: "debug"
+log_level_deps: "info"
 
 scopes:
   dev:

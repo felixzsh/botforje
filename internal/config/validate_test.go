@@ -18,6 +18,7 @@ var invalidFixtures = []fixtureCase{
 	{"include_no_match.yml", "matched no files"},
 	{"bad_version.yml", "unsupported version"},
 	{"bad_log_level.yml", "log_level"},
+	{"bad_log_level_deps.yml", "log_level_deps"},
 	{"bad_llm_routing.yml", "routing"},
 	{"bad_llm_realization.yml", "realization"},
 	{"bad_llm_bounds.yml", ">= 0"},

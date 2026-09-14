@@ -53,6 +53,11 @@ func Validate(cfg *Config) []ValidationError {
 	default:
 		add("", "config", "invalid log_level %q", cfg.LogLevel)
 	}
+	switch cfg.LogLevelDeps {
+	case "", "debug", "info", "warn", "error", "off":
+	default:
+		add("", "config", "invalid log_level_deps %q", cfg.LogLevelDeps)
+	}
 	for _, scopeName := range sortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		for _, name := range sortedKeys(scope.LLMs) {

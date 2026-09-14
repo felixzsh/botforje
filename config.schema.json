@@ -117,6 +117,9 @@
         "log_level": {
           "type": "string"
         },
+        "log_level_deps": {
+          "type": "string"
+        },
         "default_timeout": {
           "type": "integer"
         },

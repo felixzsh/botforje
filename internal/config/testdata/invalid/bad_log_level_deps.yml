@@ -1,0 +1,16 @@
+version: 1
+log_level_deps: "verbose"
+scopes:
+  default:
+    actions:
+      greet:
+        steps:
+          - message:
+              body: "hi"
+    graphs:
+      g:
+        root: "start"
+        nodes:
+          start:
+            on_enter: ["greet"]
+            edges: []

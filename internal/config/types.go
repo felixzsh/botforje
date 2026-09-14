@@ -91,6 +91,7 @@ type Config struct {
 	Address        string           `yaml:"address" json:"address,omitempty"`
 	Port           int              `yaml:"port" json:"port,omitempty"`
 	LogLevel       string           `yaml:"log_level" json:"log_level,omitempty"`
+	LogLevelDeps   string           `yaml:"log_level_deps" json:"log_level_deps,omitempty"`
 	DefaultTimeout int              `yaml:"default_timeout" json:"default_timeout,omitempty"`
 	DataDir        string           `yaml:"data_dir" json:"data_dir,omitempty"`
 	Include        []string         `yaml:"include" json:"include,omitempty"`

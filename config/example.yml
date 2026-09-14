@@ -12,6 +12,7 @@ version: 1
 address: "127.0.0.1"              # REST API bind address
 port: 3000                        # REST API port (0 disables the API)
 log_level: "info"                 # debug, info, warn, error
+log_level_deps: "info"            # dependency logs (whatsmeow); also accepts off
 default_timeout: 300              # Default graph session timeout in seconds
 data_dir: "~/.local/share/botforje"  # SQLite location (XDG default when omitted)
 
