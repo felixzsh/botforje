@@ -49,6 +49,10 @@ var migrations = []string{
 		expires_at    TEXT NOT NULL,
 		PRIMARY KEY (bot, sender)
 	)`,
+	`CREATE TABLE accounts (
+		bot TEXT PRIMARY KEY,
+		jid TEXT NOT NULL
+	)`,
 }
 
 const migrationsTable = `CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -97,6 +101,9 @@ func (d *DB) Conversations() *ConversationStore {
 
 // Messages returns the message repository.
 func (d *DB) Messages() *MessageStore { return &MessageStore{db: d.DB} }
+
+// Accounts returns the paired-account repository.
+func (d *DB) Accounts() *AccountStore { return &AccountStore{db: d.DB} }
 
 func migrate(db *sql.DB) error {
 	if _, err := db.Exec(migrationsTable); err != nil {

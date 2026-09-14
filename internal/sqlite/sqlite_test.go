@@ -209,6 +209,35 @@ func TestConversationAndMessages(t *testing.T) {
 	}
 }
 
+func TestAccountRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	if _, err := db.Accounts().Get(ctx, "support-bot"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Get missing = %v, want ErrNotFound", err)
+	}
+	account := &domain.Account{Bot: "support-bot", JID: "5215500000000@s.whatsapp.net"}
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	account.JID = "5215599999999@s.whatsapp.net"
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatalf("Put update: %v", err)
+	}
+	got, err := db.Accounts().Get(ctx, "support-bot")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.JID != "5215599999999@s.whatsapp.net" {
+		t.Fatalf("JID = %q", got.JID)
+	}
+	if err := db.Accounts().Delete(ctx, "support-bot"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := db.Accounts().Get(ctx, "support-bot"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("Get after delete = %v, want ErrNotFound", err)
+	}
+}
+
 func TestForeignKeysEnforced(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))

@@ -190,6 +190,45 @@ func (s *MessageStore) List(
 	return messages, rows.Err()
 }
 
+// AccountStore persists paired channel accounts (ADR 0006).
+type AccountStore struct{ db *sql.DB }
+
+// Get loads the paired account for a bot or returns domain.ErrNotFound.
+func (s *AccountStore) Get(ctx context.Context, bot string) (*domain.Account, error) {
+	var account domain.Account
+	err := s.db.QueryRowContext(ctx,
+		"SELECT bot, jid FROM accounts WHERE bot = ?", bot).
+		Scan(&account.Bot, &account.JID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get account: %w", err)
+	}
+	return &account, nil
+}
+
+// Put inserts or replaces the paired account.
+func (s *AccountStore) Put(ctx context.Context, account *domain.Account) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO accounts (bot, jid) VALUES (?, ?)
+		 ON CONFLICT (bot) DO UPDATE SET jid = excluded.jid`,
+		account.Bot, account.JID)
+	if err != nil {
+		return fmt.Errorf("sqlite: put account: %w", err)
+	}
+	return nil
+}
+
+// Delete removes the paired account for a bot.
+func (s *AccountStore) Delete(ctx context.Context, bot string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM accounts WHERE bot = ?", bot)
+	if err != nil {
+		return fmt.Errorf("sqlite: delete account: %w", err)
+	}
+	return nil
+}
+
 func encodeJSON(value any) (string, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
