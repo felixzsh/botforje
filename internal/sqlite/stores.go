@@ -211,6 +211,28 @@ func (s *AccountStore) Get(ctx context.Context, scope, bot string) (*domain.Acco
 	return &account, nil
 }
 
+// List returns all paired accounts in stable order.
+func (s *AccountStore) List(ctx context.Context) ([]domain.Account, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT scope, bot, jid FROM accounts ORDER BY scope, bot")
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: list accounts: %w", err)
+	}
+	defer rows.Close()
+	var accounts []domain.Account
+	for rows.Next() {
+		var account domain.Account
+		if err := rows.Scan(&account.Scope, &account.Bot, &account.JID); err != nil {
+			return nil, fmt.Errorf("sqlite: scan account: %w", err)
+		}
+		accounts = append(accounts, account)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sqlite: list accounts: %w", err)
+	}
+	return accounts, nil
+}
+
 // Put inserts or replaces the paired account.
 func (s *AccountStore) Put(ctx context.Context, account *domain.Account) error {
 	_, err := s.db.ExecContext(ctx,
@@ -229,6 +251,47 @@ func (s *AccountStore) Delete(ctx context.Context, scope, bot string) error {
 		"DELETE FROM accounts WHERE scope = ? AND bot = ?", scope, bot)
 	if err != nil {
 		return fmt.Errorf("sqlite: delete account: %w", err)
+	}
+	return nil
+}
+
+// GetPairingStatus loads the last persisted pairing transition.
+func (s *AccountStore) GetPairingStatus(
+	ctx context.Context, scope, bot string,
+) (*domain.PairingStatus, error) {
+	var status domain.PairingStatus
+	var changed string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT scope, bot, state, last_change FROM pairing_status "+
+			"WHERE scope = ? AND bot = ?", scope, bot).
+		Scan(&status.Scope, &status.Bot, &status.State, &changed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get pairing status: %w", err)
+	}
+	status.LastChange = parseTime(changed)
+	return &status, nil
+}
+
+// SetPairingStatus stores the last pairing transition for a bot.
+func (s *AccountStore) SetPairingStatus(
+	ctx context.Context, status *domain.PairingStatus,
+) error {
+	if status == nil {
+		return errors.New("sqlite: nil pairing status")
+	}
+	if status.LastChange.IsZero() {
+		return errors.New("sqlite: pairing status has no last change")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO pairing_status (scope, bot, state, last_change) VALUES (?, ?, ?, ?)
+		 ON CONFLICT (scope, bot) DO UPDATE SET state = excluded.state,
+		 last_change = excluded.last_change`,
+		status.Scope, status.Bot, status.State, formatTime(status.LastChange))
+	if err != nil {
+		return fmt.Errorf("sqlite: set pairing status: %w", err)
 	}
 	return nil
 }

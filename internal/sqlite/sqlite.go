@@ -55,6 +55,13 @@ var schema = []string{
 		jid   TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
+	`CREATE TABLE IF NOT EXISTS pairing_status (
+		scope       TEXT NOT NULL,
+		bot         TEXT NOT NULL,
+		state       TEXT NOT NULL,
+		last_change TEXT NOT NULL,
+		PRIMARY KEY (scope, bot)
+	)`,
 }
 
 // DB is an open SQLite database with its schema applied.

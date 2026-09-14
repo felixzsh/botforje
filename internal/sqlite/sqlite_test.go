@@ -244,6 +244,49 @@ func TestAccountRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAccountList(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	for _, account := range []domain.Account{
+		{Scope: "z", Bot: "later", JID: "2@s.whatsapp.net"},
+		{Scope: "a", Bot: "first", JID: "1@s.whatsapp.net"},
+	} {
+		if err := db.Accounts().Put(ctx, &account); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+	}
+	got, err := db.Accounts().List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 || got[0].Bot != "first" || got[1].Bot != "later" {
+		t.Fatalf("List = %#v, want stable scope/bot order", got)
+	}
+}
+
+func TestPairingStatusRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	if _, err := db.Accounts().GetPairingStatus(ctx, "dev", "bot"); !errors.Is(
+		err, domain.ErrNotFound,
+	) {
+		t.Fatalf("GetPairingStatus missing = %v, want ErrNotFound", err)
+	}
+	want := &domain.PairingStatus{
+		Scope: "dev", Bot: "bot", State: domain.PairingUnpaired, LastChange: t1,
+	}
+	if err := db.Accounts().SetPairingStatus(ctx, want); err != nil {
+		t.Fatalf("SetPairingStatus: %v", err)
+	}
+	got, err := db.Accounts().GetPairingStatus(ctx, "dev", "bot")
+	if err != nil {
+		t.Fatalf("GetPairingStatus: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("PairingStatus = %#v, want %#v", got, want)
+	}
+}
+
 func TestForeignKeysEnforced(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))

@@ -48,11 +48,32 @@ type Account struct {
 	JID   string
 }
 
-// AccountStore records paired channel accounts (ADR 0006).
+// PairingState is the persisted local state of one bot's channel pairing.
+type PairingState string
+
+const (
+	PairingPaired    PairingState = "paired"
+	PairingNotPaired PairingState = "not paired"
+	PairingUnpaired  PairingState = "unpaired"
+)
+
+// PairingStatus records the last confirmed transition of a bot's pairing.
+type PairingStatus struct {
+	Scope      string
+	Bot        string
+	State      PairingState
+	LastChange time.Time
+}
+
+// AccountStore records paired channel accounts and their pairing status
+// (ADR 0006).
 type AccountStore interface {
 	Get(ctx context.Context, scope, bot string) (*Account, error)
+	List(ctx context.Context) ([]Account, error)
 	Put(ctx context.Context, account *Account) error
 	Delete(ctx context.Context, scope, bot string) error
+	GetPairingStatus(ctx context.Context, scope, bot string) (*PairingStatus, error)
+	SetPairingStatus(ctx context.Context, status *PairingStatus) error
 }
 
 // MessageStore records message history.

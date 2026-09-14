@@ -25,7 +25,10 @@ import (
 	"github.com/felixzsh/botforje/internal/sqlite"
 )
 
-var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+var (
+	t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
+	t1 = time.Date(2026, 9, 13, 10, 5, 0, 0, time.UTC)
+)
 
 func TestBackoffBounds(t *testing.T) {
 	b := NewBackoff(100*time.Millisecond, time.Second, rand.New(rand.NewSource(1)))
@@ -162,7 +165,7 @@ func TestClearPairing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := clearPairing(ctx, container, db.Accounts(), account); err != nil {
+	if err := removePairing(ctx, container, db.Accounts(), account, t0); err != nil {
 		t.Fatal(err)
 	}
 	got, err := container.GetDevice(ctx, jid)
@@ -176,6 +179,195 @@ func TestClearPairing(t *testing.T) {
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("account error = %v, want not found", err)
 	}
+	status, err := db.Accounts().GetPairingStatus(ctx, account.Scope, account.Bot)
+	if err != nil {
+		t.Fatalf("GetPairingStatus: %v", err)
+	}
+	if status.State != domain.PairingNotPaired || !status.LastChange.Equal(t0) {
+		t.Fatalf("status = %#v, want not paired at %s", status, t0)
+	}
+}
+
+func TestValidateAccountOwners(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	accounts := db.Accounts()
+	for _, account := range []domain.Account{
+		{Scope: "dev", Bot: "first", JID: "5215500000000:1@s.whatsapp.net"},
+		{Scope: "dev", Bot: "second", JID: "5215500000000:2@s.whatsapp.net"},
+	} {
+		if err := accounts.Put(ctx, &account); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ValidateAccountOwners(ctx, accounts); err == nil {
+		t.Fatal("duplicate phone number was accepted")
+	}
+}
+
+func TestConnectReportsMissingDevice(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	account := &domain.Account{
+		Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+	}
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	container := sqlstore.NewWithDB(db.DB, "sqlite", walog.Noop)
+	if err := container.Upgrade(ctx); err != nil {
+		t.Fatal(err)
+	}
+	a := &Adapter{
+		scope: "dev", bot: "botsito", accounts: db.Accounts(), container: container,
+		log: logging.Discard(),
+	}
+	err := a.Connect(ctx)
+	if err == nil || !strings.Contains(err.Error(), "no local device credentials") {
+		t.Fatalf("Connect error = %v, want missing-device error", err)
+	}
+}
+
+func TestValidateAccountsAllowsMissingDevice(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	account := &domain.Account{
+		Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+	}
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateAccounts(ctx, db.DB, db.Accounts()); err != nil {
+		t.Fatalf("ValidateAccounts: %v", err)
+	}
+	status, err := db.Accounts().GetPairingStatus(ctx, account.Scope, account.Bot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != domain.PairingUnpaired {
+		t.Fatalf("state = %q, want unpaired", status.State)
+	}
+}
+
+func TestCheckPairingAllowsRecoverableStates(t *testing.T) {
+	cases := []struct {
+		name    string
+		account *domain.Account
+		want    domain.PairingState
+	}{
+		{name: "not paired", want: domain.PairingNotPaired},
+		{
+			name: "unpaired",
+			account: &domain.Account{
+				Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+			},
+			want: domain.PairingUnpaired,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := openWhatsAppTestDB(t)
+			if tc.account != nil {
+				if err := db.Accounts().Put(ctx, tc.account); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state, err := CheckPairing(ctx, db.DB, db.Accounts(), "dev", "botsito")
+			if err != nil {
+				t.Fatalf("CheckPairing: %v", err)
+			}
+			if state != tc.want {
+				t.Fatalf("state = %q, want %q", state, tc.want)
+			}
+		})
+	}
+}
+
+func TestUnpairRemovesOrphanedAccount(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	account := &domain.Account{
+		Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+	}
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	if err := Unpair(ctx, UnpairOptions{
+		Scope: account.Scope, Bot: account.Bot, DB: db.DB, Accounts: db.Accounts(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Accounts().Get(ctx, account.Scope, account.Bot); !errors.Is(
+		err, domain.ErrNotFound,
+	) {
+		t.Fatalf("account after unpair = %v, want not found", err)
+	}
+}
+
+func TestPairingStatusChangesOnlyOnStateChange(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	accounts := db.Accounts()
+	if err := updatePairingStatus(ctx, accounts, "dev", "bot",
+		domain.PairingUnpaired, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := updatePairingStatus(ctx, accounts, "dev", "bot",
+		domain.PairingUnpaired, t1); err != nil {
+		t.Fatal(err)
+	}
+	status, err := accounts.GetPairingStatus(ctx, "dev", "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.LastChange.Equal(t0) {
+		t.Fatalf("same state changed timestamp to %s, want %s", status.LastChange, t0)
+	}
+	if err := updatePairingStatus(ctx, accounts, "dev", "bot",
+		domain.PairingPaired, t1); err != nil {
+		t.Fatal(err)
+	}
+	status, err = accounts.GetPairingStatus(ctx, "dev", "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != domain.PairingPaired || !status.LastChange.Equal(t1) {
+		t.Fatalf("status = %#v, want paired at %s", status, t1)
+	}
+}
+
+func TestLoggedOutPersistsUnpairedStatus(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	account := &domain.Account{
+		Scope: "dev", Bot: "bot", JID: "5215500000000:1@s.whatsapp.net",
+	}
+	if err := db.Accounts().Put(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	a := &Adapter{
+		scope: "dev", bot: "bot", accounts: db.Accounts(), state: StateConnected,
+		stop: make(chan struct{}), log: logging.Discard(), now: func() time.Time { return t1 },
+	}
+	a.handleEvent(&events.LoggedOut{})
+	status, err := db.Accounts().GetPairingStatus(ctx, "dev", "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != domain.PairingUnpaired || !status.LastChange.Equal(t1) {
+		t.Fatalf("status = %#v, want unpaired at %s", status, t1)
+	}
+}
+
+func openWhatsAppTestDB(t *testing.T) *sqlite.DB {
+	t.Helper()
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }
 
 func TestWaLoGFiltersBelowMinimum(t *testing.T) {

@@ -163,6 +163,34 @@ func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[st
 	return runner, channels
 }
 
+func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if errs := config.Validate(cfg); len(errs) != 0 {
+		t.Fatalf("config invalid: %v", errs)
+	}
+	var created []string
+	runner, err := New(cfg, Options{
+		Store: newStore(),
+		Skip:  func(_, bot string) bool { return bot == "beta" },
+		NewChannel: func(spec BotSpec) (domain.MessageChannel, error) {
+			created = append(created, spec.Name)
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if len(created) != 1 || created[0] != "alpha" {
+		t.Fatalf("created channels = %v, want [alpha]", created)
+	}
+	if statuses := runner.Status(); len(statuses) != 1 || statuses[0].Bot != "alpha" {
+		t.Fatalf("statuses = %#v, want only alpha", statuses)
+	}
+}
+
 func waitConnected(t *testing.T, runner *Fleet) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

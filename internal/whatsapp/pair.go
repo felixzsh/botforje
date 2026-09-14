@@ -13,7 +13,6 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
-	"go.mau.fi/whatsmeow/types"
 	walog "go.mau.fi/whatsmeow/util/log"
 
 	"github.com/felixzsh/botforje/internal/domain"
@@ -31,6 +30,7 @@ type PairOptions struct {
 	// writes a compact QR on stdout.
 	RenderQR func(code string)
 	Timeout  time.Duration // maximum wait for one QR session
+	Now      func() time.Time
 }
 
 // Pair runs the QR login and records the account. If the bot is already
@@ -38,6 +38,9 @@ type PairOptions struct {
 // sessions that WhatsApp resets are retried with a new code until the context
 // is canceled or a non-retryable error occurs.
 func Pair(ctx context.Context, opts PairOptions) (string, error) {
+	if err := ValidateAccountOwners(ctx, opts.Accounts); err != nil {
+		return "", err
+	}
 	account, err := opts.Accounts.Get(ctx, opts.Scope, opts.Bot)
 	if err == nil && !opts.Force {
 		return account.JID, nil
@@ -68,7 +71,8 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 		return "", fmt.Errorf("whatsapp: device store: %w", err)
 	}
 	if account != nil {
-		if err := clearPairing(ctx, container, opts.Accounts, account); err != nil {
+		if err := removePairing(ctx, container, opts.Accounts, account,
+			pairingNow(opts.Now)); err != nil {
 			return "", err
 		}
 	}
@@ -155,29 +159,27 @@ func waitForPairingRetry(ctx context.Context) error {
 	}
 }
 
-func clearPairing(
+func removePairing(
 	ctx context.Context,
 	container *sqlstore.Container,
 	accounts domain.AccountStore,
 	account *domain.Account,
+	changedAt time.Time,
 ) error {
-	jid, err := types.ParseJID(account.JID)
+	device, err := localDevice(ctx, container, account)
 	if err != nil {
-		return fmt.Errorf("whatsapp: existing pairing has an invalid device address: %w", err)
-	}
-	device, err := container.GetDevice(ctx, jid)
-	if err != nil {
-		return fmt.Errorf("whatsapp: load existing device for re-pairing: %w", err)
+		return fmt.Errorf("whatsapp: load existing device for removal: %w", err)
 	}
 	if device != nil {
 		if err := device.Delete(ctx); err != nil {
-			return fmt.Errorf("whatsapp: delete existing device for re-pairing: %w", err)
+			return fmt.Errorf("whatsapp: delete existing device: %w", err)
 		}
 	}
 	if err := accounts.Delete(ctx, account.Scope, account.Bot); err != nil {
-		return fmt.Errorf("whatsapp: delete existing account for re-pairing: %w", err)
+		return fmt.Errorf("whatsapp: delete existing account: %w", err)
 	}
-	return nil
+	return updatePairingStatus(ctx, accounts, account.Scope, account.Bot,
+		domain.PairingNotPaired, changedAt)
 }
 
 // renderQR writes a compact half-block QR, the rendering whatsmeow's own
@@ -229,8 +231,22 @@ func saveAccount(ctx context.Context, opts PairOptions, client *whatsmeow.Client
 		return "", errors.New("whatsapp: pairing finished without an account id")
 	}
 	jid := client.Store.ID.String()
+	phone := Number(jid)
+	if err := ensurePhoneAvailable(ctx, opts.Accounts, phone, opts.Scope, opts.Bot); err != nil {
+		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
+			return "", fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
+		}
+		return "", err
+	}
 	account := &domain.Account{Scope: opts.Scope, Bot: opts.Bot, JID: jid}
 	if err := opts.Accounts.Put(ctx, account); err != nil {
+		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
+			return "", fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
+		}
+		return "", err
+	}
+	if err := updatePairingStatus(ctx, opts.Accounts, opts.Scope, opts.Bot,
+		domain.PairingPaired, pairingNow(opts.Now)); err != nil {
 		return "", err
 	}
 	return jid, nil

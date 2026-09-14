@@ -36,6 +36,8 @@ func main() {
 		os.Exit(runSchema(os.Args[2:]))
 	case "auth":
 		os.Exit(runAuth(os.Args[2:]))
+	case "unpair":
+		os.Exit(runUnpair(os.Args[2:]))
 	case "status":
 		os.Exit(runStatus(os.Args[2:]))
 	case "daemon":
@@ -53,11 +55,14 @@ func print_help() {
 	fmt.Fprint(os.Stderr, `botforje <command>
 
 Commands:
-  validate   validate a config file (--config, --json)
-  schema     print the generated config JSON Schema (-o file)
-  auth       pair a bot by scanning a QR code (auth [--force] <bot>)
+  validate   validate a config file
+  schema     print the generated config JSON Schema
+  auth       pair a bot by scanning a QR code
+  unpair     remove a bot's local pairing
   status     show each configured bot's pairing state
-  daemon     run every configured bot until interrupted
+  daemon     run every paired bot until interrupted
+
+Each command explains its own options in its help.
 `)
 }
 
@@ -162,9 +167,14 @@ func discoverConfig() (string, error) {
 			return c, nil
 		}
 	}
-	return "", fmt.Errorf("no config found; tried %s (use --config)",
+	return "", fmt.Errorf("no config found; tried %s",
 		strings.Join(candidates, ", "))
 }
+
+const (
+	authUsage   = "usage: botforje auth [--force] [--scope name] [--config path] <bot>"
+	unpairUsage = "usage: botforje unpair [--scope name] [--config path] <bot>"
+)
 
 func runAuth(args []string) int {
 	fs := flag.NewFlagSet("auth", flag.ContinueOnError)
@@ -175,7 +185,7 @@ func runAuth(args []string) int {
 		return 2
 	}
 	if fs.NArg() < 1 {
-		fmt.Fprintln(os.Stderr, "usage: botforje auth [--force] [--scope name] [--config path] <bot>")
+		fmt.Fprintln(os.Stderr, authUsage)
 		return 2
 	}
 	name := fs.Arg(0)
@@ -187,6 +197,7 @@ func runAuth(args []string) int {
 	scopeName, _, err := findBot(cfg, name, *scope)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, authUsage)
 		return 1
 	}
 	db, err := openDatabase(cfg)
@@ -228,22 +239,64 @@ func runStatus(args []string) int {
 	}
 	defer db.Close()
 
+	ctx := context.Background()
+	if err := whatsapp.ValidateAccountOwners(ctx, db.Accounts()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
+		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
 	for _, scopeName := range sortedScopeNames(cfg) {
 		for _, botName := range sortedBotNames(cfg.Scopes[scopeName]) {
-			account, err := db.Accounts().Get(context.Background(), scopeName, botName)
+			state := domain.PairingNotPaired
+			phone := "-"
+			status := string(state)
+			account, err := db.Accounts().Get(ctx, scopeName, botName)
 			switch {
 			case errors.Is(err, domain.ErrNotFound):
-				fmt.Printf("%-24s scope=%-12s not paired\n", botName, scopeName)
 			case err != nil:
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			default:
-				fmt.Printf("%-24s scope=%-12s paired as %s\n",
-					botName, scopeName, whatsapp.Number(account.JID))
+				ready, err := whatsapp.HasLocalDevice(ctx, db.DB, account)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+				if !ready {
+					state = domain.PairingUnpaired
+					status = string(state)
+				} else {
+					state = domain.PairingPaired
+					phone = whatsapp.Number(account.JID)
+					status = string(state)
+				}
 			}
+			pairingStatus, err := db.Accounts().GetPairingStatus(ctx, scopeName, botName)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			lastChange := time.Time{}
+			if err == nil && pairingStatus.State == state {
+				lastChange = pairingStatus.LastChange
+			}
+			printStatusRow(botName, scopeName, phone, status, lastChange)
 		}
 	}
 	return 0
+}
+
+func printStatusRow(bot, scope, phone, status string, lastChange time.Time) {
+	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
+		bot, scope, phone, status, formatLastChange(lastChange))
+}
+
+func formatLastChange(lastChange time.Time) string {
+	if lastChange.IsZero() {
+		return "-"
+	}
+	return lastChange.Local().Format("2006-01-02 15:04:05")
 }
 
 func runDaemon(args []string) int {
@@ -264,9 +317,40 @@ func runDaemon(args []string) int {
 		return 1
 	}
 	defer db.Close()
+	ctx := context.Background()
+	if err := whatsapp.ValidateAccounts(ctx, db.DB, db.Accounts()); err != nil {
+		logger.Error("validate pairings", "error", err)
+		return 1
+	}
+	skipped := make(map[string]map[string]bool)
+	skippedCount := 0
+	for _, scopeName := range sortedScopeNames(cfg) {
+		for _, botName := range sortedBotNames(cfg.Scopes[scopeName]) {
+			state, err := whatsapp.CheckPairing(ctx, db.DB, db.Accounts(),
+				scopeName, botName)
+			if err != nil {
+				logger.Error("validate pairing", "scope", scopeName,
+					"bot", botName, "error", err)
+				return 1
+			}
+			if state == domain.PairingPaired {
+				continue
+			}
+			if skipped[scopeName] == nil {
+				skipped[scopeName] = make(map[string]bool)
+			}
+			skipped[scopeName][botName] = true
+			skippedCount++
+			logger.Warn("bot not initialized; use auth to pair it",
+				"scope", scopeName, "bot", botName, "state", string(state))
+		}
+	}
 
 	runner, err := fleet.New(cfg, fleet.Options{
-		Store:          db.Sessions(),
+		Store: db.Sessions(),
+		Skip: func(scope, bot string) bool {
+			return skipped[scope][bot]
+		},
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,
 		NewChannel: func(spec fleet.BotSpec) (domain.MessageChannel, error) {
@@ -287,7 +371,7 @@ func runDaemon(args []string) int {
 	}
 
 	statuses := runner.Status()
-	logger.Info("daemon starting", "bots", len(statuses))
+	logger.Info("daemon starting", "bots", len(statuses), "skipped", skippedCount)
 	for _, status := range statuses {
 		logger.Debug("bot configured", "scope", status.Scope, "bot", status.Bot)
 	}
@@ -298,10 +382,54 @@ func runDaemon(args []string) int {
 		<-ctx.Done()
 		logger.Info("shutdown requested")
 	}()
+	if len(statuses) == 0 {
+		logger.Warn("no paired bots; daemon is idle")
+		<-ctx.Done()
+		logger.Info("daemon stopped")
+		return 0
+	}
 	if err := runner.Run(ctx); err != nil {
 		return 1
 	}
 	logger.Info("daemon stopped")
+	return 0
+}
+
+func runUnpair(args []string) int {
+	fs := flag.NewFlagSet("unpair", flag.ContinueOnError)
+	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
+	scope := fs.String("scope", "", "scope that owns the bot (needed if the name repeats)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, unpairUsage)
+		return 2
+	}
+	cfg, code := loadConfig(*configPath)
+	if code != 0 {
+		return code
+	}
+	name := fs.Arg(0)
+	scopeName, _, err := findBot(cfg, name, *scope)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr, unpairUsage)
+		return 1
+	}
+	db, err := openDatabase(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer db.Close()
+	if err := whatsapp.Unpair(context.Background(), whatsapp.UnpairOptions{
+		Scope: scopeName, Bot: name, DB: db.DB, Accounts: db.Accounts(),
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("bot %q (scope %q) local pairing removed\n", name, scopeName)
 	return 0
 }
 
@@ -374,7 +502,7 @@ func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error)
 	case 1:
 		return matches[0], cfg.Scopes[matches[0]].Bots[name], nil
 	default:
-		return "", config.Bot{}, fmt.Errorf("bot %q exists in scopes %s; pass --scope",
+		return "", config.Bot{}, fmt.Errorf("bot %q exists in scopes %s",
 			name, strings.Join(matches, ", "))
 	}
 }

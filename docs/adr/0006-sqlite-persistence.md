@@ -13,9 +13,9 @@ no external database should be required.
 SQLite is the project database. One file per instance, located through the
 `data_dir` setting (XDG default), with the schema applied on startup. Tables:
 bots (identity), senders, whatsmeow device store, sessions, conversations,
-messages, and (with the API) web sessions and admin keys. Graph and node
-contexts are stored as JSON on the session. The domain depends on repository
-interfaces, not on SQL.
+messages, pairing_status, and (with the API) web sessions and admin keys.
+Graph and node contexts are stored as JSON on the session. The domain depends
+on repository interfaces, not on SQL.
 
 The driver is pure Go (`modernc.org/sqlite`) so builds stay static; each
 connection enables WAL, foreign keys, a busy timeout, and

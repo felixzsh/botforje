@@ -150,7 +150,7 @@ func New(opts Options) (*Adapter, error) {
 func (a *Adapter) Connect(ctx context.Context) error {
 	account, err := a.accounts.Get(ctx, a.scope, a.bot)
 	if err != nil {
-		return fmt.Errorf("whatsapp: bot %q is not paired (run auth): %w", a.bot, err)
+		return fmt.Errorf("whatsapp: bot %q is not paired (use auth): %w", a.bot, err)
 	}
 	jid, err := types.ParseJID(account.JID)
 	if err != nil {
@@ -159,6 +159,12 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	device, err := a.container.GetDevice(ctx, jid)
 	if err != nil {
 		return fmt.Errorf("whatsapp: load device %s: %w", Number(account.JID), err)
+	}
+	if device == nil {
+		if err := a.updatePairingStatus(domain.PairingUnpaired); err != nil {
+			return err
+		}
+		return missingDeviceError(account)
 	}
 	client := whatsmeow.NewClient(device, a.waLogger)
 	// Reconnection is ours so it uses the capped backoff with jitter (ADR 0011).
@@ -278,8 +284,31 @@ func (a *Adapter) setState(state State) {
 	default:
 		a.log.Info("channel state", "state", string(state))
 	}
+	if state == StateConnected {
+		if err := a.updatePairingStatus(domain.PairingPaired); err != nil {
+			a.logPairingStatusError(err)
+		}
+	} else if state == StateLoggedOut {
+		if err := a.updatePairingStatus(domain.PairingUnpaired); err != nil {
+			a.logPairingStatusError(err)
+		}
+	}
 	if a.onState != nil {
 		a.onState(state)
+	}
+}
+
+func (a *Adapter) updatePairingStatus(state domain.PairingState) error {
+	if a.accounts == nil {
+		return nil
+	}
+	return updatePairingStatus(context.Background(), a.accounts, a.scope, a.bot,
+		state, pairingNow(a.now))
+}
+
+func (a *Adapter) logPairingStatusError(err error) {
+	if a.log != nil {
+		a.log.Error("persist pairing status", "error", err)
 	}
 }
 

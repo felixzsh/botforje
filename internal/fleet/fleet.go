@@ -30,8 +30,11 @@ type BotSpec struct {
 
 // Options configures a Fleet. Store and NewChannel are required.
 type Options struct {
-	Store          domain.SessionStore
-	NewChannel     func(spec BotSpec) (domain.MessageChannel, error)
+	Store      domain.SessionStore
+	NewChannel func(spec BotSpec) (domain.MessageChannel, error)
+	// Skip omits a bot before its runtime is built. It is for recoverable
+	// runtime conditions such as a missing local pairing.
+	Skip           func(scope, bot string) bool
 	HTTPClient     *http.Client
 	Now            func() time.Time
 	Rand           *rand.Rand
@@ -93,6 +96,9 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			if !ok {
 				return nil, fmt.Errorf("fleet: bot %q references unknown graph %q",
 					botName, bot.Graph)
+			}
+			if opts.Skip != nil && opts.Skip(scopeName, botName) {
+				continue
 			}
 			settings := settingsOf(bot.Settings)
 			botLog := baseLog.With("scope", scopeName, "bot", botName)

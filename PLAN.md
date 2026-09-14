@@ -195,7 +195,7 @@ Goal: operate a fleet without hand-editing config for daily operations.
 
 Deliverables:
 
-- [ ] CLI: `validate`, `auth`, `daemon`, `status`, `messages`, `reload`.
+- [ ] CLI: `validate`, `auth`, `unpair`, `daemon`, `status`, `messages`, `reload`.
 - [ ] `init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`.
@@ -203,6 +203,8 @@ Deliverables:
   `/etc/botforje/config.yml` (first match wins).
 - [ ] `status` reports uptime, per-bot connection state, outbox depth, and
   active sessions; a `--json` mode serves scripts.
+- [ ] When the daemon API exists, `status` prefers its live data and falls back
+  to the database; the output identifies the source as `live` or `stored`.
 - [ ] Message history: persist each conversation thread and its inbound and
   outbound messages as they flow through the actor, and list or tail one
   thread with `messages <bot> <sender> [--limit n] [--follow]`. Only live
