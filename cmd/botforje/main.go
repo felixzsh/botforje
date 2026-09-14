@@ -3,14 +3,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/felixzsh/botforje/internal/config"
+	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/sqlite"
+	"github.com/felixzsh/botforje/internal/whatsapp"
 )
 
 func main() {
@@ -23,6 +29,10 @@ func main() {
 		os.Exit(runValidate(os.Args[2:]))
 	case "schema":
 		os.Exit(runSchema(os.Args[2:]))
+	case "auth":
+		os.Exit(runAuth(os.Args[2:]))
+	case "status":
+		os.Exit(runStatus(os.Args[2:]))
 	case "help", "-h", "--help":
 		print_help()
 	default:
@@ -38,6 +48,8 @@ func print_help() {
 Commands:
   validate   validate a config file (--config, --json)
   schema     print the generated config JSON Schema (-o file)
+  auth       pair a bot by scanning a QR code (auth <bot> [--scope name])
+  status     show each configured bot's pairing state
 `)
 }
 
@@ -138,4 +150,190 @@ func discoverConfig() (string, error) {
 	}
 	return "", fmt.Errorf("no config found; tried %s (use --config)",
 		strings.Join(candidates, ", "))
+}
+
+func runAuth(args []string) int {
+	fs := flag.NewFlagSet("auth", flag.ContinueOnError)
+	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
+	scope := fs.String("scope", "", "scope that owns the bot (needed if the name repeats)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "usage: botforje auth <bot> [--scope name] [--config path]")
+		return 2
+	}
+	name := fs.Arg(0)
+
+	cfg, code := loadConfig(*configPath)
+	if code != 0 {
+		return code
+	}
+	scopeName, _, err := findBot(cfg, name, *scope)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	db, err := openDatabase(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer db.Close()
+
+	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
+		Scope:    scopeName,
+		Bot:      name,
+		DB:       db.DB,
+		Accounts: db.Accounts(),
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName, jid)
+	return 0
+}
+
+func runStatus(args []string) int {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	configPath := fs.String("config", "", "path to config.yml (default: XDG discovery)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, code := loadConfig(*configPath)
+	if code != 0 {
+		return code
+	}
+	db, err := openDatabase(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer db.Close()
+
+	for _, scopeName := range sortedScopeNames(cfg) {
+		for _, botName := range sortedBotNames(cfg.Scopes[scopeName]) {
+			account, err := db.Accounts().Get(context.Background(), scopeName, botName)
+			switch {
+			case errors.Is(err, domain.ErrNotFound):
+				fmt.Printf("%-24s scope=%-12s not paired\n", botName, scopeName)
+			case err != nil:
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			default:
+				fmt.Printf("%-24s scope=%-12s paired as %s\n",
+					botName, scopeName, account.JID)
+			}
+		}
+	}
+	return 0
+}
+
+// loadConfig discovers and validates the config, returning an exit code on
+// failure.
+func loadConfig(path string) (*config.Config, int) {
+	if path == "" {
+		found, err := discoverConfig()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return nil, 2
+		}
+		path = found
+	}
+	cfg, err := (config.Loader{}).Load(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil, 1
+	}
+	if errs := config.Validate(cfg); len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, e.Error())
+		}
+		return nil, 1
+	}
+	return cfg, 0
+}
+
+func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
+	dir, err := resolveDataDir(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return sqlite.Open(filepath.Join(dir, "botforje.db"))
+}
+
+func resolveDataDir(cfg *config.Config) (string, error) {
+	if cfg.DataDir != "" {
+		return expandHome(cfg.DataDir)
+	}
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "botforje"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "share", "botforje"), nil
+}
+
+func expandHome(path string) (string, error) {
+	if path != "~" && !strings.HasPrefix(path, "~/") {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if path == "~" {
+		return home, nil
+	}
+	return filepath.Join(home, path[2:]), nil
+}
+
+func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {
+	if scope != "" {
+		s, ok := cfg.Scopes[scope]
+		if !ok {
+			return "", config.Bot{}, fmt.Errorf("unknown scope %q", scope)
+		}
+		bot, ok := s.Bots[name]
+		if !ok {
+			return "", config.Bot{}, fmt.Errorf("bot %q not found in scope %q", name, scope)
+		}
+		return scope, bot, nil
+	}
+	var matches []string
+	for _, scopeName := range sortedScopeNames(cfg) {
+		if _, ok := cfg.Scopes[scopeName].Bots[name]; ok {
+			matches = append(matches, scopeName)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", config.Bot{}, fmt.Errorf("bot %q not found", name)
+	case 1:
+		return matches[0], cfg.Scopes[matches[0]].Bots[name], nil
+	default:
+		return "", config.Bot{}, fmt.Errorf("bot %q exists in scopes %s; pass --scope",
+			name, strings.Join(matches, ", "))
+	}
+}
+
+func sortedScopeNames(cfg *config.Config) []string {
+	names := make([]string, 0, len(cfg.Scopes))
+	for name := range cfg.Scopes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func sortedBotNames(scope config.Scope) []string {
+	names := make([]string, 0, len(scope.Bots))
+	for name := range scope.Bots {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
