@@ -21,7 +21,7 @@ environment. Interpolation happens once, when the config is loaded.
   cannot break the YAML.
 - A missing variable is a validation error; the engine never sends a literal
   `${ENV_VAR}` to a provider or a user.
-- `validate` reports missing variables by name, never by value.
+- `config validate` reports missing variables by name, never by value.
 - Resolved values are wrapped in a `Secret` type whose `String()` masks them,
   so logs, errors, and the API never print them.
 - There is one mechanism: no `api_key_env`. The LLM key is

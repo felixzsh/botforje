@@ -32,7 +32,7 @@ afterthought:
 - Rate limits: per-sender cooldown guards limit repetition, and an optional
   `max_messages_per_minute` caps a bot as a safety valve (`0` = no limit).
 - Reconnect with capped exponential backoff plus jitter. On logout or a ban
-  signal, stop the bot, keep its session, and surface the state in `status`
+  signal, stop the bot, keep its session, and surface the state in `bot list`
   instead of retrying forever.
 - Never initiate unsolicited bulk conversations. Bots reply to inbound
   messages, or drive a flow the user started.

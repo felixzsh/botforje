@@ -17,7 +17,7 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 ## Phase map
 
 0. Foundations
-1. Config engine and `validate`
+1. Config engine and `config validate`
 2. Templates and context
 3. Persistence (SQLite)
 4. Graph engine
@@ -46,7 +46,7 @@ Gate: the spike proves pairing and messaging work; conventions are written.
 
 Out of scope: any product code.
 
-### Phase 1 — Config engine, config v1, and `validate`
+### Phase 1 — Config engine, config v1, and `config validate`
 
 Goal: freeze the config v1 shape and turn YAML into a validated typed model
 with precise errors.
@@ -72,10 +72,10 @@ Deliverables:
   (type, scope, name), node reachability, and message mode rules.
 - [x] Schema generation: pick and approve a generator (candidate:
   `invopop/jsonschema`) and wire the regeneration step.
-- [x] CLI command `validate` with readable output and a `--json` mode.
+- [x] CLI command `config validate` with readable output and a `--json` mode.
 - [x] Fixtures: valid and invalid cases for every rule.
 
-Gate: `validate` accepts valid fixtures and rejects every invalid fixture
+Gate: `config validate` accepts valid fixtures and rejects every invalid fixture
 with an error naming file, entity, and reason. Unit tests for merge and
 semantic validation; integration tests over fixtures.
 
@@ -160,8 +160,8 @@ Deliverables:
 - [x] Outbound send: text and location; mark inbound read and show composing
   presence before replies (ADR 0011).
 - [x] Logout and ban detection: stop the bot, keep the session, and report
-  through `status` instead of retrying forever (ADR 0011).
-- [x] CLI `pair <bot>` and `status`.
+  through `bot list` instead of retrying forever (ADR 0011).
+- [x] CLI `bot pair <bot>` and `bot list`.
 - [x] Tests: adapter unit tests with fakes; a manual end-to-end checklist.
 
 Gate: one configured bot answers a real WhatsApp message and survives a
@@ -195,21 +195,25 @@ Goal: operate a fleet without hand-editing config for daily operations.
 
 Deliverables:
 
-- [ ] CLI: `validate`, `pair`, `unpair`, `daemon`, `status`, `messages`, `reload`.
-- [ ] `init`: create `config_dir` with a minimal `config.yml` and a
+- [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
+  `daemon run|status|stop|restart|reload`, `message list|tail`.
+- [ ] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`.
 - [ ] Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
   `/etc/botforje/config.yml` (first match wins).
-- [ ] `status` reports uptime, per-bot connection state, outbox depth, and
-  active sessions; a `--json` mode serves scripts.
-- [ ] When the daemon API exists, `status` prefers its live data and falls back
-  to the database; the output identifies the source as `live` or `stored`.
+- [ ] `daemon status` reports uptime, per-bot connection state, outbox depth,
+  and active sessions; a `--json` mode serves scripts.
+- [ ] When the daemon API exists, `daemon status` prefers its live data and
+  falls back to the database; the output identifies the source as `live` or
+  `stored`.
 - [ ] Message history: persist each conversation thread and its inbound and
   outbound messages as they flow through the actor, and list or tail one
-  thread with `messages <bot> <sender> [--limit n] [--follow]`. Only live
-  traffic is recorded; the history-sync backlog stays out of scope.
-- [ ] Signals: SIGINT/SIGTERM graceful shutdown; SIGHUP reloads config.
+  thread with `message list|tail <bot> <sender> [--limit n] [--follow]`. Only
+  live traffic is recorded; the history-sync backlog stays out of scope.
+- [ ] Signals: SIGINT/SIGTERM graceful shutdown; `daemon stop` signals the
+  running daemon, `daemon reload` (SIGHUP) reloads config, and `daemon restart`
+  does a full restart.
 - [ ] REST API: status, bots, sessions, conversations, messages, and config.
 - [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
   the future UI.
@@ -306,7 +310,7 @@ knowledge.
 - Whether the CLI acts as a client of the REST API for daemon operations
   (Phase 7).
 - API shape and auth details (close in Phase 7).
-- `init` behavior: non-interactive minimum (recommended) or prompting for
+- `config init` behavior: non-interactive minimum (recommended) or prompting for
   provider and model (Phase 7).
 
 Resolved: Go structs are the schema source and runtime validation happens in

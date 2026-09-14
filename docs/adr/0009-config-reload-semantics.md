@@ -37,5 +37,5 @@ settings; those require a restart.
 - Config can evolve in production without downtime for safe changes.
 - Incompatible changes are explicit, queued, and applied when safe.
 - The pending queue and maintenance mode add state to persist and expose
-  through the API (`status`, `reload`).
+  through the API (`daemon status`, `daemon reload`).
 - Tests must cover validation fallback and both change classes.

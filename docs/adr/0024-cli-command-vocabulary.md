@@ -1,6 +1,6 @@
 # ADR 0024 — CLI command vocabulary
 
-Status: Accepted (2026-09)
+Status: Superseded by ADR 0025 (2026-09)
 
 ## Context
 
