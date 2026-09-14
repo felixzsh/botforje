@@ -291,6 +291,10 @@ func runDaemon(args []string) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		<-ctx.Done()
+		logger.Info("shutdown requested")
+	}()
 	if err := runner.Run(ctx); err != nil {
 		return 1
 	}
