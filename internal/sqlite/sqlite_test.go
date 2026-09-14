@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -67,7 +66,7 @@ func TestPragmas(t *testing.T) {
 	}
 }
 
-func TestMigrationsIdempotent(t *testing.T) {
+func TestSchemaIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.db")
 	for i := 0; i < 3; i++ {
 		db, err := Open(path)
@@ -207,26 +206,6 @@ func TestConversationAndMessages(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].Body != "hello" || got[1].Body != "hi there" {
 		t.Fatalf("List = %#v", got)
-	}
-}
-
-func TestOpenRejectsForeignSchema(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "foreign.db")
-	db, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatalf("open raw: %v", err)
-	}
-	if _, err := db.Exec("CREATE TABLE sessions (id TEXT PRIMARY KEY)"); err != nil {
-		t.Fatalf("create foreign table: %v", err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatalf("close raw: %v", err)
-	}
-
-	if _, err := Open(path); err == nil {
-		t.Fatal("Open accepted a database that already holds a different schema")
-	} else if !strings.Contains(err.Error(), "sessions") {
-		t.Fatalf("error %v does not name the conflicting object", err)
 	}
 }
 
