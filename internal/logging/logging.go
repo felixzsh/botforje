@@ -46,9 +46,7 @@ func parseLevel(level string) slog.Level {
 //	[2006-01-02 15:04:05] LEVEL [file.go:line] message key=value
 //
 // The time, level, and file columns are aligned; the message starts one space
-// after file.go:line, so its column varies with the file name length. Every
-// separating gap is a single space except the one before a short right-aligned
-// level.
+// after file.go:line, so its column varies with the file name length.
 type handler struct {
 	w     io.Writer
 	level slog.Level
@@ -66,7 +64,7 @@ func (h *handler) Handle(_ context.Context, record slog.Record) error {
 	builder.WriteByte('[')
 	builder.WriteString(record.Time.Format(timeFormat))
 	builder.WriteString("] ")
-	builder.WriteString(fmt.Sprintf("%5s", record.Level.String()))
+	builder.WriteString(fmt.Sprintf("%-5s", record.Level.String()))
 	builder.WriteByte(' ')
 	builder.WriteByte('[')
 	builder.WriteString(source(record))

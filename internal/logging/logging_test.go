@@ -17,7 +17,7 @@ func TestFormat(t *testing.T) {
 
 	line := strings.TrimSuffix(buffer.String(), "\n")
 	pattern := regexp.MustCompile(
-		`^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]  INFO ` +
+		`^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] INFO  ` +
 			`\[logging_test\.go:\d+\] bot started scope=dev bot=dev-bot$`)
 	if !pattern.MatchString(line) {
 		t.Fatalf("line = %q", line)
