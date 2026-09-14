@@ -1,11 +1,11 @@
-# yaml-language-server: $schema=./config.schema.json
+# yaml-language-server: $schema=../config.schema.json
 ---
 # BotForje Configuration Example (v1 draft)
 # Reference for every v1 field. Scope is the top-level namespace (ADR 0016);
 # exact matching and policy details are still open (Phase 1/4).
 # Copy this to ~/.config/botforje/config.yml and customize.
 
-$schema: "./config.schema.json"
+$schema: "../config.schema.json"
 version: 1
 
 # Instance settings (global; only valid in the main file)
@@ -358,7 +358,7 @@ scopes:
 
 # Notes
 # - This example exercises every v1 field; field shapes are in
-#   config.schema.json.
+#   ../config.schema.json.
 # - Secrets never go in config: use ${ENV_VAR}, resolved at load (ADR 0014).
 # - Concepts and rules: docs/architecture.md.
 # - Why each decision: docs/adr/.

@@ -55,7 +55,7 @@ Deliverables:
 
 - [x] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
-  graph `routing`, `llms`). Align `config.example.yaml` and the draft
+  graph `routing`, `llms`). Align `config/example.yml` and the draft
   `config.schema.json` with it.
 - [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
   LLM. They live in `internal/config` for now; split out when the engine

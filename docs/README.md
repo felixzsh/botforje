@@ -26,7 +26,7 @@ is frozen (Phase 1), then finalized when the CLI and API exist.
 - Scope: `scope.md`.
 - Mechanics: `architecture.md`.
 - Rationale: `adr/`.
-- Config shapes: `../config.schema.json` and `../config.example.yaml`.
+- Config shapes: `../config.schema.json` and `../config/example.yml`.
 - Working rules for agents: `../AGENTS.md`.
 
 ## Rules

@@ -28,7 +28,7 @@ func writeTemp(t *testing.T, dir, name, body string) string {
 }
 
 func TestLoadExample(t *testing.T) {
-	cfg, err := testLoader().Load("../../config.example.yaml")
+	cfg, err := testLoader().Load("../../config/example.yml")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}

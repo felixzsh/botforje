@@ -23,6 +23,6 @@ Pre-code; implementation has not started.
 
 - `PLAN.md` — phases, progress checkboxes, and open decisions.
 - `docs/README.md` — documentation map: references, developer docs, guide.
-- `config.example.yaml` — reference configuration.
+- `config/example.yml` — reference configuration.
 - `CONTRIBUTING.md` — design principles.
 - `AGENTS.md` — rules for agent-assisted development.

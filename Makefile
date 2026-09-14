@@ -1,6 +1,6 @@
 GO ?= go
 BIN := bin/botforje
-CONFIG ?= config.example.yaml
+CONFIG ?= config/example.yml
 DEV_CONFIG ?= config/dev.yml
 DEV_DATA ?= .dev-data
 ARGS ?=
