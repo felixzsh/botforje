@@ -10,6 +10,12 @@ type MessageChannel interface {
 	Incoming() <-chan IncomingMessage
 }
 
+// StateReporter is an optional MessageChannel capability: a channel that can
+// report its lifecycle for status (ADR 0011).
+type StateReporter interface {
+	ChannelState() string
+}
+
 // LLMProvider classifies unmatched input and realizes replies (ADR 0003).
 // Phase 4 defines the port with a null implementation; Phase 7 adds real
 // providers and may refine the request shapes.

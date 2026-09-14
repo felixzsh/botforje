@@ -39,6 +39,7 @@ type IncomingMessage struct {
 	ReplyTo   string // JID the message arrived from; empty falls back to Sender
 	Body      string
 	ID        string
+	IsGroup   bool
 	At        time.Time
 }
 

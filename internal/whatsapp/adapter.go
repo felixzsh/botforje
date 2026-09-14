@@ -223,6 +223,9 @@ func (a *Adapter) State() State {
 	return a.state
 }
 
+// ChannelState reports the lifecycle state as a string (domain.StateReporter).
+func (a *Adapter) ChannelState() string { return string(a.State()) }
+
 func (a *Adapter) compose(
 	ctx context.Context, client *whatsmeow.Client, to types.JID,
 ) bool {
@@ -301,6 +304,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 		ReplyTo:   chat.String(),
 		Body:      body,
 		ID:        id,
+		IsGroup:   event.Info.IsGroup,
 		At:        event.Info.Timestamp,
 	}
 	select {
