@@ -105,6 +105,11 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 				MaxPerMinute: settings.MaxMsgPerMinute,
 				Now:          opts.Now,
 				Rand:         rand.New(rand.NewSource(seeds.Int63())),
+				OnError: func(_ domain.OutgoingMessage, err error) {
+					if opts.OnError != nil {
+						opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
+					}
+				},
 			})
 			scopeName, botName := scopeName, botName
 			fleet.bots = append(fleet.bots, &Bot{
