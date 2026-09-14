@@ -335,7 +335,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	select {
 	case a.incoming <- message:
 	default:
-		a.log.Warn("incoming queue full, dropping message", "sender", message.Sender)
+		a.log.Warn("incoming queue full, dropping message", "sender", message.Display())
 	}
 }
 

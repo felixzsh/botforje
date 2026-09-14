@@ -160,13 +160,21 @@ func (q *Queue) send(msg domain.OutgoingMessage, pacing time.Duration) {
 	err := q.cfg.Sender(ctx, msg)
 	if err != nil {
 		q.cfg.Log.Error("send failed",
-			"to", msg.To, "kind", string(msg.Kind), "delay", pacing, "error", err)
+			"recipient", recipient(msg), "kind", string(msg.Kind), "delay", pacing, "error", err)
 		if q.cfg.OnError != nil {
 			q.cfg.OnError(msg, err)
 		}
 		return
 	}
-	q.cfg.Log.Info("sent", "to", msg.To, "kind", string(msg.Kind), "delay", pacing)
+	q.cfg.Log.Info("sent", "recipient", recipient(msg), "kind", string(msg.Kind), "delay", pacing)
+}
+
+// recipient is the phone number for logs; it never logs a LID.
+func recipient(msg domain.OutgoingMessage) string {
+	if msg.Recipient != "" {
+		return msg.Recipient
+	}
+	return "unresolved"
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {

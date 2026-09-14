@@ -66,10 +66,11 @@ func (r *run) message(m config.Message) error {
 		return nil
 	}
 	r.out = append(r.out, domain.OutgoingMessage{
-		Bot:  r.engine.bot,
-		To:   replyTo(r.msg),
-		Body: body,
-		Kind: domain.KindText,
+		Bot:       r.engine.bot,
+		To:        replyTo(r.msg),
+		Recipient: r.msg.Phone(),
+		Body:      body,
+		Kind:      domain.KindText,
 	})
 	return nil
 }
@@ -177,9 +178,10 @@ func (r *run) location(loc config.Location) error {
 		return err
 	}
 	r.out = append(r.out, domain.OutgoingMessage{
-		Bot:  r.engine.bot,
-		To:   replyTo(r.msg),
-		Kind: domain.KindLocation,
+		Bot:       r.engine.bot,
+		To:        replyTo(r.msg),
+		Recipient: r.msg.Phone(),
+		Kind:      domain.KindLocation,
 		Location: &domain.Location{
 			Latitude:    loc.Latitude,
 			Longitude:   loc.Longitude,

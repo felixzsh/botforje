@@ -43,6 +43,23 @@ type IncomingMessage struct {
 	At        time.Time
 }
 
+// Phone is the resolved phone number, or empty while the sender is still a LID
+// (unresolved). It never returns a LID, so it is safe to log (ADR 0013).
+func (m IncomingMessage) Phone() string {
+	if m.SenderLID != "" && m.Sender == m.SenderLID {
+		return ""
+	}
+	return m.Sender
+}
+
+// Display is Phone for logs, or "unresolved" when only a LID is known.
+func (m IncomingMessage) Display() string {
+	if phone := m.Phone(); phone != "" {
+		return phone
+	}
+	return "unresolved"
+}
+
 // Location is a map pin sent as its own message.
 type Location struct {
 	Latitude    float64
@@ -55,11 +72,14 @@ type Location struct {
 
 // OutgoingMessage is one message the engine asks the channel to deliver.
 type OutgoingMessage struct {
-	Bot      string
-	To       string // JID the message arrived from; never fabricated (ADR 0013)
-	Body     string
-	Kind     OutgoingKind
-	Location *Location
+	Bot  string
+	To   string // transport address (may be a LID; never log it)
+	Kind OutgoingKind
+	// Recipient is the resolved phone number for logs and audit; empty when
+	// only a LID is known. Never a LID.
+	Recipient string
+	Body      string
+	Location  *Location
 }
 
 // Session is the persisted per-(bot, sender) conversation state (ADR 0010).

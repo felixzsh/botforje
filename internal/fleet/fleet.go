@@ -209,14 +209,14 @@ func (b *Bot) run(ctx context.Context) error {
 				return nil
 			}
 			b.log.Debug("message received",
-				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup, "body", msg.Body)
+				"sender", msg.Display(), "id", msg.ID, "group", msg.IsGroup, "body", msg.Body)
 			if !b.filter.Allow(msg) {
-				b.log.Debug("message filtered", "sender", msg.Sender)
+				b.log.Debug("message filtered", "sender", msg.Display())
 				continue
 			}
 			replies, err := b.engine.Handle(ctx, msg)
 			if err != nil {
-				b.log.Error("engine failed", "sender", msg.Sender, "error", err)
+				b.log.Error("engine failed", "sender", msg.Display(), "error", err)
 				b.onError(err)
 				continue
 			}
