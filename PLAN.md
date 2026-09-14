@@ -125,12 +125,18 @@ Deliverables:
 - [ ] Transitions: exit actions, `goto`, entry actions, and fallback node.
 - [ ] Steps: `message`, `location`, and `request` with retry and result capture
   (body, headers, status, duration).
+- [ ] Template references: resolve `{{...}}` in message bodies and request
+  URLs, headers, and bodies from the runtime context; at load, reject unknown
+  roots, bad paths, and references to variables not declared in
+  `initial_context` or tool `inputs`, with valid and invalid fixtures
+  (ADR 0018).
 - [ ] Guards: cooldown per sender per action; blocked-action behavior.
 - [ ] Hybrid intent semantics: classification fallback, rendering modes with
   anchor plus fallback, and policy checks (shape frozen in Phase 1;
   ADR 0003).
 - [ ] Tests: simulated conversations including fallback, timeout, guards,
-  request failures, and same input with different visit histories.
+  request failures, template reference errors, and the same input with
+  different visit histories.
 
 Gate: a fixture graph produces the expected message sequence for a scripted
 conversation with no channel and no LLM.
