@@ -1,12 +1,12 @@
 # Guide
 
-User documentation for BotForje. Nothing here is written yet: this file is
-the map, and pages are added once config v1 is frozen (Phase 1) and the CLI
-and API exist.
+User documentation for BotForje. This file is the map; pages are added as
+the CLI and API land.
 
 ## Sections
 
 - Getting Started — install, first bot, pair an account.
+- `whatsapp.md` — pairing and the manual channel checklist (Phase 5).
 - Concepts — bot, graph, node, edge, action, tool, session, contexts,
   routing, hybrid behavior.
 - Guides — task walkthroughs: a support menu bot, an order builder with tools.

@@ -150,19 +150,19 @@ Goal: one real bot talks to WhatsApp end to end.
 
 Deliverables:
 
-- [ ] whatsmeow adapter implementing the `MessageChannel` port (ADR 0004).
-- [ ] QR pairing, the whatsmeow device store on the shared SQLite connection
+- [x] whatsmeow adapter implementing the `MessageChannel` port (ADR 0004).
+- [x] QR pairing, the whatsmeow device store on the shared SQLite connection
   (ADR 0006), and reconnect with capped exponential backoff plus jitter
   (ADR 0011).
-- [ ] Inbound event mapping to `IncomingMessage` plus deduplication.
-- [ ] Sender identity: resolve LID to PN via `SenderAlt` and the LID store
+- [x] Inbound event mapping to `IncomingMessage` plus deduplication.
+- [x] Sender identity: resolve LID to PN via `SenderAlt` and the LID store
   before sessions and filters (ADR 0013).
-- [ ] Outbound send: text and location; mark inbound read and show composing
+- [x] Outbound send: text and location; mark inbound read and show composing
   presence before replies (ADR 0011).
-- [ ] Logout and ban detection: stop the bot, keep the session, and report
+- [x] Logout and ban detection: stop the bot, keep the session, and report
   through `status` instead of retrying forever (ADR 0011).
-- [ ] CLI `auth <bot>` and `status`.
-- [ ] Tests: adapter unit tests with fakes; a manual end-to-end checklist.
+- [x] CLI `auth <bot>` and `status`.
+- [x] Tests: adapter unit tests with fakes; a manual end-to-end checklist.
 
 Gate: one configured bot answers a real WhatsApp message and survives a
 restart without re-pairing. The rest of the system still runs without
@@ -304,7 +304,8 @@ conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
 Trigger matching and its threshold are in ADR 0019.
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
-`gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, and the pure-Go SQLite
-driver `modernc.org/sqlite` (ADR 0006). `urfave/cli/v3` and
+`gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, the pure-Go SQLite
+driver `modernc.org/sqlite` (ADR 0006), `go.mau.fi/whatsmeow` (ADR 0001), and
+`github.com/mdp/qrterminal` for the ASCII pairing QR. `urfave/cli/v3` and
 `google/jsonschema-go` are no longer needed: the CLI uses the standard
 library (ADR 0012) and runtime validation is in Go (ADR 0007).
