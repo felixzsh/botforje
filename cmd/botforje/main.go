@@ -269,12 +269,13 @@ func runDaemon(args []string) int {
 		Log:            logger,
 		NewChannel: func(spec fleet.BotSpec) (domain.MessageChannel, error) {
 			return whatsapp.New(whatsapp.Options{
-				Scope:    spec.Scope,
-				Bot:      spec.Name,
-				DB:       db.DB,
-				Accounts: db.Accounts(),
-				Settings: whatsappSettings(spec.Settings),
-				Log:      logger.With("scope", spec.Scope, "bot", spec.Name),
+				Scope:        spec.Scope,
+				Bot:          spec.Name,
+				DB:           db.DB,
+				Accounts:     db.Accounts(),
+				Settings:     whatsappSettings(spec.Settings),
+				Log:          logger.With("scope", spec.Scope, "bot", spec.Name),
+				DepsLogLevel: logging.ParseLevel(cfg.LogLevelDeps),
 			})
 		},
 	})
