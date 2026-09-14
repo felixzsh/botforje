@@ -17,11 +17,11 @@ help: ## Show this help
 build: ## Build the binary into bin/botforje
 	$(GO) build -o $(BIN) ./cmd/botforje
 
-run: ## Run the CLI against the real config: make run ARGS="validate"
-	$(GO) run ./cmd/botforje $(ARGS)
+run: build ## Run the CLI against the real config: make run ARGS="validate"
+	exec $(BIN) $(ARGS)
 
-dev: ## Run the CLI in development: make dev ARGS="status"
-	BOTFORJE_CONFIG=$(DEV_CONFIG) $(GO) run ./cmd/botforje $(ARGS)
+dev: build ## Run the CLI in development: make dev ARGS="status"
+	BOTFORJE_CONFIG=$(DEV_CONFIG) exec $(BIN) $(ARGS)
 
 dev-reset: ## Delete the development database (.dev-data), never the real one
 	@test -n "$(DEV_DATA)" || { echo "refusing: DEV_DATA is empty"; exit 1; }
