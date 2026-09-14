@@ -6,11 +6,13 @@ package outbox
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botforje/internal/logging"
 )
 
 // ErrClosed is returned by Push after Close.
@@ -31,6 +33,7 @@ type Config struct {
 	Rand         *rand.Rand
 	Sleep        func(ctx context.Context, d time.Duration) error
 	OnError      func(msg domain.OutgoingMessage, err error)
+	Log          *slog.Logger
 }
 
 // Queue is a per-bot FIFO. Push blocks when the buffer is full.
@@ -62,6 +65,9 @@ func New(cfg Config) *Queue {
 	}
 	if cfg.Sleep == nil {
 		cfg.Sleep = sleepContext
+	}
+	if cfg.Log == nil {
+		cfg.Log = logging.Discard()
 	}
 	q := &Queue{
 		cfg:  cfg,
@@ -104,12 +110,14 @@ func (q *Queue) run() {
 	defer close(q.done)
 	var last time.Time
 	for msg := range q.in {
+		var pacing time.Duration
 		if !last.IsZero() {
-			_ = q.cfg.Sleep(context.Background(), q.cfg.Delay+q.jitter())
+			pacing = q.cfg.Delay + q.jitter()
+			_ = q.cfg.Sleep(context.Background(), pacing)
 		}
 		q.waitRate()
 		last = q.cfg.Now()
-		q.send(msg)
+		q.send(msg, pacing)
 		q.mu.Lock()
 		q.depth--
 		q.mu.Unlock()
@@ -134,22 +142,31 @@ func (q *Queue) waitRate() {
 		q.count = 0
 	}
 	if q.count >= q.cfg.MaxPerMinute {
-		_ = q.cfg.Sleep(context.Background(), q.windowStart.Add(time.Minute).Sub(now))
+		wait := q.windowStart.Add(time.Minute).Sub(now)
+		q.cfg.Log.Debug("rate limited", "wait", wait)
+		_ = q.cfg.Sleep(context.Background(), wait)
 		q.windowStart = q.cfg.Now()
 		q.count = 0
 	}
 	q.count++
 }
 
-func (q *Queue) send(msg domain.OutgoingMessage) {
+func (q *Queue) send(msg domain.OutgoingMessage, pacing time.Duration) {
 	if q.cfg.Sender == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), q.cfg.SendTimeout)
 	defer cancel()
-	if err := q.cfg.Sender(ctx, msg); err != nil && q.cfg.OnError != nil {
-		q.cfg.OnError(msg, err)
+	err := q.cfg.Sender(ctx, msg)
+	if err != nil {
+		q.cfg.Log.Error("send failed",
+			"to", msg.To, "kind", string(msg.Kind), "delay", pacing, "error", err)
+		if q.cfg.OnError != nil {
+			q.cfg.OnError(msg, err)
+		}
+		return
 	}
+	q.cfg.Log.Info("sent", "to", msg.To, "kind", string(msg.Kind), "delay", pacing)
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {
