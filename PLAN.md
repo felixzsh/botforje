@@ -174,13 +174,14 @@ Goal: multiple bots in one process, paced and isolated.
 
 Deliverables:
 
-- [ ] Fleet supervisor that builds one actor per bot from config.
-- [ ] Inbox: routing, dedup, and filters (ignore groups, allow/ignore senders).
-- [ ] Outbox: per-bot FIFO with `queue_delay` plus random `queue_jitter`, an
+- [x] Fleet supervisor that builds one actor per bot from config.
+- [x] Inbox: routing and filters (ignore groups, allow/ignore senders);
+  deduplication lives in the channel adapter, which sees the event first.
+- [x] Outbox: per-bot FIFO with `queue_delay` plus random `queue_jitter`, an
   optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
-- [ ] Daemon command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
+- [x] Daemon command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
-- [ ] Tests: two bots with independent sessions and queues; filter behavior;
+- [x] Tests: two bots with independent sessions and queues; filter behavior;
   shutdown drains queues.
 
 Gate: two or more bot accounts run concurrently; messages from each are

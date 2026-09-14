@@ -22,7 +22,8 @@ needs a channel; an LLM is optional and only used when configured.
 
 The YAML-free domain types and ports live in `internal/domain`, the graph
 engine in `internal/engine`, the SQLite adapter in `internal/sqlite`, and the
-whatsmeow channel in `internal/whatsapp`.
+whatsmeow channel in `internal/whatsapp`. The fleet, inbox, and outbox live in
+`internal/fleet`, `internal/inbox`, and `internal/outbox`.
 
 ## Domain model
 

@@ -1,8 +1,7 @@
 # Pairing and manual test (whatsmeow)
 
-How to pair one real WhatsApp account and the checklist that proves the
-channel end to end. The fleet daemon arrives in Phase 6, so the last steps
-need a consumer of the adapter.
+How to pair one real WhatsApp account, run the bots, and prove the channel
+end to end.
 
 ## Pair an account
 
@@ -24,6 +23,12 @@ need a consumer of the adapter.
 `./bin/botforje status` lists every configured bot as `paired as <jid>` or
 `not paired`.
 
+## Run the bots
+
+`./bin/botforje daemon` (or `make dev ARGS="daemon"`) starts every configured
+bot, answers inbound messages with the configured pacing, and stops on Ctrl-C
+after draining the outbox.
+
 ## Manual checklist
 
 Deterministic flow (a bot with no `llm`):
@@ -31,8 +36,8 @@ Deterministic flow (a bot with no `llm`):
 - [ ] `auth` prints a QR, pairing succeeds, and the device store is written
   under `data_dir`.
 - [ ] `status` reports the bot as `paired as <jid>`.
-- [ ] A consumer drives the adapter and answers a real inbound message with
-  the graph's messages.
+- [ ] `daemon` starts and a real inbound message is answered with the graph's
+  messages.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still
@@ -40,5 +45,5 @@ Deterministic flow (a bot with no `llm`):
 - [ ] Stop the process and start it again: it connects without a new QR.
 - [ ] With `read_receipts` and `simulate_typing` on, the inbound message is
   marked read and a composing indicator shows before the reply.
-- [ ] On logout or ban, the client stops and `status` shows the state instead
-  of retrying forever.
+- [ ] On logout or ban, the daemon stops that bot and reports the state
+  instead of retrying forever.
