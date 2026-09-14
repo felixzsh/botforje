@@ -1,6 +1,7 @@
-# Local development config. It has no secrets and no ${...} values, and its
-# database lives at the repository root under .dev-data (gitignored). Run it
-# with `make dev ARGS="status"`, which sets BOTFORJE_CONFIG to this file.
+# Local development config: a deterministic support menu with no secrets and
+# no ${...} values. Its database lives at the repository root under .dev-data
+# (gitignored). Run it with `make dev ARGS="daemon"` (or validate it with
+# `make dev ARGS="validate"`), then message the paired account.
 $schema: "../config.schema.json"
 version: 1
 data_dir: "../.dev-data"
@@ -11,14 +12,150 @@ scopes:
       greet:
         steps:
           - message:
-              body: "dev bot: {{message.body}}"
+              body: |-
+                Hola {{graph.customer_name}}, soy el bot de pruebas.
+                ¿Qué necesitas?
+                1. Precios
+                2. Horarios
+                3. Catálogo
+                4. Ubicación
+                0. Salir
+      prices:
+        steps:
+          - message:
+              body: |-
+                Planes:
+                - Básico: $9/mes
+                - Pro: $29/mes
+                - Empresa: a medida
+      hours:
+        steps:
+          - message:
+              body: "Atendemos de lunes a viernes, de 9:00 a 18:00."
+      catalog:
+        steps:
+          - message:
+              body: "Catálogo: https://example.com/catalog.pdf"
+      office:
+        steps:
+          - message:
+              body: "Estamos aquí:"
+          - location:
+              latitude: 19.4326
+              longitude: -99.1332
+              name: "Oficina BotForje (dev)"
+              address: "Av. Reforma 123, CDMX"
+              url: "https://example.com/office"
+              description: "Segundo piso."
+      agent:
+        guards:
+          cooldown:
+            duration: 120
+            on_blocked:
+              - message:
+                  body: "Ya pediste un humano hace poco; dame un momento."
+        steps:
+          - message:
+              body: "Te paso con un humano. Un momento, por favor."
+      farewell:
+        steps:
+          - message:
+              body: "¡Gracias por escribir, {{graph.customer_name}}! Hasta pronto."
+      invalid:
+        steps:
+          - message:
+              body: 'No entendí "{{message.body}}". Escribe un número del 1 al 4, o 0 para salir.'
     graphs:
-      dev:
+      support:
         root: "menu"
+        fallback: "invalid"
+        timeout: 300
+        routing: "off"
+        initial_context:
+          customer_name: "Invitado"
         nodes:
           menu:
+            goal: "mostrar el menú"
             on_enter: ["greet"]
+            edges:
+              - intent: "quiere precios"
+                triggers: ["1", "precios", "planes", "cuánto cuesta", "cuanto cuesta"]
+                goto: "prices"
+              - intent: "quiere horarios"
+                triggers: ["2", "horarios", "horario", "abierto", "cuándo abren"]
+                goto: "hours"
+              - intent: "quiere el catálogo"
+                triggers: ["3", "catálogo", "catalogo", "productos"]
+                goto: "catalog"
+              - intent: "quiere la ubicación"
+                triggers: ["4", "ubicación", "ubicacion", "oficina", "dirección"]
+                goto: "office"
+              - intent: "quiere hablar con un humano"
+                triggers: ["humano", "agente", "persona", "soporte", "ayuda"]
+                goto: "agent"
+              - intent: "quiere salir"
+                triggers: ["0", "salir", "adiós", "adios", "bye", "gracias"]
+                goto: "farewell"
+              - goto: "invalid"
+          prices:
+            goal: "responder precios"
+            on_enter: ["prices"]
+            edges:
+              - intent: "quiere contratar"
+                triggers: ["contratar", "comprar", "suscribir", "quiero el pro"]
+                goto: "agent"
+              - intent: "quiere el menú"
+                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+                goto: "menu"
+              - goto: "invalid"
+          hours:
+            goal: "responder horarios"
+            on_enter: ["hours"]
+            edges:
+              - intent: "quiere el menú"
+                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+                goto: "menu"
+              - goto: "invalid"
+          catalog:
+            goal: "enviar el catálogo"
+            on_enter: ["catalog"]
+            edges:
+              - intent: "quiere el menú"
+                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+                goto: "menu"
+              - goto: "invalid"
+          office:
+            goal: "compartir la ubicación"
+            on_enter: ["office"]
+            edges:
+              - intent: "quiere el menú"
+                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+                goto: "menu"
+              - goto: "invalid"
+          agent:
+            goal: "pasar con un humano"
+            on_enter: ["agent"]
+            edges:
+              - intent: "quiere el menú"
+                triggers: ["menu", "menú", "volver", "atrás", "atras"]
+                goto: "menu"
+              - goto: "invalid"
+          invalid:
+            goal: "recuperarse de una entrada inválida"
+            on_enter: ["invalid"]
+            edges:
+              - goto: "menu"
+          farewell:
+            goal: "cerrar la conversación"
+            on_enter: ["farewell"]
             edges: []
     bots:
       dev-bot:
-        graph: "dev"
+        graph: "support"
+        settings:
+          queue_delay: 300
+          queue_jitter: 150
+          simulate_typing: true
+          typing_delay: 600
+          read_receipts: true
+          ignore_groups: true
