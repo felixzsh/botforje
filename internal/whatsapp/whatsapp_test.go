@@ -1,9 +1,12 @@
 package whatsapp
 
 import (
+	"bytes"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
@@ -88,6 +91,26 @@ func TestResolveSender(t *testing.T) {
 					sender, gotLID, tc.wantSender, tc.wantLID)
 			}
 		})
+	}
+}
+
+func TestRenderQRFitsATerminal(t *testing.T) {
+	// A real linking code is long; the compact rendering must stay narrow
+	// enough that a normal terminal can show it whole (ADR: pairing UX).
+	code := strings.Repeat("Ab1", 64)
+	var buffer bytes.Buffer
+	renderQR(code, &buffer)
+	widest := 0
+	for _, line := range strings.Split(buffer.String(), "\n") {
+		if width := utf8.RuneCountInString(line); width > widest {
+			widest = width
+		}
+	}
+	if widest == 0 {
+		t.Fatal("the QR rendered nothing")
+	}
+	if widest > 100 {
+		t.Fatalf("the QR is %d columns wide; too wide to scan on a terminal", widest)
 	}
 }
 

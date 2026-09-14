@@ -10,7 +10,9 @@ need a consumer of the adapter.
 2. Configure the bot and validate: `./bin/botforje validate`.
 3. Pair it; this prints an ASCII QR and waits:
    `./bin/botforje auth support-bot`
-   Add `--scope name` when the bot name repeats across scopes.
+   Add `--scope name` when the bot name repeats across scopes. The QR is
+   rendered half-block, so it stays narrow enough for a normal terminal; if
+   your font is very large, zoom out or widen the window first.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
 5. `auth` prints the paired JID and exits.
 

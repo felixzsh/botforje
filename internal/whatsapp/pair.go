@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -42,7 +43,7 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	}
 	render := opts.RenderQR
 	if render == nil {
-		render = func(code string) { qrterminal.Generate(code, qrterminal.L, os.Stdout) }
+		render = func(code string) { renderQR(code, os.Stdout) }
 	}
 	timeout := opts.Timeout
 	if timeout <= 0 {
@@ -84,6 +85,13 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 			}
 		}
 	}
+}
+
+// renderQR writes a compact half-block QR, the rendering whatsmeow's own
+// example uses. Full blocks are roughly twice as wide and often do not fit a
+// terminal, which makes the code impossible to scan.
+func renderQR(code string, w io.Writer) {
+	qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
 }
 
 func saveAccount(ctx context.Context, opts PairOptions, client *whatsmeow.Client) (string, error) {
