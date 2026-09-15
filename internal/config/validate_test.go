@@ -63,7 +63,7 @@ func TestInvalidFixtures(t *testing.T) {
 			path := filepath.Join("testdata", "invalid", tc.file)
 			cfg, err := testLoader().Load(path)
 			if err != nil {
-				if !strings.Contains(err.Error(), tc.want) && !strings.Contains(err.Error(), "field") {
+				if !strings.Contains(err.Error(), tc.want) {
 					t.Fatalf("load error %v does not mention %q", err, tc.want)
 				}
 				return

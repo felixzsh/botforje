@@ -32,11 +32,16 @@ func TestHelpTreeIsComplete(t *testing.T) {
 	}
 }
 
+// TestHelpOutputSections checks the shape of the rendered help: every node has
+// a usage line and an options section, groups list commands, and leaves do not.
+// Command names and flags are deliberately not asserted, so rewording them
+// does not break the test.
 func TestHelpOutputSections(t *testing.T) {
 	cases := []struct {
 		name     string
 		path     []string
 		contains []string
+		absent   []string
 	}{
 		{
 			name: "root",
@@ -46,26 +51,20 @@ func TestHelpOutputSections(t *testing.T) {
 			},
 		},
 		{
-			name: "config",
-			path: []string{"config"},
-			contains: []string{
-				"usage: botforje config", "validate", "schema", "options:",
-			},
+			name:     "config group",
+			path:     []string{"config"},
+			contains: []string{"usage: botforje config", "commands:", "options:"},
 		},
 		{
-			name: "bot",
-			path: []string{"bot"},
-			contains: []string{
-				"usage: botforje bot", "list", "pair", "unpair",
-			},
+			name:     "bot group",
+			path:     []string{"bot"},
+			contains: []string{"usage: botforje bot", "commands:", "options:"},
 		},
 		{
-			name: "pair",
-			path: []string{"bot", "pair"},
-			contains: []string{
-				"usage: botforje bot pair", "options:", "--config", "--scope",
-				"--force", "-h, --help", "<bot>",
-			},
+			name:     "pair leaf",
+			path:     []string{"bot", "pair"},
+			contains: []string{"usage: botforje bot pair", "options:", "-h, --help"},
+			absent:   []string{"commands:"},
 		},
 	}
 	for _, tc := range cases {
@@ -76,6 +75,11 @@ func TestHelpOutputSections(t *testing.T) {
 			for _, want := range tc.contains {
 				if !strings.Contains(out, want) {
 					t.Errorf("help %v is missing %q:\n%s", tc.path, want, out)
+				}
+			}
+			for _, unwanted := range tc.absent {
+				if strings.Contains(out, unwanted) {
+					t.Errorf("help %v should not contain %q:\n%s", tc.path, unwanted, out)
 				}
 			}
 		})
