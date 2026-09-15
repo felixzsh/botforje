@@ -30,7 +30,8 @@ afterthought:
   inbound message as read (`read_receipts`), then wait `reply_delay`, showing a
   composing indicator when `simulate_typing` is on, before the reply.
 - Vary reply text: variant lists resolve at random (already in the model).
-- Rate limits: per-sender cooldown guards limit repetition, and an optional
+- Rate limits: per-sender guards limit repetition (`cooldown` for a minimum
+  interval, `rate_limit` for a maximum per window); an optional
   `max_messages_per_minute` caps a bot as a safety valve (`0` = no limit).
 - Reconnect with capped exponential backoff plus jitter. On logout or a ban
   signal, stop the bot, keep its session, and surface the state in `bot list`

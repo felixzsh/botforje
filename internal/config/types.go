@@ -150,12 +150,21 @@ type Input struct {
 
 // Guards limit how often an action runs.
 type Guards struct {
-	Cooldown *Cooldown `yaml:"cooldown" json:"cooldown,omitempty"`
+	Cooldown  *Cooldown  `yaml:"cooldown" json:"cooldown,omitempty"`
+	RateLimit *RateLimit `yaml:"rate_limit" json:"rate_limit,omitempty"`
 }
 
 // Cooldown blocks the same sender for Duration seconds and runs OnBlocked.
 type Cooldown struct {
 	Duration  int    `yaml:"duration" json:"duration"`
+	OnBlocked []Step `yaml:"on_blocked" json:"on_blocked,omitempty"`
+}
+
+// RateLimit allows at most Limit runs per sender in Window seconds and runs
+// OnBlocked when the sender exceeds it.
+type RateLimit struct {
+	Limit     int    `yaml:"limit" json:"limit"`
+	Window    int    `yaml:"window" json:"window"`
 	OnBlocked []Step `yaml:"on_blocked" json:"on_blocked,omitempty"`
 }
 

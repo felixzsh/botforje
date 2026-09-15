@@ -133,7 +133,8 @@ Deliverables:
   roots, bad paths, and references to variables not declared in
   `initial_context` or tool `inputs`, with valid and invalid fixtures
   (ADR 0018).
-- [x] Guards: cooldown per sender per action; blocked-action behavior.
+- [x] Guards: cooldown and rate limit per sender per action; blocked-action
+  behavior.
 - [x] Hybrid intent semantics: classification fallback, rendering modes with
   anchor plus fallback, and policy checks (shape frozen in Phase 1;
   ADR 0003).

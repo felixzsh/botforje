@@ -48,7 +48,10 @@ func testSession(chatID int64) *domain.Session {
 			"product": "widget",
 			"lookup":  map[string]any{"status": float64(200)},
 		},
-		Cooldowns: map[string]time.Time{"escalate": t1},
+		Guards: domain.GuardState{
+			Cooldowns:  map[string]time.Time{"escalate": t1},
+			RateLimits: map[string]domain.RateLimitState{"escalate": {Count: 2, WindowStart: t0}},
+		},
 		CreatedAt: t0,
 		UpdatedAt: t1,
 		ExpiresAt: t2,

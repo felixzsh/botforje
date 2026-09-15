@@ -48,6 +48,9 @@ func templateSites(a Action) []templateSite {
 	if a.Guards != nil && a.Guards.Cooldown != nil {
 		collect("action on_blocked", a.Guards.Cooldown.OnBlocked)
 	}
+	if a.Guards != nil && a.Guards.RateLimit != nil {
+		collect("action rate_limit on_blocked", a.Guards.RateLimit.OnBlocked)
+	}
 	return sites
 }
 
@@ -113,6 +116,9 @@ func requestNames(a Action) map[string]bool {
 	collect(a.Steps)
 	if a.Guards != nil && a.Guards.Cooldown != nil {
 		collect(a.Guards.Cooldown.OnBlocked)
+	}
+	if a.Guards != nil && a.Guards.RateLimit != nil {
+		collect(a.Guards.RateLimit.OnBlocked)
 	}
 	return names
 }

@@ -227,6 +227,9 @@
       "properties": {
         "cooldown": {
           "$ref": "#/$defs/Cooldown"
+        },
+        "rate_limit": {
+          "$ref": "#/$defs/RateLimit"
         }
       },
       "additionalProperties": false,
@@ -369,6 +372,29 @@
       "additionalProperties": false,
       "type": "object",
       "description": "Node is a state (ADR 0003, ADR 0008)."
+    },
+    "RateLimit": {
+      "properties": {
+        "limit": {
+          "type": "integer"
+        },
+        "window": {
+          "type": "integer"
+        },
+        "on_blocked": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "limit",
+        "window"
+      ],
+      "description": "RateLimit allows at most Limit runs per sender in Window seconds and runs OnBlocked when the sender exceeds it."
     },
     "Request": {
       "properties": {

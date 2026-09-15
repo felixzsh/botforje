@@ -130,14 +130,29 @@ func validateAction(cfg *Config, scope, name string, a Action, add addError) {
 		add(file, entity, "no steps")
 	}
 	validateSteps(file, entity, a.Steps, add, "")
-	if a.Guards != nil && a.Guards.Cooldown != nil {
-		cd := a.Guards.Cooldown
+	validateGuards(file, entity, a.Guards, add)
+	validateTemplateSyntax(file, entity, a, add)
+}
+
+func validateGuards(file, entity string, guards *Guards, add addError) {
+	if guards == nil {
+		return
+	}
+	if cd := guards.Cooldown; cd != nil {
 		if cd.Duration <= 0 {
 			add(file, entity, "cooldown duration must be > 0")
 		}
 		validateSteps(file, entity, cd.OnBlocked, add, "cooldown.on_blocked")
 	}
-	validateTemplateSyntax(file, entity, a, add)
+	if rl := guards.RateLimit; rl != nil {
+		if rl.Limit <= 0 {
+			add(file, entity, "rate_limit limit must be > 0")
+		}
+		if rl.Window <= 0 {
+			add(file, entity, "rate_limit window must be > 0")
+		}
+		validateSteps(file, entity, rl.OnBlocked, add, "rate_limit.on_blocked")
+	}
 }
 
 func validateSteps(file, entity string, steps []Step, add addError, where string) {

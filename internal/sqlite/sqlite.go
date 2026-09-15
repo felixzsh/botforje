@@ -33,7 +33,7 @@ var schema = []string{
 		visited_nodes TEXT NOT NULL,
 		graph_context TEXT NOT NULL,
 		node_context  TEXT NOT NULL,
-		cooldowns     TEXT NOT NULL,
+		guards        TEXT NOT NULL,
 		created_at    TEXT NOT NULL,
 		updated_at    TEXT NOT NULL,
 		expires_at    TEXT NOT NULL

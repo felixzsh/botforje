@@ -27,7 +27,8 @@
 - Tool loop — bounded sequence of tool calls and replies the LLM runs for one
   incoming message inside a node (ADR 0008).
 - Step — single operation inside an action.
-- Guard — rule that limits execution, for example a cooldown per sender.
+- Guard — rule that limits how often an action runs per sender, such as a
+  cooldown (minimum interval) or a rate limit (maximum per window).
 - Policy — constraints for LLM decisions, tool selection, and generated text.
   Node policy is ambient; message policy refines it.
 - Chat — durable thread between one bot and one sender, keyed by

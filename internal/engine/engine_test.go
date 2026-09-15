@@ -307,6 +307,46 @@ func TestCooldownGuard(t *testing.T) {
 	}
 }
 
+func TestRateLimitGuard(t *testing.T) {
+	now := t0
+	actions := map[string]config.Action{
+		"warn": {
+			Guards: &config.Guards{RateLimit: &config.RateLimit{
+				Limit:  2,
+				Window: 60,
+				OnBlocked: []config.Step{{Message: &config.Message{
+					Body: config.Text{"slow down"},
+				}}},
+			}},
+			Steps: []config.Step{{Message: &config.Message{Body: config.Text{"warning"}}}},
+		},
+	}
+	graph := config.Graph{
+		Root: "menu",
+		Nodes: map[string]config.Node{
+			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
+		},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Now: func() time.Time { return now },
+	})
+
+	for i := 0; i < 2; i++ {
+		if got := outbound(t, eng, "s", "a"); !slices.Equal(got, []string{"warning"}) {
+			t.Fatalf("run %d = %q, want warning", i, got)
+		}
+	}
+	if got := outbound(t, eng, "s", "b"); !slices.Equal(got, []string{"slow down"}) {
+		t.Fatalf("blocked run = %q, want slow down", got)
+	}
+	now = now.Add(61 * time.Second)
+	if got := outbound(t, eng, "s", "c"); !slices.Equal(got, []string{"warning"}) {
+		t.Fatalf("after window = %q, want warning", got)
+	}
+}
+
 func TestIntentOnlyWithoutLLM(t *testing.T) {
 	actions := map[string]config.Action{
 		"ask": {Steps: []config.Step{{Message: &config.Message{Intent: "ask something"}}}},

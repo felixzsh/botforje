@@ -58,7 +58,7 @@ type Session struct {
 	VisitedNodes []string
 	GraphContext map[string]any
 	NodeContext  map[string]any
-	Cooldowns    map[string]time.Time
+	Guards       GuardState
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	ExpiresAt    time.Time
@@ -67,6 +67,19 @@ type Session struct {
 // Expired reports whether the session is over at t.
 func (s *Session) Expired(t time.Time) bool {
 	return !s.ExpiresAt.IsZero() && !t.Before(s.ExpiresAt)
+}
+
+// GuardState is a session's accumulated guard state, one field per guard type
+// (ADR 0011). It is stored as one JSON blob on the session.
+type GuardState struct {
+	Cooldowns  map[string]time.Time      `json:"cooldowns,omitempty"`
+	RateLimits map[string]RateLimitState `json:"rate_limits,omitempty"`
+}
+
+// RateLimitState is the fixed-window counter of one rate-limited action.
+type RateLimitState struct {
+	Count       int       `json:"count"`
+	WindowStart time.Time `json:"window_start"`
 }
 
 // PairingState is the persisted local state of one bot's channel pairing.

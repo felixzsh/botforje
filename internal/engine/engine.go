@@ -166,7 +166,7 @@ func (e *Engine) start(chatID int64, now time.Time) *domain.Session {
 		VisitedNodes: []string{e.graph.Root},
 		GraphContext: maps.Clone(e.graph.InitialContext),
 		NodeContext:  maps.Clone(root.InitialContext),
-		Cooldowns:    map[string]time.Time{},
+		Guards:       domain.GuardState{},
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		ExpiresAt:    e.expiry(now),
@@ -252,31 +252,65 @@ func (r *run) actions(names []string) error {
 	return nil
 }
 
-// action runs one action, applying its cooldown guard (ADR 0011).
+// action runs one action, applying its guards (ADR 0011).
 func (r *run) action(name string) error {
 	action, ok := r.engine.actions[name]
 	if !ok {
 		return fmt.Errorf("engine: unknown action %q", name)
 	}
-	if guards := action.Guards; guards != nil && guards.Cooldown != nil {
-		guard := guards.Cooldown
-		if r.blocked(name, guard.Duration) {
-			return r.steps(guard.OnBlocked, name+".on_blocked")
-		}
-		if r.session.Cooldowns == nil {
-			r.session.Cooldowns = map[string]time.Time{}
-		}
-		r.session.Cooldowns[name] = r.engine.now()
+	if blocked, err := r.applyGuards(name, action.Guards); blocked || err != nil {
+		return err
 	}
 	return r.steps(action.Steps, name)
 }
 
-func (r *run) blocked(name string, seconds int) bool {
-	last, ok := r.session.Cooldowns[name]
-	if !ok {
-		return false
+// applyGuards checks an action's guards and records the run when they allow it.
+// A blocking guard reports true and has already run its on_blocked steps.
+func (r *run) applyGuards(name string, guards *config.Guards) (bool, error) {
+	if guards == nil {
+		return false, nil
 	}
-	return r.engine.now().Sub(last) < time.Duration(seconds)*time.Second
+	now := r.engine.now()
+	if cd := guards.Cooldown; cd != nil {
+		if last, ok := r.session.Guards.Cooldowns[name]; ok &&
+			now.Sub(last) < time.Duration(cd.Duration)*time.Second {
+			return true, r.steps(cd.OnBlocked, name+".cooldown")
+		}
+	}
+	var window time.Duration
+	if rl := guards.RateLimit; rl != nil {
+		window = time.Duration(rl.Window) * time.Second
+		state := r.session.Guards.RateLimits[name]
+		if !state.WindowStart.IsZero() && now.Sub(state.WindowStart) < window &&
+			state.Count >= rl.Limit {
+			return true, r.steps(rl.OnBlocked, name+".rate_limit")
+		}
+	}
+	r.recordGuards(name, guards, now, window)
+	return false, nil
+}
+
+// recordGuards stamps an allowed run so the next one is judged against it.
+func (r *run) recordGuards(
+	name string, guards *config.Guards, now time.Time, window time.Duration,
+) {
+	if guards.Cooldown != nil {
+		if r.session.Guards.Cooldowns == nil {
+			r.session.Guards.Cooldowns = map[string]time.Time{}
+		}
+		r.session.Guards.Cooldowns[name] = now
+	}
+	if guards.RateLimit != nil {
+		state := r.session.Guards.RateLimits[name]
+		if state.WindowStart.IsZero() || now.Sub(state.WindowStart) >= window {
+			state = domain.RateLimitState{WindowStart: now}
+		}
+		state.Count++
+		if r.session.Guards.RateLimits == nil {
+			r.session.Guards.RateLimits = map[string]domain.RateLimitState{}
+		}
+		r.session.Guards.RateLimits[name] = state
+	}
 }
 
 func reorder(visited []string, node string) []string {

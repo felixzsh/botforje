@@ -151,7 +151,8 @@ scopes:
           - message:
               body: "Thanks! We created lead {{node.lead-capture.resp.body.id}}."
 
-      # Guarded action: same sender cannot trigger it twice within the cooldown
+      # Guarded action: a sender cannot trigger it twice within the cooldown,
+      # nor more than 3 times per hour.
       escalate:
         guards:
           cooldown:
@@ -159,6 +160,12 @@ scopes:
             on_blocked:
               - message:
                   body: "You already requested a human. One will connect shortly."
+          rate_limit:
+            limit: 3
+            window: 3600
+            on_blocked:
+              - message:
+                  body: "Too many requests. Please try again later."
         steps:
           - message:
               body: "Connecting you to a human agent. One moment please."
@@ -318,7 +325,7 @@ scopes:
 
           escalate:
             goal: "hand off to a human"
-            on_enter: ["escalate"]    # Cooldown guard applies here
+            on_enter: ["escalate"]    # Cooldown and rate limit guards apply here
             edges:
               - intent: "wants the menu"
                 triggers: ["menu", "back"]
