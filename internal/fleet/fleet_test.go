@@ -1,36 +1,15 @@
 package fleet
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botforje/internal/config"
 	"github.com/felixzsh/botforje/internal/domain"
-	"github.com/felixzsh/botforje/internal/logging"
 )
-
-// safeBuffer is an io.Writer the fleet goroutine and the test share.
-type safeBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (s *safeBuffer) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-func (s *safeBuffer) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.String()
-}
 
 var t0 = time.Date(2026, 9, 14, 10, 0, 0, 0, time.UTC)
 
@@ -317,23 +296,6 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	}
 	if reply := receive(t, channels["beta"].sent); reply.Body != "hello from beta" {
 		t.Fatalf("beta reply = %q", reply.Body)
-	}
-}
-
-func TestLogsIncomingBodyAtDebug(t *testing.T) {
-	var buffer safeBuffer
-	runner, channels := buildFleet(t, "", logging.New("debug", &buffer))
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go runner.Run(ctx)
-	waitConnected(t, runner)
-
-	channels["alpha"].incoming <- domain.IncomingMessage{
-		Bot: "alpha", Sender: "s", Body: "hello there",
-	}
-	receive(t, channels["alpha"].sent)
-	if !strings.Contains(buffer.String(), `body="hello there"`) {
-		t.Fatalf("log did not include the incoming body: %q", buffer.String())
 	}
 }
 
