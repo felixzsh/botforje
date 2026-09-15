@@ -5,7 +5,7 @@ Status: Accepted (2026-09)
 ## Context
 
 ADR 0024 defined a flat command set. The API is organized by resource (bots,
-sessions, conversations, messages, config), and a flat CLI would mix entity
+chats, sessions, messages, config), and a flat CLI would mix entity
 operations with fleet operations and lose that mapping. A single bot also needs
 several operations, which a flat namespace crowds.
 
@@ -16,7 +16,7 @@ Commands are grouped by resource, mirroring the API:
 - `config init | validate | schema`
 - `bot list | pair | unpair`
 - `fleet run | status | stop | restart | reload`
-- future: `message list | tail`, `session`, `conversation`
+- future: `message list | tail`, `session`, `chat`
 
 A group invoked without a subcommand prints its help. Common flags such as
 `--config` stay on each subcommand. `bot list` shows stored pairing, while

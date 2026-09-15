@@ -19,13 +19,15 @@ import (
 	"github.com/felixzsh/botforje/internal/template"
 )
 
-// Options configures an Engine. Bot, Graph, Actions, and Store are required.
+// Options configures an Engine. Bot, Graph, Actions, Store, and Chats are
+// required.
 type Options struct {
 	Bot            string
 	Scope          string
 	Graph          config.Graph
 	Actions        map[string]config.Action
 	Store          domain.SessionStore
+	Chats          domain.ChatStore
 	LLM            domain.LLMProvider
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -42,6 +44,7 @@ type Engine struct {
 	graph          config.Graph
 	actions        map[string]config.Action
 	store          domain.SessionStore
+	chats          domain.ChatStore
 	llm            domain.LLMProvider
 	hasLLM         bool
 	http           *http.Client
@@ -59,6 +62,7 @@ func New(opts Options) *Engine {
 		graph:          opts.Graph,
 		actions:        opts.Actions,
 		store:          opts.Store,
+		chats:          opts.Chats,
 		llm:            opts.LLM,
 		hasLLM:         opts.LLM != nil,
 		http:           opts.HTTPClient,
@@ -140,22 +144,24 @@ func (e *Engine) Handle(
 func (e *Engine) load(
 	ctx context.Context, msg domain.IncomingMessage, now time.Time,
 ) (*domain.Session, bool, error) {
-	session, err := e.store.Get(ctx, e.scope, e.bot, msg.Sender)
+	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, msg.Sender, now)
+	if err != nil {
+		return nil, false, fmt.Errorf("engine: chat: %w", err)
+	}
+	session, err := e.store.Latest(ctx, chat.ID)
 	if err == nil && !session.Expired(now) {
 		return session, false, nil
 	}
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		return nil, false, err
 	}
-	return e.start(msg, now), true, nil
+	return e.start(chat.ID, now), true, nil
 }
 
-func (e *Engine) start(msg domain.IncomingMessage, now time.Time) *domain.Session {
+func (e *Engine) start(chatID int64, now time.Time) *domain.Session {
 	root := e.graph.Nodes[e.graph.Root]
 	return &domain.Session{
-		Bot:          e.bot,
-		Sender:       msg.Sender,
-		Scope:        e.scope,
+		ChatID:       chatID,
 		Node:         e.graph.Root,
 		Memory:       []string{e.graph.Root},
 		GraphContext: maps.Clone(e.graph.InitialContext),
@@ -190,7 +196,7 @@ func (e *Engine) contextOf(
 	_ = tctx.Reset(template.RootGraph, session.GraphContext)
 	_ = tctx.Reset(template.RootNode, session.NodeContext)
 	_ = tctx.Reset(template.RootSender, map[string]any{
-		"phone": session.Sender,
+		"phone": msg.Sender,
 	})
 	_ = tctx.Reset(template.RootMessage, map[string]any{
 		"body": msg.Body,

@@ -97,21 +97,57 @@ func (c *fakeChannel) wasDisconnected() bool {
 	return c.disconnected
 }
 
+// memStore is an in-memory ChatStore and SessionStore for fleet tests.
 type memStore struct {
 	mu       sync.Mutex
-	sessions map[string]*domain.Session
+	chats    map[string]*domain.Chat
+	sessions map[int64]*domain.Session
+	nextChat int64
+	nextSess int64
 }
 
-func newStore() *memStore { return &memStore{sessions: map[string]*domain.Session{}} }
+func newStore() *memStore {
+	return &memStore{chats: map[string]*domain.Chat{}, sessions: map[int64]*domain.Session{}}
+}
 
 func sessionKey(scope, bot, sender string) string {
 	return scope + "\x00" + bot + "\x00" + sender
 }
 
-func (s *memStore) Get(_ context.Context, scope, bot, sender string) (*domain.Session, error) {
+func (s *memStore) Ensure(
+	_ context.Context, scope, bot, sender string, at time.Time,
+) (*domain.Chat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	session, ok := s.sessions[sessionKey(scope, bot, sender)]
+	key := sessionKey(scope, bot, sender)
+	if chat, ok := s.chats[key]; ok {
+		return chat, nil
+	}
+	s.nextChat++
+	chat := &domain.Chat{
+		ID: s.nextChat, Scope: scope, Bot: bot, Sender: sender,
+		StartedAt: at, UpdatedAt: at,
+	}
+	s.chats[key] = chat
+	return chat, nil
+}
+
+func (s *memStore) Touch(_ context.Context, id int64, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, chat := range s.chats {
+		if chat.ID == id {
+			chat.UpdatedAt = at
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (s *memStore) Latest(_ context.Context, chatID int64) (*domain.Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessions[chatID]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
@@ -121,14 +157,18 @@ func (s *memStore) Get(_ context.Context, scope, bot, sender string) (*domain.Se
 func (s *memStore) Save(_ context.Context, session *domain.Session) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessions[sessionKey(session.Scope, session.Bot, session.Sender)] = session
+	if session.ID == 0 {
+		s.nextSess++
+		session.ID = s.nextSess
+	}
+	s.sessions[session.ChatID] = session
 	return nil
 }
 
-func (s *memStore) Delete(_ context.Context, scope, bot, sender string) error {
+func (s *memStore) Delete(_ context.Context, chatID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.sessions, sessionKey(scope, bot, sender))
+	delete(s.sessions, chatID)
 	return nil
 }
 
@@ -142,8 +182,10 @@ func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[st
 		t.Fatalf("config invalid: %v", errs)
 	}
 	channels := map[string]*fakeChannel{}
+	store := newStore()
 	runner, err := New(cfg, Options{
-		Store:          newStore(),
+		Store:          store,
+		Chats:          store,
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
@@ -172,8 +214,10 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 		t.Fatalf("config invalid: %v", errs)
 	}
 	var created []string
+	store := newStore()
 	runner, err := New(cfg, Options{
-		Store: newStore(),
+		Store: store,
+		Chats: store,
 		Skip:  func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(spec BotSpec) (domain.MessageChannel, error) {
 			created = append(created, spec.Name)

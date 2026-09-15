@@ -14,31 +14,21 @@ import (
 // schema is the whole database, applied on open with IF NOT EXISTS. Pre-release
 // it is edited in place and the development database is recreated with
 // `make dev-reset`; versioned, append-only migrations start at the first
-// release (ADR 0006).
+// release (ADR 0006). The chat, session, and message shapes are in ADR 0026.
 var schema = []string{
-	`CREATE TABLE IF NOT EXISTS conversations (
+	`CREATE TABLE IF NOT EXISTS chats (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		scope      TEXT NOT NULL,
 		bot        TEXT NOT NULL,
 		sender     TEXT NOT NULL,
-		scope      TEXT NOT NULL,
 		started_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
+		updated_at TEXT NOT NULL,
+		UNIQUE (scope, bot, sender)
 	)`,
-	`CREATE INDEX IF NOT EXISTS conversations_bot_sender ON conversations (bot, sender)`,
-	`CREATE TABLE IF NOT EXISTS messages (
-		id              INTEGER PRIMARY KEY AUTOINCREMENT,
-		conversation_id INTEGER NOT NULL
-			REFERENCES conversations (id) ON DELETE CASCADE,
-		direction       TEXT NOT NULL,
-		kind            TEXT NOT NULL,
-		body            TEXT NOT NULL,
-		sent_at         TEXT NOT NULL
-	)`,
-	`CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, id)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
-		bot           TEXT NOT NULL,
-		sender        TEXT NOT NULL,
-		scope         TEXT NOT NULL,
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id       INTEGER NOT NULL
+			REFERENCES chats (id) ON DELETE CASCADE,
 		node          TEXT NOT NULL,
 		memory        TEXT NOT NULL,
 		graph_context TEXT NOT NULL,
@@ -46,9 +36,21 @@ var schema = []string{
 		cooldowns     TEXT NOT NULL,
 		created_at    TEXT NOT NULL,
 		updated_at    TEXT NOT NULL,
-		expires_at    TEXT NOT NULL,
-		PRIMARY KEY (scope, bot, sender)
+		expires_at    TEXT NOT NULL
 	)`,
+	`CREATE INDEX IF NOT EXISTS sessions_chat ON sessions (chat_id, id)`,
+	`CREATE TABLE IF NOT EXISTS messages (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id    INTEGER NOT NULL
+			REFERENCES chats (id) ON DELETE CASCADE,
+		session_id INTEGER
+			REFERENCES sessions (id) ON DELETE SET NULL,
+		direction  TEXT NOT NULL,
+		kind       TEXT NOT NULL,
+		body       TEXT NOT NULL,
+		sent_at    TEXT NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id, id)`,
 	`CREATE TABLE IF NOT EXISTS accounts (
 		scope TEXT NOT NULL,
 		bot   TEXT NOT NULL,
@@ -95,13 +97,11 @@ func Open(path string) (*DB, error) {
 	return &DB{DB: db}, nil
 }
 
+// Chats returns the chat repository.
+func (d *DB) Chats() *ChatStore { return &ChatStore{db: d.DB} }
+
 // Sessions returns the session repository.
 func (d *DB) Sessions() *SessionStore { return &SessionStore{db: d.DB} }
-
-// Conversations returns the conversation repository.
-func (d *DB) Conversations() *ConversationStore {
-	return &ConversationStore{db: d.DB}
-}
 
 // Messages returns the message repository.
 func (d *DB) Messages() *MessageStore { return &MessageStore{db: d.DB} }

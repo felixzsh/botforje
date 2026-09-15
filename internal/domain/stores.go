@@ -7,7 +7,7 @@ import (
 
 // Persisted shapes: one struct per table. Their fields mirror the columns the
 // SQLite adapter reads and writes; keys, constraints, and encoding (JSON,
-// RFC 3339 times) live with the DDL in internal/sqlite (ADR 0006).
+// RFC 3339 times) live with the DDL in internal/sqlite (ADR 0006, ADR 0026).
 
 // Account is a bot's paired channel identity, the whatsmeow device JID. It is
 // keyed by (scope, bot) like every entity (ADR 0016).
@@ -17,12 +17,13 @@ type Account struct {
 	JID   string
 }
 
-// Conversation is a thread between one bot and one sender.
-type Conversation struct {
+// Chat is the durable thread between one bot and one sender, one per
+// (scope, bot, sender). It never ends and gathers every message (ADR 0026).
+type Chat struct {
 	ID        int64
+	Scope     string
 	Bot       string
 	Sender    string
-	Scope     string
 	StartedAt time.Time
 	UpdatedAt time.Time
 }
@@ -36,21 +37,23 @@ const (
 )
 
 // Message is one message kept for history. Kind is the shared OutgoingKind,
-// declared with the runtime message types.
+// declared with the runtime message types. SessionID is zero when no session
+// run handled it.
 type Message struct {
-	ID             int64
-	ConversationID int64
-	Direction      Direction
-	Kind           OutgoingKind
-	Body           string
-	At             time.Time
+	ID        int64
+	ChatID    int64
+	SessionID int64
+	Direction Direction
+	Kind      OutgoingKind
+	Body      string
+	At        time.Time
 }
 
-// Session is the persisted per-(bot, sender) conversation state (ADR 0010).
+// Session is one bounded run of the graph for a chat; a chat has many over
+// time (ADR 0026). It is the persisted state the engine resumes.
 type Session struct {
-	Bot          string
-	Sender       string
-	Scope        string
+	ID           int64
+	ChatID       int64
 	Node         string
 	Memory       []string
 	GraphContext map[string]any
@@ -86,24 +89,25 @@ type PairingStatus struct {
 // Store ports: the domain owns the interfaces; an adapter implements them
 // (ADR 0006).
 
-// SessionStore persists conversation state. Sessions are keyed by
-// (scope, bot, sender) so two scopes never share conversation state (ADR 0005).
-type SessionStore interface {
-	Get(ctx context.Context, scope, bot, sender string) (*Session, error)
-	Save(ctx context.Context, session *Session) error
-	Delete(ctx context.Context, scope, bot, sender string) error
-}
-
-// ConversationStore records conversation threads.
-type ConversationStore interface {
-	Start(ctx context.Context, conversation *Conversation) error
+// ChatStore records the durable chat with each person. Ensure is a
+// get-or-create (ADR 0026).
+type ChatStore interface {
+	Ensure(ctx context.Context, scope, bot, sender string, at time.Time) (*Chat, error)
 	Touch(ctx context.Context, id int64, at time.Time) error
 }
 
-// MessageStore records message history.
+// SessionStore records a chat's session runs. Latest returns the most recent
+// one, or domain.ErrNotFound when the chat never had a session (ADR 0026).
+type SessionStore interface {
+	Latest(ctx context.Context, chatID int64) (*Session, error)
+	Save(ctx context.Context, session *Session) error
+	Delete(ctx context.Context, chatID int64) error
+}
+
+// MessageStore records message history (ADR 0026).
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
-	List(ctx context.Context, conversationID int64, limit int) ([]Message, error)
+	List(ctx context.Context, chatID int64, limit int) ([]Message, error)
 }
 
 // AccountStore records paired channel accounts and their pairing status

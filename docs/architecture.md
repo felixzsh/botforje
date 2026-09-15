@@ -14,8 +14,8 @@ Two independent ports sit beside the config engine and persistence:
   Cloud and local providers sit behind the same interface.
 
 The config engine loads YAML into the domain model; the engine never sees
-YAML. Persistence stores runtime state: device store, sessions,
-conversations, and messages.
+YAML. Persistence stores runtime state: device store, chats, sessions, and
+messages.
 
 A messaging provider and an LLM provider are different things. A bot always
 needs a channel; an LLM is optional and only used when configured.
@@ -120,14 +120,15 @@ within bounds: the LLM calls the operation, then checks its status up to its
 tool budget; longer waits continue on later messages. A deterministic polling
 step (interval, timeout, success condition) is an open decision for Phase 4/8.
 
-## Sessions
+## Chats and sessions
 
-A session is one (bot, sender) conversation, where `sender` is the resolved
-phone number in plain digits (ADR 0020). It starts at the graph
-root and expires after the graph timeout (or `default_timeout`). An expired
-session is destroyed together with its state; the next message starts a new
-session at root. Conversation state, including graph and node contexts, lives
-in SQLite.
+A chat is the durable thread with one sender, keyed by (scope, bot, sender);
+`sender` is the resolved phone number in plain digits (ADR 0020). It never
+ends and gathers every message. A session is one bounded run of the graph for
+a chat: it starts at the root and expires after the graph timeout (or
+`default_timeout`). An expired session is replaced by a new run; the next
+message starts at root. Chat, session, and message history live in SQLite
+(ADR 0026).
 
 The session also keeps node memory (ADR 0010): the ordered list of visited
 nodes used for routing and handed to the LLM as context, bounded to a

@@ -30,7 +30,10 @@
 - Guard — rule that limits execution, for example a cooldown per sender.
 - Policy — constraints for LLM decisions, tool selection, and generated text.
   Node policy is ambient; message policy refines it.
-- Session — per-sender conversation state stored in SQLite.
+- Chat — durable thread between one bot and one sender, keyed by
+  (scope, bot, sender); it never ends and gathers every message (ADR 0026).
+- Session — one bounded run of a bot's graph for a chat, stored in SQLite; it
+  starts at the root and ends on the graph timeout (ADR 0026).
 - PN (phone number) — WhatsApp's phone-number address; BotForje keys sessions
   on the plain number (`5215500000000`), without the JID suffix (ADR 0020).
 - LID (hidden user) — WhatsApp's `user@lid` address; confined to the channel

@@ -28,9 +28,10 @@ type BotSpec struct {
 	Settings config.BotSettings
 }
 
-// Options configures a Fleet. Store and NewChannel are required.
+// Options configures a Fleet. Store, Chats, and NewChannel are required.
 type Options struct {
 	Store      domain.SessionStore
+	Chats      domain.ChatStore
 	NewChannel func(spec BotSpec) (domain.MessageChannel, error)
 	// Skip omits a bot before its runtime is built. It is for recoverable
 	// runtime conditions such as a missing local pairing.
@@ -76,6 +77,9 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.Store == nil {
 		return nil, errors.New("fleet: no session store")
 	}
+	if opts.Chats == nil {
+		return nil, errors.New("fleet: no chat store")
+	}
 	if opts.NewChannel == nil {
 		return nil, errors.New("fleet: no channel factory")
 	}
@@ -104,7 +108,8 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			botLog := baseLog.With("scope", scopeName, "bot", botName)
 			eng := engine.New(engine.Options{
 				Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
-				Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now,
+				Store: opts.Store, Chats: opts.Chats,
+				HTTPClient: opts.HTTPClient, Now: opts.Now,
 				Rand: rand.New(rand.NewSource(seeds.Int63())), DefaultTimeout: opts.DefaultTimeout,
 				Log: botLog,
 			})

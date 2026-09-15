@@ -11,28 +11,69 @@ import (
 	"github.com/felixzsh/botforje/internal/domain"
 )
 
-// SessionStore persists sessions (ADR 0006).
+// ChatStore persists the durable chat with each person (ADR 0026).
+type ChatStore struct{ db *sql.DB }
+
+const chatColumns = `id, scope, bot, sender, started_at, updated_at`
+
+// Ensure returns the chat for (scope, bot, sender), creating it on first use.
+func (s *ChatStore) Ensure(
+	ctx context.Context, scope, bot, sender string, at time.Time,
+) (*domain.Chat, error) {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO chats (scope, bot, sender, started_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT (scope, bot, sender) DO NOTHING`,
+		scope, bot, sender, formatTime(at), formatTime(at))
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
+	}
+	var (
+		chat      domain.Chat
+		startedAt string
+		updatedAt string
+	)
+	err = s.db.QueryRowContext(ctx,
+		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND sender = ?",
+		scope, bot, sender).
+		Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.Sender, &startedAt, &updatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get chat: %w", err)
+	}
+	chat.StartedAt = parseTime(startedAt)
+	chat.UpdatedAt = parseTime(updatedAt)
+	return &chat, nil
+}
+
+// Touch updates the last-activity time of a chat.
+func (s *ChatStore) Touch(ctx context.Context, id int64, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE chats SET updated_at = ? WHERE id = ?", formatTime(at), id)
+	if err != nil {
+		return fmt.Errorf("sqlite: touch chat: %w", err)
+	}
+	return nil
+}
+
+// SessionStore persists a chat's session runs (ADR 0026).
 type SessionStore struct{ db *sql.DB }
 
-const sessionColumns = `bot, sender, scope, node, memory,
+const sessionColumns = `id, chat_id, node, memory,
 	graph_context, node_context, cooldowns, created_at, updated_at, expires_at`
 
-// Get loads the session for (scope, bot, sender) or returns domain.ErrNotFound.
-func (s *SessionStore) Get(
-	ctx context.Context, scope, bot, sender string,
-) (*domain.Session, error) {
+// Latest returns the most recent session for a chat or domain.ErrNotFound.
+func (s *SessionStore) Latest(ctx context.Context, chatID int64) (*domain.Session, error) {
 	query := "SELECT " + sessionColumns +
-		" FROM sessions WHERE scope = ? AND bot = ? AND sender = ?"
+		" FROM sessions WHERE chat_id = ? ORDER BY id DESC LIMIT 1"
 	var (
 		session                     domain.Session
 		memory, graphCtx, nodeCtx   string
 		cooldowns, created, updated string
 		expires                     string
 	)
-	err := s.db.QueryRowContext(ctx, query, scope, bot, sender).Scan(
-		&session.Bot, &session.Sender, &session.Scope,
-		&session.Node, &memory, &graphCtx, &nodeCtx, &cooldowns,
-		&created, &updated, &expires,
+	err := s.db.QueryRowContext(ctx, query, chatID).Scan(
+		&session.ID, &session.ChatID, &session.Node, &memory, &graphCtx, &nodeCtx,
+		&cooldowns, &created, &updated, &expires,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -58,7 +99,7 @@ func (s *SessionStore) Get(
 	return &session, nil
 }
 
-// Save inserts or replaces the session.
+// Save inserts a new session run (ID zero) or updates the existing one.
 func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error {
 	memory, err := encodeJSON(session.Memory)
 	if err != nil {
@@ -76,81 +117,61 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 	if err != nil {
 		return fmt.Errorf("sqlite: cooldowns: %w", err)
 	}
-	query := `INSERT INTO sessions (` + sessionColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (scope, bot, sender) DO UPDATE SET
-			scope = excluded.scope,
-			node = excluded.node,
-			memory = excluded.memory,
-			graph_context = excluded.graph_context,
-			node_context = excluded.node_context,
-			cooldowns = excluded.cooldowns,
-			created_at = excluded.created_at,
-			updated_at = excluded.updated_at,
-			expires_at = excluded.expires_at`
-	_, err = s.db.ExecContext(ctx, query,
-		session.Bot, session.Sender, session.Scope, session.Node,
-		memory, graphCtx, nodeCtx, cooldowns,
+	if session.ID == 0 {
+		result, err := s.db.ExecContext(ctx,
+			`INSERT INTO sessions (chat_id, node, memory, graph_context, node_context,
+			 cooldowns, created_at, updated_at, expires_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			session.ChatID, session.Node, memory, graphCtx, nodeCtx, cooldowns,
+			formatTime(session.CreatedAt), formatTime(session.UpdatedAt),
+			formatTime(session.ExpiresAt))
+		if err != nil {
+			return fmt.Errorf("sqlite: save session: %w", err)
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("sqlite: session id: %w", err)
+		}
+		session.ID = id
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE sessions SET node = ?, memory = ?, graph_context = ?,
+		 node_context = ?, cooldowns = ?, created_at = ?, updated_at = ?,
+		 expires_at = ? WHERE id = ?`,
+		session.Node, memory, graphCtx, nodeCtx, cooldowns,
 		formatTime(session.CreatedAt), formatTime(session.UpdatedAt),
-		formatTime(session.ExpiresAt),
-	)
+		formatTime(session.ExpiresAt), session.ID)
 	if err != nil {
 		return fmt.Errorf("sqlite: save session: %w", err)
 	}
 	return nil
 }
 
-// Delete removes the session for (scope, bot, sender); a missing row is not an
-// error.
-func (s *SessionStore) Delete(ctx context.Context, scope, bot, sender string) error {
-	_, err := s.db.ExecContext(ctx,
-		"DELETE FROM sessions WHERE scope = ? AND bot = ? AND sender = ?", scope, bot, sender)
+// Delete removes every session run of a chat; message history is kept.
+func (s *SessionStore) Delete(ctx context.Context, chatID int64) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM sessions WHERE chat_id = ?", chatID)
 	if err != nil {
 		return fmt.Errorf("sqlite: delete session: %w", err)
 	}
 	return nil
 }
 
-// ConversationStore persists conversation threads (ADR 0006).
-type ConversationStore struct{ db *sql.DB }
-
-// Start inserts the conversation and sets its ID.
-func (s *ConversationStore) Start(ctx context.Context, conversation *domain.Conversation) error {
-	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO conversations (bot, sender, scope, started_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		conversation.Bot, conversation.Sender, conversation.Scope,
-		formatTime(conversation.StartedAt), formatTime(conversation.UpdatedAt))
-	if err != nil {
-		return fmt.Errorf("sqlite: start conversation: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("sqlite: conversation id: %w", err)
-	}
-	conversation.ID = id
-	return nil
-}
-
-// Touch updates the last-activity time of a conversation.
-func (s *ConversationStore) Touch(ctx context.Context, id int64, at time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE conversations SET updated_at = ? WHERE id = ?", formatTime(at), id)
-	if err != nil {
-		return fmt.Errorf("sqlite: touch conversation: %w", err)
-	}
-	return nil
-}
-
-// MessageStore persists message history (ADR 0006).
+// MessageStore persists message history (ADR 0026).
 type MessageStore struct{ db *sql.DB }
+
+const messageColumns = `id, chat_id, session_id, direction, kind, body, sent_at`
 
 // Append inserts the message and sets its ID.
 func (s *MessageStore) Append(ctx context.Context, message *domain.Message) error {
+	var sessionID any
+	if message.SessionID != 0 {
+		sessionID = message.SessionID
+	}
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (conversation_id, direction, kind, body, sent_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		message.ConversationID, string(message.Direction), string(message.Kind),
+		`INSERT INTO messages (chat_id, session_id, direction, kind, body, sent_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		message.ChatID, sessionID, string(message.Direction), string(message.Kind),
 		message.Body, formatTime(message.At))
 	if err != nil {
 		return fmt.Errorf("sqlite: append message: %w", err)
@@ -163,13 +184,13 @@ func (s *MessageStore) Append(ctx context.Context, message *domain.Message) erro
 	return nil
 }
 
-// List returns up to limit messages of a conversation, oldest first.
+// List returns up to limit messages of a chat, oldest first.
 func (s *MessageStore) List(
-	ctx context.Context, conversationID int64, limit int,
+	ctx context.Context, chatID int64, limit int,
 ) ([]domain.Message, error) {
-	const query = `SELECT id, conversation_id, direction, kind, body, sent_at
-		FROM messages WHERE conversation_id = ? ORDER BY id LIMIT ?`
-	rows, err := s.db.QueryContext(ctx, query, conversationID, limit)
+	const query = `SELECT ` + messageColumns +
+		` FROM messages WHERE chat_id = ? ORDER BY id LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, query, chatID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: list messages: %w", err)
 	}
@@ -178,12 +199,16 @@ func (s *MessageStore) List(
 	for rows.Next() {
 		var (
 			message         domain.Message
+			sessionID       sql.NullInt64
 			direction, kind string
 			sentAt          string
 		)
-		if err := rows.Scan(&message.ID, &message.ConversationID, &direction, &kind,
-			&message.Body, &sentAt); err != nil {
+		if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
+			&direction, &kind, &message.Body, &sentAt); err != nil {
 			return nil, err
+		}
+		if sessionID.Valid {
+			message.SessionID = sessionID.Int64
 		}
 		message.Direction = domain.Direction(direction)
 		message.Kind = domain.OutgoingKind(kind)

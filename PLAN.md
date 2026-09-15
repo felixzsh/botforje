@@ -100,7 +100,7 @@ Deliverables:
 
 - [x] SQLite setup with the schema applied on open; pure-Go driver, WAL,
   foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
-- [x] Stores: sessions, conversations, and messages.
+- [x] Stores: chats, sessions, and messages.
 - [x] Repository interfaces owned by the domain; SQL stays in the adapter.
 - [x] Tests: schema apply, store round-trips, and session resume after restart.
 - [x] Race testing: `make test-race` (`go test -race ./...`) and use it
@@ -212,14 +212,14 @@ Deliverables:
 - [ ] When the fleet API exists, `fleet status` prefers its live data and
   falls back to the database; the output identifies the source as `live` or
   `stored`.
-- [ ] Message history: persist each conversation thread and its inbound and
-  outbound messages as they flow through the actor, and list or tail one
-  thread with `message list|tail <bot> <sender> [--limit n] [--follow]`. Only
-  live traffic is recorded; the history-sync backlog stays out of scope.
+- [ ] Message history: persist every message under its chat as it flows
+  through the actor, and list or tail one chat with
+  `message list|tail <bot> <sender> [--limit n] [--follow]`. Only live traffic
+  is recorded; the history-sync backlog stays out of scope.
 - [ ] Signals: SIGINT/SIGTERM graceful shutdown; `fleet stop` signals the
   running fleet, `fleet reload` (SIGHUP) reloads config, and `fleet restart`
   does a full restart.
-- [ ] REST API: status, bots, sessions, conversations, messages, and config.
+- [ ] REST API: status, bots, chats, sessions, messages, and config.
 - [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
   the future UI.
 - [ ] Config reload (ADR 0009): failed validation keeps the previous config;

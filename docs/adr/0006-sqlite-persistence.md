@@ -4,7 +4,7 @@ Status: Accepted (2026-09)
 
 ## Context
 
-The engine must persist whatsmeow credentials, conversation sessions, and
+The engine must persist whatsmeow credentials, chats, their session runs, and
 message history. A single-instance deployment should stay simple to operate;
 no external database should be required.
 
@@ -12,8 +12,9 @@ no external database should be required.
 
 SQLite is the project database. One file per instance, located through the
 `data_dir` setting (XDG default), with the schema applied on startup. Tables:
-bots (identity), senders, whatsmeow device store, sessions, conversations,
-messages, pairing_status, and (with the API) web sessions and admin keys.
+chats, sessions, messages, accounts, pairing_status, the whatsmeow device
+store, and (with the API) web sessions and admin keys (ADR 0026). A bot's
+identity comes from config; `accounts` records its paired channel identity.
 Graph and node contexts are stored as JSON on the session. The domain depends
 on repository interfaces, not on SQL.
 

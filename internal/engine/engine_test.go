@@ -18,16 +18,51 @@ import (
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
 
-type memStore struct{ sessions map[string]*domain.Session }
+// memStore is an in-memory ChatStore and SessionStore for engine tests.
+type memStore struct {
+	chats    map[string]*domain.Chat
+	sessions map[int64]*domain.Session
+	nextChat int64
+	nextSess int64
+}
 
 func newMemStore() *memStore {
-	return &memStore{sessions: map[string]*domain.Session{}}
+	return &memStore{
+		chats:    map[string]*domain.Chat{},
+		sessions: map[int64]*domain.Session{},
+	}
 }
 
 func storeKey(scope, bot, sender string) string { return scope + "\x00" + bot + "\x00" + sender }
 
-func (s *memStore) Get(_ context.Context, scope, bot, sender string) (*domain.Session, error) {
-	session, ok := s.sessions[storeKey(scope, bot, sender)]
+func (s *memStore) Ensure(
+	_ context.Context, scope, bot, sender string, at time.Time,
+) (*domain.Chat, error) {
+	key := storeKey(scope, bot, sender)
+	if chat, ok := s.chats[key]; ok {
+		return chat, nil
+	}
+	s.nextChat++
+	chat := &domain.Chat{
+		ID: s.nextChat, Scope: scope, Bot: bot, Sender: sender,
+		StartedAt: at, UpdatedAt: at,
+	}
+	s.chats[key] = chat
+	return chat, nil
+}
+
+func (s *memStore) Touch(_ context.Context, id int64, at time.Time) error {
+	for _, chat := range s.chats {
+		if chat.ID == id {
+			chat.UpdatedAt = at
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
+func (s *memStore) Latest(_ context.Context, chatID int64) (*domain.Session, error) {
+	session, ok := s.sessions[chatID]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
@@ -35,13 +70,26 @@ func (s *memStore) Get(_ context.Context, scope, bot, sender string) (*domain.Se
 }
 
 func (s *memStore) Save(_ context.Context, session *domain.Session) error {
-	s.sessions[storeKey(session.Scope, session.Bot, session.Sender)] = session
+	if session.ID == 0 {
+		s.nextSess++
+		session.ID = s.nextSess
+	}
+	s.sessions[session.ChatID] = session
 	return nil
 }
 
-func (s *memStore) Delete(_ context.Context, scope, bot, sender string) error {
-	delete(s.sessions, storeKey(scope, bot, sender))
+func (s *memStore) Delete(_ context.Context, chatID int64) error {
+	delete(s.sessions, chatID)
 	return nil
+}
+
+// sessionFor reads a chat's current session by its config identity.
+func (s *memStore) sessionFor(scope, bot, sender string) (*domain.Session, error) {
+	chat, ok := s.chats[storeKey(scope, bot, sender)]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return s.Latest(context.Background(), chat.ID)
 }
 
 func loadScope(t *testing.T) config.Scope {
@@ -82,7 +130,7 @@ func outbound(t *testing.T, eng *Engine, sender, text string) []string {
 	return bodies
 }
 
-func fixtureEngine(t *testing.T, store domain.SessionStore) *Engine {
+func fixtureEngine(t *testing.T, store *memStore) *Engine {
 	t.Helper()
 	scope := loadScope(t)
 	return newTestEngine(t, Options{
@@ -91,6 +139,7 @@ func fixtureEngine(t *testing.T, store domain.SessionStore) *Engine {
 		Graph:          scope.Graphs["faq"],
 		Actions:        scope.Actions,
 		Store:          store,
+		Chats:          store,
 		DefaultTimeout: 300 * time.Second,
 	})
 }
@@ -115,7 +164,7 @@ func TestConversationScenario(t *testing.T) {
 		}
 	}
 
-	session, err := store.Get(context.Background(), "support", "support-bot", sender)
+	session, err := store.sessionFor("support", "support-bot", sender)
 	if err != nil {
 		t.Fatalf("get session: %v", err)
 	}
@@ -169,7 +218,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	scope := loadScope(t)
 	eng := New(Options{
 		Bot: "support-bot", Scope: "support",
-		Graph: scope.Graphs["faq"], Actions: scope.Actions, Store: store,
+		Graph: scope.Graphs["faq"], Actions: scope.Actions, Store: store, Chats: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 		Rand:           rand.New(rand.NewSource(1)),
@@ -181,7 +230,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	if want := []string{"Main menu: 1 hours, 2 catalog, 0 exit"}; !slices.Equal(got, want) {
 		t.Fatalf("after expiry = %q, want %q", got, want)
 	}
-	session, err := store.Get(context.Background(), "support", "support-bot", sender)
+	session, err := store.sessionFor("support", "support-bot", sender)
 	if err != nil {
 		t.Fatalf("get session: %v", err)
 	}
@@ -209,9 +258,10 @@ func TestRequestStepCapturesResult(t *testing.T) {
 		Root:  "start",
 		Nodes: map[string]config.Node{"start": {OnEnter: []string{"call", "report"}}},
 	}
+	store := newMemStore()
 	eng := newTestEngine(t, Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: newMemStore(), HTTPClient: server.Client(),
+		Store: store, Chats: store, HTTPClient: server.Client(),
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"got 7 status 200"}; !slices.Equal(got, want) {
@@ -238,8 +288,9 @@ func TestCooldownGuard(t *testing.T) {
 			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
 		},
 	}
+	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: newMemStore(),
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -263,8 +314,9 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 		Root:  "start",
 		Nodes: map[string]config.Node{"start": {OnEnter: []string{"ask"}}},
 	}
+	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: newMemStore(),
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
 	})
 	_, err := eng.Handle(context.Background(), domain.IncomingMessage{Sender: "s", Body: "hi"})
 	if !errors.Is(err, domain.ErrNoLLM) {
@@ -283,8 +335,9 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 		Root:  "start",
 		Nodes: map[string]config.Node{"start": {OnEnter: []string{"confirm"}}},
 	}
+	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: newMemStore(),
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"Your order is confirmed."}; !slices.Equal(got, want) {
@@ -302,8 +355,9 @@ func TestLocationStep(t *testing.T) {
 		Root:  "start",
 		Nodes: map[string]config.Node{"start": {OnEnter: []string{"office"}}},
 	}
+	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: newMemStore(),
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
 	})
 	messages, err := eng.Handle(context.Background(), domain.IncomingMessage{Sender: "s", Body: "hi"})
 	if err != nil {
@@ -349,9 +403,10 @@ func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *Engine {
 		Root:  "start",
 		Nodes: map[string]config.Node{"start": {OnEnter: []string{"call", "report"}}},
 	}
+	store := newMemStore()
 	return newTestEngine(t, Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: newMemStore(), HTTPClient: &http.Client{Transport: transport},
+		Store: store, Chats: store, HTTPClient: &http.Client{Transport: transport},
 	})
 }
 
