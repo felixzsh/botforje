@@ -10,7 +10,7 @@ SaaS infrastructure:
   truth.
 - Graph conversations with sessions persisted in SQLite.
 - Actions with `message`, `request`, and `location` steps; cooldown guards.
-- Inbound filters (groups, allow/ignore senders) and a per-bot outbox with
+- Filters (groups, allow/ignore senders) and a per-bot outbox with
   configurable delay and jitter, plus human-like presence (ADR 0011).
 - CLI: `config` and `bot` groups, plus `fleet`.
 - REST API with key-based auth.

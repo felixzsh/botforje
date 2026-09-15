@@ -1,12 +1,10 @@
-// Package inbox filters inbound messages before the engine sees them
-// (ADR 0011). Deduplication lives in the channel adapter, which sees the
-// transport event first.
-package inbox
+package fleet
 
 import "github.com/felixzsh/botforje/internal/domain"
 
-// Filter holds one bot's inbound rules: ignore groups, and an allow/ignore
-// list of sender phone numbers.
+// Filter holds one bot's inbound rules (ADR 0011): ignore groups, and an
+// allow/ignore list of sender phone numbers. Deduplication lives in the
+// channel adapter, which sees the transport event first.
 type Filter struct {
 	IgnoreGroups bool
 	Allowed      []string

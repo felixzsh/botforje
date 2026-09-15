@@ -22,8 +22,8 @@ needs a channel; an LLM is optional and only used when configured.
 
 The YAML-free domain types and ports live in `internal/domain`, the graph
 engine in `internal/engine`, the SQLite adapter in `internal/sqlite`, and the
-whatsmeow channel in `internal/whatsapp`. The fleet, inbox, and outbox live in
-`internal/fleet`, `internal/inbox`, and `internal/outbox`.
+whatsmeow channel in `internal/whatsapp`. The fleet, with its per-bot filter,
+lives in `internal/fleet`; the outbox in `internal/outbox`.
 
 ## Domain model
 
@@ -58,8 +58,8 @@ Inbound:
 1. Channel receives an event, maps it to an `IncomingMessage`, and resolves
    the sender to a phone number; a message with no known phone number is
    dropped (ADR 0020).
-2. Inbox filters it (groups, allow/ignore lists, dedup) and routes it to the
-   right bot and session.
+2. The fleet routes the event to the bot; the bot's filter drops it (groups,
+   allow/ignore lists) or passes it to the engine.
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -143,7 +143,8 @@ configured maximum.
   produce duplicate replies.
 - The tool loop runs inside the bot actor and is bounded (max tools per
   message, timeout); a slow provider cannot stall other bots.
-- Bounded queues between inbox, engine, and outbox provide backpressure.
+- Bounded queues between the channel, the engine, and the outbox provide
+  backpressure.
 - No shared mutable state between bots; shared services are read-only or
   synchronized.
 - Reconnect uses capped exponential backoff with jitter; a bot that is

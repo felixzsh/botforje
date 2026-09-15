@@ -1,5 +1,5 @@
 // Package fleet runs one actor per configured bot, each with its own channel,
-// engine, inbox filter, and outbox (ADR 0011, docs/architecture.md).
+// engine, filter, and outbox (ADR 0011, docs/architecture.md).
 package fleet
 
 import (
@@ -16,7 +16,6 @@ import (
 	"github.com/felixzsh/botforje/internal/config"
 	"github.com/felixzsh/botforje/internal/domain"
 	"github.com/felixzsh/botforje/internal/engine"
-	"github.com/felixzsh/botforje/internal/inbox"
 	"github.com/felixzsh/botforje/internal/logging"
 	"github.com/felixzsh/botforje/internal/outbox"
 )
@@ -64,7 +63,7 @@ type Bot struct {
 	channel domain.MessageChannel
 	engine  *engine.Engine
 	outbox  *outbox.Queue
-	filter  inbox.Filter
+	filter  Filter
 	onError func(error)
 	log     *slog.Logger
 }
@@ -135,7 +134,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			})
 			fleet.bots = append(fleet.bots, &Bot{
 				scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
-				filter: inbox.Filter{
+				filter: Filter{
 					IgnoreGroups: ignoreGroups(settings),
 					Allowed:      settings.AllowedSenders,
 					Ignored:      settings.IgnoredSenders,

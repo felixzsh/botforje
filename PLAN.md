@@ -22,7 +22,7 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 3. Persistence (SQLite)
 4. Graph engine
 5. WhatsApp channel (whatsmeow)
-6. Fleet, inbox, and outbox
+6. Fleet, filter, and outbox
 7. LLM providers and hybrid behavior
 8. CLI and REST API
 9. MVP hardening and release
@@ -169,15 +169,15 @@ Gate: one configured bot answers a real WhatsApp message and survives a
 restart without re-pairing. The rest of the system still runs without
 whatsmeow; tests use a fake channel.
 
-### Phase 6 — Fleet, inbox, and outbox
+### Phase 6 — Fleet, filter, and outbox
 
 Goal: multiple bots in one process, paced and isolated.
 
 Deliverables:
 
 - [x] Fleet supervisor that builds one actor per bot from config.
-- [x] Inbox: routing and filters (ignore groups, allow/ignore senders);
-  deduplication lives in the channel adapter, which sees the event first.
+- [x] Filter: ignore groups and allow/ignore senders; deduplication lives in
+  the channel adapter, which sees the event first.
 - [x] Outbox: per-bot FIFO with `queue_delay` plus a shared random `jitter`,
   an optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
 - [x] Fleet command: start all bots, graceful shutdown on SIGINT/SIGTERM, and

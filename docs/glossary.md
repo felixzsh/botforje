@@ -54,7 +54,8 @@
 - Agent — a conventional external agent runtime (for example OpenClaw), a
   possible future integration behind a port. It does not name BotForje's own
   LLM behavior; that is the tool loop.
-- Inbox — routes inbound events to the right bot and session.
+- Filter — one bot's inbound rules (ignore groups, allow/ignore senders)
+  applied before the engine; the fleet routes events to the bot.
 - Outbox — per-bot FIFO queue that paces outbound messages.
 - Secret reference — a `${ENV_VAR}` placeholder in config, resolved from the
   process environment at load and masked in logs (ADR 0014).

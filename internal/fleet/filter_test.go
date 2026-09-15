@@ -1,4 +1,4 @@
-package inbox
+package fleet
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/felixzsh/botforje/internal/domain"
 )
 
-func TestAllow(t *testing.T) {
+func TestFilterAllow(t *testing.T) {
 	direct := domain.IncomingMessage{Sender: "52155"}
 	group := domain.IncomingMessage{Sender: "52155", IsGroup: true}
 

@@ -14,8 +14,8 @@ mapping from history sync.
 ## Decision
 
 The domain only ever sees the **phone number in plain digits** (for example
-`5215500000000`) as a sender identity. That value keys sessions, matches inbox
-filters, appears in logs, and is what templates read as `sender.phone`.
+`5215500000000`) as a sender identity. That value keys sessions, matches the bot's
+filter, appears in logs, and is what templates read as `sender.phone`.
 
 The JID and the LID live only inside the whatsapp adapter:
 

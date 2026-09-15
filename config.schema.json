@@ -87,7 +87,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "BotSettings controls pacing and inbound filters (ADR 0011)."
+      "description": "BotSettings controls pacing, presence, and filtering (ADR 0011)."
     },
     "Bounds": {
       "properties": {
