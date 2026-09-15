@@ -19,6 +19,8 @@ data_dir: "~/.local/share/botforje"  # SQLite location (XDG default when omitted
 # Multi-file organization (ADR 0016): every file uses the `scopes` shape, and
 # several files may contribute to the same scope under the same rules as one.
 # Global settings are only valid in the main file.
+# Uncomment only with the companion files present: a lone config must not
+# include missing paths.
 # include:
 #   - ./scopes/support.yml
 #   - ./scopes/*.yml
@@ -34,12 +36,19 @@ scopes:
         provider: "openai"        # openai, anthropic, ollama, ...
         model: "gpt-4o-mini"
         api_key: "${OPENAI_API_KEY}"  # Resolved from env at load (ADR 0014)
-        # base_url: "http://localhost:11434"  # Local / self-hosted
         routing: "fallback"       # off | fallback | always
         realization: "auto"       # off | auto
         bounds:                   # Tool loop limits (ADR 0008)
           max_tools_per_message: 3
           timeout: 30000          # Tool loop timeout in milliseconds
+
+      # Local / self-hosted profile: same shape, with base_url
+      local:
+        provider: "ollama"
+        model: "llama3.1"
+        base_url: "http://localhost:11434"
+        routing: "off"
+        realization: "auto"
     actions:
       # Deterministic reply
       greet:
