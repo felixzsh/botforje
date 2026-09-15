@@ -14,12 +14,12 @@ var ErrNotFound = errors.New("not found")
 // ErrNoLLM reports an LLM-only operation with no provider configured.
 var ErrNoLLM = errors.New("no LLM configured")
 
-// OutgoingKind classifies an outbound message.
-type OutgoingKind string
+// MessageKind classifies a message's payload, inbound or outbound.
+type MessageKind string
 
 const (
-	KindText     OutgoingKind = "text"
-	KindLocation OutgoingKind = "location"
+	KindText     MessageKind = "text"
+	KindLocation MessageKind = "location"
 )
 
 // IncomingMessage is one inbound message. Sender is the resolved phone number
@@ -50,7 +50,7 @@ type Location struct {
 type OutgoingMessage struct {
 	Bot       string
 	Recipient string
-	Kind      OutgoingKind
+	Kind      MessageKind
 	Body      string
 	Location  *Location
 }

@@ -38,7 +38,7 @@ const (
 	Outbound Direction = "out"
 )
 
-// Message is one message kept for history. Kind is the shared OutgoingKind,
+// Message is one message kept for history. Kind is the shared MessageKind,
 // declared with the runtime message types. SessionID is zero when no session
 // run handled it.
 type Message struct {
@@ -46,7 +46,7 @@ type Message struct {
 	ChatID    int64
 	SessionID int64
 	Direction Direction
-	Kind      OutgoingKind
+	Kind      MessageKind
 	Body      string
 	At        time.Time
 }

@@ -223,7 +223,7 @@ func (s *MessageStore) List(
 			message.SessionID = sessionID.Int64
 		}
 		message.Direction = domain.Direction(direction)
-		message.Kind = domain.OutgoingKind(kind)
+		message.Kind = domain.MessageKind(kind)
 		message.At = parseTime(sentAt)
 		messages = append(messages, message)
 	}
