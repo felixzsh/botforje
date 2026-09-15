@@ -22,14 +22,6 @@ const (
 	KindLocation OutgoingKind = "location"
 )
 
-// Direction is the side of a stored message.
-type Direction string
-
-const (
-	Inbound  Direction = "in"
-	Outbound Direction = "out"
-)
-
 // IncomingMessage is one inbound message. Sender is the resolved phone number
 // in plain digits (e.g. "5215500000000"); the JID and any LID stay inside the
 // channel adapter (ADR 0020).
@@ -61,24 +53,4 @@ type OutgoingMessage struct {
 	Kind      OutgoingKind
 	Body      string
 	Location  *Location
-}
-
-// Session is the persisted per-(bot, sender) conversation state (ADR 0010).
-type Session struct {
-	Bot          string
-	Sender       string
-	Scope        string
-	Node         string
-	Memory       []string
-	GraphContext map[string]any
-	NodeContext  map[string]any
-	Cooldowns    map[string]time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	ExpiresAt    time.Time
-}
-
-// Expired reports whether the session is over at t.
-func (s *Session) Expired(t time.Time) bool {
-	return !s.ExpiresAt.IsZero() && !t.Before(s.ExpiresAt)
 }
