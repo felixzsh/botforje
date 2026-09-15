@@ -117,7 +117,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			queue := outbox.New(outbox.Config{
 				Sender:       channel.Send,
 				Delay:        time.Duration(settings.QueueDelay) * time.Millisecond,
-				Jitter:       time.Duration(settings.QueueJitter) * time.Millisecond,
+				Jitter:       time.Duration(settings.Jitter) * time.Millisecond,
 				MaxPerMinute: settings.MaxMsgPerMinute,
 				Now:          opts.Now,
 				Rand:         rand.New(rand.NewSource(seeds.Int63())),

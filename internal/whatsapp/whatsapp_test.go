@@ -44,6 +44,23 @@ func TestBackoffBounds(t *testing.T) {
 	}
 }
 
+func TestJitteredBounds(t *testing.T) {
+	a := &Adapter{
+		settings: Settings{Jitter: 100 * time.Millisecond},
+		rnd:      rand.New(rand.NewSource(1)),
+	}
+	for i := 0; i < 50; i++ {
+		got := a.jittered(50 * time.Millisecond)
+		if got < 50*time.Millisecond || got > 150*time.Millisecond {
+			t.Fatalf("jittered = %s, want within [50ms, 150ms]", got)
+		}
+	}
+	a.settings.Jitter = 0
+	if got := a.jittered(50 * time.Millisecond); got != 50*time.Millisecond {
+		t.Fatalf("jitter 0 = %s, want the base 50ms", got)
+	}
+}
+
 func TestDedup(t *testing.T) {
 	d := newDedup(2)
 	if !d.fresh("a") || !d.fresh("b") {

@@ -37,9 +37,12 @@ const (
 
 // Settings controls presence and pacing for one bot (ADR 0011).
 type Settings struct {
-	ReadReceipts   bool
-	SimulateTyping bool
-	TypingDelay    time.Duration
+	ReadReceipts     bool
+	ReadReceiptDelay time.Duration
+	ReplyDelay       time.Duration
+	SimulateTyping   bool
+	// Jitter is added once per delay as a random value in [0, Jitter].
+	Jitter time.Duration
 }
 
 // Options configures an Adapter. Bot, Scope, DB, and Accounts are required.
@@ -58,6 +61,8 @@ type Options struct {
 	MaxBackoff   time.Duration
 	Now          func() time.Time
 	Rand         *rand.Rand
+	// Sleep waits for a pacing delay; tests inject a fake to avoid real waits.
+	Sleep func(ctx context.Context, d time.Duration) error
 	// OnState is called when the channel lifecycle changes, for status.
 	OnState func(State)
 }
@@ -74,6 +79,8 @@ type Adapter struct {
 	waLogger  walog.Logger
 	backoff   *Backoff
 	now       func() time.Time
+	rnd       *rand.Rand
+	sleep     func(ctx context.Context, d time.Duration) error
 	onState   func(State)
 
 	incoming chan domain.IncomingMessage
@@ -129,6 +136,8 @@ func New(opts Options) (*Adapter, error) {
 		waLogger:  waLogger,
 		backoff:   NewBackoff(opts.MinBackoff, opts.MaxBackoff, rnd),
 		now:       now,
+		rnd:       rnd,
+		sleep:     opts.Sleep,
 		onState:   opts.OnState,
 		incoming:  make(chan domain.IncomingMessage, queue),
 		state:     StateStopped,
@@ -197,10 +206,11 @@ func (a *Adapter) Disconnect(context.Context) error {
 	return nil
 }
 
-// Send delivers one message, marking the inbound read and showing composing
-// presence first when configured (ADR 0011). The recipient is a plain phone
-// number; the adapter maps it to the JID the message arrived from, or to the
-// phone-number JID when that is unknown (ADR 0020).
+// Send delivers one message with human-like pacing (ADR 0011): it waits
+// read_receipt_delay before marking the inbound read, waits reply_delay while
+// showing composing presence, then sends. Jitter is drawn once per delay. The
+// recipient is a plain phone number; the adapter maps it to the JID the message
+// arrived from, or to the phone-number JID when that is unknown (ADR 0020).
 func (a *Adapter) Send(ctx context.Context, msg domain.OutgoingMessage) error {
 	a.mu.Lock()
 	client := a.client
@@ -216,7 +226,12 @@ func (a *Adapter) Send(ctx context.Context, msg domain.OutgoingMessage) error {
 	if to.IsEmpty() {
 		to = types.NewJID(msg.Recipient, types.DefaultUserServer)
 	}
+	readDelay := a.jittered(a.settings.ReadReceiptDelay)
+	replyDelay := a.jittered(a.settings.ReplyDelay)
 	if a.settings.ReadReceipts && !last.chat.IsEmpty() {
+		if err := a.sleepFor(ctx, readDelay); err != nil {
+			return err
+		}
 		if err := client.MarkRead(ctx, []types.MessageID{last.id}, a.now(),
 			last.chat, last.sender); err != nil {
 			a.log.Warn("read receipt failed", "error", err)
@@ -226,7 +241,20 @@ func (a *Adapter) Send(ctx context.Context, msg domain.OutgoingMessage) error {
 	if err != nil {
 		return err
 	}
-	composing := a.compose(ctx, client, to)
+	a.log.Debug("reply pacing", "read_receipt_delay", readDelay,
+		"reply_delay", replyDelay, "jitter", a.settings.Jitter)
+	composing := false
+	if a.settings.SimulateTyping {
+		if err := client.SendChatPresence(ctx, to, types.ChatPresenceComposing,
+			types.ChatPresenceMediaText); err != nil {
+			a.log.Warn("composing presence failed", "error", err)
+		} else {
+			composing = true
+		}
+	}
+	if err := a.sleepFor(ctx, replyDelay); err != nil {
+		return err
+	}
 	_, err = client.SendMessage(ctx, to, content)
 	if composing {
 		_ = client.SendChatPresence(ctx, to, types.ChatPresencePaused,
@@ -248,25 +276,31 @@ func (a *Adapter) State() State {
 // ChannelState reports the lifecycle state as a string (domain.StateReporter).
 func (a *Adapter) ChannelState() string { return string(a.State()) }
 
-func (a *Adapter) compose(
-	ctx context.Context, client *whatsmeow.Client, to types.JID,
-) bool {
-	if !a.settings.SimulateTyping {
-		return false
+// jittered adds a random value in [0, jitter] to one delay. Each call draws
+// again, so consecutive replies never share the same pacing.
+func (a *Adapter) jittered(delay time.Duration) time.Duration {
+	if a.settings.Jitter <= 0 || a.rnd == nil {
+		return delay
 	}
-	err := client.SendChatPresence(ctx, to, types.ChatPresenceComposing,
-		types.ChatPresenceMediaText)
-	if err != nil {
-		a.log.Warn("composing presence failed", "error", err)
-		return false
+	return delay + time.Duration(a.rnd.Int63n(int64(a.settings.Jitter)+1))
+}
+
+// sleepFor waits for one pacing delay and honors cancellation. Tests inject a
+// fake sleep so they never wait in real time.
+func (a *Adapter) sleepFor(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
 	}
-	timer := time.NewTimer(a.settings.TypingDelay)
+	if a.sleep != nil {
+		return a.sleep(ctx, delay)
+	}
+	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
 	case <-timer.C:
-		return true
+		return nil
 	case <-ctx.Done():
-		return true
+		return ctx.Err()
 	}
 }
 

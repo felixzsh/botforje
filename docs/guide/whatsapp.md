@@ -59,6 +59,24 @@ Bots without a local pairing are not initialized (ADR 0022). The fleet logs a
 command's own usage explains its flags and arguments. If none are paired, the
 fleet stays idle until Ctrl-C instead of failing.
 
+## Human-like pacing
+
+Each bot paces replies through its `settings` (ADR 0011). For one inbound
+message:
+
+1. `read_receipt_delay` — wait, then mark the message read when `read_receipts`
+   is on.
+2. `reply_delay` — wait, showing "typing…" when `simulate_typing` is on.
+3. Send the reply.
+
+Between consecutive outbound messages the outbox waits `queue_delay`, so a burst
+never leaves as one block. Every delay adds the shared random `jitter` in
+`[0, jitter]` ms, drawn again each time; the configured delay is the floor, so
+`jitter: 0` makes pacing deterministic.
+
+Delays are milliseconds and per bot; `0` means no added wait. `queue_delay` does
+not delay the first message; `reply_delay` does.
+
 ## Manual checklist
 
 Deterministic flow (a bot with no `llm`):

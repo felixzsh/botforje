@@ -177,8 +177,8 @@ Deliverables:
 - [x] Fleet supervisor that builds one actor per bot from config.
 - [x] Inbox: routing and filters (ignore groups, allow/ignore senders);
   deduplication lives in the channel adapter, which sees the event first.
-- [x] Outbox: per-bot FIFO with `queue_delay` plus random `queue_jitter`, an
-  optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
+- [x] Outbox: per-bot FIFO with `queue_delay` plus a shared random `jitter`,
+  an optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
 - [x] Fleet command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
 - [x] Logging: one structured logger (`log/slog`) with plain, column-aligned

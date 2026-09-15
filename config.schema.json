@@ -48,20 +48,23 @@
     },
     "BotSettings": {
       "properties": {
-        "queue_delay": {
+        "read_receipts": {
+          "type": "boolean"
+        },
+        "read_receipt_delay": {
           "type": "integer"
         },
-        "queue_jitter": {
+        "reply_delay": {
           "type": "integer"
         },
         "simulate_typing": {
           "type": "boolean"
         },
-        "typing_delay": {
+        "queue_delay": {
           "type": "integer"
         },
-        "read_receipts": {
-          "type": "boolean"
+        "jitter": {
+          "type": "integer"
         },
         "max_messages_per_minute": {
           "type": "integer"

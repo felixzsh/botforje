@@ -122,13 +122,11 @@ func runFleet(args []string) int {
 }
 
 func whatsappSettings(settings config.BotSettings) whatsapp.Settings {
-	typing := 1200 * time.Millisecond
-	if settings.TypingDelay > 0 {
-		typing = time.Duration(settings.TypingDelay) * time.Millisecond
-	}
 	return whatsapp.Settings{
-		ReadReceipts:   settings.ReadReceipts != nil && *settings.ReadReceipts,
-		SimulateTyping: settings.SimulateTyping != nil && *settings.SimulateTyping,
-		TypingDelay:    typing,
+		ReadReceipts:     settings.ReadReceipts != nil && *settings.ReadReceipts,
+		ReadReceiptDelay: time.Duration(settings.ReadReceiptDelay) * time.Millisecond,
+		ReplyDelay:       time.Duration(settings.ReplyDelay) * time.Millisecond,
+		SimulateTyping:   settings.SimulateTyping != nil && *settings.SimulateTyping,
+		Jitter:           time.Duration(settings.Jitter) * time.Millisecond,
 	}
 }

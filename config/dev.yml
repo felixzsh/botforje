@@ -155,9 +155,20 @@ scopes:
       dev-bot:
         graph: "support"
         settings:
-          queue_delay: 300
-          queue_jitter: 150
-          simulate_typing: true
-          typing_delay: 600
           read_receipts: true
+          read_receipt_delay: 800
+          reply_delay: 3000
+          simulate_typing: true
+          queue_delay: 300
+          jitter: 150
+          ignore_groups: true
+      botsito:
+        graph: "support"
+        settings:
+          read_receipts: true
+          read_receipt_delay: 600
+          reply_delay: 600
+          simulate_typing: true
+          queue_delay: 300
+          jitter: 150
           ignore_groups: true

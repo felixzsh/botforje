@@ -328,9 +328,10 @@ func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot,
 			field string
 			value int
 		}{
+			{"read_receipt_delay", s.ReadReceiptDelay},
+			{"reply_delay", s.ReplyDelay},
 			{"queue_delay", s.QueueDelay},
-			{"queue_jitter", s.QueueJitter},
-			{"typing_delay", s.TypingDelay},
+			{"jitter", s.Jitter},
 			{"max_messages_per_minute", s.MaxMsgPerMinute},
 		} {
 			if v.value < 0 {

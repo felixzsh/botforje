@@ -85,11 +85,13 @@ Inbound:
 
 Outbound:
 
-1. Outbox paces messages with the bot's configured delay plus random jitter,
-   one message at a time per bot (ADR 0011).
-2. When presence is enabled, the bot marks the inbound message read and shows
-   a composing indicator for `typing_delay` before sending.
-3. Channel sends them; failures are surfaced, never silently dropped.
+1. When read receipts are enabled, the bot waits `read_receipt_delay` and
+   marks the inbound message read.
+2. It waits `reply_delay`, showing a composing indicator when `simulate_typing`
+   is on, then sends.
+3. Outbox paces consecutive messages with `queue_delay`, one message at a time
+   per bot; every delay adds a shared random `jitter` (ADR 0011).
+4. Channel sends them; failures are surfaced, never silently dropped.
 
 ## Templates
 

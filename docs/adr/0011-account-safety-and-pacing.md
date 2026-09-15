@@ -23,11 +23,12 @@ afterthought:
 - Serialize per bot: one actor handles inbound and outbound; a bot never
   processes or answers two messages at once.
 - Pace outbound through the per-bot outbox FIFO. Between messages wait
-  `queue_delay` plus a random `queue_jitter`, so no fixed interval becomes a
-  fingerprint.
-- Simulate human presence when enabled: mark the inbound message as read
-  (`read_receipts`) and show a composing indicator for `typing_delay` before
-  the reply.
+  `queue_delay`, so no fixed interval becomes a fingerprint.
+- Add one shared `jitter` to every pacing delay, drawn again per use as a
+  random value in [0, jitter]; the configured delay stays the floor.
+- Simulate human presence when enabled: wait `read_receipt_delay` and mark the
+  inbound message as read (`read_receipts`), then wait `reply_delay`, showing a
+  composing indicator when `simulate_typing` is on, before the reply.
 - Vary reply text: variant lists resolve at random (already in the model).
 - Rate limits: per-sender cooldown guards limit repetition, and an optional
   `max_messages_per_minute` caps a bot as a safety valve (`0` = no limit).
@@ -42,11 +43,11 @@ afterthought:
 
 - Bots are intentionally slower and slightly less predictable. That is a
   feature, not a bug.
-- Tests must control randomness: the clock and RNG are injected, and
+- Tests must control randomness: the clock, RNG, and sleep are injected, and
   fixtures run with jitter and presence disabled so conversations stay
   reproducible.
-- New bot settings: `queue_jitter`, `simulate_typing`, `typing_delay`,
-  `read_receipts`, and `max_messages_per_minute`.
+- New bot settings: `read_receipts`, `read_receipt_delay`, `reply_delay`,
+  `simulate_typing`, `queue_delay`, `jitter`, and `max_messages_per_minute`.
 - Account warmup, daily caps, and fleet-level anomaly detection are deferred.
   Phase 9 covers the human side in the operational notes.
 - No measure eliminates risk: WhatsApp can still ban an account. The
