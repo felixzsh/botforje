@@ -30,7 +30,7 @@ var schema = []string{
 		chat_id       INTEGER NOT NULL
 			REFERENCES chats (id) ON DELETE CASCADE,
 		node          TEXT NOT NULL,
-		memory        TEXT NOT NULL,
+		visited_nodes TEXT NOT NULL,
 		graph_context TEXT NOT NULL,
 		node_context  TEXT NOT NULL,
 		cooldowns     TEXT NOT NULL,

@@ -55,7 +55,7 @@ type Session struct {
 	ID           int64
 	ChatID       int64
 	Node         string
-	Memory       []string
+	VisitedNodes []string
 	GraphContext map[string]any
 	NodeContext  map[string]any
 	Cooldowns    map[string]time.Time

@@ -116,8 +116,8 @@ func (e *Engine) defaultEdge(node string) string {
 }
 
 func candidates(r *run) []string {
-	if len(r.session.Memory) == 0 {
+	if len(r.session.VisitedNodes) == 0 {
 		return []string{r.session.Node}
 	}
-	return r.session.Memory
+	return r.session.VisitedNodes
 }

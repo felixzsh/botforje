@@ -22,8 +22,8 @@
   variable to read and write it.
 - Node context — node variables; reset when the node is entered again.
 - Graph context — session-wide variables; persist across nodes.
-- Node memory — ordered list of visited nodes per session, current last; used
-  for routing and as LLM context.
+- Visited nodes — ordered list of nodes visited in a session, current last;
+  used for routing and as LLM context (ADR 0010).
 - Tool loop — bounded sequence of tool calls and replies the LLM runs for one
   incoming message inside a node (ADR 0008).
 - Step — single operation inside an action.

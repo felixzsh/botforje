@@ -171,8 +171,9 @@ func TestConversationScenario(t *testing.T) {
 	if session.Node != "farewell" {
 		t.Fatalf("node = %q, want farewell", session.Node)
 	}
-	if want := []string{"hours", "menu", "catalog", "farewell"}; !slices.Equal(session.Memory, want) {
-		t.Fatalf("memory = %q, want %q", session.Memory, want)
+	want := []string{"hours", "menu", "catalog", "farewell"}
+	if !slices.Equal(session.VisitedNodes, want) {
+		t.Fatalf("visited nodes = %q, want %q", session.VisitedNodes, want)
 	}
 }
 

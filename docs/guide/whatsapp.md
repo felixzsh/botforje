@@ -90,7 +90,7 @@ Deterministic flow (a bot with no `llm`):
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still
-  follows node memory (ADR 0010).
+  follows the visited nodes (ADR 0010).
 - [ ] Stop the process and start it again: it connects without a new QR.
 - [ ] With `read_receipts` and `simulate_typing` on, the inbound message is
   marked read and a composing indicator shows before the reply.

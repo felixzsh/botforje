@@ -163,7 +163,7 @@ func (e *Engine) start(chatID int64, now time.Time) *domain.Session {
 	return &domain.Session{
 		ChatID:       chatID,
 		Node:         e.graph.Root,
-		Memory:       []string{e.graph.Root},
+		VisitedNodes: []string{e.graph.Root},
 		GraphContext: maps.Clone(e.graph.InitialContext),
 		NodeContext:  maps.Clone(root.InitialContext),
 		Cooldowns:    map[string]time.Time{},
@@ -221,7 +221,7 @@ type run struct {
 }
 
 // move runs the exit actions when asked, enters target, resets its node
-// context, and reorders node memory so target is last (ADR 0010).
+// context, and reorders visited nodes so target is last (ADR 0010).
 func (r *run) move(target string, runExit bool) error {
 	if runExit {
 		if err := r.actions(r.engine.graph.Nodes[r.session.Node].OnExit); err != nil {
@@ -234,7 +234,7 @@ func (r *run) move(target string, runExit bool) error {
 	if err := r.tctx.Reset(template.RootNode, r.session.NodeContext); err != nil {
 		return err
 	}
-	r.session.Memory = reorder(r.session.Memory, target)
+	r.session.VisitedNodes = reorder(r.session.VisitedNodes, target)
 	return r.enter()
 }
 
@@ -279,9 +279,9 @@ func (r *run) blocked(name string, seconds int) bool {
 	return r.engine.now().Sub(last) < time.Duration(seconds)*time.Second
 }
 
-func reorder(memory []string, node string) []string {
-	out := make([]string, 0, len(memory)+1)
-	for _, name := range memory {
+func reorder(visited []string, node string) []string {
+	out := make([]string, 0, len(visited)+1)
+	for _, name := range visited {
 		if name != node {
 			out = append(out, name)
 		}

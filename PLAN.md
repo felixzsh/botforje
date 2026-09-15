@@ -118,7 +118,7 @@ Deliverables:
   stream, owned by the engine; the whatsmeow adapter arrives in Phase 5
   (ADR 0004).
 - [x] Session lifecycle: create at root, resume, and expire by timeout.
-- [x] Node memory: ordered list of visited nodes (current last), persisted and
+- [x] Visited nodes: ordered list of nodes (current last), persisted and
   never reset by navigation (ADR 0010).
 - [x] Routing: candidates are visited nodes plus the current node (last); best
   trigger match wins, ties go to the most recent. Default edge only from the

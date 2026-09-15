@@ -42,7 +42,7 @@ func testSession(chatID int64) *domain.Session {
 	return &domain.Session{
 		ChatID:       chatID,
 		Node:         "purchase",
-		Memory:       []string{"menu", "purchase"},
+		VisitedNodes: []string{"menu", "purchase"},
 		GraphContext: map[string]any{"customer_name": "Ana", "visit_count": float64(2)},
 		NodeContext: map[string]any{
 			"product": "widget",
@@ -175,7 +175,7 @@ func TestSessionSaveUpdates(t *testing.T) {
 		t.Fatalf("first Save: %v", err)
 	}
 	session.Node = "menu"
-	session.Memory = []string{"menu"}
+	session.VisitedNodes = []string{"menu"}
 	if err := db.Sessions().Save(ctx, session); err != nil {
 		t.Fatalf("second Save: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestSessionSaveUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Latest: %v", err)
 	}
-	if got.Node != "menu" || !reflect.DeepEqual(got.Memory, []string{"menu"}) {
+	if got.Node != "menu" || !reflect.DeepEqual(got.VisitedNodes, []string{"menu"}) {
 		t.Fatalf("update not persisted: %#v", got)
 	}
 }

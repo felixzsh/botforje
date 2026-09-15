@@ -41,7 +41,7 @@ whatsmeow channel in `internal/whatsapp`. The fleet, inbox, and outbox live in
 - Tool — an action the LLM may invoke with validated arguments; an input
   may bind to a node or graph variable (read and write).
 - Node context — node variables that reset when the node is entered again.
-- Node memory — ordered list of visited nodes (current last) used for
+- Visited nodes — ordered list of nodes visited (current last) used for
   routing and as LLM context; reordered on each visit, never reset by
   navigation.
 - Graph context — session-wide variables that persist across nodes.
@@ -130,7 +130,7 @@ a chat: it starts at the root and expires after the graph timeout (or
 message starts at root. Chat, session, and message history live in SQLite
 (ADR 0026).
 
-The session also keeps node memory (ADR 0010): the ordered list of visited
+The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
 
