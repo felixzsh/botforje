@@ -99,7 +99,7 @@ func (e *Engine) Handle(
 		return nil, errors.New("engine: incoming message has no sender")
 	}
 	now := e.now()
-	session, created, err := e.load(ctx, msg, now)
+	chat, session, created, err := e.load(ctx, msg, now)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +107,7 @@ func (e *Engine) Handle(
 		ctx:     ctx,
 		engine:  e,
 		session: session,
+		chat:    chat,
 		tctx:    e.contextOf(session, msg),
 		msg:     msg,
 	}
@@ -138,24 +139,29 @@ func (e *Engine) Handle(
 	if err := e.store.Save(ctx, session); err != nil {
 		return nil, err
 	}
+	if r.guardsDirty {
+		if err := e.chats.SaveGuards(ctx, chat.ID, chat.Guards); err != nil {
+			return nil, err
+		}
+	}
 	return r.out, nil
 }
 
 func (e *Engine) load(
 	ctx context.Context, msg domain.IncomingMessage, now time.Time,
-) (*domain.Session, bool, error) {
+) (*domain.Chat, *domain.Session, bool, error) {
 	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, msg.Sender, now)
 	if err != nil {
-		return nil, false, fmt.Errorf("engine: chat: %w", err)
+		return nil, nil, false, fmt.Errorf("engine: chat: %w", err)
 	}
 	session, err := e.store.Latest(ctx, chat.ID)
 	if err == nil && !session.Expired(now) {
-		return session, false, nil
+		return chat, session, false, nil
 	}
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return nil, false, err
+		return nil, nil, false, err
 	}
-	return e.start(chat.ID, now), true, nil
+	return chat, e.start(chat.ID, now), true, nil
 }
 
 func (e *Engine) start(chatID int64, now time.Time) *domain.Session {
@@ -166,7 +172,6 @@ func (e *Engine) start(chatID int64, now time.Time) *domain.Session {
 		VisitedNodes: []string{e.graph.Root},
 		GraphContext: maps.Clone(e.graph.InitialContext),
 		NodeContext:  maps.Clone(root.InitialContext),
-		Guards:       domain.GuardState{},
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		ExpiresAt:    e.expiry(now),
@@ -212,12 +217,14 @@ func (e *Engine) contextOf(
 
 // run is the state of one Handle call.
 type run struct {
-	ctx     context.Context
-	engine  *Engine
-	session *domain.Session
-	tctx    *template.Context
-	msg     domain.IncomingMessage
-	out     []domain.OutgoingMessage
+	ctx         context.Context
+	engine      *Engine
+	session     *domain.Session
+	chat        *domain.Chat
+	tctx        *template.Context
+	msg         domain.IncomingMessage
+	out         []domain.OutgoingMessage
+	guardsDirty bool
 }
 
 // move runs the exit actions when asked, enters target, resets its node
@@ -270,47 +277,46 @@ func (r *run) applyGuards(name string, guards *config.Guards) (bool, error) {
 	if guards == nil {
 		return false, nil
 	}
+	state := r.chat.Guards[name]
 	now := r.engine.now()
-	if cd := guards.Cooldown; cd != nil {
-		if last, ok := r.session.Guards.Cooldowns[name]; ok &&
-			now.Sub(last) < time.Duration(cd.Duration)*time.Second {
+	if cd := guards.Cooldown; cd != nil && state.Cooldown != nil {
+		if now.Sub(state.Cooldown.LastRun) < time.Duration(cd.Duration)*time.Second {
 			return true, r.steps(cd.OnBlocked, name+".cooldown")
 		}
 	}
 	var window time.Duration
 	if rl := guards.RateLimit; rl != nil {
 		window = time.Duration(rl.Window) * time.Second
-		state := r.session.Guards.RateLimits[name]
-		if !state.WindowStart.IsZero() && now.Sub(state.WindowStart) < window &&
-			state.Count >= rl.Limit {
+		if lim := state.RateLimit; lim != nil && !lim.WindowStart.IsZero() &&
+			now.Sub(lim.WindowStart) < window && lim.Count >= rl.Limit {
 			return true, r.steps(rl.OnBlocked, name+".rate_limit")
 		}
 	}
-	r.recordGuards(name, guards, now, window)
+	r.recordGuards(name, guards, state, now, window)
 	return false, nil
 }
 
-// recordGuards stamps an allowed run so the next one is judged against it.
+// recordGuards stamps an allowed run in the chat so the next one is judged
+// against it (ADR 0027).
 func (r *run) recordGuards(
-	name string, guards *config.Guards, now time.Time, window time.Duration,
+	name string, guards *config.Guards, state domain.GuardState,
+	now time.Time, window time.Duration,
 ) {
 	if guards.Cooldown != nil {
-		if r.session.Guards.Cooldowns == nil {
-			r.session.Guards.Cooldowns = map[string]time.Time{}
-		}
-		r.session.Guards.Cooldowns[name] = now
+		state.Cooldown = &domain.CooldownState{LastRun: now}
 	}
 	if guards.RateLimit != nil {
-		state := r.session.Guards.RateLimits[name]
-		if state.WindowStart.IsZero() || now.Sub(state.WindowStart) >= window {
-			state = domain.RateLimitState{WindowStart: now}
+		count := 0
+		if lim := state.RateLimit; lim != nil && now.Sub(lim.WindowStart) < window {
+			count = lim.Count
 		}
-		state.Count++
-		if r.session.Guards.RateLimits == nil {
-			r.session.Guards.RateLimits = map[string]domain.RateLimitState{}
-		}
-		r.session.Guards.RateLimits[name] = state
+		state.RateLimit = &domain.RateLimitState{WindowStart: now, Count: count + 1}
 	}
+	if r.chat.Guards == nil {
+		r.chat.Guards = map[string]domain.GuardState{}
+	}
+	r.chat.Guards[name] = state
+	r.guardsDirty = true
 }
 
 func reorder(visited []string, node string) []string {

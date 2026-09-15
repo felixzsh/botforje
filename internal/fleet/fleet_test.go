@@ -144,6 +144,20 @@ func (s *memStore) Touch(_ context.Context, id int64, at time.Time) error {
 	return domain.ErrNotFound
 }
 
+func (s *memStore) SaveGuards(
+	_ context.Context, chatID int64, guards map[string]domain.GuardState,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, chat := range s.chats {
+		if chat.ID == chatID {
+			chat.Guards = guards
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
 func (s *memStore) Latest(_ context.Context, chatID int64) (*domain.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

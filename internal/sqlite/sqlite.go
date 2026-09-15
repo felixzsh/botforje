@@ -14,7 +14,8 @@ import (
 // schema is the whole database, applied on open with IF NOT EXISTS. Pre-release
 // it is edited in place and the development database is recreated with
 // `make dev-reset`; versioned, append-only migrations start at the first
-// release (ADR 0006). The chat, session, and message shapes are in ADR 0026.
+// release (ADR 0006). The chat, session, and message shapes are in ADR 0026;
+// the chat's guard state is in ADR 0027.
 var schema = []string{
 	`CREATE TABLE IF NOT EXISTS chats (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +24,7 @@ var schema = []string{
 		sender     TEXT NOT NULL,
 		started_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
+		guards     TEXT NOT NULL DEFAULT '{}',
 		UNIQUE (scope, bot, sender)
 	)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
@@ -33,7 +35,6 @@ var schema = []string{
 		visited_nodes TEXT NOT NULL,
 		graph_context TEXT NOT NULL,
 		node_context  TEXT NOT NULL,
-		guards        TEXT NOT NULL,
 		created_at    TEXT NOT NULL,
 		updated_at    TEXT NOT NULL,
 		expires_at    TEXT NOT NULL

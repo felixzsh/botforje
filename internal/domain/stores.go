@@ -19,6 +19,7 @@ type Account struct {
 
 // Chat is the durable thread between one bot and one sender, one per
 // (scope, bot, sender). It never ends and gathers every message (ADR 0026).
+// Guards is the per-action guard state (ADR 0027).
 type Chat struct {
 	ID        int64
 	Scope     string
@@ -26,6 +27,7 @@ type Chat struct {
 	Sender    string
 	StartedAt time.Time
 	UpdatedAt time.Time
+	Guards    map[string]GuardState
 }
 
 // Direction is the side of a stored message.
@@ -58,7 +60,6 @@ type Session struct {
 	VisitedNodes []string
 	GraphContext map[string]any
 	NodeContext  map[string]any
-	Guards       GuardState
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	ExpiresAt    time.Time
@@ -69,11 +70,16 @@ func (s *Session) Expired(t time.Time) bool {
 	return !s.ExpiresAt.IsZero() && !t.Before(s.ExpiresAt)
 }
 
-// GuardState is a session's accumulated guard state, one field per guard type
-// (ADR 0011). It is stored as one JSON blob on the session.
+// GuardState is one action's accumulated guard state, one field per guard type
+// (ADR 0027). It is stored in the chat, keyed by action name.
 type GuardState struct {
-	Cooldowns  map[string]time.Time      `json:"cooldowns,omitempty"`
-	RateLimits map[string]RateLimitState `json:"rate_limits,omitempty"`
+	Cooldown  *CooldownState  `json:"cooldown,omitempty"`
+	RateLimit *RateLimitState `json:"rate_limit,omitempty"`
+}
+
+// CooldownState is when a cooldown-guarded action last ran.
+type CooldownState struct {
+	LastRun time.Time `json:"last_run"`
 }
 
 // RateLimitState is the fixed-window counter of one rate-limited action.
@@ -103,10 +109,12 @@ type PairingStatus struct {
 // (ADR 0006).
 
 // ChatStore records the durable chat with each person. Ensure is a
-// get-or-create (ADR 0026).
+// get-or-create; SaveGuards persists the chat's per-action guard state
+// (ADR 0026, ADR 0027).
 type ChatStore interface {
 	Ensure(ctx context.Context, scope, bot, sender string, at time.Time) (*Chat, error)
 	Touch(ctx context.Context, id int64, at time.Time) error
+	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
 }
 
 // SessionStore records a chat's session runs. Latest returns the most recent

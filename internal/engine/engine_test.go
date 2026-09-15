@@ -61,6 +61,18 @@ func (s *memStore) Touch(_ context.Context, id int64, at time.Time) error {
 	return domain.ErrNotFound
 }
 
+func (s *memStore) SaveGuards(
+	_ context.Context, chatID int64, guards map[string]domain.GuardState,
+) error {
+	for _, chat := range s.chats {
+		if chat.ID == chatID {
+			chat.Guards = guards
+			return nil
+		}
+	}
+	return domain.ErrNotFound
+}
+
 func (s *memStore) Latest(_ context.Context, chatID int64) (*domain.Session, error) {
 	session, ok := s.sessions[chatID]
 	if !ok {
@@ -344,6 +356,48 @@ func TestRateLimitGuard(t *testing.T) {
 	now = now.Add(61 * time.Second)
 	if got := outbound(t, eng, "s", "c"); !slices.Equal(got, []string{"warning"}) {
 		t.Fatalf("after window = %q, want warning", got)
+	}
+}
+
+func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
+	now := t0
+	actions := map[string]config.Action{
+		"warn": {
+			Guards: &config.Guards{RateLimit: &config.RateLimit{
+				Limit:  1,
+				Window: 3600,
+				OnBlocked: []config.Step{{Message: &config.Message{
+					Body: config.Text{"slow down"},
+				}}},
+			}},
+			Steps: []config.Step{{Message: &config.Message{Body: config.Text{"warning"}}}},
+		},
+	}
+	graph := config.Graph{
+		Root: "menu",
+		Nodes: map[string]config.Node{
+			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
+		},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		DefaultTimeout: 300 * time.Second,
+		Now:            func() time.Time { return now },
+	})
+
+	if got := outbound(t, eng, "s", "a"); !slices.Equal(got, []string{"warning"}) {
+		t.Fatalf("first run = %q, want warning", got)
+	}
+	// Past the session timeout but inside the rate limit window: the guard
+	// state lives on the chat, so it still blocks.
+	now = now.Add(301 * time.Second)
+	if got := outbound(t, eng, "s", "b"); !slices.Equal(got, []string{"slow down"}) {
+		t.Fatalf("after session expiry = %q, want slow down", got)
+	}
+	// Another sender has its own chat and is not blocked.
+	if got := outbound(t, eng, "t", "c"); !slices.Equal(got, []string{"warning"}) {
+		t.Fatalf("other sender = %q, want warning", got)
 	}
 }
 

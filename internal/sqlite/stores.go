@@ -14,7 +14,7 @@ import (
 // ChatStore persists the durable chat with each person (ADR 0026).
 type ChatStore struct{ db *sql.DB }
 
-const chatColumns = `id, scope, bot, sender, started_at, updated_at`
+const chatColumns = `id, scope, bot, sender, started_at, updated_at, guards`
 
 // Ensure returns the chat for (scope, bot, sender), creating it on first use.
 func (s *ChatStore) Ensure(
@@ -32,16 +32,20 @@ func (s *ChatStore) Ensure(
 		chat      domain.Chat
 		startedAt string
 		updatedAt string
+		guards    string
 	)
 	err = s.db.QueryRowContext(ctx,
 		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND sender = ?",
 		scope, bot, sender).
-		Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.Sender, &startedAt, &updatedAt)
+		Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.Sender, &startedAt, &updatedAt, &guards)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: get chat: %w", err)
 	}
 	chat.StartedAt = parseTime(startedAt)
 	chat.UpdatedAt = parseTime(updatedAt)
+	if err := decodeJSON(guards, &chat.Guards); err != nil {
+		return nil, fmt.Errorf("sqlite: guards: %w", err)
+	}
 	return &chat, nil
 }
 
@@ -55,11 +59,26 @@ func (s *ChatStore) Touch(ctx context.Context, id int64, at time.Time) error {
 	return nil
 }
 
+// SaveGuards stores a chat's per-action guard state (ADR 0027).
+func (s *ChatStore) SaveGuards(
+	ctx context.Context, chatID int64, guards map[string]domain.GuardState,
+) error {
+	data, err := encodeJSON(guards)
+	if err != nil {
+		return fmt.Errorf("sqlite: guards: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, "UPDATE chats SET guards = ? WHERE id = ?", data, chatID)
+	if err != nil {
+		return fmt.Errorf("sqlite: save guards: %w", err)
+	}
+	return nil
+}
+
 // SessionStore persists a chat's session runs (ADR 0026).
 type SessionStore struct{ db *sql.DB }
 
 const sessionColumns = `id, chat_id, node, visited_nodes,
-	graph_context, node_context, guards, created_at, updated_at, expires_at`
+	graph_context, node_context, created_at, updated_at, expires_at`
 
 // Latest returns the most recent session for a chat or domain.ErrNotFound.
 func (s *SessionStore) Latest(ctx context.Context, chatID int64) (*domain.Session, error) {
@@ -68,12 +87,12 @@ func (s *SessionStore) Latest(ctx context.Context, chatID int64) (*domain.Sessio
 	var (
 		session                         domain.Session
 		visitedNodes, graphCtx, nodeCtx string
-		guards, created, updated        string
+		created, updated                string
 		expires                         string
 	)
 	err := s.db.QueryRowContext(ctx, query, chatID).Scan(
 		&session.ID, &session.ChatID, &session.Node, &visitedNodes, &graphCtx, &nodeCtx,
-		&guards, &created, &updated, &expires,
+		&created, &updated, &expires,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -89,9 +108,6 @@ func (s *SessionStore) Latest(ctx context.Context, chatID int64) (*domain.Sessio
 	}
 	if err := decodeJSON(nodeCtx, &session.NodeContext); err != nil {
 		return nil, fmt.Errorf("sqlite: node context: %w", err)
-	}
-	if err := decodeJSON(guards, &session.Guards); err != nil {
-		return nil, fmt.Errorf("sqlite: guards: %w", err)
 	}
 	session.CreatedAt = parseTime(created)
 	session.UpdatedAt = parseTime(updated)
@@ -113,16 +129,12 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 	if err != nil {
 		return fmt.Errorf("sqlite: node context: %w", err)
 	}
-	guards, err := encodeJSON(session.Guards)
-	if err != nil {
-		return fmt.Errorf("sqlite: guards: %w", err)
-	}
 	if session.ID == 0 {
 		result, err := s.db.ExecContext(ctx,
 			`INSERT INTO sessions (chat_id, node, visited_nodes, graph_context,
-			 node_context, guards, created_at, updated_at, expires_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			session.ChatID, session.Node, visitedNodes, graphCtx, nodeCtx, guards,
+			 node_context, created_at, updated_at, expires_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			session.ChatID, session.Node, visitedNodes, graphCtx, nodeCtx,
 			formatTime(session.CreatedAt), formatTime(session.UpdatedAt),
 			formatTime(session.ExpiresAt))
 		if err != nil {
@@ -137,9 +149,9 @@ func (s *SessionStore) Save(ctx context.Context, session *domain.Session) error 
 	}
 	_, err = s.db.ExecContext(ctx,
 		`UPDATE sessions SET node = ?, visited_nodes = ?, graph_context = ?,
-		 node_context = ?, guards = ?, created_at = ?, updated_at = ?,
+		 node_context = ?, created_at = ?, updated_at = ?,
 		 expires_at = ? WHERE id = ?`,
-		session.Node, visitedNodes, graphCtx, nodeCtx, guards,
+		session.Node, visitedNodes, graphCtx, nodeCtx,
 		formatTime(session.CreatedAt), formatTime(session.UpdatedAt),
 		formatTime(session.ExpiresAt), session.ID)
 	if err != nil {

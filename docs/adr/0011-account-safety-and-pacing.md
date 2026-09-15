@@ -33,6 +33,8 @@ afterthought:
 - Rate limits: per-sender guards limit repetition (`cooldown` for a minimum
   interval, `rate_limit` for a maximum per window); an optional
   `max_messages_per_minute` caps a bot as a safety valve (`0` = no limit).
+  Guard state is kept per chat, not per session, so it outlives session expiry
+  (ADR 0027).
 - Reconnect with capped exponential backoff plus jitter. On logout or a ban
   signal, stop the bot, keep its session, and surface the state in `bot list`
   instead of retrying forever.

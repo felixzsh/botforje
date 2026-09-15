@@ -48,10 +48,6 @@ func testSession(chatID int64) *domain.Session {
 			"product": "widget",
 			"lookup":  map[string]any{"status": float64(200)},
 		},
-		Guards: domain.GuardState{
-			Cooldowns:  map[string]time.Time{"escalate": t1},
-			RateLimits: map[string]domain.RateLimitState{"escalate": {Count: 2, WindowStart: t0}},
-		},
 		CreatedAt: t0,
 		UpdatedAt: t1,
 		ExpiresAt: t2,
@@ -115,6 +111,31 @@ func TestChatEnsureIsGetOrCreate(t *testing.T) {
 	}
 	if !got.UpdatedAt.Equal(t1) {
 		t.Fatalf("updated_at = %v, want %v", got.UpdatedAt, t1)
+	}
+}
+
+func TestChatGuardsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	if len(chat.Guards) != 0 {
+		t.Fatalf("new chat guards = %#v, want empty", chat.Guards)
+	}
+	want := map[string]domain.GuardState{
+		"escalate": {
+			Cooldown:  &domain.CooldownState{LastRun: t1},
+			RateLimit: &domain.RateLimitState{WindowStart: t0, Count: 2},
+		},
+	}
+	if err := db.Chats().SaveGuards(ctx, chat.ID, want); err != nil {
+		t.Fatalf("SaveGuards: %v", err)
+	}
+	got, err := db.Chats().Ensure(ctx, "support", "support-bot", "5215500000000", t2)
+	if err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+	if !reflect.DeepEqual(got.Guards, want) {
+		t.Fatalf("guards = %#v, want %#v", got.Guards, want)
 	}
 }
 
