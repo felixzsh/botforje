@@ -6,7 +6,8 @@ Map of the documentation.
 
 - `scope.md` — what the MVP includes.
 - `glossary.md` — terms used across the docs.
-- `../PLAN.md` — phases, progress checkboxes, and open decisions.
+- `../PLAN.md` — phases to the MVP, progress checkboxes, and open decisions.
+- `../ROADMAP.md` — phases after the MVP and the order they arrive in.
 
 ## Developer docs
 
@@ -26,6 +27,7 @@ is frozen (Phase 1), then finalized when the CLI and API exist.
 - Scope: `scope.md`.
 - Mechanics: `architecture.md`.
 - Rationale: `adr/`.
+- Direction: `../PLAN.md` and `../ROADMAP.md`.
 - Config shapes: `../config.schema.json` and `../config/example.yml`.
 - Working rules for agents: `../AGENTS.md`.
 

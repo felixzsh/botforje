@@ -286,20 +286,9 @@ knowledge.
 
 ## Deferred (post-MVP)
 
-- Dashboard and web UI; once it can edit behavior, behavior moves to the
-  database with YAML import/export (ADR 0002).
-- Automatic graph extraction from chat history: opt-in only, limited to the
-  history sync WhatsApp provides plus new conversations.
-- Autonomous graph evolution: limits, validation, approval, deployment, and
-  rollback, whether changes come from chat history or an admin prompt.
-- SaaS infrastructure: login, tenant onboarding, scoped dashboards. Separate
-  project built on BotForje; scope isolation is already in the model.
-- Additional messaging providers (Telegram, SMS) and other WhatsApp channels
-  (official Cloud API) behind `MessageChannel`.
-- Script step: language, sandbox, permissions, timeouts, memory, network,
-  and filesystem access are undecided.
-- Scheduled maintenance windows for incompatible config changes.
-- Metrics and tracing beyond structured logs.
+`ROADMAP.md` owns everything after Phase 9: the dashboard, scoped authority,
+the editor, the onboarding assistant, autonomous evolution, the script step,
+and additional channels, each with its own phase, order, and open decisions.
 
 ## Open decisions
 
