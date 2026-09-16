@@ -3,7 +3,7 @@ package fleet
 import (
 	"testing"
 
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 func TestFilterAllow(t *testing.T) {

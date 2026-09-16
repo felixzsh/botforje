@@ -1,4 +1,4 @@
-// Command botforje is the BotForje CLI. Phase 1 implements validate and the
+// Command botflota is the Botflota CLI. Phase 1 implements validate and the
 // schema generator; the rest of the commands arrive in later phases.
 package main
 
@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/felixzsh/botforje/internal/config"
-	"github.com/felixzsh/botforje/internal/sqlite"
+	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/internal/sqlite"
 )
 
 func main() {
@@ -102,17 +102,17 @@ func configFlag(fs *flag.FlagSet) *string {
 }
 
 func discoverConfig() (string, error) {
-	if path := os.Getenv("BOTFORJE_CONFIG"); path != "" {
+	if path := os.Getenv("BOTFLOTA_CONFIG"); path != "" {
 		if _, err := os.Stat(path); err != nil {
-			return "", fmt.Errorf("BOTFORJE_CONFIG=%s: %w", path, err)
+			return "", fmt.Errorf("BOTFLOTA_CONFIG=%s: %w", path, err)
 		}
 		return path, nil
 	}
 	var candidates []string
 	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(home, ".config", "botforje", "config.yml"))
+		candidates = append(candidates, filepath.Join(home, ".config", "botflota", "config.yml"))
 	}
-	candidates = append(candidates, "/etc/botforje/config.yml")
+	candidates = append(candidates, "/etc/botflota/config.yml")
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
 			return c, nil
@@ -152,7 +152,7 @@ func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sqlite.Open(filepath.Join(dir, "botforje.db"))
+	return sqlite.Open(filepath.Join(dir, "botflota.db"))
 }
 
 func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {

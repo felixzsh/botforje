@@ -1,4 +1,4 @@
-// Package config loads, interpolates, and validates BotForje configuration.
+// Package config loads, interpolates, and validates Botflota configuration.
 // YAML lives here; the rest of the engine consumes these typed values.
 package config
 

@@ -15,7 +15,7 @@ import (
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	walog "go.mau.fi/whatsmeow/util/log"
 
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 // PairOptions configures QR pairing for a bot.
@@ -65,7 +65,7 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 
 	// WhatsApp shows this value as the linked-device name. It is sent only
 	// while registering a new device; existing links keep their old name.
-	store.SetOSInfo("BotForje", [3]uint32{0, 1, 0})
+	store.SetOSInfo("Botflota", [3]uint32{0, 1, 0})
 	container := sqlstore.NewWithDB(opts.DB, "sqlite", logger)
 	if err := container.Upgrade(ctx); err != nil {
 		return "", fmt.Errorf("whatsapp: device store: %w", err)

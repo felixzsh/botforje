@@ -1,4 +1,4 @@
-module github.com/felixzsh/botforje
+module github.com/felixzsh/botflota
 
 go 1.27.1
 

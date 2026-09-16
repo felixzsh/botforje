@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/config"
-	"github.com/felixzsh/botforje/internal/domain"
-	"github.com/felixzsh/botforje/internal/template"
+	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/internal/domain"
+	"github.com/felixzsh/botflota/internal/template"
 )
 
 const defaultRequestTimeout = 10 * time.Second

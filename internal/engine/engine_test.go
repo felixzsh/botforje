@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/config"
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)

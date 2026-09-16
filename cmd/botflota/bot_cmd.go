@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/domain"
-	"github.com/felixzsh/botforje/internal/whatsapp"
+	"github.com/felixzsh/botflota/internal/domain"
+	"github.com/felixzsh/botflota/internal/whatsapp"
 )
 
 type pairCmd struct {

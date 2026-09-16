@@ -1,4 +1,4 @@
-# BotForje — Roadmap
+# Botflota — Roadmap
 
 What comes after the MVP and in what order. `PLAN.md` owns the phases that
 lead to the MVP (0 to 9); this file owns Phase 10 onward. The MVP scope is in
@@ -42,10 +42,10 @@ These shape every phase and become ADRs when the phase that owns them starts.
   (one scope) that cannot prove another scope exists.
 - Scope is the isolation boundary and the only place a tenant appears.
   Isolation is enforced on the server for every route, never in the UI.
-- BotForje knows nothing about whoever hosts it. It knows trusted issuers,
+- Botflota knows nothing about whoever hosts it. It knows trusted issuers,
   scoped credentials, and webhooks; accounts, signup, and account management
   live outside this repository.
-- One scope per tenant is a convention a host may follow, not a rule BotForje
+- One scope per tenant is a convention a host may follow, not a rule Botflota
   enforces.
 - The dashboard ships inside the release binary: no auxiliary process and no
   Node runtime in production.
@@ -162,13 +162,13 @@ Deliverables:
 
 #### Delegated sign-in (recommended shape)
 
-- BotForje trusts issuers, never a particular product. Configuration lists
+- Botflota trusts issuers, never a particular product. Configuration lists
   each issuer with its key source (JWKS URL or static public key), audience,
   clock skew, and claim mapping (default: a `scope` claim, or a `scopes`
   list).
 - The issuer signs a short-lived token with subject, audience, scope, role,
   and expiry; a role may not exceed what the issuer is allowed to grant.
-- The browser lands on BotForje with the token, BotForje verifies the
+- The browser lands on Botflota with the token, Botflota verifies the
   signature offline, rejects reuse, sets the session cookie, and redirects to
   the dashboard. The token is never stored server side and never stays in the
   address bar.
@@ -183,8 +183,8 @@ route exempt.
 
 ### Phase 14 — Multi-tenant surface and host integration
 
-Goal: a tenant user lands in BotForje and sees only their scope, while the
-system that authenticated them stays something BotForje knows nothing about.
+Goal: a tenant user lands in Botflota and sees only their scope, while the
+system that authenticated them stays something Botflota knows nothing about.
 
 Deliverables:
 
@@ -201,7 +201,7 @@ Deliverables:
   disconnected, logged out, or banned; bot created or removed; per-scope
   message counters and connected bot time for usage reports; threshold
   warnings.
-- [ ] `docs/integration/scoped-hosting.md`: the BotForje side of the contract
+- [ ] `docs/integration/scoped-hosting.md`: the Botflota side of the contract
   only (issuer configuration, token claims, webhook payloads and signatures,
   scope naming, API versioning and deprecation). The other side is out of
   this repository.
@@ -210,7 +210,7 @@ Deliverables:
 
 Gate: an external harness acting as an issuer creates a scope, signs a
 sign-in token, lands a browser, sees only that scope, and receives usage
-webhooks, with no code for any particular host inside BotForje.
+webhooks, with no code for any particular host inside Botflota.
 
 ### Phase 15 — Behavior in the database and the editor
 
@@ -309,9 +309,9 @@ Deliverables:
   and the dashboard is not WhatsApp-specific.
 - [ ] Instance sharding: several instances, one identity each, and documented
   guidance for mapping a tenant to an instance; aggregation lives outside
-  BotForje.
+  Botflota.
 - [ ] Per-scope quotas: bot count, message rate, and storage, enforced with
-  clear errors; the host sets them, BotForje enforces them.
+  clear errors; the host sets them, Botflota enforces them.
 - [ ] Data operations: backup and restore per scope, export of a scope into
   another instance, and a delete-scope operation that removes its rows and its
   device store.
@@ -377,10 +377,10 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 
 ### Licensing and branding
 
-- MIT, decided. Anyone may host BotForje commercially; that is the cost of
+- MIT, decided. Anyone may host Botflota commercially; that is the cost of
   adoption, and the value of a hosted service is operation, not the source.
 - Keep a hosted product brand-independent: no endorsement implied, and no
-  BotForje name in a tenant-facing product.
+  Botflota name in a tenant-facing product.
 - Contributions need no CLA, so relicensing later would require every
   copyright holder; decide that now, not after the first outside contribution.
 
@@ -388,7 +388,7 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 
 - One instance can carry many scopes; sharding is an operations decision, not
   a code branch. Group tenants by volume and risk, and keep the
-  tenant-to-instance mapping outside BotForje.
+  tenant-to-instance mapping outside Botflota.
 
 ## Ordering and dependencies
 
@@ -416,26 +416,26 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 - Retention defaults per scope and who may change them (Phase 16).
 - Scope provisioning: where the writable config directory lives and whether a
   previous version is kept per applied document (Phase 14).
-- Sharding threshold, and whether the host or BotForje maps a tenant to an
+- Sharding threshold, and whether the host or Botflota maps a tenant to an
   instance (Phase 18).
 - Quota dimensions and the enforcement point (Phase 18).
 
 ## Outside the boundary
 
-Recorded here only to keep the boundary visible. BotForje is the runner, not
+Recorded here only to keep the boundary visible. Botflota is the runner, not
 the account system: accounts, signup, plans, and tenant-facing branding belong
-to whatever hosts it. Such a system reaches a BotForje instance through the
+to whatever hosts it. Such a system reaches a Botflota instance through the
 Phase 13 and Phase 14 surface and nothing else: it configures an issuer, signs
 short-lived scoped tokens, listens to webhooks for usage, and provisions
 scopes.
 
 Providing the model is the same boundary: a host-run gateway is just an `llm`
-entry with a `base_url` and a key, so BotForje needs no new concept to route
+entry with a `base_url` and a key, so Botflota needs no new concept to route
 model traffic through a gateway.
 
 ## Explicitly not planned
 
-- Account-system features inside BotForje: user registry, signup, plans, or
+- Account-system features inside Botflota: user registry, signup, plans, or
   tenant-facing branding.
 - Browser automation for WhatsApp.
 - Behavior in the database before Phase 15.

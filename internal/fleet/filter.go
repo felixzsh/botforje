@@ -1,6 +1,6 @@
 package fleet
 
-import "github.com/felixzsh/botforje/internal/domain"
+import "github.com/felixzsh/botflota/internal/domain"
 
 // Filter holds one bot's inbound rules (ADR 0011): ignore groups, and an
 // allow/ignore list of sender phone numbers. Deduplication lives in the

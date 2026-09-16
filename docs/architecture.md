@@ -138,7 +138,7 @@ configured maximum.
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
-- One WhatsApp phone number belongs to one BotForje bot. Multiple linked
+- One WhatsApp phone number belongs to one Botflota bot. Multiple linked
   companion devices for the same number would receive the same traffic and can
   produce duplicate replies.
 - The tool loop runs inside the bot actor and is bounded (max tools per

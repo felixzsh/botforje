@@ -45,7 +45,7 @@ which document owns what, read `README.md`.
 Prefer the Make targets; they wrap the underlying Go commands.
 
 - `make check` — `go vet`, `gofmt` check, and `go test ./...`.
-- `make build` — build `bin/botforje`.
+- `make build` — build `bin/botflota`.
 - `make schema` — regenerate `config.schema.json` (run from the repository
   root so Go comments resolve).
 - `make validate CONFIG=<file>` — validate a config.

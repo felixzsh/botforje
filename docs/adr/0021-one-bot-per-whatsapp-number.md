@@ -1,10 +1,10 @@
-# ADR 0021 — One BotForje bot per WhatsApp phone number
+# ADR 0021 — One Botflota bot per WhatsApp phone number
 
 Status: Accepted (2026-09)
 
 ## Context
 
-WhatsApp permits several linked companion devices for one phone number. BotForje
+WhatsApp permits several linked companion devices for one phone number. Botflota
 models a bot as one account, graph, session namespace, and channel actor. Two
 independent bots using the same number would both receive the account's traffic
 and could send duplicate or conflicting replies.
@@ -12,7 +12,7 @@ and could send duplicate or conflicting replies.
 ## Decision
 
 One normalized WhatsApp phone number may belong to only one `(scope, bot)` in a
-BotForje instance. The `bot pair` command rejects a number already owned by
+Botflota instance. The `bot pair` command rejects a number already owned by
 another bot, and fleet startup rejects duplicate legacy records. A bot may
 replace its own pairing with `bot pair --force`.
 

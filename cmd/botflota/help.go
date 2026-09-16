@@ -25,37 +25,37 @@ type commandHelp struct {
 
 func cliTree() *commandHelp {
 	return &commandHelp{
-		name:    "botforje",
+		name:    "botflota",
 		summary: "Declarative WhatsApp fleet runner.",
-		usage:   "botforje <command> [options]",
+		usage:   "botflota <command> [options]",
 		examples: []string{
-			"botforje config validate",
-			"botforje bot list",
-			"botforje bot pair support-bot",
-			"botforje fleet run",
+			"botflota config validate",
+			"botflota bot list",
+			"botflota bot pair support-bot",
+			"botflota fleet run",
 		},
-		moreHelp: "for more help on a command: botforje <command> --help",
+		moreHelp: "for more help on a command: botflota <command> --help",
 		sub: []commandHelp{
 			{
 				name:    "config",
 				summary: "manage configuration",
 				long:    "Validate the configuration and render its JSON Schema.",
-				usage:   "botforje config <command> [options]",
+				usage:   "botflota config <command> [options]",
 				examples: []string{
-					"botforje config validate",
-					"botforje config schema",
+					"botflota config validate",
+					"botflota config schema",
 				},
-				moreHelp: "for more help: botforje config <command> --help",
+				moreHelp: "for more help: botflota config <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "validate",
 						summary: "validate a config file",
 						long:    "Load a config file and report every problem with its file, entity, and reason.",
-						usage:   "botforje config validate [options]",
+						usage:   "botflota config validate [options]",
 						examples: []string{
-							"botforje config validate",
-							"botforje config validate --config etc/config.yml",
-							"botforje config validate --json",
+							"botflota config validate",
+							"botflota config validate --config etc/config.yml",
+							"botflota config validate --json",
 						},
 						flags: func() *flag.FlagSet { return newValidateCmd().fs },
 					},
@@ -63,10 +63,10 @@ func cliTree() *commandHelp {
 						name:    "schema",
 						summary: "print the generated config JSON Schema",
 						long:    "Print the JSON Schema generated from the config types.",
-						usage:   "botforje config schema [options]",
+						usage:   "botflota config schema [options]",
 						examples: []string{
-							"botforje config schema",
-							"botforje config schema -o config.schema.json",
+							"botflota config schema",
+							"botflota config schema -o config.schema.json",
 						},
 						flags: func() *flag.FlagSet { return newSchemaCmd().fs },
 					},
@@ -76,23 +76,23 @@ func cliTree() *commandHelp {
 				name:    "bot",
 				summary: "operate on bots",
 				long:    "List pairing state, pair a device, and remove a local pairing.",
-				usage:   "botforje bot <command> [options]",
+				usage:   "botflota bot <command> [options]",
 				examples: []string{
-					"botforje bot list",
-					"botforje bot pair support-bot",
-					"botforje bot unpair support-bot",
+					"botflota bot list",
+					"botflota bot pair support-bot",
+					"botflota bot unpair support-bot",
 				},
-				moreHelp: "for more help: botforje bot <command> --help",
+				moreHelp: "for more help: botflota bot <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "list",
 						summary: "list configured bots and their pairing",
 						long: "Print a table of configured bots with their phone number,\n" +
 							"pairing state, and last change. It does not change stored state.",
-						usage: "botforje bot list [options]",
+						usage: "botflota bot list [options]",
 						examples: []string{
-							"botforje bot list",
-							"botforje bot list --config etc/config.yml",
+							"botflota bot list",
+							"botflota bot list --config etc/config.yml",
 						},
 						flags: func() *flag.FlagSet { return newBotListCmd().fs },
 					},
@@ -101,11 +101,11 @@ func cliTree() *commandHelp {
 						summary: "pair a bot by scanning a QR code",
 						long: "Link a bot to WhatsApp by scanning a QR code. The command\n" +
 							"rejects a phone number already owned by another bot.",
-						usage: "botforje bot pair [options] <bot>",
+						usage: "botflota bot pair [options] <bot>",
 						examples: []string{
-							"botforje bot pair support-bot",
-							"botforje bot pair --scope dev support-bot",
-							"botforje bot pair --force support-bot",
+							"botflota bot pair support-bot",
+							"botflota bot pair --scope dev support-bot",
+							"botflota bot pair --force support-bot",
 						},
 						flags: func() *flag.FlagSet { return newPairCmd().fs },
 					},
@@ -114,10 +114,10 @@ func cliTree() *commandHelp {
 						summary: "remove a bot's local pairing",
 						long: "Remove local credentials and the account record. It does not\n" +
 							"unlink the companion in WhatsApp.",
-						usage: "botforje bot unpair [options] <bot>",
+						usage: "botflota bot unpair [options] <bot>",
 						examples: []string{
-							"botforje bot unpair support-bot",
-							"botforje bot unpair --scope dev support-bot",
+							"botflota bot unpair support-bot",
+							"botflota bot unpair --scope dev support-bot",
 						},
 						flags: func() *flag.FlagSet { return newUnpairCmd().fs },
 					},
@@ -127,21 +127,21 @@ func cliTree() *commandHelp {
 				name:    "fleet",
 				summary: "run and manage the fleet",
 				long:    "Run the fleet of paired bots and, in a later phase, inspect and control it.",
-				usage:   "botforje fleet <command> [options]",
+				usage:   "botflota fleet <command> [options]",
 				examples: []string{
-					"botforje fleet run",
+					"botflota fleet run",
 				},
-				moreHelp: "for more help: botforje fleet <command> --help",
+				moreHelp: "for more help: botflota fleet <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "run",
 						summary: "run every paired bot until interrupted",
 						long: "Start every paired bot, answer inbound messages with the\n" +
 							"configured pacing, and stop on interrupt after draining the outbox.",
-						usage: "botforje fleet run [options]",
+						usage: "botflota fleet run [options]",
 						examples: []string{
-							"botforje fleet run",
-							"botforje fleet run --config etc/config.yml",
+							"botflota fleet run",
+							"botflota fleet run --config etc/config.yml",
 						},
 						flags: func() *flag.FlagSet { return newFleetRunCmd().fs },
 					},

@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/felixzsh/botforje/internal/template"
+	"github.com/felixzsh/botflota/internal/template"
 )
 
 // templateSite is one string in an action that may contain references.

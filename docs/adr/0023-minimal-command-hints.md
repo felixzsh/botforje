@@ -4,7 +4,7 @@ Status: Accepted (2026-09)
 
 ## Context
 
-BotForje writes logs, warnings, errors, listings, and help. An embedded full
+Botflota writes logs, warnings, errors, listings, and help. An embedded full
 invocation can mislead: the reader cannot know if it fits their scope or state,
 and a bot name may exist in several scopes.
 

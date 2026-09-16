@@ -2,7 +2,7 @@
 
 - Bot — one WhatsApp account bound to a graph, its settings, and an optional
   llm; the deployable unit.
-- Fleet — the set of bots a single BotForje instance runs.
+- Fleet — the set of bots a single Botflota instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
   and sessions (ADR 0016); a free name, never derived from folders.
 - Graph — conversation state machine owned by one bot; may override the
@@ -35,7 +35,7 @@
   (scope, bot, sender); it never ends and gathers every message (ADR 0026).
 - Session — one bounded run of a bot's graph for a chat, stored in SQLite; it
   starts at the root and ends on the graph timeout (ADR 0026).
-- PN (phone number) — WhatsApp's phone-number address; BotForje keys sessions
+- PN (phone number) — WhatsApp's phone-number address; Botflota keys sessions
   on the plain number (`5215500000000`), without the JID suffix (ADR 0020).
 - LID (hidden user) — WhatsApp's `user@lid` address; confined to the channel
   adapter for resolution and delivery (ADR 0020).
@@ -52,7 +52,7 @@
 - LLM provider — language model implementation (cloud or local) used for
   routing and replies.
 - Agent — a conventional external agent runtime (for example OpenClaw), a
-  possible future integration behind a port. It does not name BotForje's own
+  possible future integration behind a port. It does not name Botflota's own
   LLM behavior; that is the tool loop.
 - Filter — one bot's inbound rules (ignore groups, allow/ignore senders)
   applied before the engine; the fleet routes events to the bot.

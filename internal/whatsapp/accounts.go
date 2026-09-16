@@ -12,7 +12,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	walog "go.mau.fi/whatsmeow/util/log"
 
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 // UnpairOptions configures removal of one bot's local pairing.

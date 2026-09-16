@@ -10,9 +10,9 @@ fail even when other configured bots are ready.
 
 ## Decision
 
-BotForje checks each configured bot's local pairing before building the fleet:
+Botflota checks each configured bot's local pairing before building the fleet:
 
-- `not paired` and `unpaired` are recoverable states. BotForje logs a warning,
+- `not paired` and `unpaired` are recoverable states. Botflota logs a warning,
   does not build that bot's channel, engine, or outbox, and continues with the
   paired bots.
 - Invalid configuration, duplicate ownership, database failures, and malformed

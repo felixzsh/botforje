@@ -20,8 +20,8 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
 
-	"github.com/felixzsh/botforje/internal/domain"
-	"github.com/felixzsh/botforje/internal/logging"
+	"github.com/felixzsh/botflota/internal/domain"
+	"github.com/felixzsh/botflota/internal/logging"
 )
 
 // State is the channel lifecycle reported to the fleet (ADR 0011).

@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/domain"
-	"github.com/felixzsh/botforje/internal/logging"
+	"github.com/felixzsh/botflota/internal/domain"
+	"github.com/felixzsh/botflota/internal/logging"
 )
 
 // ErrClosed is returned by Push after Close.

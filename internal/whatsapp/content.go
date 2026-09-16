@@ -6,7 +6,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 // buildContent maps an outbound message to the WhatsApp wire message.

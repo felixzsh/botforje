@@ -1,5 +1,5 @@
 GO ?= go
-BIN := bin/botforje
+BIN := bin/botflota
 CONFIG ?= config/example.yml
 DEV_CONFIG ?= config/dev.yml
 DEV_DATA ?= .dev-data
@@ -14,14 +14,14 @@ help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build the binary into bin/botforje
-	$(GO) build -o $(BIN) ./cmd/botforje
+build: ## Build the binary into bin/botflota
+	$(GO) build -o $(BIN) ./cmd/botflota
 
 run: build ## Run the CLI against the real config: make run ARGS="config validate"
 	exec $(BIN) $(ARGS)
 
 dev: build ## Run the CLI in development: make dev ARGS="bot list"
-	BOTFORJE_CONFIG=$(DEV_CONFIG) exec $(BIN) $(ARGS)
+	BOTFLOTA_CONFIG=$(DEV_CONFIG) exec $(BIN) $(ARGS)
 
 dev-reset: ## Delete the development database (.dev-data), never the real one
 	@test -n "$(DEV_DATA)" || { echo "refusing: DEV_DATA is empty"; exit 1; }
@@ -54,10 +54,10 @@ lines-check: ## Fail if a tracked file has a line longer than LINE_MAX
 check: vet fmt-check lines-check test ## Run vet, format check, line check, and tests
 
 schema: ## Regenerate config.schema.json (run from the repo root)
-	$(GO) run ./cmd/botforje config schema -o config.schema.json
+	$(GO) run ./cmd/botflota config schema -o config.schema.json
 
 validate: ## Validate a config: make validate CONFIG=path
-	$(GO) run ./cmd/botforje config validate --config $(CONFIG)
+	$(GO) run ./cmd/botflota config validate --config $(CONFIG)
 
 tidy: ## Tidy go.mod and go.sum
 	$(GO) mod tidy

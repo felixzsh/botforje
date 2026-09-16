@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 var (

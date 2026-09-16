@@ -1,4 +1,4 @@
-// Package logging builds the one structured logger used across BotForje. It
+// Package logging builds the one structured logger used across Botflota. It
 // writes one plain, column-aligned line per record with no ANSI escapes, so
 // journalctl and `docker logs` show it verbatim (ADR 0012 prefers stdlib).
 package logging

@@ -1,6 +1,6 @@
 # Guide
 
-User documentation for BotForje. This file is the map; pages are added as
+User documentation for Botflota. This file is the map; pages are added as
 the CLI and API land.
 
 ## Sections

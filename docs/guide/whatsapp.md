@@ -6,9 +6,9 @@ end to end.
 ## Pair an account
 
 1. Build: `make build`.
-2. Configure the bot and validate: `./bin/botforje config validate`.
+2. Configure the bot and validate: `./bin/botflota config validate`.
 3. Pair it; this prints an ASCII QR and waits:
-   `./bin/botforje bot pair support-bot`
+   `./bin/botflota bot pair support-bot`
    Add `--scope name` when the bot name repeats across scopes. The QR is
    rendered half-block, so it stays narrow enough for a normal terminal; if
    your font is very large, zoom out or widen the window first. The code
@@ -19,24 +19,24 @@ end to end.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
 5. `bot pair` prints the paired phone number and exits.
 
-For new pairings, WhatsApp should show the companion as `BotForje`. Existing
+For new pairings, WhatsApp should show the companion as `Botflota`. Existing
 links keep their old name until they are unlinked and paired again.
 
 To replace a local pairing, stop the fleet and run
-`./bin/botforje bot pair --force support-bot`. This removes the old local device
+`./bin/botflota bot pair --force support-bot`. This removes the old local device
 credentials but keeps sessions and message history.
 
-BotForje allows one bot per WhatsApp phone number. WhatsApp may list several
+Botflota allows one bot per WhatsApp phone number. WhatsApp may list several
 linked devices, but assigning the same number to two bots can duplicate replies.
 The fleet and `bot pair` reject that configuration. To remove one local pairing
 while keeping sessions and message history, run
-`./bin/botforje bot unpair support-bot`. This does not unlink the old companion
+`./bin/botflota bot unpair support-bot`. This does not unlink the old companion
 from WhatsApp; remove it from WhatsApp's Linked devices screen if it remains
 listed.
 
 ## List bots
 
-`./bin/botforje bot list` prints a compact table with the `BOT`, `SCOPE`,
+`./bin/botflota bot list` prints a compact table with the `BOT`, `SCOPE`,
 `PHONE`, `STATUS`, and `LAST CHANGE` columns. Status values are `paired`,
 `not paired`, or `unpaired`. `PHONE` shows the number only for `paired`;
 otherwise it shows `-`. `not paired` means there is no account record;
@@ -46,11 +46,11 @@ recorded. It is shown in local time, using the same format as the logs. Running
 `bot list` does not update it.
 
 The timestamp is persisted by pairing, unpair, and fleet operations. It reflects
-when BotForje detected the transition, not necessarily when the phone changed it.
+when Botflota detected the transition, not necessarily when the phone changed it.
 
 ## Run the bots
 
-`./bin/botforje fleet run` (or `make dev ARGS="fleet run"`) starts every
+`./bin/botflota fleet run` (or `make dev ARGS="fleet run"`) starts every
 paired bot, answers inbound messages with the configured pacing, and stops on
 Ctrl-C after draining the outbox.
 

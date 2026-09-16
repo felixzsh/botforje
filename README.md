@@ -1,4 +1,4 @@
-# BotForje
+# Botflota
 
 Declarative WhatsApp bot framework written in Go. Define bots, conversation
 graphs, and actions in YAML; one instance runs a fleet of WhatsApp accounts

@@ -23,7 +23,7 @@ func TestDataDirPathRelativeToConfig(t *testing.T) {
 
 func TestDataDirPathAbsolute(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTemp(t, dir, "dev.yml", "version: 1\ndata_dir: \"/var/lib/botforje\"\n")
+	path := writeTemp(t, dir, "dev.yml", "version: 1\ndata_dir: \"/var/lib/botflota\"\n")
 	cfg, err := (Loader{}).Load(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -32,8 +32,8 @@ func TestDataDirPathAbsolute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DataDirPath: %v", err)
 	}
-	if got != "/var/lib/botforje" {
-		t.Fatalf("DataDirPath = %q, want /var/lib/botforje", got)
+	if got != "/var/lib/botflota" {
+		t.Fatalf("DataDirPath = %q, want /var/lib/botflota", got)
 	}
 }
 
@@ -44,7 +44,7 @@ func TestDataDirPathXDGDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DataDirPath: %v", err)
 	}
-	if want := filepath.Join(xdg, "botforje"); got != want {
+	if want := filepath.Join(xdg, "botflota"); got != want {
 		t.Fatalf("DataDirPath = %q, want %q", got, want)
 	}
 }

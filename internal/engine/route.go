@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 // route picks the next node for the incoming message. Candidates are the

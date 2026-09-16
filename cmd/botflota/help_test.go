@@ -46,24 +46,24 @@ func TestHelpOutputSections(t *testing.T) {
 		{
 			name: "root",
 			contains: []string{
-				"usage: botforje", "commands:", "options:", "examples:",
+				"usage: botflota", "commands:", "options:", "examples:",
 				"for more help",
 			},
 		},
 		{
 			name:     "config group",
 			path:     []string{"config"},
-			contains: []string{"usage: botforje config", "commands:", "options:"},
+			contains: []string{"usage: botflota config", "commands:", "options:"},
 		},
 		{
 			name:     "bot group",
 			path:     []string{"bot"},
-			contains: []string{"usage: botforje bot", "commands:", "options:"},
+			contains: []string{"usage: botflota bot", "commands:", "options:"},
 		},
 		{
 			name:     "pair leaf",
 			path:     []string{"bot", "pair"},
-			contains: []string{"usage: botforje bot pair", "options:", "-h, --help"},
+			contains: []string{"usage: botflota bot pair", "options:", "-h, --help"},
 			absent:   []string{"commands:"},
 		},
 	}

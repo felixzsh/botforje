@@ -1,4 +1,4 @@
-# BotForje — Plan
+# Botflota — Plan
 
 Phase-by-phase plan to the MVP. The MVP scope is defined in `docs/scope.md`;
 settled decisions live in `docs/adr/`; open decisions are listed at the end.
@@ -206,8 +206,8 @@ Deliverables:
 - [ ] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`.
-- [ ] Config discovery: `--config`, then `~/.config/botforje/config.yml`, then
-  `/etc/botforje/config.yml` (first match wins).
+- [ ] Config discovery: `--config`, then `~/.config/botflota/config.yml`, then
+  `/etc/botflota/config.yml` (first match wins).
 - [ ] `fleet status` reports uptime, per-bot connection state, outbox depth,
   and active sessions; a `--json` mode serves scripts.
 - [ ] When the fleet API exists, `fleet status` prefers its live data and

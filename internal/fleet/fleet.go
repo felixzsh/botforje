@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/config"
-	"github.com/felixzsh/botforje/internal/domain"
-	"github.com/felixzsh/botforje/internal/engine"
-	"github.com/felixzsh/botforje/internal/logging"
-	"github.com/felixzsh/botforje/internal/outbox"
+	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/internal/domain"
+	"github.com/felixzsh/botflota/internal/engine"
+	"github.com/felixzsh/botflota/internal/logging"
+	"github.com/felixzsh/botflota/internal/outbox"
 )
 
 // BotSpec identifies a bot to the channel factory.

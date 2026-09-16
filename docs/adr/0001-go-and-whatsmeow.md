@@ -8,7 +8,7 @@ Driving WhatsApp through a browser session per account costs hundreds of MB
 of RSS and several seconds of startup per account, needs a pile of system
 libraries, and makes large fleets expensive to host.
 
-BotForje must run many WhatsApp accounts from one process with predictable
+Botflota must run many WhatsApp accounts from one process with predictable
 resource use.
 
 ## Decision

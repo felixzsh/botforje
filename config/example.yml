@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=../config.schema.json
 ---
-# BotForje Configuration Example (v1 draft)
+# Botflota Configuration Example (v1 draft)
 # Reference for every v1 field. Scope is the top-level namespace (ADR 0016);
 # exact matching and policy details are still open (Phase 1/4).
-# Copy this to ~/.config/botforje/config.yml and customize.
+# Copy this to ~/.config/botflota/config.yml and customize.
 
 $schema: "../config.schema.json"
 version: 1
@@ -14,7 +14,7 @@ port: 3000                        # REST API port (0 disables the API)
 log_level: "info"                 # debug, info, warn, error
 log_level_deps: "info"            # dependency logs (whatsmeow); also accepts off
 default_timeout: 300              # Default graph session timeout in seconds
-data_dir: "~/.local/share/botforje"  # SQLite location (XDG default when omitted)
+data_dir: "~/.local/share/botflota"  # SQLite location (XDG default when omitted)
 
 # Multi-file organization (ADR 0016): every file uses the `scopes` shape, and
 # several files may contribute to the same scope under the same rules as one.

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/felixzsh/botforje/internal/domain"
+	"github.com/felixzsh/botflota/internal/domain"
 )
 
 func TestOrderAndDrain(t *testing.T) {
