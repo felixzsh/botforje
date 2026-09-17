@@ -24,8 +24,11 @@ type Devices struct {
 }
 
 // OpenDevices opens and upgrades the device store. A nil logger keeps its
-// output quiet.
-func OpenDevices(ctx context.Context, db *sql.DB, log *slog.Logger) (*Devices, error) {
+// output quiet; depsLevel is the minimum level the store forwards, mirroring
+// log_level_deps.
+func OpenDevices(
+	ctx context.Context, db *sql.DB, log *slog.Logger, depsLevel slog.Level,
+) (*Devices, error) {
 	if db == nil {
 		return nil, errors.New("whatsapp: no database")
 	}
@@ -33,7 +36,7 @@ func OpenDevices(ctx context.Context, db *sql.DB, log *slog.Logger) (*Devices, e
 		log = logging.Discard()
 	}
 	devices := &Devices{
-		container: sqlstore.NewWithDB(db, "sqlite", newWaLog(log, slog.LevelInfo)),
+		container: sqlstore.NewWithDB(db, "sqlite", newWaLog(log, depsLevel)),
 	}
 	if err := devices.container.Upgrade(ctx); err != nil {
 		return nil, fmt.Errorf("whatsapp: device store: %w", err)

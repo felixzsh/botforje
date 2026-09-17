@@ -81,14 +81,15 @@ func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
 }
 
 // openDevices opens the whatsmeow device store that a command's pairing
-// operations share. A nil logger keeps its output quiet.
+// operations share. A nil logger keeps its output quiet; depsLevel is the
+// configured log_level_deps.
 func openDevices(
-	ctx context.Context, db *sqlite.DB, log *slog.Logger,
+	ctx context.Context, db *sqlite.DB, log *slog.Logger, depsLevel string,
 ) (*whatsapp.Devices, error) {
 	if log == nil {
 		log = logging.Discard()
 	}
-	return whatsapp.OpenDevices(ctx, db.DB, log)
+	return whatsapp.OpenDevices(ctx, db.DB, log, logging.ParseLevel(depsLevel))
 }
 
 func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {

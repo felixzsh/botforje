@@ -44,7 +44,7 @@ func runFleet(args []string) int {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	devices, err := openDevices(ctx, db, logger)
+	devices, err := openDevices(ctx, db, logger, cfg.LogLevelDeps)
 	if err != nil {
 		logger.Error("open device store", "error", err)
 		return 1

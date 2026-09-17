@@ -85,7 +85,7 @@ func runPair(args []string) int {
 		return 1
 	}
 	defer db.Close()
-	devices, err := openDevices(context.Background(), db, nil)
+	devices, err := openDevices(context.Background(), db, nil, cfg.LogLevelDeps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -132,7 +132,7 @@ func runUnpair(args []string) int {
 		return 1
 	}
 	defer db.Close()
-	devices, err := openDevices(context.Background(), db, nil)
+	devices, err := openDevices(context.Background(), db, nil, cfg.LogLevelDeps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -168,7 +168,7 @@ func runBotList(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	devices, err := openDevices(ctx, db, nil)
+	devices, err := openDevices(ctx, db, nil, cfg.LogLevelDeps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -159,7 +159,7 @@ func TestClearPairing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	devices, err := OpenDevices(ctx, db.DB, nil)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
-	devices, err := OpenDevices(ctx, db.DB, nil)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestValidateAccountsAllowsMissingDevice(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
-	devices, err := OpenDevices(ctx, db.DB, nil)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestCheckPairingAllowsRecoverableStates(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			devices, err := OpenDevices(ctx, db.DB, nil)
+			devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -316,7 +316,7 @@ func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
-	devices, err := OpenDevices(ctx, db.DB, nil)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
