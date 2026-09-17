@@ -20,10 +20,15 @@ messages.
 A messaging provider and an LLM provider are different things. A bot always
 needs a channel; an LLM is optional and only used when configured.
 
-The YAML-free domain types and ports live in `internal/domain`, the graph
-engine in `internal/engine`, the SQLite adapter in `internal/sqlite`, and the
-whatsmeow channel in `internal/whatsapp`. The fleet, with its per-bot filter,
-lives in `internal/fleet`; the outbox in `internal/outbox`.
+The YAML-free domain types and ports live in `internal/domain` (`ports.go` for
+the ports, `records.go` for the persisted shapes), the graph engine in
+`internal/engine`, the SQLite adapter in `internal/sqlite`, and the whatsmeow
+channel in `internal/whatsapp`. The fleet, with its per-bot filter, lives in
+`internal/fleet`; the outbox in `internal/outbox`.
+
+Behavior types (`Graph`, `Action`, `Node`) still live in `internal/config`
+beside the YAML loader, and the engine imports them. They move only when the
+database becomes their source (ROADMAP Phase 15).
 
 ## Domain model
 

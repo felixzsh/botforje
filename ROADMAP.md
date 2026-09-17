@@ -63,6 +63,10 @@ Deliverables:
 
 - [ ] API review: `/api/v1` prefix, cursor pagination, filters, and one error
   shape (code, message, details) across handlers.
+- [ ] It extends the REST API of Phase 7 (`PLAN.md`) rather than replacing it:
+  the same routes gain pagination, filters, and the live stream.
+- [ ] Bot identity is `(scope, bot)` everywhere it travels: parameters,
+  events, audit entries, and logs never carry a bare bot name.
 - [ ] Reads a dashboard needs: bots with connection state, uptime, and outbox
   depth; sessions with visited nodes; chats with the last message; messages
   with pagination and search.
@@ -95,7 +99,8 @@ Deliverables:
   page title, so the scoped view of Phase 13 is the same pages with one scope.
 - [ ] Live conversation view: inbound and outbound timeline per chat,
   streaming, with the session and its visited nodes beside it.
-- [ ] Chat and message search over history.
+- [ ] Chat and message search over history, with the indexes those reads need
+  (chats by last activity, messages by time) instead of scanning.
 - [ ] Log tail over the structured log stream.
 - [ ] Read-only by construction: no route added in this phase mutates state.
 - [ ] Tests: page rendering, stream consumption, and one browser end-to-end
@@ -142,6 +147,8 @@ Deliverables:
 - [ ] ADR: authority model. A credential yields a principal with an authority
   (`instance` or one scope), a role, and an expiry. Every route resolves a
   target scope, and authorization is one check against that principal.
+- [ ] It replaces the resolver Phase 7 and Phase 10 introduced, not the route
+  shapes those phases settled.
 - [ ] ADR: delegated sign-in (see below).
 - [ ] Roles, kept small: `viewer` reads, `operator` also controls
   conversations, `admin` also manages configuration and tokens inside the
@@ -236,6 +243,10 @@ Deliverables:
 - [ ] Starter templates: packaged graphs (support menu, appointment request,
   quote) a scope can instantiate and edit.
 - [ ] Import and export of a whole scope as YAML, with the publish validation.
+- [ ] Decide where behavior types live once the database is their source:
+  `internal/config` owns `Graph`, `Action`, and `Node` today and the engine
+  imports them. Split loading from the behavior model when the store lands,
+  not before.
 - [ ] Tests: migration from a fixture config directory, concurrent edit
   conflict, publish and rollback, simulator cases.
 
@@ -312,6 +323,9 @@ Deliverables:
   Botflota.
 - [ ] Per-scope quotas: bot count, message rate, and storage, enforced with
   clear errors; the host sets them, Botflota enforces them.
+- [ ] Each channel maps its own settings from `config.BotSettings` (the CLI
+  translates them for WhatsApp today), so a second provider adds no switch in
+  `cmd/`.
 - [ ] Data operations: backup and restore per scope, export of a scope into
   another instance, and a delete-scope operation that removes its rows and its
   device store.

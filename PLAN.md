@@ -205,7 +205,9 @@ Deliverables:
 - [ ] Optional: `completion` for bash, zsh, and fish.
 - [ ] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
-  `--force`.
+  `--force`. Generation must not depend on the working directory: the Go doc
+  comments only resolve from the module root today, so a schema generated
+  elsewhere silently loses every description.
 - [ ] Config discovery: `--config`, then `~/.config/botflota/config.yml`, then
   `/etc/botflota/config.yml` (first match wins).
 - [ ] `fleet status` reports uptime, per-bot connection state, outbox depth,
@@ -220,9 +222,17 @@ Deliverables:
 - [ ] Signals: SIGINT/SIGTERM graceful shutdown; `fleet stop` signals the
   running fleet, `fleet reload` (SIGHUP) reloads config, and `fleet restart`
   does a full restart.
-- [ ] REST API: status, bots, chats, sessions, messages, and config.
+- [ ] REST API: status, bots, chats, sessions, messages, and config. Every
+  addressable object carries its scope, and a message carries its bot as
+  (scope, bot) together, never a bare name: the live stream (Phase 10) and
+  scoped authority (Phase 13) both route by that pair.
+- [ ] Bot service: move what the CLI and the API share out of `cmd/` (pairing
+  pre-checks, scope disambiguation, bot status) into a package, so the API
+  does not reimplement it.
 - [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
-  the future UI.
+  the future UI. Resolve one principal per request behind a single seam and
+  keep routes scope-addressed, so the scoped authority of Phase 13 replaces
+  the resolver instead of every handler.
 - [ ] Config reload (ADR 0009): failed validation keeps the previous config;
   safe changes apply immediately; incompatible changes wait in a pending
   queue for maintenance mode.
