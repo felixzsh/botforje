@@ -9,9 +9,10 @@ import (
 // RFC 3339 times) live with the DDL in internal/sqlite (ADR 0006, ADR 0026).
 // The store ports that read and write them live in ports.go.
 
-// Account is a bot's paired channel identity, the whatsmeow device JID. It is
-// keyed by (scope, bot) like every entity (ADR 0016).
-type Account struct {
+// LinkedAccount is a bot's linked channel identity, the whatsmeow device JID.
+// It is keyed by (scope, bot) like every entity (ADR 0016). Pairing is the
+// lifecycle of that link and lives in PairingStatus.
+type LinkedAccount struct {
 	Scope string
 	Bot   string
 	JID   string

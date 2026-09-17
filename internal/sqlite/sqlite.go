@@ -64,7 +64,7 @@ var schema = []string{
 		sent_at    TEXT NOT NULL
 	)`,
 	`CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id, id)`,
-	`CREATE TABLE IF NOT EXISTS accounts (
+	`CREATE TABLE IF NOT EXISTS linked_accounts (
 		scope TEXT NOT NULL,
 		bot   TEXT NOT NULL,
 		jid   TEXT NOT NULL,
@@ -122,8 +122,11 @@ func (d *DB) Sessions() *SessionStore { return &SessionStore{db: d.DB} }
 // Messages returns the message repository.
 func (d *DB) Messages() *MessageStore { return &MessageStore{db: d.DB} }
 
-// Accounts returns the paired-account repository.
-func (d *DB) Accounts() *AccountStore { return &AccountStore{db: d.DB} }
+// LinkedAccounts returns the linked-account repository.
+func (d *DB) LinkedAccounts() *LinkedAccountStore { return &LinkedAccountStore{db: d.DB} }
+
+// Pairings returns the pairing-status repository.
+func (d *DB) Pairings() *PairingStore { return &PairingStore{db: d.DB} }
 
 func applySchema(db *sql.DB) error {
 	for _, statement := range schema {

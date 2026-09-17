@@ -97,13 +97,18 @@ type MessageStore interface {
 	List(ctx context.Context, chatID int64, limit int) ([]Message, error)
 }
 
-// AccountStore records paired channel accounts and their pairing status
-// (ADR 0006).
-type AccountStore interface {
-	Get(ctx context.Context, scope, bot string) (*Account, error)
-	List(ctx context.Context) ([]Account, error)
-	Put(ctx context.Context, account *Account) error
+// LinkedAccountStore records the channel identity linked to each bot
+// (ADR 0006). Pairing is tracked separately by PairingStore.
+type LinkedAccountStore interface {
+	Get(ctx context.Context, scope, bot string) (*LinkedAccount, error)
+	List(ctx context.Context) ([]LinkedAccount, error)
+	Put(ctx context.Context, account *LinkedAccount) error
 	Delete(ctx context.Context, scope, bot string) error
-	GetPairingStatus(ctx context.Context, scope, bot string) (*PairingStatus, error)
-	SetPairingStatus(ctx context.Context, status *PairingStatus) error
+}
+
+// PairingStore records the last confirmed pairing transition of a bot
+// (ADR 0011).
+type PairingStore interface {
+	Get(ctx context.Context, scope, bot string) (*PairingStatus, error)
+	Set(ctx context.Context, status *PairingStatus) error
 }

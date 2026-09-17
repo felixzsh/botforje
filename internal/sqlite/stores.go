@@ -307,70 +307,78 @@ func (s *MessageStore) List(
 	return messages, rows.Err()
 }
 
-// AccountStore persists paired channel accounts (ADR 0006).
-type AccountStore struct{ db *sql.DB }
+// LinkedAccountStore persists the channel identity linked to each bot
+// (ADR 0006).
+type LinkedAccountStore struct{ db *sql.DB }
 
-// Get loads the paired account for (scope, bot) or returns domain.ErrNotFound.
-func (s *AccountStore) Get(ctx context.Context, scope, bot string) (*domain.Account, error) {
-	var account domain.Account
+// Get loads the linked account for (scope, bot) or returns domain.ErrNotFound.
+func (s *LinkedAccountStore) Get(
+	ctx context.Context, scope, bot string,
+) (*domain.LinkedAccount, error) {
+	var account domain.LinkedAccount
 	err := s.db.QueryRowContext(ctx,
-		"SELECT scope, bot, jid FROM accounts WHERE scope = ? AND bot = ?", scope, bot).
+		"SELECT scope, bot, jid FROM linked_accounts WHERE scope = ? AND bot = ?",
+		scope, bot).
 		Scan(&account.Scope, &account.Bot, &account.JID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: get account: %w", err)
+		return nil, fmt.Errorf("sqlite: get linked account: %w", err)
 	}
 	return &account, nil
 }
 
-// List returns all paired accounts in stable order.
-func (s *AccountStore) List(ctx context.Context) ([]domain.Account, error) {
+// List returns all linked accounts in stable order.
+func (s *LinkedAccountStore) List(ctx context.Context) ([]domain.LinkedAccount, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT scope, bot, jid FROM accounts ORDER BY scope, bot")
+		"SELECT scope, bot, jid FROM linked_accounts ORDER BY scope, bot")
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: list accounts: %w", err)
+		return nil, fmt.Errorf("sqlite: list linked accounts: %w", err)
 	}
 	defer rows.Close()
-	var accounts []domain.Account
+	var accounts []domain.LinkedAccount
 	for rows.Next() {
-		var account domain.Account
+		var account domain.LinkedAccount
 		if err := rows.Scan(&account.Scope, &account.Bot, &account.JID); err != nil {
-			return nil, fmt.Errorf("sqlite: scan account: %w", err)
+			return nil, fmt.Errorf("sqlite: scan linked account: %w", err)
 		}
 		accounts = append(accounts, account)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("sqlite: list accounts: %w", err)
+		return nil, fmt.Errorf("sqlite: list linked accounts: %w", err)
 	}
 	return accounts, nil
 }
 
-// Put inserts or replaces the paired account.
-func (s *AccountStore) Put(ctx context.Context, account *domain.Account) error {
+// Put inserts or replaces the linked account.
+func (s *LinkedAccountStore) Put(ctx context.Context, account *domain.LinkedAccount) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO accounts (scope, bot, jid) VALUES (?, ?, ?)
+		`INSERT INTO linked_accounts (scope, bot, jid) VALUES (?, ?, ?)
 		 ON CONFLICT (scope, bot) DO UPDATE SET jid = excluded.jid`,
 		account.Scope, account.Bot, account.JID)
 	if err != nil {
-		return fmt.Errorf("sqlite: put account: %w", err)
+		return fmt.Errorf("sqlite: put linked account: %w", err)
 	}
 	return nil
 }
 
-// Delete removes the paired account for (scope, bot).
-func (s *AccountStore) Delete(ctx context.Context, scope, bot string) error {
+// Delete removes the linked account for (scope, bot).
+func (s *LinkedAccountStore) Delete(ctx context.Context, scope, bot string) error {
 	_, err := s.db.ExecContext(ctx,
-		"DELETE FROM accounts WHERE scope = ? AND bot = ?", scope, bot)
+		"DELETE FROM linked_accounts WHERE scope = ? AND bot = ?", scope, bot)
 	if err != nil {
-		return fmt.Errorf("sqlite: delete account: %w", err)
+		return fmt.Errorf("sqlite: delete linked account: %w", err)
 	}
 	return nil
 }
 
-// GetPairingStatus loads the last persisted pairing transition.
-func (s *AccountStore) GetPairingStatus(
+// PairingStore persists the last confirmed pairing transition of a bot
+// (ADR 0011).
+type PairingStore struct{ db *sql.DB }
+
+// Get loads the last persisted pairing transition.
+func (s *PairingStore) Get(
 	ctx context.Context, scope, bot string,
 ) (*domain.PairingStatus, error) {
 	var status domain.PairingStatus
@@ -389,10 +397,8 @@ func (s *AccountStore) GetPairingStatus(
 	return &status, nil
 }
 
-// SetPairingStatus stores the last pairing transition for a bot.
-func (s *AccountStore) SetPairingStatus(
-	ctx context.Context, status *domain.PairingStatus,
-) error {
+// Set stores the last pairing transition for a bot.
+func (s *PairingStore) Set(ctx context.Context, status *domain.PairingStatus) error {
 	if status == nil {
 		return errors.New("sqlite: nil pairing status")
 	}

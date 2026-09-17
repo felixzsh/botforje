@@ -43,13 +43,14 @@ type Settings struct {
 	Jitter time.Duration
 }
 
-// Options configures an Adapter. Bot, Scope, Devices, and Accounts are
-// required.
+// Options configures an Adapter. Bot, Scope, Devices, Accounts, and Pairings
+// are required.
 type Options struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
-	Accounts domain.AccountStore
+	Accounts domain.LinkedAccountStore
+	Pairings domain.PairingStore
 	Settings Settings
 	Log      *slog.Logger
 	// DepsLogLevel is the minimum level for logs forwarded from dependencies
@@ -71,7 +72,8 @@ type Options struct {
 type Adapter struct {
 	scope    string
 	bot      string
-	accounts domain.AccountStore
+	accounts domain.LinkedAccountStore
+	pairings domain.PairingStore
 	devices  *Devices
 	settings Settings
 	log      *slog.Logger
@@ -130,6 +132,7 @@ func New(opts Options) (*Adapter, error) {
 		scope:     opts.Scope,
 		bot:       opts.Bot,
 		accounts:  opts.Accounts,
+		pairings:  opts.Pairings,
 		devices:   opts.Devices,
 		settings:  opts.Settings,
 		log:       log,
@@ -325,10 +328,10 @@ func (a *Adapter) setState(state State) {
 }
 
 func (a *Adapter) updatePairingStatus(state domain.PairingState) error {
-	if a.accounts == nil {
+	if a.pairings == nil {
 		return nil
 	}
-	return updatePairingStatus(context.Background(), a.accounts, a.scope, a.bot,
+	return updatePairingStatus(context.Background(), a.pairings, a.scope, a.bot,
 		state, pairingNow(a.now))
 }
 

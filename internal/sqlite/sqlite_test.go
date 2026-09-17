@@ -413,53 +413,53 @@ func TestOneSenderManyChats(t *testing.T) {
 	}
 }
 
-func TestAccountRoundTrip(t *testing.T) {
+func TestLinkedAccountRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.Accounts().Get(ctx, "support", "support-bot"); !errors.Is(
+	if _, err := db.LinkedAccounts().Get(ctx, "support", "support-bot"); !errors.Is(
 		err, domain.ErrNotFound,
 	) {
 		t.Fatalf("Get missing = %v, want ErrNotFound", err)
 	}
-	account := &domain.Account{
+	account := &domain.LinkedAccount{
 		Scope: "support", Bot: "support-bot", JID: "5215500000000@s.whatsapp.net",
 	}
-	if err := db.Accounts().Put(ctx, account); err != nil {
+	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 	account.JID = "5215599999999@s.whatsapp.net"
-	if err := db.Accounts().Put(ctx, account); err != nil {
+	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
 		t.Fatalf("Put update: %v", err)
 	}
-	got, err := db.Accounts().Get(ctx, "support", "support-bot")
+	got, err := db.LinkedAccounts().Get(ctx, "support", "support-bot")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if got.JID != "5215599999999@s.whatsapp.net" {
 		t.Fatalf("JID = %q", got.JID)
 	}
-	if err := db.Accounts().Delete(ctx, "support", "support-bot"); err != nil {
+	if err := db.LinkedAccounts().Delete(ctx, "support", "support-bot"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := db.Accounts().Get(ctx, "support", "support-bot"); !errors.Is(
+	if _, err := db.LinkedAccounts().Get(ctx, "support", "support-bot"); !errors.Is(
 		err, domain.ErrNotFound,
 	) {
 		t.Fatalf("Get after delete = %v, want ErrNotFound", err)
 	}
 }
 
-func TestAccountList(t *testing.T) {
+func TestLinkedAccountList(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	for _, account := range []domain.Account{
+	for _, account := range []domain.LinkedAccount{
 		{Scope: "z", Bot: "later", JID: "2@s.whatsapp.net"},
 		{Scope: "a", Bot: "first", JID: "1@s.whatsapp.net"},
 	} {
-		if err := db.Accounts().Put(ctx, &account); err != nil {
+		if err := db.LinkedAccounts().Put(ctx, &account); err != nil {
 			t.Fatalf("Put: %v", err)
 		}
 	}
-	got, err := db.Accounts().List(ctx)
+	got, err := db.LinkedAccounts().List(ctx)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -471,20 +471,20 @@ func TestAccountList(t *testing.T) {
 func TestPairingStatusRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.Accounts().GetPairingStatus(ctx, "dev", "bot"); !errors.Is(
+	if _, err := db.Pairings().Get(ctx, "dev", "bot"); !errors.Is(
 		err, domain.ErrNotFound,
 	) {
-		t.Fatalf("GetPairingStatus missing = %v, want ErrNotFound", err)
+		t.Fatalf("pairing status missing = %v, want ErrNotFound", err)
 	}
 	want := &domain.PairingStatus{
 		Scope: "dev", Bot: "bot", State: domain.PairingUnpaired, LastChange: t1,
 	}
-	if err := db.Accounts().SetPairingStatus(ctx, want); err != nil {
-		t.Fatalf("SetPairingStatus: %v", err)
+	if err := db.Pairings().Set(ctx, want); err != nil {
+		t.Fatalf("Set: %v", err)
 	}
-	got, err := db.Accounts().GetPairingStatus(ctx, "dev", "bot")
+	got, err := db.Pairings().Get(ctx, "dev", "bot")
 	if err != nil {
-		t.Fatalf("GetPairingStatus: %v", err)
+		t.Fatalf("Get: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("PairingStatus = %#v, want %#v", got, want)

@@ -46,7 +46,7 @@ func OpenDevices(
 
 // device returns the stored device of an account, or nil when it is missing.
 func (d *Devices) device(
-	ctx context.Context, account *domain.Account,
+	ctx context.Context, account *domain.LinkedAccount,
 ) (*store.Device, error) {
 	jid, err := types.ParseJID(account.JID)
 	if err != nil {
@@ -66,7 +66,7 @@ func (d *Devices) device(
 }
 
 // delete removes an account's local credentials; a missing device is fine.
-func (d *Devices) delete(ctx context.Context, account *domain.Account) error {
+func (d *Devices) delete(ctx context.Context, account *domain.LinkedAccount) error {
 	device, err := d.device(ctx, account)
 	if err != nil {
 		return err
@@ -88,16 +88,17 @@ type UnpairOptions struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
-	Accounts domain.AccountStore
+	Accounts domain.LinkedAccountStore
+	Pairings domain.PairingStore
 }
 
 // ValidateAccountOwners rejects more than one bot using the same phone number.
-func ValidateAccountOwners(ctx context.Context, accounts domain.AccountStore) error {
+func ValidateAccountOwners(ctx context.Context, accounts domain.LinkedAccountStore) error {
 	all, err := accounts.List(ctx)
 	if err != nil {
 		return fmt.Errorf("whatsapp: list account ownership: %w", err)
 	}
-	owners := make(map[string]domain.Account, len(all))
+	owners := make(map[string]domain.LinkedAccount, len(all))
 	for _, account := range all {
 		phone := Number(account.JID)
 		if phone == "" {
@@ -114,7 +115,8 @@ func ValidateAccountOwners(ctx context.Context, accounts domain.AccountStore) er
 // ValidateAccounts checks stored ownership and local whatsmeow credentials.
 // Missing local credentials are recoverable and do not abort validation.
 func ValidateAccounts(
-	ctx context.Context, devices *Devices, accounts domain.AccountStore,
+	ctx context.Context, devices *Devices,
+	accounts domain.LinkedAccountStore, pairings domain.PairingStore,
 ) error {
 	if devices == nil {
 		return errors.New("whatsapp: no device store")
@@ -124,7 +126,7 @@ func ValidateAccounts(
 	}
 	all, err := accounts.List(ctx)
 	if err != nil {
-		return fmt.Errorf("whatsapp: list paired accounts: %w", err)
+		return fmt.Errorf("whatsapp: list linked accounts: %w", err)
 	}
 	for i := range all {
 		device, err := devices.device(ctx, &all[i])
@@ -132,7 +134,7 @@ func ValidateAccounts(
 			return err
 		}
 		if device == nil {
-			if err := updatePairingStatus(ctx, accounts, all[i].Scope, all[i].Bot,
+			if err := updatePairingStatus(ctx, pairings, all[i].Scope, all[i].Bot,
 				domain.PairingUnpaired, pairingNow(nil)); err != nil {
 				return err
 			}
@@ -147,7 +149,8 @@ func ValidateAccounts(
 func CheckPairing(
 	ctx context.Context,
 	devices *Devices,
-	accounts domain.AccountStore,
+	accounts domain.LinkedAccountStore,
+	pairings domain.PairingStore,
 	scope, bot string,
 ) (domain.PairingState, error) {
 	if devices == nil {
@@ -156,7 +159,7 @@ func CheckPairing(
 	account, err := accounts.Get(ctx, scope, bot)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		if err := updatePairingStatus(ctx, accounts, scope, bot,
+		if err := updatePairingStatus(ctx, pairings, scope, bot,
 			domain.PairingNotPaired, pairingNow(nil)); err != nil {
 			return "", err
 		}
@@ -169,7 +172,7 @@ func CheckPairing(
 		return "", err
 	}
 	if !ready {
-		if err := updatePairingStatus(ctx, accounts, scope, bot,
+		if err := updatePairingStatus(ctx, pairings, scope, bot,
 			domain.PairingUnpaired, pairingNow(nil)); err != nil {
 			return "", err
 		}
@@ -180,7 +183,7 @@ func CheckPairing(
 
 // HasLocalDevice reports whether an account has matching local credentials.
 func HasLocalDevice(
-	ctx context.Context, devices *Devices, account *domain.Account,
+	ctx context.Context, devices *Devices, account *domain.LinkedAccount,
 ) (bool, error) {
 	if devices == nil {
 		return false, errors.New("whatsapp: no device store")
@@ -205,11 +208,12 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if err != nil {
 		return err
 	}
-	return removePairing(ctx, opts.Devices, opts.Accounts, account, pairingNow(nil))
+	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
+		pairingNow(nil))
 }
 
 func ensurePhoneAvailable(
-	ctx context.Context, accounts domain.AccountStore, phone, scope, bot string,
+	ctx context.Context, accounts domain.LinkedAccountStore, phone, scope, bot string,
 ) error {
 	all, err := accounts.List(ctx)
 	if err != nil {
@@ -223,7 +227,7 @@ func ensurePhoneAvailable(
 			return duplicateAccountError(
 				phone,
 				account,
-				domain.Account{Scope: scope, Bot: bot},
+				domain.LinkedAccount{Scope: scope, Bot: bot},
 			)
 		}
 	}
@@ -231,7 +235,7 @@ func ensurePhoneAvailable(
 }
 
 func duplicateAccountError(
-	phone string, first, second domain.Account,
+	phone string, first, second domain.LinkedAccount,
 ) error {
 	return fmt.Errorf(
 		"whatsapp: phone number %s is assigned to bots %q (scope %q) and %q (scope %q)",
@@ -241,12 +245,12 @@ func duplicateAccountError(
 
 func updatePairingStatus(
 	ctx context.Context,
-	accounts domain.AccountStore,
+	pairings domain.PairingStore,
 	scope, bot string,
 	state domain.PairingState,
 	changedAt time.Time,
 ) error {
-	current, err := accounts.GetPairingStatus(ctx, scope, bot)
+	current, err := pairings.Get(ctx, scope, bot)
 	if err == nil && current.State == state && !current.LastChange.IsZero() {
 		return nil
 	}
@@ -256,7 +260,7 @@ func updatePairingStatus(
 	if changedAt.IsZero() {
 		changedAt = pairingNow(nil)
 	}
-	if err := accounts.SetPairingStatus(ctx, &domain.PairingStatus{
+	if err := pairings.Set(ctx, &domain.PairingStatus{
 		Scope: scope, Bot: bot, State: state, LastChange: changedAt,
 	}); err != nil {
 		return fmt.Errorf("whatsapp: set pairing status: %w", err)
@@ -271,7 +275,7 @@ func pairingNow(now func() time.Time) time.Time {
 	return now().UTC()
 }
 
-func missingDeviceError(account *domain.Account) error {
+func missingDeviceError(account *domain.LinkedAccount) error {
 	return fmt.Errorf(
 		"whatsapp: bot %q (scope %q) has no local device credentials; "+
 			"use bot pair",

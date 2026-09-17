@@ -49,6 +49,10 @@
 - Channel — one implementation that reaches a messaging provider. WhatsApp
   has several: whatsmeow today, other clients or the official Cloud API
   later.
+- Linked account — a bot's identity on its messaging provider: for WhatsApp,
+  the JID that identifies the paired companion device; keyed by (scope, bot).
+  Pairing is the lifecycle around it: paired, not paired, or unpaired
+  (ADR 0006).
 - LLM — a named, scoped model profile (provider, model, credentials, routing
   defaults, bounds); a bot references one or runs deterministically without
   it (ADR 0017).

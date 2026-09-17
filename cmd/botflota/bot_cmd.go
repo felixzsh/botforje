@@ -95,7 +95,8 @@ func runPair(args []string) int {
 		Scope:    scopeName,
 		Bot:      name,
 		Devices:  devices,
-		Accounts: db.Accounts(),
+		Accounts: db.LinkedAccounts(),
+		Pairings: db.Pairings(),
 		Force:    *cmd.force,
 	})
 	if err != nil {
@@ -138,7 +139,8 @@ func runUnpair(args []string) int {
 		return 1
 	}
 	if err := whatsapp.Unpair(context.Background(), whatsapp.UnpairOptions{
-		Scope: scopeName, Bot: name, Devices: devices, Accounts: db.Accounts(),
+		Scope: scopeName, Bot: name, Devices: devices,
+		Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -164,7 +166,7 @@ func runBotList(args []string) int {
 	defer db.Close()
 
 	ctx := context.Background()
-	if err := whatsapp.ValidateAccountOwners(ctx, db.Accounts()); err != nil {
+	if err := whatsapp.ValidateAccountOwners(ctx, db.LinkedAccounts()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -179,7 +181,7 @@ func runBotList(args []string) int {
 		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
 			state := domain.PairingNotPaired
 			phone := "-"
-			account, err := db.Accounts().Get(ctx, scopeName, botName)
+			account, err := db.LinkedAccounts().Get(ctx, scopeName, botName)
 			switch {
 			case errors.Is(err, domain.ErrNotFound):
 			case err != nil:
@@ -198,7 +200,7 @@ func runBotList(args []string) int {
 					phone = whatsapp.Number(account.JID)
 				}
 			}
-			pairingStatus, err := db.Accounts().GetPairingStatus(ctx, scopeName, botName)
+			pairingStatus, err := db.Pairings().Get(ctx, scopeName, botName)
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				fmt.Fprintln(os.Stderr, err)
 				return 1

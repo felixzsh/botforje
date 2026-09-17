@@ -49,7 +49,8 @@ func runFleet(args []string) int {
 		logger.Error("open device store", "error", err)
 		return 1
 	}
-	if err := whatsapp.ValidateAccounts(ctx, devices, db.Accounts()); err != nil {
+	if err := whatsapp.ValidateAccounts(ctx, devices, db.LinkedAccounts(),
+		db.Pairings()); err != nil {
 		logger.Error("validate pairings", "error", err)
 		return 1
 	}
@@ -57,8 +58,8 @@ func runFleet(args []string) int {
 	skippedCount := 0
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
-			state, err := whatsapp.CheckPairing(ctx, devices, db.Accounts(),
-				scopeName, botName)
+			state, err := whatsapp.CheckPairing(ctx, devices, db.LinkedAccounts(),
+				db.Pairings(), scopeName, botName)
 			if err != nil {
 				logger.Error("validate pairing", "scope", scopeName,
 					"bot", botName, "error", err)
@@ -91,7 +92,8 @@ func runFleet(args []string) int {
 				Scope:        spec.Scope,
 				Bot:          spec.Name,
 				Devices:      devices,
-				Accounts:     db.Accounts(),
+				Accounts:     db.LinkedAccounts(),
+				Pairings:     db.Pairings(),
 				Settings:     whatsappSettings(spec.Settings),
 				Log:          logger.With("scope", spec.Scope, "bot", spec.Name),
 				DepsLogLevel: logging.ParseLevel(cfg.LogLevelDeps),

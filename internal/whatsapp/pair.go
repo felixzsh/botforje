@@ -21,7 +21,8 @@ type PairOptions struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
-	Accounts domain.AccountStore
+	Accounts domain.LinkedAccountStore
+	Pairings domain.PairingStore
 	Logger   walog.Logger
 	Force    bool // discard the existing local pairing before starting QR login
 	// RenderQR draws one pairing code; the default clears the terminal and
@@ -68,7 +69,7 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	// while registering a new device; existing links keep their old name.
 	store.SetOSInfo("Botflota", [3]uint32{0, 1, 0})
 	if account != nil {
-		if err := removePairing(ctx, opts.Devices, opts.Accounts, account,
+		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
 			pairingNow(opts.Now)); err != nil {
 			return "", err
 		}
@@ -158,8 +159,9 @@ func waitForPairingRetry(ctx context.Context) error {
 func removePairing(
 	ctx context.Context,
 	devices *Devices,
-	accounts domain.AccountStore,
-	account *domain.Account,
+	accounts domain.LinkedAccountStore,
+	pairings domain.PairingStore,
+	account *domain.LinkedAccount,
 	changedAt time.Time,
 ) error {
 	if err := devices.delete(ctx, account); err != nil {
@@ -168,7 +170,7 @@ func removePairing(
 	if err := accounts.Delete(ctx, account.Scope, account.Bot); err != nil {
 		return fmt.Errorf("whatsapp: delete existing account: %w", err)
 	}
-	return updatePairingStatus(ctx, accounts, account.Scope, account.Bot,
+	return updatePairingStatus(ctx, pairings, account.Scope, account.Bot,
 		domain.PairingNotPaired, changedAt)
 }
 
@@ -228,14 +230,14 @@ func saveAccount(ctx context.Context, opts PairOptions, client *whatsmeow.Client
 		}
 		return "", err
 	}
-	account := &domain.Account{Scope: opts.Scope, Bot: opts.Bot, JID: jid}
+	account := &domain.LinkedAccount{Scope: opts.Scope, Bot: opts.Bot, JID: jid}
 	if err := opts.Accounts.Put(ctx, account); err != nil {
 		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
 			return "", fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
 		}
 		return "", err
 	}
-	if err := updatePairingStatus(ctx, opts.Accounts, opts.Scope, opts.Bot,
+	if err := updatePairingStatus(ctx, opts.Pairings, opts.Scope, opts.Bot,
 		domain.PairingPaired, pairingNow(opts.Now)); err != nil {
 		return "", err
 	}
