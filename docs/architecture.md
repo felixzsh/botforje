@@ -155,9 +155,10 @@ configured maximum.
 
 One structured logger (`log/slog`) writes plain, column-aligned lines with no
 ANSI escapes, so `journalctl` and `docker logs` show them verbatim:
-`[time] LEVEL [file.go:line] message key=value`. `log_level` sets the level for
-the application and `log_level_deps` for logs forwarded from dependencies such
-as the channel; `off` silences a category. Levels follow one rule: debug for
+`[time] LEVEL [pkg/file.go:line] message key=value`. `log_level` sets the level
+for the application and `log_level_deps` for logs forwarded from dependencies
+such as the channel; `off` silences a category. Levels follow one rule: debug
+for
 per-message detail, info for lifecycle and state, warn for recoverable
 conditions, and error for failures. Message bodies are debug-only, and secrets
 stay masked by type (ADR 0014).

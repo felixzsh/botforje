@@ -1,6 +1,6 @@
 // Package logging builds the one structured logger used across Botflota. It
 // writes one plain, column-aligned line per record with no ANSI escapes, so
-// journalctl and `docker logs` show it verbatim (ADR 0012 prefers stdlib).
+// journalctl and `docker logs` show it verbatim (docs/architecture.md).
 package logging
 
 import (
@@ -48,10 +48,10 @@ func ParseLevel(level string) slog.Level {
 
 // handler formats one line as:
 //
-//	[2006-01-02 15:04:05] LEVEL [file.go:line] message key=value
+//	[2006-01-02 15:04:05] LEVEL [pkg/file.go:line] message key=value
 //
 // The time, level, and file columns are aligned; the message starts one space
-// after file.go:line, so its column varies with the file name length.
+// after pkg/file.go:line, so its column varies with the source name length.
 type handler struct {
 	w     io.Writer
 	level slog.Level
@@ -110,7 +110,9 @@ func (h *handler) WithGroup(name string) slog.Handler {
 	return &clone
 }
 
-// source is the base file name and line of the caller, never the package path.
+// source is the package directory, file name, and line of the caller, never
+// the full path: [sqlite/stores.go:42]. The package is part of the name so two
+// files that share a base name can never be confused in a log.
 func source(record slog.Record) string {
 	if record.PC == 0 {
 		return "?:0"
@@ -119,7 +121,11 @@ func source(record slog.Record) string {
 	if frame.File == "" {
 		return "?:0"
 	}
-	return filepath.Base(frame.File) + ":" + strconv.Itoa(frame.Line)
+	name := filepath.Base(frame.File)
+	if pkg := filepath.Base(filepath.Dir(frame.File)); pkg != "." && pkg != "" {
+		name = pkg + "/" + name
+	}
+	return name + ":" + strconv.Itoa(frame.Line)
 }
 
 func writeAttr(builder *strings.Builder, group string, attr slog.Attr) {

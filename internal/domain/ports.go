@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // MessageChannel is the transport port, owned by its consumer (ADR 0004).
 type MessageChannel interface {
@@ -57,4 +60,41 @@ func (NullLLM) Classify(context.Context, ClassifyRequest) (ClassifyResult, error
 // Realize always fails; an intent-only message needs a real provider.
 func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 	return "", ErrNoLLM
+}
+
+// Store ports: the domain owns the interfaces and an adapter implements them
+// (ADR 0006). The persisted shapes they read and write live in records.go.
+
+// ChatStore records the durable chat with each person. Ensure is a
+// get-or-create; Touch records last activity; SaveGuards persists the chat's
+// per-action guard state (ADR 0026, ADR 0027).
+type ChatStore interface {
+	Ensure(ctx context.Context, scope, bot, sender string, at time.Time) (*Chat, error)
+	Touch(ctx context.Context, id int64, at time.Time) error
+	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
+}
+
+// SessionStore records a chat's session runs. Latest returns the most recent
+// one, or ErrNotFound when the chat never had a session (ADR 0026).
+type SessionStore interface {
+	Latest(ctx context.Context, chatID int64) (*Session, error)
+	Save(ctx context.Context, session *Session) error
+	Delete(ctx context.Context, chatID int64) error
+}
+
+// MessageStore records message history (ADR 0026).
+type MessageStore interface {
+	Append(ctx context.Context, message *Message) error
+	List(ctx context.Context, chatID int64, limit int) ([]Message, error)
+}
+
+// AccountStore records paired channel accounts and their pairing status
+// (ADR 0006).
+type AccountStore interface {
+	Get(ctx context.Context, scope, bot string) (*Account, error)
+	List(ctx context.Context) ([]Account, error)
+	Put(ctx context.Context, account *Account) error
+	Delete(ctx context.Context, scope, bot string) error
+	GetPairingStatus(ctx context.Context, scope, bot string) (*PairingStatus, error)
+	SetPairingStatus(ctx context.Context, status *PairingStatus) error
 }

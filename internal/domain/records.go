@@ -1,13 +1,13 @@
 package domain
 
 import (
-	"context"
 	"time"
 )
 
 // Persisted shapes: one struct per table. Their fields mirror the columns the
 // SQLite adapter reads and writes; keys, constraints, and encoding (JSON,
 // RFC 3339 times) live with the DDL in internal/sqlite (ADR 0006, ADR 0026).
+// The store ports that read and write them live in ports.go.
 
 // Account is a bot's paired channel identity, the whatsmeow device JID. It is
 // keyed by (scope, bot) like every entity (ADR 0016).
@@ -103,41 +103,4 @@ type PairingStatus struct {
 	Bot        string
 	State      PairingState
 	LastChange time.Time
-}
-
-// Store ports: the domain owns the interfaces; an adapter implements them
-// (ADR 0006).
-
-// ChatStore records the durable chat with each person. Ensure is a
-// get-or-create; SaveGuards persists the chat's per-action guard state
-// (ADR 0026, ADR 0027).
-type ChatStore interface {
-	Ensure(ctx context.Context, scope, bot, sender string, at time.Time) (*Chat, error)
-	Touch(ctx context.Context, id int64, at time.Time) error
-	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
-}
-
-// SessionStore records a chat's session runs. Latest returns the most recent
-// one, or domain.ErrNotFound when the chat never had a session (ADR 0026).
-type SessionStore interface {
-	Latest(ctx context.Context, chatID int64) (*Session, error)
-	Save(ctx context.Context, session *Session) error
-	Delete(ctx context.Context, chatID int64) error
-}
-
-// MessageStore records message history (ADR 0026).
-type MessageStore interface {
-	Append(ctx context.Context, message *Message) error
-	List(ctx context.Context, chatID int64, limit int) ([]Message, error)
-}
-
-// AccountStore records paired channel accounts and their pairing status
-// (ADR 0006).
-type AccountStore interface {
-	Get(ctx context.Context, scope, bot string) (*Account, error)
-	List(ctx context.Context) ([]Account, error)
-	Put(ctx context.Context, account *Account) error
-	Delete(ctx context.Context, scope, bot string) error
-	GetPairingStatus(ctx context.Context, scope, bot string) (*PairingStatus, error)
-	SetPairingStatus(ctx context.Context, status *PairingStatus) error
 }
