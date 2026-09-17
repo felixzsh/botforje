@@ -66,12 +66,21 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 // (ADR 0006). The persisted shapes they read and write live in records.go.
 
 // ChatStore records the durable chat with each person. Ensure is a
-// get-or-create; Touch records last activity; SaveGuards persists the chat's
-// per-action guard state (ADR 0026, ADR 0027).
+// get-or-create keyed by the sender's profile; RecordMessage updates last
+// activity and the inbound count; SaveGuards persists the chat's per-action
+// guard state (ADR 0026, ADR 0027, ADR 0029).
 type ChatStore interface {
-	Ensure(ctx context.Context, scope, bot, sender string, at time.Time) (*Chat, error)
-	Touch(ctx context.Context, id int64, at time.Time) error
+	Ensure(ctx context.Context, scope, bot string, senderID int64, at time.Time) (*Chat, error)
+	RecordMessage(ctx context.Context, id int64, at time.Time) error
 	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
+}
+
+// SenderStore records the profile of each person who writes to a bot. Upsert
+// creates it on first contact and updates it afterwards; it reports whether the
+// profile is new, which is the first-contact hook (ADR 0029).
+type SenderStore interface {
+	Upsert(ctx context.Context, scope, phone, name string, at time.Time) (*Sender, bool, error)
+	Get(ctx context.Context, scope, phone string) (*Sender, error)
 }
 
 // SessionStore records a chat's session runs. Latest returns the most recent

@@ -19,8 +19,8 @@ import (
 	"github.com/felixzsh/botflota/internal/template"
 )
 
-// Options configures an Engine. Bot, Graph, Actions, Store, and Chats are
-// required.
+// Options configures an Engine. Bot, Graph, Actions, Store, Chats, and Senders
+// are required.
 type Options struct {
 	Bot            string
 	Scope          string
@@ -28,6 +28,7 @@ type Options struct {
 	Actions        map[string]config.Action
 	Store          domain.SessionStore
 	Chats          domain.ChatStore
+	Senders        domain.SenderStore
 	LLM            domain.LLMProvider
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -45,6 +46,7 @@ type Engine struct {
 	actions        map[string]config.Action
 	store          domain.SessionStore
 	chats          domain.ChatStore
+	senders        domain.SenderStore
 	llm            domain.LLMProvider
 	hasLLM         bool
 	http           *http.Client
@@ -63,6 +65,7 @@ func New(opts Options) *Engine {
 		actions:        opts.Actions,
 		store:          opts.Store,
 		chats:          opts.Chats,
+		senders:        opts.Senders,
 		llm:            opts.LLM,
 		hasLLM:         opts.LLM != nil,
 		http:           opts.HTTPClient,
@@ -99,7 +102,7 @@ func (e *Engine) Handle(
 		return nil, errors.New("engine: incoming message has no sender")
 	}
 	now := e.now()
-	chat, session, created, err := e.load(ctx, msg, now)
+	chat, sender, session, created, err := e.load(ctx, msg, now)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +111,7 @@ func (e *Engine) Handle(
 		engine:  e,
 		session: session,
 		chat:    chat,
-		tctx:    e.contextOf(session, msg),
+		tctx:    e.contextOf(session, msg, sender),
 		msg:     msg,
 	}
 
@@ -139,7 +142,7 @@ func (e *Engine) Handle(
 	if err := e.store.Save(ctx, session); err != nil {
 		return nil, err
 	}
-	if err := e.chats.Touch(ctx, chat.ID, now); err != nil {
+	if err := e.chats.RecordMessage(ctx, chat.ID, now); err != nil {
 		return nil, err
 	}
 	if r.guardsDirty {
@@ -152,19 +155,26 @@ func (e *Engine) Handle(
 
 func (e *Engine) load(
 	ctx context.Context, msg domain.IncomingMessage, now time.Time,
-) (*domain.Chat, *domain.Session, bool, error) {
-	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, msg.Sender, now)
+) (*domain.Chat, *domain.Sender, *domain.Session, bool, error) {
+	if e.senders == nil {
+		return nil, nil, nil, false, errors.New("engine: no sender store")
+	}
+	sender, _, err := e.senders.Upsert(ctx, e.scope, msg.Sender, msg.SenderName, now)
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("engine: chat: %w", err)
+		return nil, nil, nil, false, fmt.Errorf("engine: sender: %w", err)
+	}
+	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, sender.ID, now)
+	if err != nil {
+		return nil, nil, nil, false, fmt.Errorf("engine: chat: %w", err)
 	}
 	session, err := e.store.Latest(ctx, chat.ID)
 	if err == nil && !session.Expired(now) {
-		return chat, session, false, nil
+		return chat, sender, session, false, nil
 	}
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		return nil, nil, false, err
+		return nil, nil, nil, false, err
 	}
-	return chat, e.start(chat.ID, now), true, nil
+	return chat, sender, e.start(chat.ID, now), true, nil
 }
 
 func (e *Engine) start(chatID int64, now time.Time) *domain.Session {
@@ -198,7 +208,7 @@ func (e *Engine) expiry(now time.Time) time.Time {
 }
 
 func (e *Engine) contextOf(
-	session *domain.Session, msg domain.IncomingMessage,
+	session *domain.Session, msg domain.IncomingMessage, sender *domain.Sender,
 ) *template.Context {
 	tctx := template.New()
 	// The roots seeded here are constants, so Reset cannot reject them.
@@ -206,6 +216,7 @@ func (e *Engine) contextOf(
 	_ = tctx.Reset(template.RootNode, session.NodeContext)
 	_ = tctx.Reset(template.RootSender, map[string]any{
 		"phone": msg.Sender,
+		"name":  sender.DisplayName,
 	})
 	_ = tctx.Reset(template.RootMessage, map[string]any{
 		"body": msg.Body,

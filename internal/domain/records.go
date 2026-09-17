@@ -17,17 +17,33 @@ type Account struct {
 	JID   string
 }
 
+// Sender is the durable profile of one person who writes to bots in a scope,
+// keyed by (scope, phone). A person may write to several bots of the same
+// scope; the bot-person relationship is a Chat (ADR 0029). DisplayName is the
+// WhatsApp push name: best effort, possibly empty, and never an identifier.
+type Sender struct {
+	ID            int64
+	Scope         string
+	Phone         string
+	DisplayName   string
+	NameUpdatedAt time.Time
+	FirstSeen     time.Time
+	LastSeen      time.Time
+}
+
 // Chat is the durable thread between one bot and one sender, one per
 // (scope, bot, sender). It never ends and gathers every message (ADR 0026).
-// Guards is the per-action guard state (ADR 0027).
+// MessageCount is the inbound count for this bot until message history is
+// recorded; Guards is the per-action guard state (ADR 0027, ADR 0029).
 type Chat struct {
-	ID        int64
-	Scope     string
-	Bot       string
-	Sender    string
-	StartedAt time.Time
-	UpdatedAt time.Time
-	Guards    map[string]GuardState
+	ID           int64
+	Scope        string
+	Bot          string
+	SenderID     int64
+	StartedAt    time.Time
+	UpdatedAt    time.Time
+	MessageCount int64
+	Guards       map[string]GuardState
 }
 
 // Direction is the side of a stored message.

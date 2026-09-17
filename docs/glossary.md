@@ -41,6 +41,9 @@
   adapter for resolution and delivery (ADR 0020).
 - Sender identity — the resolved phone number in plain digits, resolved by the
   channel adapter (ADR 0020).
+- Sender — the durable profile of one person who writes to bots in a scope:
+  their phone, push name, and first/last seen. One per (scope, phone), shared by
+  the scope's bots; the bot-person thread is the chat (ADR 0029).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp

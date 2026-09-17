@@ -28,10 +28,21 @@ func open(t *testing.T, path string) *DB {
 	return db
 }
 
+func ensureSender(t *testing.T, db *DB) *domain.Sender {
+	t.Helper()
+	sender, _, err := db.Senders().Upsert(context.Background(), "support",
+		"5215500000000", "Ana", t0)
+	if err != nil {
+		t.Fatalf("Upsert sender: %v", err)
+	}
+	return sender
+}
+
 func ensureChat(t *testing.T, db *DB) *domain.Chat {
 	t.Helper()
+	sender := ensureSender(t, db)
 	chat, err := db.Chats().Ensure(context.Background(), "support", "support-bot",
-		"5215500000000", t0)
+		sender.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -88,11 +99,12 @@ func TestSchemaIdempotent(t *testing.T) {
 func TestChatEnsureIsGetOrCreate(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	sender := ensureSender(t, db)
 	first := ensureChat(t, db)
 	if first.ID == 0 {
 		t.Fatal("Ensure did not set an id")
 	}
-	again, err := db.Chats().Ensure(ctx, "support", "support-bot", "5215500000000", t2)
+	again, err := db.Chats().Ensure(ctx, "support", "support-bot", sender.ID, t2)
 	if err != nil {
 		t.Fatalf("Ensure again: %v", err)
 	}
@@ -102,15 +114,18 @@ func TestChatEnsureIsGetOrCreate(t *testing.T) {
 	if !again.StartedAt.Equal(t0) {
 		t.Fatalf("started_at = %v, want %v", again.StartedAt, t0)
 	}
-	if err := db.Chats().Touch(ctx, first.ID, t1); err != nil {
-		t.Fatalf("Touch: %v", err)
+	if err := db.Chats().RecordMessage(ctx, first.ID, t1); err != nil {
+		t.Fatalf("RecordMessage: %v", err)
 	}
-	got, err := db.Chats().Ensure(ctx, "support", "support-bot", "5215500000000", t2)
+	got, err := db.Chats().Ensure(ctx, "support", "support-bot", sender.ID, t2)
 	if err != nil {
-		t.Fatalf("Ensure after touch: %v", err)
+		t.Fatalf("Ensure after record: %v", err)
 	}
 	if !got.UpdatedAt.Equal(t1) {
 		t.Fatalf("updated_at = %v, want %v", got.UpdatedAt, t1)
+	}
+	if got.MessageCount != 1 {
+		t.Fatalf("message_count = %d, want 1", got.MessageCount)
 	}
 }
 
@@ -130,7 +145,7 @@ func TestChatGuardsRoundTrip(t *testing.T) {
 	if err := db.Chats().SaveGuards(ctx, chat.ID, want); err != nil {
 		t.Fatalf("SaveGuards: %v", err)
 	}
-	got, err := db.Chats().Ensure(ctx, "support", "support-bot", "5215500000000", t2)
+	got, err := db.Chats().Ensure(ctx, "support", "support-bot", ensureSender(t, db).ID, t2)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -306,6 +321,98 @@ func TestMessageWithoutSession(t *testing.T) {
 	}
 }
 
+func TestSenderUpsertIsGetOrCreate(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	if _, err := db.Senders().Get(ctx, "support", "52155"); !errors.Is(
+		err, domain.ErrNotFound,
+	) {
+		t.Fatalf("Get missing = %v, want ErrNotFound", err)
+	}
+	first, created, err := db.Senders().Upsert(ctx, "support", "52155", "Ana", t0)
+	if err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if !created {
+		t.Fatal("Upsert did not report a new profile")
+	}
+	if first.ID == 0 || first.Phone != "52155" {
+		t.Fatalf("profile = %#v", first)
+	}
+	if !first.FirstSeen.Equal(t0) || !first.LastSeen.Equal(t0) {
+		t.Fatalf("first_seen = %v, last_seen = %v, want %v",
+			first.FirstSeen, first.LastSeen, t0)
+	}
+}
+
+func TestSenderUpsertUpdatesProfile(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	sender, _, err := db.Senders().Upsert(ctx, "support", "52155", "Ana", t0)
+	if err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	got, created, err := db.Senders().Upsert(ctx, "support", "52155", "", t1)
+	if err != nil {
+		t.Fatalf("Upsert empty name: %v", err)
+	}
+	if created {
+		t.Fatal("second Upsert reported a new profile")
+	}
+	if got.ID != sender.ID || !got.FirstSeen.Equal(t0) {
+		t.Fatalf("profile = %#v, want id %d since %v", got, sender.ID, t0)
+	}
+	if got.DisplayName != "Ana" {
+		t.Fatalf("display_name = %q, want the kept %q", got.DisplayName, "Ana")
+	}
+	if !got.LastSeen.Equal(t1) {
+		t.Fatalf("last_seen = %v, want %v", got.LastSeen, t1)
+	}
+	if !got.NameUpdatedAt.Equal(t0) {
+		t.Fatalf("name_updated_at = %v, want %v (unchanged name)", got.NameUpdatedAt, t0)
+	}
+	renamed, _, err := db.Senders().Upsert(ctx, "support", "52155", "Ana B", t2)
+	if err != nil {
+		t.Fatalf("Upsert new name: %v", err)
+	}
+	if renamed.DisplayName != "Ana B" || !renamed.NameUpdatedAt.Equal(t2) {
+		t.Fatalf("rename = %#v, want Ana B stamped at %v", renamed, t2)
+	}
+}
+
+func TestSenderIsScoped(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	first, _, err := db.Senders().Upsert(ctx, "a", "52155", "Ana", t0)
+	if err != nil {
+		t.Fatalf("Upsert a: %v", err)
+	}
+	second, _, err := db.Senders().Upsert(ctx, "b", "52155", "Ana", t0)
+	if err != nil {
+		t.Fatalf("Upsert b: %v", err)
+	}
+	if first.ID == second.ID {
+		t.Fatal("one phone in two scopes must be two profiles")
+	}
+}
+
+func TestOneSenderManyChats(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	sender := ensureSender(t, db)
+	alpha, err := db.Chats().Ensure(ctx, "support", "alpha", sender.ID, t0)
+	if err != nil {
+		t.Fatalf("Ensure alpha: %v", err)
+	}
+	beta, err := db.Chats().Ensure(ctx, "support", "beta", sender.ID, t0)
+	if err != nil {
+		t.Fatalf("Ensure beta: %v", err)
+	}
+	if alpha.ID == beta.ID {
+		t.Fatal("two bots must have two chats with the same sender")
+	}
+}
+
 func TestAccountRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
@@ -387,6 +494,10 @@ func TestPairingStatusRoundTrip(t *testing.T) {
 func TestForeignKeysEnforced(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+
+	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", 999, t0); err == nil {
+		t.Fatal("Ensure with unknown sender succeeded, want a foreign key error")
+	}
 
 	orphanChat := &domain.Message{
 		ChatID: 999, Direction: domain.Inbound, Kind: domain.KindText,

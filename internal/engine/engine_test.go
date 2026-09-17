@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,43 +19,85 @@ import (
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
 
-// memStore is an in-memory ChatStore and SessionStore for engine tests.
+// memStore is an in-memory SenderStore, ChatStore, and SessionStore for engine
+// tests.
 type memStore struct {
-	chats    map[string]*domain.Chat
-	sessions map[int64]*domain.Session
-	nextChat int64
-	nextSess int64
+	senders    map[string]*domain.Sender
+	chats      map[string]*domain.Chat
+	sessions   map[int64]*domain.Session
+	nextSender int64
+	nextChat   int64
+	nextSess   int64
 }
 
 func newMemStore() *memStore {
 	return &memStore{
+		senders:  map[string]*domain.Sender{},
 		chats:    map[string]*domain.Chat{},
 		sessions: map[int64]*domain.Session{},
 	}
 }
 
-func storeKey(scope, bot, sender string) string { return scope + "\x00" + bot + "\x00" + sender }
+func senderKey(scope, phone string) string { return scope + "\x00" + phone }
+
+func storeKey(scope, bot string, senderID int64) string {
+	return scope + "\x00" + bot + "\x00" + strconv.FormatInt(senderID, 10)
+}
+
+func (s *memStore) Upsert(
+	_ context.Context, scope, phone, name string, at time.Time,
+) (*domain.Sender, bool, error) {
+	if sender, ok := s.senders[senderKey(scope, phone)]; ok {
+		if name != "" && name != sender.DisplayName {
+			sender.DisplayName = name
+			sender.NameUpdatedAt = at
+		}
+		sender.LastSeen = at
+		return sender, false, nil
+	}
+	s.nextSender++
+	sender := &domain.Sender{
+		ID: s.nextSender, Scope: scope, Phone: phone, DisplayName: name,
+		FirstSeen: at, LastSeen: at,
+	}
+	if name != "" {
+		sender.NameUpdatedAt = at
+	}
+	s.senders[senderKey(scope, phone)] = sender
+	return sender, true, nil
+}
+
+func (s *memStore) Get(
+	_ context.Context, scope, phone string,
+) (*domain.Sender, error) {
+	sender, ok := s.senders[senderKey(scope, phone)]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return sender, nil
+}
 
 func (s *memStore) Ensure(
-	_ context.Context, scope, bot, sender string, at time.Time,
+	_ context.Context, scope, bot string, senderID int64, at time.Time,
 ) (*domain.Chat, error) {
-	key := storeKey(scope, bot, sender)
+	key := storeKey(scope, bot, senderID)
 	if chat, ok := s.chats[key]; ok {
 		return chat, nil
 	}
 	s.nextChat++
 	chat := &domain.Chat{
-		ID: s.nextChat, Scope: scope, Bot: bot, Sender: sender,
+		ID: s.nextChat, Scope: scope, Bot: bot, SenderID: senderID,
 		StartedAt: at, UpdatedAt: at,
 	}
 	s.chats[key] = chat
 	return chat, nil
 }
 
-func (s *memStore) Touch(_ context.Context, id int64, at time.Time) error {
+func (s *memStore) RecordMessage(_ context.Context, id int64, at time.Time) error {
 	for _, chat := range s.chats {
 		if chat.ID == id {
 			chat.UpdatedAt = at
+			chat.MessageCount++
 			return nil
 		}
 	}
@@ -97,7 +140,11 @@ func (s *memStore) Delete(_ context.Context, chatID int64) error {
 
 // sessionFor reads a chat's current session by its config identity.
 func (s *memStore) sessionFor(scope, bot, sender string) (*domain.Session, error) {
-	chat, ok := s.chats[storeKey(scope, bot, sender)]
+	profile, ok := s.senders[senderKey(scope, sender)]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	chat, ok := s.chats[storeKey(scope, bot, profile.ID)]
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
@@ -152,6 +199,7 @@ func fixtureEngine(t *testing.T, store *memStore) *Engine {
 		Actions:        scope.Actions,
 		Store:          store,
 		Chats:          store,
+		Senders:        store,
 		DefaultTimeout: 300 * time.Second,
 	})
 }
@@ -231,7 +279,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	scope := loadScope(t)
 	eng := New(Options{
 		Bot: "support-bot", Scope: "support",
-		Graph: scope.Graphs["faq"], Actions: scope.Actions, Store: store, Chats: store,
+		Graph: scope.Graphs["faq"], Actions: scope.Actions, Store: store, Chats: store, Senders: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 		Rand:           rand.New(rand.NewSource(1)),
@@ -274,7 +322,7 @@ func TestRequestStepCapturesResult(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, HTTPClient: server.Client(),
+		Store: store, Chats: store, Senders: store, HTTPClient: server.Client(),
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"got 7 status 200"}; !slices.Equal(got, want) {
@@ -303,7 +351,7 @@ func TestCooldownGuard(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -341,7 +389,7 @@ func TestRateLimitGuard(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -381,7 +429,7 @@ func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 	})
@@ -411,7 +459,7 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	_, err := eng.Handle(context.Background(), domain.IncomingMessage{Sender: "s", Body: "hi"})
 	if !errors.Is(err, domain.ErrNoLLM) {
@@ -432,7 +480,7 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"Your order is confirmed."}; !slices.Equal(got, want) {
@@ -452,7 +500,7 @@ func TestLocationStep(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	messages, err := eng.Handle(context.Background(), domain.IncomingMessage{Sender: "s", Body: "hi"})
 	if err != nil {
@@ -463,6 +511,61 @@ func TestLocationStep(t *testing.T) {
 	}
 	if messages[0].Location == nil || messages[0].Location.Name != "Office" {
 		t.Fatalf("location = %#v", messages[0].Location)
+	}
+}
+
+func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
+	store := newMemStore()
+	eng := fixtureEngine(t, store)
+	if _, err := eng.Handle(context.Background(), domain.IncomingMessage{
+		Bot: "support-bot", Sender: "52155", SenderName: "Ana", Body: "hi", At: t0,
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	profile, err := store.Get(context.Background(), "support", "52155")
+	if err != nil {
+		t.Fatalf("sender not persisted: %v", err)
+	}
+	if profile.DisplayName != "Ana" || !profile.FirstSeen.Equal(t0) {
+		t.Fatalf("profile = %#v", profile)
+	}
+	if len(store.chats) != 1 {
+		t.Fatalf("chats = %d, want 1", len(store.chats))
+	}
+	for _, chat := range store.chats {
+		if chat.SenderID != profile.ID {
+			t.Fatalf("chat sender_id = %d, want the profile %d", chat.SenderID, profile.ID)
+		}
+	}
+}
+
+func TestSenderNameFeedsTemplates(t *testing.T) {
+	actions := map[string]config.Action{
+		"greet": {Steps: []config.Step{{Message: &config.Message{
+			Body: config.Text{"hi {{sender.name}}"},
+		}}}},
+	}
+	graph := config.Graph{
+		Root:  "start",
+		Nodes: map[string]config.Node{"start": {OnEnter: []string{"greet"}}},
+	}
+	store := newMemStore()
+	ctx := context.Background()
+	// A profile learned earlier fills the name when the message has none.
+	if _, _, err := store.Upsert(ctx, "s", "52155", "Ana", t0); err != nil {
+		t.Fatalf("seed sender: %v", err)
+	}
+	eng := newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+	})
+	messages, err := eng.Handle(ctx, domain.IncomingMessage{
+		Bot: "b", Sender: "52155", Body: "hola", At: t0,
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(messages) != 1 || messages[0].Body != "hi Ana" {
+		t.Fatalf("messages = %#v, want the stored name", messages)
 	}
 }
 
@@ -501,7 +604,7 @@ func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *Engine {
 	store := newMemStore()
 	return newTestEngine(t, Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, HTTPClient: &http.Client{Transport: transport},
+		Store: store, Chats: store, Senders: store, HTTPClient: &http.Client{Transport: transport},
 	})
 }
 

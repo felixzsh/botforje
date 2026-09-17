@@ -24,14 +24,16 @@ const (
 
 // IncomingMessage is one inbound message. Sender is the resolved phone number
 // in plain digits (e.g. "5215500000000"); the JID and any LID stay inside the
-// channel adapter (ADR 0020).
+// channel adapter (ADR 0020). SenderName is the WhatsApp push name: best
+// effort, possibly empty, and never an identifier (ADR 0029).
 type IncomingMessage struct {
-	Bot     string
-	Sender  string
-	Body    string
-	ID      string
-	IsGroup bool
-	At      time.Time
+	Bot        string
+	Sender     string
+	SenderName string
+	Body       string
+	ID         string
+	IsGroup    bool
+	At         time.Time
 }
 
 // Location is a map pin sent as its own message.

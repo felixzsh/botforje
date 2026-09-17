@@ -387,12 +387,13 @@ func (a *Adapter) onMessage(event *events.Message) {
 	a.mu.Unlock()
 
 	message := domain.IncomingMessage{
-		Bot:     a.bot,
-		Sender:  sender,
-		Body:    body,
-		ID:      id,
-		IsGroup: event.Info.IsGroup,
-		At:      event.Info.Timestamp,
+		Bot:        a.bot,
+		Sender:     sender,
+		SenderName: event.Info.PushName,
+		Body:       body,
+		ID:         id,
+		IsGroup:    event.Info.IsGroup,
+		At:         event.Info.Timestamp,
 	}
 	select {
 	case a.incoming <- message:

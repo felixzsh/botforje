@@ -34,6 +34,10 @@ database becomes their source (ROADMAP Phase 15).
 
 - Bot — identity (account) plus settings, the reference to one graph, and an
   optional reference to one llm (ADR 0017).
+- Sender — the durable profile of one person who writes to bots in a scope:
+  phone, push name, and first/last seen, keyed by (scope, phone). The
+  bot-person thread is the chat; a person may write to several bots of the same
+  scope (ADR 0029).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0015), and a map of nodes.
 - Node — goal, policy, entry/exit actions, tools, and optional node-local
@@ -64,7 +68,8 @@ Inbound:
    the sender to a phone number; a message with no known phone number is
    dropped (ADR 0020).
 2. The fleet routes the event to the bot; the bot's filter drops it (groups,
-   allow/ignore lists) or passes it to the engine.
+   allow/ignore lists) or passes it to the engine, which upserts the sender
+   profile before routing (ADR 0029).
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -101,8 +106,8 @@ Outbound:
 ## Templates
 
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
-`{{sender.*}}`, `{{message.*}}`, `{{bot.*}}`, tool arguments as
-`{{input.<name>}}`, and request results as
+`{{sender.phone}}` and `{{sender.name}}`, `{{message.*}}`, `{{bot.*}}`, tool
+arguments as `{{input.<name>}}`, and request results as
 `{{node.<request-name>.resp.body.*}}`,
 `{{node.<request-name>.resp.headers.*}}`, `{{node.<request-name>.status}}`,
 and `{{node.<request-name>.duration}}`. Tool result syntax is still open
@@ -128,12 +133,12 @@ step (interval, timeout, success condition) is an open decision for Phase 4/8.
 ## Chats and sessions
 
 A chat is the durable thread with one sender, keyed by (scope, bot, sender);
-`sender` is the resolved phone number in plain digits (ADR 0020). It never
-ends and gathers every message. A session is one bounded run of the graph for
-a chat: it starts at the root and expires after the graph timeout (or
-`default_timeout`). An expired session is replaced by a new run; the next
-message starts at root. Chat, session, and message history live in SQLite
-(ADR 0026).
+`sender` is the resolved phone number in plain digits (ADR 0020) and the chat
+references its profile (ADR 0029). It never ends and gathers every message. A
+session is one bounded run of the graph for a chat: it starts at the root and
+expires after the graph timeout (or `default_timeout`). An expired session is
+replaced by a new run; the next message starts at root. Chat, session, and
+message history live in SQLite (ADR 0026).
 
 The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a

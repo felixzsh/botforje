@@ -2,7 +2,9 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -76,47 +78,94 @@ func (c *fakeChannel) wasDisconnected() bool {
 	return c.disconnected
 }
 
-// memStore is an in-memory ChatStore and SessionStore for fleet tests.
+// memStore is an in-memory SenderStore, ChatStore, and SessionStore for fleet
+// tests.
 type memStore struct {
-	mu       sync.Mutex
-	chats    map[string]*domain.Chat
-	sessions map[int64]*domain.Session
-	nextChat int64
-	nextSess int64
+	mu         sync.Mutex
+	senders    map[string]*domain.Sender
+	chats      map[string]*domain.Chat
+	sessions   map[int64]*domain.Session
+	nextSender int64
+	nextChat   int64
+	nextSess   int64
 }
 
 func newStore() *memStore {
-	return &memStore{chats: map[string]*domain.Chat{}, sessions: map[int64]*domain.Session{}}
+	return &memStore{
+		senders:  map[string]*domain.Sender{},
+		chats:    map[string]*domain.Chat{},
+		sessions: map[int64]*domain.Session{},
+	}
 }
 
-func sessionKey(scope, bot, sender string) string {
-	return scope + "\x00" + bot + "\x00" + sender
+func senderKey(scope, phone string) string { return scope + "\x00" + phone }
+
+func sessionKey(scope, bot string, senderID int64) string {
+	return scope + "\x00" + bot + "\x00" + strconv.FormatInt(senderID, 10)
+}
+
+func (s *memStore) Upsert(
+	_ context.Context, scope, phone, name string, at time.Time,
+) (*domain.Sender, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sender, ok := s.senders[senderKey(scope, phone)]; ok {
+		if name != "" && name != sender.DisplayName {
+			sender.DisplayName = name
+			sender.NameUpdatedAt = at
+		}
+		sender.LastSeen = at
+		return sender, false, nil
+	}
+	s.nextSender++
+	sender := &domain.Sender{
+		ID: s.nextSender, Scope: scope, Phone: phone, DisplayName: name,
+		FirstSeen: at, LastSeen: at,
+	}
+	if name != "" {
+		sender.NameUpdatedAt = at
+	}
+	s.senders[senderKey(scope, phone)] = sender
+	return sender, true, nil
+}
+
+func (s *memStore) Get(
+	_ context.Context, scope, phone string,
+) (*domain.Sender, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sender, ok := s.senders[senderKey(scope, phone)]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return sender, nil
 }
 
 func (s *memStore) Ensure(
-	_ context.Context, scope, bot, sender string, at time.Time,
+	_ context.Context, scope, bot string, senderID int64, at time.Time,
 ) (*domain.Chat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := sessionKey(scope, bot, sender)
+	key := sessionKey(scope, bot, senderID)
 	if chat, ok := s.chats[key]; ok {
 		return chat, nil
 	}
 	s.nextChat++
 	chat := &domain.Chat{
-		ID: s.nextChat, Scope: scope, Bot: bot, Sender: sender,
+		ID: s.nextChat, Scope: scope, Bot: bot, SenderID: senderID,
 		StartedAt: at, UpdatedAt: at,
 	}
 	s.chats[key] = chat
 	return chat, nil
 }
 
-func (s *memStore) Touch(_ context.Context, id int64, at time.Time) error {
+func (s *memStore) RecordMessage(_ context.Context, id int64, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, chat := range s.chats {
 		if chat.ID == id {
 			chat.UpdatedAt = at
+			chat.MessageCount++
 			return nil
 		}
 	}
@@ -167,6 +216,14 @@ func (s *memStore) Delete(_ context.Context, chatID int64) error {
 
 func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[string]*fakeChannel) {
 	t.Helper()
+	runner, channels, _ := buildFleetWithStore(t, blocking, log)
+	return runner, channels
+}
+
+func buildFleetWithStore(
+	t *testing.T, blocking string, log *slog.Logger,
+) (*Fleet, map[string]*fakeChannel, *memStore) {
+	t.Helper()
 	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
@@ -179,6 +236,7 @@ func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[st
 	runner, err := New(cfg, Options{
 		Store:          store,
 		Chats:          store,
+		Senders:        store,
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
@@ -195,7 +253,7 @@ func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[st
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	return runner, channels
+	return runner, channels, store
 }
 
 func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
@@ -209,9 +267,10 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 	var created []string
 	store := newStore()
 	runner, err := New(cfg, Options{
-		Store: store,
-		Chats: store,
-		Skip:  func(_, bot string) bool { return bot == "beta" },
+		Store:   store,
+		Chats:   store,
+		Senders: store,
+		Skip:    func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(spec BotSpec) (domain.MessageChannel, error) {
 			created = append(created, spec.Name)
 			return newFakeChannel(), nil
@@ -276,7 +335,7 @@ func TestTwoBotsAreIndependent(t *testing.T) {
 }
 
 func TestFilterDropsIgnoredSender(t *testing.T) {
-	runner, channels := buildFleet(t, "", nil)
+	runner, channels, store := buildFleetWithStore(t, "", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go runner.Run(ctx)
@@ -296,6 +355,12 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	}
 	if reply := receive(t, channels["beta"].sent); reply.Body != "hello from beta" {
 		t.Fatalf("beta reply = %q", reply.Body)
+	}
+	if _, err := store.Get(ctx, "dev", "999"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("an ignored sender was persisted: %v", err)
+	}
+	if _, err := store.Get(ctx, "dev", "1"); err != nil {
+		t.Fatalf("an allowed sender was not persisted: %v", err)
 	}
 }
 

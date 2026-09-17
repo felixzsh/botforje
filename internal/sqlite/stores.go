@@ -11,20 +11,95 @@ import (
 	"github.com/felixzsh/botflota/internal/domain"
 )
 
-// ChatStore persists the durable chat with each person (ADR 0026).
+// SenderStore persists the profile of each person who writes to a bot
+// (ADR 0029).
+type SenderStore struct{ db *sql.DB }
+
+const senderColumns = `id, scope, phone, display_name, name_updated_at, first_seen, last_seen`
+
+// Upsert creates the profile on first contact and updates it afterwards: it
+// always moves last_seen, and adopts a non-empty name, stamping
+// name_updated_at only when that name changes. The bool reports a new profile.
+func (s *SenderStore) Upsert(
+	ctx context.Context, scope, phone, name string, at time.Time,
+) (*domain.Sender, bool, error) {
+	nameAt := ""
+	if name != "" {
+		nameAt = formatTime(at)
+	}
+	result, err := s.db.ExecContext(ctx,
+		`INSERT INTO senders (scope, phone, display_name, name_updated_at,
+		 first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (scope, phone) DO NOTHING`,
+		scope, phone, name, nameAt, formatTime(at), formatTime(at))
+	if err != nil {
+		return nil, false, fmt.Errorf("sqlite: upsert sender: %w", err)
+	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return nil, false, fmt.Errorf("sqlite: upsert sender: %w", err)
+	}
+	created := inserted == 1
+	if !created {
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE senders SET
+			   last_seen = ?,
+			   display_name = CASE WHEN ? <> '' THEN ? ELSE display_name END,
+			   name_updated_at = CASE
+			     WHEN ? <> '' AND ? <> display_name THEN ?
+			     ELSE name_updated_at END
+			 WHERE scope = ? AND phone = ?`,
+			formatTime(at), name, name, name, name, nameAt, scope, phone)
+		if err != nil {
+			return nil, false, fmt.Errorf("sqlite: update sender: %w", err)
+		}
+	}
+	sender, err := s.Get(ctx, scope, phone)
+	if err != nil {
+		return nil, false, err
+	}
+	return sender, created, nil
+}
+
+// Get loads the profile for (scope, phone) or returns domain.ErrNotFound.
+func (s *SenderStore) Get(
+	ctx context.Context, scope, phone string,
+) (*domain.Sender, error) {
+	var (
+		sender                      domain.Sender
+		nameAt, firstSeen, lastSeen string
+	)
+	err := s.db.QueryRowContext(ctx,
+		"SELECT "+senderColumns+" FROM senders WHERE scope = ? AND phone = ?",
+		scope, phone).
+		Scan(&sender.ID, &sender.Scope, &sender.Phone, &sender.DisplayName,
+			&nameAt, &firstSeen, &lastSeen)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get sender: %w", err)
+	}
+	sender.NameUpdatedAt = parseTime(nameAt)
+	sender.FirstSeen = parseTime(firstSeen)
+	sender.LastSeen = parseTime(lastSeen)
+	return &sender, nil
+}
+
+// ChatStore persists the durable chat with each person (ADR 0026, ADR 0029).
 type ChatStore struct{ db *sql.DB }
 
-const chatColumns = `id, scope, bot, sender, started_at, updated_at, guards`
+const chatColumns = `id, scope, bot, sender_id, started_at, updated_at, message_count, guards`
 
 // Ensure returns the chat for (scope, bot, sender), creating it on first use.
 func (s *ChatStore) Ensure(
-	ctx context.Context, scope, bot, sender string, at time.Time,
+	ctx context.Context, scope, bot string, senderID int64, at time.Time,
 ) (*domain.Chat, error) {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO chats (scope, bot, sender, started_at, updated_at)
+		`INSERT INTO chats (scope, bot, sender_id, started_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT (scope, bot, sender) DO NOTHING`,
-		scope, bot, sender, formatTime(at), formatTime(at))
+		 ON CONFLICT (scope, bot, sender_id) DO NOTHING`,
+		scope, bot, senderID, formatTime(at), formatTime(at))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
 	}
@@ -35,9 +110,10 @@ func (s *ChatStore) Ensure(
 		guards    string
 	)
 	err = s.db.QueryRowContext(ctx,
-		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND sender = ?",
-		scope, bot, sender).
-		Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.Sender, &startedAt, &updatedAt, &guards)
+		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND sender_id = ?",
+		scope, bot, senderID).
+		Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.SenderID,
+			&startedAt, &updatedAt, &chat.MessageCount, &guards)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: get chat: %w", err)
 	}
@@ -49,12 +125,13 @@ func (s *ChatStore) Ensure(
 	return &chat, nil
 }
 
-// Touch updates the last-activity time of a chat.
-func (s *ChatStore) Touch(ctx context.Context, id int64, at time.Time) error {
+// RecordMessage updates a chat's last activity and adds one inbound message.
+func (s *ChatStore) RecordMessage(ctx context.Context, id int64, at time.Time) error {
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE chats SET updated_at = ? WHERE id = ?", formatTime(at), id)
+		"UPDATE chats SET updated_at = ?, message_count = message_count + 1 WHERE id = ?",
+		formatTime(at), id)
 	if err != nil {
-		return fmt.Errorf("sqlite: touch chat: %w", err)
+		return fmt.Errorf("sqlite: record message: %w", err)
 	}
 	return nil
 }

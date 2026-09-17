@@ -469,6 +469,7 @@ func textEvent(sender, id, body string) *events.Message {
 func TestOnMessageMapsAndDedups(t *testing.T) {
 	a := newTestAdapter()
 	event := textEvent("5215500000000", "ABC", "hello")
+	event.Info.PushName = "Ana"
 
 	a.onMessage(event)
 	a.onMessage(event) // redelivery
@@ -480,6 +481,9 @@ func TestOnMessageMapsAndDedups(t *testing.T) {
 		}
 		if message.Sender != "5215500000000" {
 			t.Fatalf("sender = %q, want the plain phone number", message.Sender)
+		}
+		if message.SenderName != "Ana" {
+			t.Fatalf("sender name = %q, want the push name", message.SenderName)
 		}
 	default:
 		t.Fatal("no message was delivered")

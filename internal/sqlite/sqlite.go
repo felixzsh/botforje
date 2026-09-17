@@ -15,17 +15,29 @@ import (
 // it is edited in place and the development database is recreated with
 // `make dev-reset`; versioned, append-only migrations start at the first
 // release (ADR 0006). The chat, session, and message shapes are in ADR 0026;
-// the chat's guard state is in ADR 0027.
+// the chat's guard state is in ADR 0027; the sender profile is in ADR 0029.
 var schema = []string{
+	`CREATE TABLE IF NOT EXISTS senders (
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		scope           TEXT NOT NULL,
+		phone           TEXT NOT NULL,
+		display_name    TEXT NOT NULL DEFAULT '',
+		name_updated_at TEXT NOT NULL DEFAULT '',
+		first_seen      TEXT NOT NULL,
+		last_seen       TEXT NOT NULL,
+		UNIQUE (scope, phone)
+	)`,
 	`CREATE TABLE IF NOT EXISTS chats (
-		id         INTEGER PRIMARY KEY AUTOINCREMENT,
-		scope      TEXT NOT NULL,
-		bot        TEXT NOT NULL,
-		sender     TEXT NOT NULL,
-		started_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
-		guards     TEXT NOT NULL DEFAULT '{}',
-		UNIQUE (scope, bot, sender)
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		scope         TEXT NOT NULL,
+		bot           TEXT NOT NULL,
+		sender_id     INTEGER NOT NULL
+			REFERENCES senders (id),
+		started_at    TEXT NOT NULL,
+		updated_at    TEXT NOT NULL,
+		message_count INTEGER NOT NULL DEFAULT 0,
+		guards        TEXT NOT NULL DEFAULT '{}',
+		UNIQUE (scope, bot, sender_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +112,9 @@ func Open(path string) (*DB, error) {
 
 // Chats returns the chat repository.
 func (d *DB) Chats() *ChatStore { return &ChatStore{db: d.DB} }
+
+// Senders returns the sender-profile repository.
+func (d *DB) Senders() *SenderStore { return &SenderStore{db: d.DB} }
 
 // Sessions returns the session repository.
 func (d *DB) Sessions() *SessionStore { return &SessionStore{db: d.DB} }

@@ -25,8 +25,10 @@ Three concepts, three tables:
 
 Schema (`internal/sqlite`):
 
-- `chats (id, scope, bot, sender, started_at, updated_at, guards)`, unique
-  `(scope, bot, sender)`; `guards` is the per-action guard state (ADR 0027).
+- `chats (id, scope, bot, sender_id -> senders, started_at, updated_at,
+  message_count, guards)`, unique `(scope, bot, sender_id)`; `guards` is the
+  per-action guard state (ADR 0027); `sender_id` and the `senders` table come
+  from ADR 0029.
 - `sessions (id, chat_id -> chats, node, visited_nodes, graph_context,
   node_context, created_at, updated_at, expires_at)`; the newest row per chat
   is the active state.

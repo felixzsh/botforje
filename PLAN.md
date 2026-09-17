@@ -219,6 +219,10 @@ Deliverables:
   through the actor, and list or tail one chat with
   `message list|tail <bot> <sender> [--limit n] [--follow]`. Only live traffic
   is recorded; the history-sync backlog stays out of scope.
+- [x] Sender profiles: record each sender's push name and first/last seen from
+  the first allowed message, keyed by (scope, phone) and shared by the scope's
+  bots (ADR 0029). `chats.message_count` counts inbound messages until message
+  history is recorded.
 - [ ] Signals: SIGINT/SIGTERM graceful shutdown; `fleet stop` signals the
   running fleet, `fleet reload` (SIGHUP) reloads config, and `fleet restart`
   does a full restart.
