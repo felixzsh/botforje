@@ -151,6 +151,15 @@ scopes:
           - message:
               body: "Thanks! We created lead {{node.lead-capture.resp.body.id}}."
 
+      # Send to a different recipient: `to` is a phone number or a template,
+      # and empty means the sender. Here the operator is notified on WhatsApp
+      # instead of the customer.
+      notify-owner:
+        steps:
+          - message:
+              to: "{{graph.owner_phone}}"
+              body: "New request from {{sender.name}} ({{sender.phone}}): {{message.body}}"
+
       # Guarded action: a sender cannot trigger it twice within the cooldown,
       # nor more than 3 times per hour.
       escalate:
@@ -239,6 +248,7 @@ scopes:
         initial_context:              # Persists across nodes for the session
           customer_name: ""
           visit_count: 0
+          owner_phone: ""             # Recipient for notify-owner; set per bot
 
         nodes:
           menu:
@@ -316,7 +326,7 @@ scopes:
 
           lead:
             goal: "capture the lead"
-            on_enter: ["lead-notify"]
+            on_enter: ["lead-notify", "notify-owner"]
             edges:
               - intent: "wants the menu"
                 triggers: ["menu", "back"]

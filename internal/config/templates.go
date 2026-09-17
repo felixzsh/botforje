@@ -28,6 +28,7 @@ func templateSites(a Action) []templateSite {
 				for j, variant := range step.Message.Body {
 					add(fmt.Sprintf("%s message body %d", where, j), variant)
 				}
+				add(where+" message to", step.Message.To)
 			}
 			if step.Request != nil {
 				add(where+" request url", step.Request.URL)

@@ -1,0 +1,24 @@
+version: 1
+scopes:
+  support:
+    actions:
+      notify:
+        steps:
+          - message:
+              to: "{{graph.owner_phone}}"
+              body: "New message from {{sender.name}}"
+      copy:
+        steps:
+          - message:
+              to: "5215500099999"
+              body: "Literal recipient."
+    graphs:
+      faq:
+        root: "start"
+        initial_context:
+          owner_phone: "5215500000000"
+        nodes:
+          start:
+            goal: "reach the operator"
+            on_enter: ["notify", "copy"]
+            edges: []

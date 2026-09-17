@@ -55,6 +55,7 @@ var invalidFixtures = []fixtureCase{
 	{"bad_template_root.yml", "unknown root"},
 	{"undeclared_template_var.yml", "not declared in initial_context"},
 	{"undeclared_template_input.yml", "input"},
+	{"undeclared_to_var.yml", "not declared in initial_context"},
 }
 
 func TestInvalidFixtures(t *testing.T) {

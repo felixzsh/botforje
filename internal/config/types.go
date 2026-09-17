@@ -175,11 +175,14 @@ type Step struct {
 	Location *Location `yaml:"location" json:"location,omitempty"`
 }
 
-// Message is a reply: deterministic, LLM-realized, or anchored (ADR 0003).
+// Message is a reply: deterministic, LLM-realized, or anchored (ADR 0003). To
+// is an optional recipient override, a phone number or a template; empty means
+// the sender.
 type Message struct {
 	Body   Text   `yaml:"body" json:"body,omitempty"`
 	Intent string `yaml:"intent" json:"intent,omitempty"`
 	Policy string `yaml:"policy" json:"policy,omitempty"`
+	To     string `yaml:"to" json:"to,omitempty"`
 }
 
 // Request is an HTTP call whose result is addressable by Name.

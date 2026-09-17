@@ -488,6 +488,87 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 	}
 }
 
+func TestMessageToOverridesRecipient(t *testing.T) {
+	actions := map[string]config.Action{
+		"notify": {Steps: []config.Step{{Message: &config.Message{
+			To:   "5215500099999",
+			Body: config.Text{"lead from {{sender.phone}}"},
+		}}}},
+	}
+	graph := config.Graph{
+		Root:  "start",
+		Nodes: map[string]config.Node{"start": {OnEnter: []string{"notify"}}},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+	})
+	messages, err := eng.Handle(context.Background(), domain.IncomingMessage{
+		Bot: "b", Sender: "5215500000000", Body: "hola", At: t0,
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v, want one", messages)
+	}
+	if messages[0].Recipient != "5215500099999" {
+		t.Fatalf("recipient = %q, want the override", messages[0].Recipient)
+	}
+	if messages[0].Body != "lead from 5215500000000" {
+		t.Fatalf("body = %q", messages[0].Body)
+	}
+}
+
+func TestMessageRecipientDefaultsToSender(t *testing.T) {
+	actions := map[string]config.Action{
+		"greet": {Steps: []config.Step{{Message: &config.Message{
+			Body: config.Text{"hi"},
+		}}}},
+	}
+	graph := config.Graph{
+		Root:  "start",
+		Nodes: map[string]config.Node{"start": {OnEnter: []string{"greet"}}},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+	})
+	messages, err := eng.Handle(context.Background(), domain.IncomingMessage{
+		Bot: "b", Sender: "5215500000000", Body: "hola", At: t0,
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(messages) != 1 || messages[0].Recipient != "5215500000000" {
+		t.Fatalf("messages = %#v, want the sender as recipient", messages)
+	}
+}
+
+func TestMessageToResolvingEmptyFails(t *testing.T) {
+	actions := map[string]config.Action{
+		"notify": {Steps: []config.Step{{Message: &config.Message{
+			To:   "{{graph.owner_phone}}",
+			Body: config.Text{"hi"},
+		}}}},
+	}
+	graph := config.Graph{
+		Root:           "start",
+		InitialContext: map[string]any{"owner_phone": ""},
+		Nodes:          map[string]config.Node{"start": {OnEnter: []string{"notify"}}},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+	})
+	_, err := eng.Handle(context.Background(), domain.IncomingMessage{
+		Bot: "b", Sender: "52155", Body: "hola", At: t0,
+	})
+	if err == nil || !strings.Contains(err.Error(), "resolved empty") {
+		t.Fatalf("error = %v, want a resolved-empty recipient error", err)
+	}
+}
+
 func TestLocationStep(t *testing.T) {
 	actions := map[string]config.Action{
 		"office": {Steps: []config.Step{{Location: &config.Location{

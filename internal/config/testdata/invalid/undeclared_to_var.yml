@@ -1,0 +1,16 @@
+version: 1
+scopes:
+  default:
+    actions:
+      notify:
+        steps:
+          - message:
+              to: "{{graph.missing}}"
+              body: "hi"
+    graphs:
+      g:
+        root: "start"
+        nodes:
+          start:
+            on_enter: ["notify"]
+            edges: []

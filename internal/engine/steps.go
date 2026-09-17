@@ -38,8 +38,21 @@ func (r *run) steps(steps []config.Step, where string) error {
 
 // message renders a reply (ADR 0003). The body is the deterministic text and
 // the fallback; the intent asks the LLM to realize it. With no provider, an
-// anchored message keeps the body and an intent-only message fails.
+// anchored message keeps the body and an intent-only message fails. An
+// optional To overrides the recipient; a To that resolves empty is an error,
+// never a silent reply to the sender.
 func (r *run) message(m config.Message) error {
+	recipient := r.msg.Sender
+	if m.To != "" {
+		rendered, err := template.Render(m.To, r.tctx)
+		if err != nil {
+			return err
+		}
+		if rendered == "" {
+			return fmt.Errorf("message recipient %q resolved empty", m.To)
+		}
+		recipient = rendered
+	}
 	body := r.pickVariant(m.Body)
 	if body != "" {
 		rendered, err := template.Render(body, r.tctx)
@@ -67,7 +80,7 @@ func (r *run) message(m config.Message) error {
 	}
 	r.out = append(r.out, domain.OutgoingMessage{
 		Bot:       r.engine.bot,
-		Recipient: r.msg.Sender,
+		Recipient: recipient,
 		Body:      body,
 		Kind:      domain.KindText,
 	})

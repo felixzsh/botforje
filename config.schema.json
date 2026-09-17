@@ -327,6 +327,9 @@
         },
         "policy": {
           "type": "string"
+        },
+        "to": {
+          "type": "string"
         }
       },
       "additionalProperties": false,
