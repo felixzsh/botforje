@@ -229,6 +229,16 @@ Deliverables:
 - [ ] Bot service: move what the CLI and the API share out of `cmd/` (pairing
   pre-checks, scope disambiguation, bot status) into a package, so the API
   does not reimplement it.
+- [ ] Pairing methods: keep the QR and add the eight-digit pairing code, so an
+  account whose passkey step happens on the phone can link without another
+  client; a pending step is a reported state, never a wait until the code
+  expires (ADR 0028).
+- [ ] Pairing session in the API: start, cancel, and status per bot, carrying the
+  method, the payload (QR or code), the state, and the expiry, so a UI can drive
+  onboarding without shell access.
+- [ ] Account states beyond pairing: a connection rejected with 428 (passkey
+  required) or 463 (reachout timelock) stops the bot and is visible in
+  `bot list` (ADR 0028).
 - [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
   the future UI. Resolve one principal per request behind a single seam and
   keep routes scope-addressed, so the scoped authority of Phase 13 replaces
@@ -284,7 +294,8 @@ Deliverables:
   step.
 - [ ] Operational notes: systemd unit, backup of SQLite and the device store,
   and account-safety practices (warmup for new accounts, no bulk outreach,
-  human fallback when a bot is restricted) (ADR 0011).
+  human fallback when a bot is restricted) (ADR 0011). Document that accounts
+  requiring a passkey on every connection cannot be automated (ADR 0028).
 - [ ] Log and error review: actionable messages, no secrets in logs.
 - [ ] Documentation pass: README, scope, and architecture match the code.
 - [ ] Schema baseline: freeze the current schema as migration 1 and add the

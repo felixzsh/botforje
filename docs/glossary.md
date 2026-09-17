@@ -63,3 +63,12 @@
   runtime context; a missing path is an error (ADR 0018).
 - Runtime context — the values a template reads: graph and node variables,
   sender, message, bot, tool inputs, and request results (ADR 0018).
+- Device store — the whatsmeow state that keeps a companion device linked: its
+  identity keys, prekeys, registration, and LID map. It lives in SQLite, so a bot
+  can run on a server (ADR 0006, ADR 0028).
+- Passkey — a WebAuthn credential bound to one device; WhatsApp may require it to
+  link a companion or to open a connection (ADR 0028).
+- Pairing code — the eight-digit code a phone types in WhatsApp to link a
+  companion without a QR code (ADR 0028).
+- Shortcake — Meta's internal name for the passkey companion-linking flow
+  (ADR 0028).

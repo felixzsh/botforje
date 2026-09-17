@@ -139,6 +139,20 @@ The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
 
+## Pairing
+
+Linking a bot to WhatsApp is a separate step from running it: `bot pair` opens a
+channel, shows the QR code or the pairing code, and stores the resulting
+credentials in the shared SQLite file (ADR 0006). Two key systems are involved,
+and only one is software: the companion identity (Noise and Signal keys, prekeys,
+registration id) lives in the device store and can run on a server, while a
+passkey lives in an authenticator on the account owner's device and never leaves
+it (ADR 0028).
+
+When the server requires a passkey, the phone performs the ceremony and the
+companion receives the handoff; if the server asks the companion instead, the
+pending step is reported and the bot stays stopped (ADR 0028).
+
 ## Concurrency
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
@@ -152,8 +166,9 @@ configured maximum.
   backpressure.
 - No shared mutable state between bots; shared services are read-only or
   synchronized.
-- Reconnect uses capped exponential backoff with jitter; a bot that is
-  logged out or banned stops and reports instead of retrying (ADR 0011).
+- Reconnect uses capped exponential backoff with jitter; a bot that is logged
+  out, banned, or rejected with 428 (passkey required) or 463 (reachout
+  timelock) stops and reports instead of retrying (ADR 0011, ADR 0028).
 - A fleet supervisor starts, stops, and reports bot actors.
 
 ## Logging

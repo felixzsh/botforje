@@ -51,6 +51,9 @@ These shape every phase and become ADRs when the phase that owns them starts.
   Node runtime in production.
 - Behavior stays in YAML until Phase 15 moves it to the database. Until then
   the UI is a client of the API, never a second source of truth.
+- A passkey or a browser session is never imported: the companion identity lives
+  in the device store and runs on a server, while every passkey ceremony happens
+  on the account owner's device (ADR 0028).
 
 ## Phases
 
@@ -67,6 +70,8 @@ Deliverables:
   the same routes gain pagination, filters, and the live stream.
 - [ ] Bot identity is `(scope, bot)` everywhere it travels: parameters,
   events, audit entries, and logs never carry a bare bot name.
+- [ ] Pairing sessions (Phase 7) stream their state changes like any other
+  event, so a dashboard follows onboarding without polling.
 - [ ] Reads a dashboard needs: bots with connection state, uptime, and outbox
   depth; sessions with visited nodes; chats with the last message; messages
   with pagination and search.
@@ -263,6 +268,8 @@ Deliverables:
 
 - [ ] Opt-in history ingestion: request and store the history WhatsApp offers
   for a newly paired account, in the scope's own tables; off by default.
+  Accounts served through the Cloud API are out of this phase: that channel
+  exposes no history sync (ADR 0028).
 - [ ] Retention and privacy: per-scope retention window, purge, and export;
   analysis runs on stored history and clearly states what leaves the instance
   when the configured provider requires it.
@@ -315,7 +322,8 @@ Goal: more channels and more tenants than one process should carry.
 Deliverables:
 
 - [ ] WhatsApp Cloud API channel behind `MessageChannel`, for accounts that
-  prefer the official path; onboarding and pricing differ, the graph does not.
+  prefer the official path and for accounts the unofficial path cannot serve
+  (ADR 0028); onboarding and pricing differ, the graph does not.
 - [ ] Telegram channel, the cheapest proof that the port is provider agnostic
   and the dashboard is not WhatsApp-specific.
 - [ ] Instance sharding: several instances, one identity each, and documented
