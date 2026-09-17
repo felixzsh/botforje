@@ -5,7 +5,6 @@ package whatsapp
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,7 +14,6 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
-	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
@@ -45,11 +43,12 @@ type Settings struct {
 	Jitter time.Duration
 }
 
-// Options configures an Adapter. Bot, Scope, DB, and Accounts are required.
+// Options configures an Adapter. Bot, Scope, Devices, and Accounts are
+// required.
 type Options struct {
 	Scope    string
 	Bot      string
-	DB       *sql.DB
+	Devices  *Devices
 	Accounts domain.AccountStore
 	Settings Settings
 	Log      *slog.Logger
@@ -70,18 +69,18 @@ type Options struct {
 // Adapter is the whatsmeow implementation of domain.MessageChannel for one
 // bot. Create it with New, then Connect.
 type Adapter struct {
-	scope     string
-	bot       string
-	accounts  domain.AccountStore
-	container *sqlstore.Container
-	settings  Settings
-	log       *slog.Logger
-	waLogger  walog.Logger
-	backoff   *Backoff
-	now       func() time.Time
-	rnd       *rand.Rand
-	sleep     func(ctx context.Context, d time.Duration) error
-	onState   func(State)
+	scope    string
+	bot      string
+	accounts domain.AccountStore
+	devices  *Devices
+	settings Settings
+	log      *slog.Logger
+	waLogger walog.Logger
+	backoff  *Backoff
+	now      func() time.Time
+	rnd      *rand.Rand
+	sleep    func(ctx context.Context, d time.Duration) error
+	onState  func(State)
 
 	incoming chan domain.IncomingMessage
 
@@ -103,10 +102,10 @@ type lastInbound struct {
 	sender types.JID
 }
 
-// New builds the adapter and its device store on the shared connection.
+// New builds the adapter on the shared device store.
 func New(opts Options) (*Adapter, error) {
-	if opts.DB == nil {
-		return nil, errors.New("whatsapp: no database")
+	if opts.Devices == nil {
+		return nil, errors.New("whatsapp: no device store")
 	}
 	var (
 		log   = opts.Log
@@ -131,6 +130,7 @@ func New(opts Options) (*Adapter, error) {
 		scope:     opts.Scope,
 		bot:       opts.Bot,
 		accounts:  opts.Accounts,
+		devices:   opts.Devices,
 		settings:  opts.Settings,
 		log:       log,
 		waLogger:  waLogger,
@@ -147,10 +147,6 @@ func New(opts Options) (*Adapter, error) {
 		stop:      make(chan struct{}),
 		stopped:   make(chan struct{}),
 	}
-	a.container = sqlstore.NewWithDB(opts.DB, "sqlite", a.waLogger)
-	if err := a.container.Upgrade(context.Background()); err != nil {
-		return nil, fmt.Errorf("whatsapp: device store: %w", err)
-	}
 	go a.loop()
 	return a, nil
 }
@@ -161,13 +157,9 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("whatsapp: bot %q is not paired (use bot pair): %w", a.bot, err)
 	}
-	jid, err := types.ParseJID(account.JID)
+	device, err := a.devices.device(ctx, account)
 	if err != nil {
-		return fmt.Errorf("whatsapp: stored account %s: %w", Number(account.JID), err)
-	}
-	device, err := a.container.GetDevice(ctx, jid)
-	if err != nil {
-		return fmt.Errorf("whatsapp: load device %s: %w", Number(account.JID), err)
+		return err
 	}
 	if device == nil {
 		if err := a.updatePairingStatus(domain.PairingUnpaired); err != nil {

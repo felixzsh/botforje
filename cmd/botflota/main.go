@@ -3,14 +3,18 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/internal/logging"
 	"github.com/felixzsh/botflota/internal/sqlite"
+	"github.com/felixzsh/botflota/internal/whatsapp"
 )
 
 func main() {
@@ -152,6 +156,17 @@ func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
 		return nil, err
 	}
 	return sqlite.Open(filepath.Join(dir, "botflota.db"))
+}
+
+// openDevices opens the whatsmeow device store that a command's pairing
+// operations share. A nil logger keeps its output quiet.
+func openDevices(
+	ctx context.Context, db *sqlite.DB, log *slog.Logger,
+) (*whatsapp.Devices, error) {
+	if log == nil {
+		log = logging.Discard()
+	}
+	return whatsapp.OpenDevices(ctx, db.DB, log)
 }
 
 func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {

@@ -5,21 +5,86 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
-	walog "go.mau.fi/whatsmeow/util/log"
 
 	"github.com/felixzsh/botflota/internal/domain"
+	"github.com/felixzsh/botflota/internal/logging"
 )
+
+// Devices is the whatsmeow device store on Botflota's shared SQLite connection
+// (ADR 0006). Open it once per process and pass it to every pairing operation
+// and channel, so the container is built and upgraded once.
+type Devices struct {
+	container *sqlstore.Container
+}
+
+// OpenDevices opens and upgrades the device store. A nil logger keeps its
+// output quiet.
+func OpenDevices(ctx context.Context, db *sql.DB, log *slog.Logger) (*Devices, error) {
+	if db == nil {
+		return nil, errors.New("whatsapp: no database")
+	}
+	if log == nil {
+		log = logging.Discard()
+	}
+	devices := &Devices{
+		container: sqlstore.NewWithDB(db, "sqlite", newWaLog(log, slog.LevelInfo)),
+	}
+	if err := devices.container.Upgrade(ctx); err != nil {
+		return nil, fmt.Errorf("whatsapp: device store: %w", err)
+	}
+	return devices, nil
+}
+
+// device returns the stored device of an account, or nil when it is missing.
+func (d *Devices) device(
+	ctx context.Context, account *domain.Account,
+) (*store.Device, error) {
+	jid, err := types.ParseJID(account.JID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"whatsapp: bot %q (scope %q) has an invalid stored pairing",
+			account.Bot, account.Scope,
+		)
+	}
+	device, err := d.container.GetDevice(ctx, jid)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"whatsapp: load device for bot %q (scope %q): %w",
+			account.Bot, account.Scope, err,
+		)
+	}
+	return device, nil
+}
+
+// delete removes an account's local credentials; a missing device is fine.
+func (d *Devices) delete(ctx context.Context, account *domain.Account) error {
+	device, err := d.device(ctx, account)
+	if err != nil {
+		return err
+	}
+	if device == nil {
+		return nil
+	}
+	if err := device.Delete(ctx); err != nil {
+		return fmt.Errorf("whatsapp: delete device: %w", err)
+	}
+	return nil
+}
+
+// newDevice builds an unpaired device for the QR login.
+func (d *Devices) newDevice() *store.Device { return d.container.NewDevice() }
 
 // UnpairOptions configures removal of one bot's local pairing.
 type UnpairOptions struct {
 	Scope    string
 	Bot      string
-	DB       *sql.DB
+	Devices  *Devices
 	Accounts domain.AccountStore
 }
 
@@ -46,10 +111,10 @@ func ValidateAccountOwners(ctx context.Context, accounts domain.AccountStore) er
 // ValidateAccounts checks stored ownership and local whatsmeow credentials.
 // Missing local credentials are recoverable and do not abort validation.
 func ValidateAccounts(
-	ctx context.Context, db *sql.DB, accounts domain.AccountStore,
+	ctx context.Context, devices *Devices, accounts domain.AccountStore,
 ) error {
-	if db == nil {
-		return errors.New("whatsapp: no database")
+	if devices == nil {
+		return errors.New("whatsapp: no device store")
 	}
 	if err := ValidateAccountOwners(ctx, accounts); err != nil {
 		return err
@@ -58,12 +123,8 @@ func ValidateAccounts(
 	if err != nil {
 		return fmt.Errorf("whatsapp: list paired accounts: %w", err)
 	}
-	container := sqlstore.NewWithDB(db, "sqlite", walog.Noop)
-	if err := container.Upgrade(ctx); err != nil {
-		return fmt.Errorf("whatsapp: device store: %w", err)
-	}
 	for i := range all {
-		device, err := localDevice(ctx, container, &all[i])
+		device, err := devices.device(ctx, &all[i])
 		if err != nil {
 			return err
 		}
@@ -82,12 +143,12 @@ func ValidateAccounts(
 // states; other database and pairing errors are returned.
 func CheckPairing(
 	ctx context.Context,
-	db *sql.DB,
+	devices *Devices,
 	accounts domain.AccountStore,
 	scope, bot string,
 ) (domain.PairingState, error) {
-	if db == nil {
-		return "", errors.New("whatsapp: no database")
+	if devices == nil {
+		return "", errors.New("whatsapp: no device store")
 	}
 	account, err := accounts.Get(ctx, scope, bot)
 	switch {
@@ -100,7 +161,7 @@ func CheckPairing(
 	case err != nil:
 		return "", fmt.Errorf("whatsapp: get pairing for bot %q: %w", bot, err)
 	}
-	ready, err := HasLocalDevice(ctx, db, account)
+	ready, err := HasLocalDevice(ctx, devices, account)
 	if err != nil {
 		return "", err
 	}
@@ -116,16 +177,12 @@ func CheckPairing(
 
 // HasLocalDevice reports whether an account has matching local credentials.
 func HasLocalDevice(
-	ctx context.Context, db *sql.DB, account *domain.Account,
+	ctx context.Context, devices *Devices, account *domain.Account,
 ) (bool, error) {
-	if db == nil {
-		return false, errors.New("whatsapp: no database")
+	if devices == nil {
+		return false, errors.New("whatsapp: no device store")
 	}
-	container := sqlstore.NewWithDB(db, "sqlite", walog.Noop)
-	if err := container.Upgrade(ctx); err != nil {
-		return false, fmt.Errorf("whatsapp: device store: %w", err)
-	}
-	device, err := localDevice(ctx, container, account)
+	device, err := devices.device(ctx, account)
 	if err != nil {
 		return false, err
 	}
@@ -135,8 +192,8 @@ func HasLocalDevice(
 // Unpair removes local credentials and the account record. It does not unlink
 // the companion from WhatsApp; remove that old device from the phone if needed.
 func Unpair(ctx context.Context, opts UnpairOptions) error {
-	if opts.DB == nil {
-		return errors.New("whatsapp: no database")
+	if opts.Devices == nil {
+		return errors.New("whatsapp: no device store")
 	}
 	account, err := opts.Accounts.Get(ctx, opts.Scope, opts.Bot)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -145,31 +202,7 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if err != nil {
 		return err
 	}
-	container := sqlstore.NewWithDB(opts.DB, "sqlite", walog.Noop)
-	if err := container.Upgrade(ctx); err != nil {
-		return fmt.Errorf("whatsapp: device store: %w", err)
-	}
-	return removePairing(ctx, container, opts.Accounts, account, pairingNow(nil))
-}
-
-func localDevice(
-	ctx context.Context, container *sqlstore.Container, account *domain.Account,
-) (*store.Device, error) {
-	jid, err := types.ParseJID(account.JID)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"whatsapp: bot %q (scope %q) has an invalid stored pairing",
-			account.Bot, account.Scope,
-		)
-	}
-	device, err := container.GetDevice(ctx, jid)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"whatsapp: load device for bot %q (scope %q): %w",
-			account.Bot, account.Scope, err,
-		)
-	}
-	return device, nil
+	return removePairing(ctx, opts.Devices, opts.Accounts, account, pairingNow(nil))
 }
 
 func ensurePhoneAvailable(

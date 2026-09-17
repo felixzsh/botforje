@@ -139,6 +139,9 @@ func (e *Engine) Handle(
 	if err := e.store.Save(ctx, session); err != nil {
 		return nil, err
 	}
+	if err := e.chats.Touch(ctx, chat.ID, now); err != nil {
+		return nil, err
+	}
 	if r.guardsDirty {
 		if err := e.chats.SaveGuards(ctx, chat.ID, chat.Guards); err != nil {
 			return nil, err

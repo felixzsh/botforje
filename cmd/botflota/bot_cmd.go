@@ -85,11 +85,16 @@ func runPair(args []string) int {
 		return 1
 	}
 	defer db.Close()
+	devices, err := openDevices(context.Background(), db, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 
 	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
 		Scope:    scopeName,
 		Bot:      name,
-		DB:       db.DB,
+		Devices:  devices,
 		Accounts: db.Accounts(),
 		Force:    *cmd.force,
 	})
@@ -127,8 +132,13 @@ func runUnpair(args []string) int {
 		return 1
 	}
 	defer db.Close()
+	devices, err := openDevices(context.Background(), db, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if err := whatsapp.Unpair(context.Background(), whatsapp.UnpairOptions{
-		Scope: scopeName, Bot: name, DB: db.DB, Accounts: db.Accounts(),
+		Scope: scopeName, Bot: name, Devices: devices, Accounts: db.Accounts(),
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -158,6 +168,11 @@ func runBotList(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	devices, err := openDevices(ctx, db, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
 		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
@@ -171,7 +186,7 @@ func runBotList(args []string) int {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			default:
-				ready, err := whatsapp.HasLocalDevice(ctx, db.DB, account)
+				ready, err := whatsapp.HasLocalDevice(ctx, devices, account)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					return 1

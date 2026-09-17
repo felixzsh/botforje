@@ -14,10 +14,8 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waE2E"
-	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-	walog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/felixzsh/botflota/internal/domain"
@@ -161,12 +159,12 @@ func TestClearPairing(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	container := sqlstore.NewWithDB(db.DB, "sqlite", walog.Noop)
-	if err := container.Upgrade(ctx); err != nil {
+	devices, err := OpenDevices(ctx, db.DB, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 	jid := types.NewADJID("5215500000000", 0, 1)
-	device := container.NewDevice()
+	device := devices.newDevice()
 	device.ID = &jid
 	device.Account = &waAdv.ADVSignedDeviceIdentity{
 		Details:             []byte{},
@@ -182,10 +180,10 @@ func TestClearPairing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := removePairing(ctx, container, db.Accounts(), account, t0); err != nil {
+	if err := removePairing(ctx, devices, db.Accounts(), account, t0); err != nil {
 		t.Fatal(err)
 	}
-	got, err := container.GetDevice(ctx, jid)
+	got, err := devices.device(ctx, account)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,15 +229,15 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
-	container := sqlstore.NewWithDB(db.DB, "sqlite", walog.Noop)
-	if err := container.Upgrade(ctx); err != nil {
+	devices, err := OpenDevices(ctx, db.DB, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 	a := &Adapter{
-		scope: "dev", bot: "botsito", accounts: db.Accounts(), container: container,
+		scope: "dev", bot: "botsito", accounts: db.Accounts(), devices: devices,
 		log: logging.Discard(),
 	}
-	err := a.Connect(ctx)
+	err = a.Connect(ctx)
 	if err == nil || !strings.Contains(err.Error(), "no local device credentials") {
 		t.Fatalf("Connect error = %v, want missing-device error", err)
 	}
@@ -254,7 +252,11 @@ func TestValidateAccountsAllowsMissingDevice(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateAccounts(ctx, db.DB, db.Accounts()); err != nil {
+	devices, err := OpenDevices(ctx, db.DB, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateAccounts(ctx, devices, db.Accounts()); err != nil {
 		t.Fatalf("ValidateAccounts: %v", err)
 	}
 	status, err := db.Accounts().GetPairingStatus(ctx, account.Scope, account.Bot)
@@ -290,7 +292,11 @@ func TestCheckPairingAllowsRecoverableStates(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			state, err := CheckPairing(ctx, db.DB, db.Accounts(), "dev", "botsito")
+			devices, err := OpenDevices(ctx, db.DB, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state, err := CheckPairing(ctx, devices, db.Accounts(), "dev", "botsito")
 			if err != nil {
 				t.Fatalf("CheckPairing: %v", err)
 			}
@@ -310,8 +316,13 @@ func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 	if err := db.Accounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
+	devices, err := OpenDevices(ctx, db.DB, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := Unpair(ctx, UnpairOptions{
-		Scope: account.Scope, Bot: account.Bot, DB: db.DB, Accounts: db.Accounts(),
+		Scope: account.Scope, Bot: account.Bot, Devices: devices,
+		Accounts: db.Accounts(),
 	}); err != nil {
 		t.Fatal(err)
 	}

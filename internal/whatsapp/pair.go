@@ -2,7 +2,6 @@ package whatsapp
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 	"github.com/mdp/qrterminal"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
-	"go.mau.fi/whatsmeow/store/sqlstore"
 	walog "go.mau.fi/whatsmeow/util/log"
 
 	"github.com/felixzsh/botflota/internal/domain"
@@ -22,7 +20,7 @@ import (
 type PairOptions struct {
 	Scope    string
 	Bot      string
-	DB       *sql.DB
+	Devices  *Devices
 	Accounts domain.AccountStore
 	Logger   walog.Logger
 	Force    bool // discard the existing local pairing before starting QR login
@@ -38,6 +36,9 @@ type PairOptions struct {
 // sessions that WhatsApp resets are retried with a new code until the context
 // is canceled or a non-retryable error occurs.
 func Pair(ctx context.Context, opts PairOptions) (string, error) {
+	if opts.Devices == nil {
+		return "", errors.New("whatsapp: no device store")
+	}
 	if err := ValidateAccountOwners(ctx, opts.Accounts); err != nil {
 		return "", err
 	}
@@ -66,18 +67,14 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	// WhatsApp shows this value as the linked-device name. It is sent only
 	// while registering a new device; existing links keep their old name.
 	store.SetOSInfo("Botflota", [3]uint32{0, 1, 0})
-	container := sqlstore.NewWithDB(opts.DB, "sqlite", logger)
-	if err := container.Upgrade(ctx); err != nil {
-		return "", fmt.Errorf("whatsapp: device store: %w", err)
-	}
 	if account != nil {
-		if err := removePairing(ctx, container, opts.Accounts, account,
+		if err := removePairing(ctx, opts.Devices, opts.Accounts, account,
 			pairingNow(opts.Now)); err != nil {
 			return "", err
 		}
 	}
 	for {
-		jid, retry, err := pairOnce(ctx, opts, container, logger, render, timeout)
+		jid, retry, err := pairOnce(ctx, opts, logger, render, timeout)
 		if err != nil {
 			return "", err
 		}
@@ -93,12 +90,11 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 func pairOnce(
 	ctx context.Context,
 	opts PairOptions,
-	container *sqlstore.Container,
 	logger walog.Logger,
 	render func(string),
 	timeout time.Duration,
 ) (string, bool, error) {
-	client := whatsmeow.NewClient(container.NewDevice(), logger)
+	client := whatsmeow.NewClient(opts.Devices.newDevice(), logger)
 	defer client.Disconnect()
 
 	qrChannel, err := client.GetQRChannel(ctx)
@@ -161,19 +157,13 @@ func waitForPairingRetry(ctx context.Context) error {
 
 func removePairing(
 	ctx context.Context,
-	container *sqlstore.Container,
+	devices *Devices,
 	accounts domain.AccountStore,
 	account *domain.Account,
 	changedAt time.Time,
 ) error {
-	device, err := localDevice(ctx, container, account)
-	if err != nil {
-		return fmt.Errorf("whatsapp: load existing device for removal: %w", err)
-	}
-	if device != nil {
-		if err := device.Delete(ctx); err != nil {
-			return fmt.Errorf("whatsapp: delete existing device: %w", err)
-		}
+	if err := devices.delete(ctx, account); err != nil {
+		return err
 	}
 	if err := accounts.Delete(ctx, account.Scope, account.Bot); err != nil {
 		return fmt.Errorf("whatsapp: delete existing account: %w", err)
