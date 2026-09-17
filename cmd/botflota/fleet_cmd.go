@@ -50,8 +50,8 @@ func runFleet(args []string) int {
 	}
 	skipped := make(map[string]map[string]bool)
 	skippedCount := 0
-	for _, scopeName := range sortedScopeNames(cfg) {
-		for _, botName := range sortedBotNames(cfg.Scopes[scopeName]) {
+	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
+		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
 			state, err := whatsapp.CheckPairing(ctx, db.DB, db.Accounts(),
 				scopeName, botName)
 			if err != nil {

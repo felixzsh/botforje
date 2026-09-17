@@ -198,6 +198,7 @@ func (e *Engine) contextOf(
 	session *domain.Session, msg domain.IncomingMessage,
 ) *template.Context {
 	tctx := template.New()
+	// The roots seeded here are constants, so Reset cannot reject them.
 	_ = tctx.Reset(template.RootGraph, session.GraphContext)
 	_ = tctx.Reset(template.RootNode, session.NodeContext)
 	_ = tctx.Reset(template.RootSender, map[string]any{

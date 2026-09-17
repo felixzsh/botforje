@@ -32,7 +32,7 @@ func templateSites(a Action) []templateSite {
 			if step.Request != nil {
 				add(where+" request url", step.Request.URL)
 				add(where+" request body", step.Request.Body)
-				for _, name := range sortedKeys(step.Request.Headers) {
+				for _, name := range SortedKeys(step.Request.Headers) {
 					add(where+" request header "+name, step.Request.Headers[name])
 				}
 			}

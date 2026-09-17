@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 
@@ -91,9 +90,9 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 		baseLog = logging.Discard()
 	}
 	fleet := &Fleet{}
-	for _, scopeName := range sortedScopes(cfg) {
+	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
-		for _, botName := range sortedBots(scope) {
+		for _, botName := range config.SortedKeys(scope.Bots) {
 			bot := scope.Bots[botName]
 			graph, ok := scope.Graphs[bot.Graph]
 			if !ok {
@@ -252,22 +251,4 @@ func ignoreGroups(settings config.BotSettings) bool {
 		return true
 	}
 	return *settings.IgnoreGroups
-}
-
-func sortedScopes(cfg *config.Config) []string {
-	names := make([]string, 0, len(cfg.Scopes))
-	for name := range cfg.Scopes {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func sortedBots(scope config.Scope) []string {
-	names := make([]string, 0, len(scope.Bots))
-	for name := range scope.Bots {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }

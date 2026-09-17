@@ -26,10 +26,6 @@ func (e ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s: %s", file, e.Entity, e.Reason)
 }
 
-func (c *Config) fileOf(kind, scope, name string) string {
-	return c.originOf(kind, scope, name)
-}
-
 // Validate runs the semantic checks that a JSON Schema cannot express
 // (ADR 0007, ADR 0008, ADR 0010, ADR 0015, ADR 0016).
 func Validate(cfg *Config) []ValidationError {
@@ -58,18 +54,18 @@ func Validate(cfg *Config) []ValidationError {
 	default:
 		add("", "config", "invalid log_level_deps %q", cfg.LogLevelDeps)
 	}
-	for _, scopeName := range sortedKeys(cfg.Scopes) {
+	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
-		for _, name := range sortedKeys(scope.LLMs) {
+		for _, name := range SortedKeys(scope.LLMs) {
 			validateLLM(cfg, scopeName, name, scope.LLMs[name], add)
 		}
-		for _, name := range sortedKeys(scope.Actions) {
+		for _, name := range SortedKeys(scope.Actions) {
 			validateAction(cfg, scopeName, name, scope.Actions[name], add)
 		}
-		for _, name := range sortedKeys(scope.Graphs) {
+		for _, name := range SortedKeys(scope.Graphs) {
 			validateGraph(cfg, scopeName, scope, name, scope.Graphs[name], add)
 		}
-		for _, name := range sortedKeys(scope.Bots) {
+		for _, name := range SortedKeys(scope.Bots) {
 			validateBot(cfg, scopeName, scope, name, scope.Bots[name], add)
 		}
 	}
@@ -77,7 +73,7 @@ func Validate(cfg *Config) []ValidationError {
 }
 
 func validateLLM(cfg *Config, scope, name string, llm LLM, add addError) {
-	file := cfg.fileOf("llm", scope, name)
+	file := cfg.originOf("llm", scope, name)
 	entity := fmt.Sprintf("llm %q (scope %q)", name, scope)
 	if llm.Provider == "" {
 		add(file, entity, "provider is required")
@@ -112,10 +108,10 @@ var httpMethods = map[string]bool{
 }
 
 func validateAction(cfg *Config, scope, name string, a Action, add addError) {
-	file := cfg.fileOf("action", scope, name)
+	file := cfg.originOf("action", scope, name)
 	entity := fmt.Sprintf("action %q (scope %q)", name, scope)
 
-	for _, in := range sortedKeys(a.Inputs) {
+	for _, in := range SortedKeys(a.Inputs) {
 		input := a.Inputs[in]
 		if input.Type != "" && !inputTypes[input.Type] {
 			add(file, entity, "input %q has invalid type %q", in, input.Type)
@@ -214,7 +210,7 @@ func validateRequest(
 }
 
 func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Graph, add addError) {
-	file := cfg.fileOf("graph", scopeName, name)
+	file := cfg.originOf("graph", scopeName, name)
 	entity := fmt.Sprintf("graph %q (scope %q)", name, scopeName)
 
 	switch g.Routing {
@@ -237,7 +233,7 @@ func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Gr
 		}
 	}
 
-	for _, nodeName := range sortedKeys(g.Nodes) {
+	for _, nodeName := range SortedKeys(g.Nodes) {
 		node := g.Nodes[nodeName]
 		nodeEntity := fmt.Sprintf("%s node %q", entity, nodeName)
 		validateNodeRefs(scope, g, node, file, nodeEntity, add)
@@ -257,7 +253,7 @@ func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Gr
 
 	if g.Root != "" {
 		seen := reachable(g)
-		for _, nodeName := range sortedKeys(g.Nodes) {
+		for _, nodeName := range SortedKeys(g.Nodes) {
 			if !seen[nodeName] {
 				add(file, entity, "node %q is unreachable from root %q", nodeName, g.Root)
 			}
@@ -300,7 +296,7 @@ func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add 
 			continue
 		}
 		validateTemplateVars(file, entity, action, nodeVars, graphVars, requests, add)
-		for _, in := range sortedKeys(action.Inputs) {
+		for _, in := range SortedKeys(action.Inputs) {
 			input := action.Inputs[in]
 			if input.Bind == "" {
 				continue
@@ -326,7 +322,7 @@ func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add 
 }
 
 func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot, add addError) {
-	file := cfg.fileOf("bot", scopeName, name)
+	file := cfg.originOf("bot", scopeName, name)
 	entity := fmt.Sprintf("bot %q (scope %q)", name, scopeName)
 	if b.Graph == "" {
 		add(file, entity, "no graph")

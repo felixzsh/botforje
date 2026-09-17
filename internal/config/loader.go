@@ -109,22 +109,27 @@ func (s *includeState) loadFragment(path string, cfg *Config) error {
 }
 
 func mergeScopes(cfg *Config, file string, scopes map[string]Scope) error {
-	for _, scopeName := range sortedKeys(scopes) {
+	for _, scopeName := range SortedKeys(scopes) {
 		src := scopes[scopeName]
 		if cfg.Scopes == nil {
 			cfg.Scopes = map[string]Scope{}
 		}
 		dst := cfg.Scopes[scopeName]
-		if err := mergeLLMs(cfg, file, scopeName, &dst, src.LLMs); err != nil {
+		var err error
+		if dst.LLMs, err = mergeEntities(cfg, file, "llm", scopeName,
+			dst.LLMs, src.LLMs); err != nil {
 			return err
 		}
-		if err := mergeActions(cfg, file, scopeName, &dst, src.Actions); err != nil {
+		if dst.Actions, err = mergeEntities(cfg, file, "action", scopeName,
+			dst.Actions, src.Actions); err != nil {
 			return err
 		}
-		if err := mergeGraphs(cfg, file, scopeName, &dst, src.Graphs); err != nil {
+		if dst.Graphs, err = mergeEntities(cfg, file, "graph", scopeName,
+			dst.Graphs, src.Graphs); err != nil {
 			return err
 		}
-		if err := mergeBots(cfg, file, scopeName, &dst, src.Bots); err != nil {
+		if dst.Bots, err = mergeEntities(cfg, file, "bot", scopeName,
+			dst.Bots, src.Bots); err != nil {
 			return err
 		}
 		cfg.Scopes[scopeName] = dst
@@ -132,60 +137,23 @@ func mergeScopes(cfg *Config, file string, scopes map[string]Scope) error {
 	return nil
 }
 
-func mergeLLMs(cfg *Config, file, scope string, dst *Scope, src map[string]LLM) error {
-	for _, name := range sortedKeys(src) {
-		if dst.LLMs == nil {
-			dst.LLMs = map[string]LLM{}
-		}
-		if _, exists := dst.LLMs[name]; exists {
-			return duplicateError(cfg, file, "llm", scope, name)
-		}
-		dst.LLMs[name] = src[name]
-		cfg.origin[originKey("llm", scope, name)] = file
+// mergeEntities copies one entity kind of an included file into a scope,
+// rejecting a duplicate (scope, kind, name) and recording which file defined
+// it (ADR 0016).
+func mergeEntities[V any](
+	cfg *Config, file, kind, scope string, dst, src map[string]V,
+) (map[string]V, error) {
+	if dst == nil && len(src) > 0 {
+		dst = map[string]V{}
 	}
-	return nil
-}
-
-func mergeActions(cfg *Config, file, scope string, dst *Scope, src map[string]Action) error {
-	for _, name := range sortedKeys(src) {
-		if dst.Actions == nil {
-			dst.Actions = map[string]Action{}
+	for _, name := range SortedKeys(src) {
+		if _, exists := dst[name]; exists {
+			return nil, duplicateError(cfg, file, kind, scope, name)
 		}
-		if _, exists := dst.Actions[name]; exists {
-			return duplicateError(cfg, file, "action", scope, name)
-		}
-		dst.Actions[name] = src[name]
-		cfg.origin[originKey("action", scope, name)] = file
+		dst[name] = src[name]
+		cfg.origin[originKey(kind, scope, name)] = file
 	}
-	return nil
-}
-
-func mergeGraphs(cfg *Config, file, scope string, dst *Scope, src map[string]Graph) error {
-	for _, name := range sortedKeys(src) {
-		if dst.Graphs == nil {
-			dst.Graphs = map[string]Graph{}
-		}
-		if _, exists := dst.Graphs[name]; exists {
-			return duplicateError(cfg, file, "graph", scope, name)
-		}
-		dst.Graphs[name] = src[name]
-		cfg.origin[originKey("graph", scope, name)] = file
-	}
-	return nil
-}
-
-func mergeBots(cfg *Config, file, scope string, dst *Scope, src map[string]Bot) error {
-	for _, name := range sortedKeys(src) {
-		if dst.Bots == nil {
-			dst.Bots = map[string]Bot{}
-		}
-		if _, exists := dst.Bots[name]; exists {
-			return duplicateError(cfg, file, "bot", scope, name)
-		}
-		dst.Bots[name] = src[name]
-		cfg.origin[originKey("bot", scope, name)] = file
-	}
-	return nil
+	return dst, nil
 }
 
 func duplicateError(cfg *Config, file, kind, scope, name string) error {
@@ -197,20 +165,19 @@ func duplicateError(cfg *Config, file, kind, scope, name string) error {
 }
 
 func recordOrigins(cfg *Config, path string) {
-	for _, scopeName := range sortedKeys(cfg.Scopes) {
+	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
-		for name := range scope.LLMs {
-			cfg.origin[originKey("llm", scopeName, name)] = path
-		}
-		for name := range scope.Actions {
-			cfg.origin[originKey("action", scopeName, name)] = path
-		}
-		for name := range scope.Graphs {
-			cfg.origin[originKey("graph", scopeName, name)] = path
-		}
-		for name := range scope.Bots {
-			cfg.origin[originKey("bot", scopeName, name)] = path
-		}
+		recordOrigin(cfg, path, "llm", scopeName, scope.LLMs)
+		recordOrigin(cfg, path, "action", scopeName, scope.Actions)
+		recordOrigin(cfg, path, "graph", scopeName, scope.Graphs)
+		recordOrigin(cfg, path, "bot", scopeName, scope.Bots)
+	}
+}
+
+// recordOrigin names the file that defined every entity of one kind.
+func recordOrigin[V any](cfg *Config, file, kind, scope string, names map[string]V) {
+	for name := range names {
+		cfg.origin[originKey(kind, scope, name)] = file
 	}
 }
 
@@ -275,7 +242,9 @@ func (c *Config) originOf(kind, scope, name string) string {
 	return c.origin[originKey(kind, scope, name)]
 }
 
-func sortedKeys[V any](m map[string]V) []string {
+// SortedKeys returns a map's keys in sorted order, so validation output and
+// report order stay deterministic.
+func SortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)

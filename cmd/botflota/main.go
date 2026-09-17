@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/felixzsh/botflota/internal/config"
@@ -168,7 +167,7 @@ func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error)
 		return scope, bot, nil
 	}
 	var matches []string
-	for _, scopeName := range sortedScopeNames(cfg) {
+	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		if _, ok := cfg.Scopes[scopeName].Bots[name]; ok {
 			matches = append(matches, scopeName)
 		}
@@ -182,22 +181,4 @@ func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error)
 		return "", config.Bot{}, fmt.Errorf("bot %q exists in scopes %s",
 			name, strings.Join(matches, ", "))
 	}
-}
-
-func sortedScopeNames(cfg *config.Config) []string {
-	names := make([]string, 0, len(cfg.Scopes))
-	for name := range cfg.Scopes {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func sortedBotNames(scope config.Scope) []string {
-	names := make([]string, 0, len(scope.Bots))
-	for name := range scope.Bots {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }

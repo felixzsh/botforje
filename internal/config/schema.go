@@ -11,8 +11,6 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-//go:generate go run ./cmd/botflota schema -o config.schema.json
-
 // JSONSchema generates the editor schema from the Go types (ADR 0007). The
 // output is written to config.schema.json and must not be hand-edited.
 func JSONSchema() ([]byte, error) {

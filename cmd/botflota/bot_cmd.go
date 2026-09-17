@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/felixzsh/botflota/internal/config"
 	"github.com/felixzsh/botflota/internal/domain"
 	"github.com/felixzsh/botflota/internal/whatsapp"
 )
@@ -159,11 +160,10 @@ func runBotList(args []string) int {
 	}
 	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
 		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
-	for _, scopeName := range sortedScopeNames(cfg) {
-		for _, botName := range sortedBotNames(cfg.Scopes[scopeName]) {
+	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
+		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
 			state := domain.PairingNotPaired
 			phone := "-"
-			status := string(state)
 			account, err := db.Accounts().Get(ctx, scopeName, botName)
 			switch {
 			case errors.Is(err, domain.ErrNotFound):
@@ -178,11 +178,9 @@ func runBotList(args []string) int {
 				}
 				if !ready {
 					state = domain.PairingUnpaired
-					status = string(state)
 				} else {
 					state = domain.PairingPaired
 					phone = whatsapp.Number(account.JID)
-					status = string(state)
 				}
 			}
 			pairingStatus, err := db.Accounts().GetPairingStatus(ctx, scopeName, botName)
@@ -194,7 +192,7 @@ func runBotList(args []string) int {
 			if err == nil && pairingStatus.State == state {
 				lastChange = pairingStatus.LastChange
 			}
-			printStatusRow(botName, scopeName, phone, status, lastChange)
+			printStatusRow(botName, scopeName, phone, string(state), lastChange)
 		}
 	}
 	return 0
