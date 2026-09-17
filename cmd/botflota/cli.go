@@ -9,9 +9,10 @@ import (
 	"strings"
 )
 
-// commandHelp is one node of the CLI help tree. Groups have subcommands;
-// leaves carry a usage line, examples, and the flags to render. Keep it in
-// sync with the routers in main.go.
+// commandHelp is one node of the CLI tree. Routing and help both read it, so a
+// command cannot exist in one and not the other. Groups have subcommands;
+// leaves carry a usage line, examples, the flags to render, and the function
+// that runs them.
 type commandHelp struct {
 	name     string
 	summary  string
@@ -20,7 +21,51 @@ type commandHelp struct {
 	examples []string
 	moreHelp string
 	flags    func() *flag.FlagSet
+	run      func(args []string) int
 	sub      []commandHelp
+}
+
+// dispatch routes args through the tree and returns the exit code. A missing or
+// unknown command prints help: usage errors to stderr with exit code 2, an
+// explicit help request to stdout with exit code 0.
+func dispatch(node *commandHelp, path, args []string) int {
+	if len(args) == 0 {
+		printHelp(os.Stderr, path...)
+		return 2
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		printHelp(os.Stdout, path...)
+		return 0
+	}
+	child := childNamed(node, args[0])
+	if child == nil {
+		fmt.Fprintf(os.Stderr, "unknown %s %q\n\n", subject(path), args[0])
+		printHelp(os.Stderr, path...)
+		return 2
+	}
+	childPath := append(append([]string{}, path...), child.name)
+	if len(child.sub) > 0 {
+		return dispatch(child, childPath, args[1:])
+	}
+	return child.run(args[1:])
+}
+
+func childNamed(node *commandHelp, name string) *commandHelp {
+	for i := range node.sub {
+		if node.sub[i].name == name {
+			return &node.sub[i]
+		}
+	}
+	return nil
+}
+
+// subject names what an unknown argument failed to match.
+func subject(path []string) string {
+	if len(path) == 0 {
+		return "command"
+	}
+	return path[len(path)-1] + " subcommand"
 }
 
 func cliTree() *commandHelp {
@@ -58,6 +103,7 @@ func cliTree() *commandHelp {
 							"botflota config validate --json",
 						},
 						flags: func() *flag.FlagSet { return newValidateCmd().fs },
+						run:   runValidate,
 					},
 					{
 						name:    "schema",
@@ -69,6 +115,7 @@ func cliTree() *commandHelp {
 							"botflota config schema -o config.schema.json",
 						},
 						flags: func() *flag.FlagSet { return newSchemaCmd().fs },
+						run:   runSchema,
 					},
 				},
 			},
@@ -95,6 +142,7 @@ func cliTree() *commandHelp {
 							"botflota bot list --config etc/config.yml",
 						},
 						flags: func() *flag.FlagSet { return newBotListCmd().fs },
+						run:   runBotList,
 					},
 					{
 						name:    "pair",
@@ -108,6 +156,7 @@ func cliTree() *commandHelp {
 							"botflota bot pair --force support-bot",
 						},
 						flags: func() *flag.FlagSet { return newPairCmd().fs },
+						run:   runPair,
 					},
 					{
 						name:    "unpair",
@@ -120,6 +169,7 @@ func cliTree() *commandHelp {
 							"botflota bot unpair --scope dev support-bot",
 						},
 						flags: func() *flag.FlagSet { return newUnpairCmd().fs },
+						run:   runUnpair,
 					},
 				},
 			},
@@ -144,6 +194,7 @@ func cliTree() *commandHelp {
 							"botflota fleet run --config etc/config.yml",
 						},
 						flags: func() *flag.FlagSet { return newFleetRunCmd().fs },
+						run:   runFleet,
 					},
 				},
 			},

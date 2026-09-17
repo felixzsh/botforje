@@ -26,6 +26,9 @@ func TestHelpTreeIsComplete(t *testing.T) {
 		if len(node.sub) == 0 && node.flags == nil {
 			t.Errorf("leaf %q: needs flags", node.name)
 		}
+		if len(node.sub) == 0 && node.run == nil {
+			t.Errorf("leaf %q: needs a run function", node.name)
+		}
 	})
 	if count < 8 {
 		t.Fatalf("tree has %d nodes, want at least 8", count)
