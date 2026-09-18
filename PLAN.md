@@ -23,8 +23,8 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 4. Graph engine
 5. WhatsApp channel (whatsmeow)
 6. Fleet, filter, and outbox
-7. LLM providers and hybrid behavior
-8. CLI and REST API
+7. CLI and REST API
+8. Decision routing, LLM providers, and tools
 9. MVP hardening and release
 
 ## Phases
@@ -255,17 +255,23 @@ Deliverables:
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
 
-### Phase 8 — LLM providers, tools, and hybrid behavior
+### Phase 8 — Decision routing, LLM providers, and tools
 
-Goal: the LLM-first design becomes usable without making LLMs mandatory.
+Goal: AI becomes usable without becoming mandatory: a decision provider routes,
+an LLM realizes replies, and the deterministic graph runs without either.
 
 Deliverables:
 
-- [ ] `LLMProvider` implementations: at least one cloud provider and one local
-  option, selected by config.
-- [ ] Intent classification as fallback for unmatched input.
-- [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015);
-  `always` gives the LLM the decision even when a trigger matches.
+- [ ] `DecisionProvider` port and a Jev (TypeSafe System One) adapter: one
+  `Choice` question per candidate edge intent, typed answers with confidence,
+  and the deterministic matcher first (ADR 0030).
+- [ ] Confidence-gated routing: a per-graph threshold decides between taking
+  the decision, the default edge, or escalation, and is logged per message.
+- [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015),
+  applied to the decision provider; `always` gives it the decision even when a
+  trigger matches.
+- [ ] `LLMProvider` implementations for reply realization only: at least one
+  cloud provider and one local option, selected by config (ADR 0004, ADR 0030).
 - [ ] Tool calling in nodes (ADR 0008): the LLM invokes node `tools` with
   arguments validated against their `inputs`, chains calls, and stays in or
   leaves the node through declared edges only.
@@ -274,19 +280,21 @@ Deliverables:
   validated against node and graph `initial_context`.
 - [ ] Reply realization within node policy; `body` plus `intent` uses the body
   as anchor and fallback; policy checks before queueing.
-- [ ] Deterministic fallback when no provider is configured or a call fails.
-- [ ] Bounded tool loop: max tools per message and timeout from the llm
-  `bounds`.
+- [ ] Deterministic fallback when no provider is configured or a call fails:
+  routing degrades to triggers and the default edge.
+- [ ] Bounded calls: a decision timeout from the decider `bounds`, and the tool
+  loop limits (max tools per message, timeout) from the llm `bounds`.
 - [ ] Async APIs: LLM-driven polling within the tool budget (call, check
   status, retry); longer waits continue on later messages.
-- [ ] Per-message logging of node, intent, tools called, provider, and policy
-  version.
-- [ ] Tests: provider fakes, classification cases, tool argument validation,
-  policy rejection fallback, and evaluation fixtures (golden conversations).
+- [ ] Per-message logging of node, intent, decision provider, question, answer,
+  confidence, tools called, provider, and policy version.
+- [ ] Tests: provider fakes, decision cases with confidence thresholds, tool
+  argument validation, policy rejection fallback, and evaluation fixtures
+  (golden conversations).
 
-Gate: the same graph runs with no LLM (deterministic) and with an LLM
-(routing, realization, tool use, or a combination), with logs that explain
-each decision.
+Gate: the same graph runs deterministically, with a decision provider only
+(routing), with an LLM only (realization and tools), and with both, with logs
+that explain each decision.
 
 ### Phase 9 — MVP hardening and release
 
@@ -325,8 +333,13 @@ and additional channels, each with its own phase, order, and open decisions.
   success condition (Phase 4/8).
 - Context variable typing and empty-versus-default semantics (Phase 4).
 - Confirmation guard for tools with side effects (Phase 8).
+- Adopt TypeSafe Jev as the first decision provider (early access): confirm
+  access and pricing before Phase 8 starts (ADR 0030).
+- Decision confidence threshold: default and per-graph override (Phase 8).
+- Whether policy checks and output verification use the decision provider too,
+  or stay with the LLM (Phase 8).
 - LLM bounds defaults: max tools per message and timeout (Phase 8).
-- Which LLM providers ship first (close in Phase 8).
+- Which LLM providers ship first for realization (close in Phase 8).
 - Whether the CLI acts as a client of the REST API for fleet operations
   (Phase 7).
 - API shape and auth details (close in Phase 7).
@@ -336,7 +349,9 @@ and additional channels, each with its own phase, order, and open decisions.
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
-Trigger matching and its threshold are in ADR 0019.
+Trigger matching and its threshold are in ADR 0019. AI routing is
+decision-only (ADR 0030) and its configuration lives on scoped `deciders`
+(ADR 0031).
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
 `gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, the pure-Go SQLite

@@ -1,6 +1,7 @@
 # ADR 0015 — Routing mode can be overridden per graph
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09). The actor and where the setting lives are amended
+by ADR 0030 and ADR 0031; the modes and the override stand.
 
 ## Context
 

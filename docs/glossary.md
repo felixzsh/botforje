@@ -1,7 +1,7 @@
 # Glossary
 
-- Bot — one WhatsApp account bound to a graph, its settings, and an optional
-  llm; the deployable unit.
+- Bot — one WhatsApp account bound to a graph, its settings, and optional
+  decider and llm; the deployable unit.
 - Fleet — the set of bots a single Botflota instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
   and sessions (ADR 0016); a free name, never derived from folders.
@@ -53,11 +53,19 @@
   the JID that identifies the paired companion device; keyed by (scope, bot).
   Pairing is the lifecycle around it: paired, not paired, or unpaired
   (ADR 0006).
-- LLM — a named, scoped model profile (provider, model, credentials, routing
-  defaults, bounds); a bot references one or runs deterministically without
-  it (ADR 0017).
+- Decision — the typed answer a decision provider returns: a choice from a
+  closed set, a score on a rubric, or a probability; choice and score carry
+  confidence (ADR 0030).
+- Decision provider — a model that answers typed decisions with confidence
+  instead of generating text, used for routing and policy; a bot references
+  one with `decider` (ADR 0030, ADR 0031).
+- Confidence — how certain a decision provider is in a choice or score, from
+  0 to 1; a threshold decides whether the graph acts or defers (ADR 0030).
+- LLM — a named, scoped model profile (provider, model, credentials,
+  realization defaults, bounds); a bot references one with `llm` or replies
+  deterministically without it (ADR 0017, ADR 0031).
 - LLM provider — language model implementation (cloud or local) used for
-  routing and replies.
+  reply realization and the tool loop; it never routes (ADR 0030).
 - Agent — a conventional external agent runtime (for example OpenClaw), a
   possible future integration behind a port. It does not name Botflota's own
   LLM behavior; that is the tool loop.

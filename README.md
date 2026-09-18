@@ -10,8 +10,9 @@ browser automation.
 - Declarative first: behavior lives in YAML; changing a bot never means
   changing the runtime.
 - One runtime: a single binary, no mandatory auxiliary processes.
-- The graph is the core: the LLM drives and enriches conversations but never
-  replaces the state machine.
+- The graph is the core: models drive and enrich conversations but never
+  replace the state machine. AI routing is decision-only; a generative LLM
+  writes replies (ADR 0030).
 - Config can be authored by hand, by a UI, or AI-assisted; the runtime does
   not change for any of them.
 

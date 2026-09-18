@@ -14,6 +14,6 @@ SaaS infrastructure:
   configurable delay and jitter, plus human-like presence (ADR 0011).
 - CLI: `config` and `bot` groups, plus `fleet`.
 - REST API with key-based auth.
-- Hybrid LLM support designed in from the start: deterministic routing works
-  with no LLM configured; intents, providers, and tools are
-  first-class when enabled.
+- Hybrid AI support designed in from the start: deterministic routing works
+  with no model configured; AI routing is decision-only (Jev), and an LLM
+  realizes replies and runs tools when enabled (ADR 0030).

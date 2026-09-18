@@ -22,8 +22,8 @@ Field shapes, valid combinations, and the runtime flow live in
 
 - Repetition drops, paraphrase handling improves, and identical-message
   fingerprinting is reduced.
-- LLM usage is optional per node and per bot; a bot with no `llm` runs
-  deterministically (ADR 0017).
+- LLM usage is optional per node and per bot; a bot with no `llm` replies
+  deterministically (ADR 0017, ADR 0030).
 - Every generated message must be traceable: node, intent, tools called,
   provider, and policy version are logged.
 - Testing needs two extra layers: classification cases and reply evaluations
