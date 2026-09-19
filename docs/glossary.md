@@ -24,8 +24,11 @@
 - Graph context — session-wide variables; persist across nodes.
 - Visited nodes — ordered list of nodes visited in a session, current last;
   used for routing and as LLM context (ADR 0010).
-- Tool loop — bounded sequence of tool calls and replies the LLM runs for one
-  incoming message inside a node (ADR 0008).
+- Tool pipeline — the default tool mode: the LLM extracts candidate
+  parameters from the message, System One selects tools and maps values to
+  real catalog entries, and code validates and applies (ADR 0033).
+- Tool loop — the LLM-driven tool mode, the alternative to the tool pipeline
+  for nodes a pipeline cannot bound (ADR 0008, ADR 0033).
 - Step — single operation inside an action.
 - Guard — rule that limits how often an action runs per sender, such as a
   cooldown (minimum interval) or a rate limit (maximum per window).

@@ -10,10 +10,10 @@ Three independent ports sit beside the config engine and persistence:
 - `MessageChannel` — transport port. A channel is one implementation that
   reaches a messaging provider; the provider (WhatsApp) can have several
   channels, such as whatsmeow today or the official Cloud API later.
-- `SystemOneProvider` — System One port for routing and policy: typed
-  answers (a choice from a closed set, a score, or a probability) with
-  confidence and no generated text. Jev (TypeSafe System One) is the first
-  adapter (ADR 0030).
+- `SystemOneProvider` — System One port for routing, policy, tool selection,
+  and value mapping: typed answers (a choice from a closed set, a score, or a
+  probability) with confidence and no generated text. Jev (TypeSafe) is the
+  first adapter (ADR 0030).
 - `LLMProvider` — model port for reply realization and the tool loop. Cloud
   and local providers sit behind the same interface.
 
@@ -91,17 +91,17 @@ Inbound:
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
 5. When the graph routing mode is `always`, or nothing matched and the mode
-   is `fallback`, the System One model decides: one Choice question over the candidate edge
-   intents, checked against the graph's confidence threshold. Below it the
-   graph takes the default edge or escalates; the LLM never classifies
+   is `fallback`, System One decides: one Choice question over the candidate
+   edge intents, checked against the graph's confidence threshold. Below it
+   the graph takes the default edge or escalates; the LLM never classifies
    (ADR 0030).
-6. On the opt-in generative path only, the tool loop runs (ADR 0008): the LLM
-   may call node tools with arguments validated against each action's
-   `inputs`, and may produce a reply.
-7. Tool results return to the LLM as context; missing required arguments
-   return a tool error and the LLM asks the user, storing the answer in the
-   bound variable. The LLM can chain calls, stay in the node, or take a
-   declared edge; it never invents a transition.
+6. A node with tools handles the message through the pipeline (ADR 0033):
+   System One decides, the LLM reads free text, and code applies. The node
+   stays unless an exit edge is taken. The LLM loop (ADR 0008) is the opt-in
+   alternative for calls a pipeline cannot bound.
+7. Tool results feed the next step; a missing required argument is a tool
+   error that asks the user, storing the answer in the bound variable.
+   Neither model invents a transition; edges are the only exits.
 8. Engine runs the selected transition: exit actions, target node, entry
    actions. Entry actions produce the prescribed reply, so a bot with no `llm`
    needs no provider (ADR 0032).
@@ -150,6 +150,32 @@ Three ways a reply reaches the queue, in order of preference (ADR 0032):
   intent or tone. The reply is still prescribed.
 - Realized: the opt-in generative path; `body` plus `intent` anchors the model
   and doubles as the fallback. Intent-only, with no anchor, is discouraged.
+
+## Tool pipeline
+
+A node with tools handles an inbound message in place; the LLM loop (ADR
+0008) is the opt-in alternative for calls a pipeline cannot bound (ADR 0033).
+
+1. Intake gate (System One): is the message actionable and clear for this
+   node? The answers choose among act, ask and stay, delegate to extraction,
+   or escalate.
+2. Extraction (LLM): candidate parameters as literal values and spans, never
+   final identifiers, validated against the tool `inputs`.
+3. Selection (System One): one `Noul` per tool for multi-select plus an
+   explicit `none`, or a `Choice` when only one can apply. Confidence below
+   the threshold asks instead of acting.
+4. Mapping (System One): each value maps to a real catalog entry with a
+   `Choice`, in stages when the catalog exceeds the cardinality limit. Code
+   does no matching of values.
+5. Verification (System One): whether the lines reflect the message; a
+   signal, not a proof.
+6. Application (code): numbers and dates parsed from the literal span,
+   invariants checked, the tool applied, and a prescribed confirmation sent.
+
+A handled message takes no edge and does not re-run entry actions, so a tool
+node serves many messages. Edges remain the only transitions, and a tool node
+declares its exits (`done`, `cancel`, human) instead of a catch-all default.
+Side effects wait for the confirmation.
 
 ## Async requests
 

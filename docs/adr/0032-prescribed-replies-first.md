@@ -34,8 +34,9 @@ selects which node and therefore which prescribed reply goes out.
 - When realization is used, the anchored mode (`body` plus `intent`) is
   preferred: the body is the factual anchor and the fallback. Intent-only
   messages, with no anchor, are discouraged.
-- LLM tool calling (ADR 0008) is part of the same opt-in extension. The core
-  path calls business APIs through deterministic `request` steps.
+- Tool calling follows the pipeline of ADR 0033: the LLM reads free text and
+  extracts candidate parameters, which is not user-facing generation, and
+  `request` steps remain for deterministic calls.
 
 ## Consequences
 

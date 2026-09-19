@@ -55,10 +55,11 @@ These shape every phase and become ADRs when the phase that owns them starts.
 - A passkey or a browser session is never imported: the companion identity lives
   in the device store and runs on a server, while every passkey ceremony happens
   on the account owner's device (ADR 0028).
-- AI stays optional and specialised (ADR 0030, ADR 0032): a System One model (Jev) makes
-  typed, confidence-bearing decisions for routing and policy, prescribed
-  replies are the default, and a generative LLM only realizes replies and
-  calls tools as an opt-in. Deterministic matching comes first.
+- AI stays optional and specialised (ADR 0030, ADR 0032, ADR 0033): System
+  One (Jev) makes typed, confidence-bearing decisions for routing, policy, and
+  tools, prescribed replies are the default, and a generative LLM only reads
+  free text and realizes replies as an opt-in. Deterministic matching comes
+  first.
 
 ## Phases
 

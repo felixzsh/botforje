@@ -24,7 +24,7 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 5. WhatsApp channel (whatsmeow)
 6. Fleet, filter, and outbox
 7. CLI and REST API
-8. System One routing, prescribed replies, and opt-in LLM providers
+8. System One routing, replies, and tools
 9. MVP hardening and release
 
 ## Phases
@@ -257,51 +257,63 @@ Deliverables:
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
 
-### Phase 8 — System One routing, prescribed replies, and opt-in LLM providers
+### Phase 8 — System One routing, replies, and tools
 
-Goal: the System One model becomes the primary AI path, prescribed replies are the default,
-and a generative LLM stays available only for reply realization and tool
-calling, as an explicit opt-in.
+Goal: System One becomes the primary AI path, prescribed replies are the
+default, and a generative LLM is an explicit opt-in for reading text and
+writing replies.
 
 Deliverables:
 
-- [ ] `SystemOneProvider` port and a Jev (TypeSafe System One) adapter: one `Choice`
-  question per candidate edge intent, typed answers with confidence, and the
-  deterministic matcher first (ADR 0030).
-- [ ] `shared` and scope catalogs (`system_one`, `llms`): config types, generated
-  schema, `config/example.yml`, fixtures, and validation, with a name
-  resolving in the scope first and then in `shared` (ADR 0031).
+- [ ] `SystemOneProvider` port and a Jev (TypeSafe) adapter: typed questions
+  with confidence, and the deterministic matcher first (ADR 0030).
+- [ ] `shared` and scope catalogs (`system_one`, `llms`): config types,
+  generated schema, `config/example.yml`, fixtures, and validation, with a
+  name resolving in the scope first and then in `shared` (ADR 0031).
 - [ ] Confidence-gated routing: a per-graph threshold decides between taking
   the decision, the default edge, or escalation, and is logged per message.
 - [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015),
-  applied to the System One model; `always` gives it the decision even when a trigger
+  applied to System One; `always` gives it the decision even when a trigger
   matches.
 - [ ] Prescribed replies as the default path: `body` messages with variants
   chosen at random, and no provider required (ADR 0032).
-- [ ] Deterministic fallback when no provider is configured or a call fails:
-  routing degrades to triggers and the default edge.
-- [ ] Bounded calls: a decision timeout from the `system_one` `bounds`, and the tool
-  loop limits (max tools per message, timeout) from the `llms` `bounds`.
-- [ ] Per-message logging of node, intent, System One profile, question, answer,
-  confidence, tools called, provider, and policy version.
+- [ ] Tool pipeline (ADR 0033): intake gate, LLM extraction of candidate
+  parameters validated against `inputs`, selection with one `Noul` per tool
+  plus an explicit `none`, mapping of values to catalog entries with a
+  `Choice`, and confidence thresholds.
+- [ ] Staying in the node: a handled tool message takes no edge and does not
+  re-run entry actions, and a tool node declares explicit exits instead of a
+  catch-all default.
+- [ ] Confirmation before side effects: the pipeline proposes, a prescribed
+  message confirms, and only then the tool writes.
+- [ ] Closed-set inputs: `inputs` declares the values System One maps against,
+  with staged mapping for catalogs beyond the `Choice` cardinality.
+- [ ] Numbers and dates parsed in code from the literal span; models never
+  compute them.
 - [ ] Opt-in generation (ADR 0032): `LLMProvider` implementations for reply
-  realization only (one cloud and one local), `body` plus `intent` anchored and
-  used as fallback, and policy checks before queueing.
-- [ ] Opt-in tool calling in nodes (ADR 0008): the LLM invokes node `tools`
-  with arguments validated against their `inputs`, chains calls, and stays in
-  or leaves the node through declared edges only.
-- [ ] Slot filling for the generative path: missing required inputs return a
-  tool error; the LLM asks the user and bound variables remember the answer.
-  `bind` targets are validated against node and graph `initial_context`.
+  realization only (one cloud and one local), `body` plus `intent` anchored
+  and used as fallback, and policy checks before queueing.
+- [ ] Opt-in LLM tool loop (ADR 0008) for nodes whose calls a pipeline cannot
+  bound, sharing `inputs` validation and the edge rule.
+- [ ] Slot filling: a missing required input returns a tool error or asks the
+  user, and bound variables remember the answer; `bind` targets are validated
+  against node and graph `initial_context`.
 - [ ] Async APIs: LLM-driven polling within the tool budget (call, check
   status, retry); longer waits continue on later messages.
+- [ ] Deterministic fallback when no provider is configured or a call fails:
+  routing degrades to triggers and the default edge.
+- [ ] Bounded calls: a timeout from the `system_one` `bounds`, and the tool
+  loop limits (max tools per message, timeout) from the `llms` `bounds`.
+- [ ] Per-message logging of node, intent, System One profile, question,
+  answer, confidence, tools called, provider, and policy version.
 - [ ] Tests: provider fakes, decision cases with confidence thresholds, config
-  resolution across scope and `shared`, tool argument validation, policy
+  resolution across scope and `shared`, multi-select and mapping cases,
+  extraction validated against `inputs`, tool argument validation, policy
   rejection fallback, and evaluation fixtures (golden conversations).
 
-Gate: a graph runs deterministically and with System One routing plus prescribed
-replies, with logs that explain each decision. The generative path is optional
-and off by default.
+Gate: a graph runs deterministically, with System One routing plus prescribed
+replies, and with the tool pipeline handling a multi-message tool node, with
+logs that explain each decision. The generative path is optional.
 
 ### Phase 9 — MVP hardening and release
 
@@ -340,11 +352,13 @@ and additional channels, each with its own phase, order, and open decisions.
   success condition (Phase 4/8).
 - Context variable typing and empty-versus-default semantics (Phase 4).
 - Confirmation guard for tools with side effects (Phase 8).
-- Adopt TypeSafe Jev as the first System One (early access): confirm access and
-  pricing before Phase 8 starts (ADR 0030).
+- Adopt TypeSafe Jev as the first System One implementation (early access):
+  confirm access and pricing before Phase 8 starts (ADR 0030).
 - System One confidence threshold: default and per-graph override (Phase 8).
-- Whether policy checks and output verification use the System One model too, or stay with
-  the LLM (Phase 8).
+- Closed-set inputs: how `inputs` declares the values for mapping, and the
+  staging threshold for large catalogs (Phase 8; ADR 0033).
+- Whether extraction runs on every tool message or only when the intake gate
+  asks for it (Phase 8; ADR 0033).
 - Selecting a reply variant with a decision, or separate nodes for now
   (Phase 8; ADR 0032).
 - Whether `shared` may ever carry `actions` or `graphs`, and the governance
@@ -362,8 +376,10 @@ Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
 Trigger matching and its threshold are in ADR 0019. AI routing is
-decision-only via a System One model (ADR 0030), model catalogs are scoped with a shared
-host catalog (ADR 0031), and prescribed replies are the default (ADR 0032).
+decision-only via System One (ADR 0030), model catalogs are scoped with a
+shared host catalog (ADR 0031), prescribed replies are the default (ADR
+0032), and tools run through the pipeline of ADR 0033, where verification is a
+System One role.
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
 `gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, the pure-Go SQLite

@@ -52,4 +52,5 @@ routing; a generative LLM never decides a transition.
 - The provider is English-first and new; the threshold and the phrasing of
   each intent need tests against real conversations.
 - Amends ADR 0004 (port split) and ADR 0015 (the routing actor). Where the
-  configuration lives is ADR 0031; how replies are produced is ADR 0032.
+  configuration lives is ADR 0031; how replies are produced is ADR 0032, and
+  how tools run is ADR 0033.
