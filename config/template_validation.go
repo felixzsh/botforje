@@ -1,17 +1,18 @@
-package engine
+package config
 
 import (
 	"fmt"
 	"maps"
 	"slices"
 
+	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
 )
 
-// TemplateIssue is one template problem in a scope. Action names the action
+// templateIssue is one template problem in a scope. Action names the action
 // that owns the site. Graph and Node name the node-level check, where the
 // action is only referenced; in that case Action holds the referenced action.
-type TemplateIssue struct {
+type templateIssue struct {
 	Action string
 	Graph  string
 	Node   string
@@ -25,15 +26,15 @@ type templateSite struct {
 	text  string
 }
 
-// ValidateTemplates checks every template string a scope declares: syntax,
+// validateTemplates checks every template string a scope declares: syntax,
 // known roots, and declared inputs, graph and node variables, and request
 // results (ADR 0018). The caller adds file and entity context.
-func ValidateTemplates(scope spec.Scope) []TemplateIssue {
-	var issues []TemplateIssue
+func validateTemplates(scope spec.Scope) []templateIssue {
+	var issues []templateIssue
 	for _, name := range slices.Sorted(maps.Keys(scope.Actions)) {
 		for _, site := range templateSites(scope.Actions[name]) {
-			if _, err := ParseTemplate(site.text); err != nil {
-				issues = append(issues, TemplateIssue{Action: name, Site: site.where, Err: err})
+			if _, err := botflota.ParseTemplate(site.text); err != nil {
+				issues = append(issues, templateIssue{Action: name, Site: site.where, Err: err})
 			}
 		}
 	}
@@ -51,7 +52,7 @@ func ValidateTemplates(scope spec.Scope) []TemplateIssue {
 // declare and the request results available in the node.
 func validateNodeTemplates(
 	scope spec.Scope, graphName, nodeName string, g spec.Graph,
-) []TemplateIssue {
+) []templateIssue {
 	node := g.Nodes[nodeName]
 	graphVars := keySet(g.InitialContext)
 	nodeVars := keySet(node.InitialContext)
@@ -67,14 +68,14 @@ func validateNodeTemplates(
 		}
 	}
 
-	var issues []TemplateIssue
+	var issues []templateIssue
 	check := func(ref string) {
 		action, ok := scope.Actions[ref]
 		if !ok {
 			return // the unknown action or tool is reported by validation
 		}
 		for _, site := range templateSites(action) {
-			tmpl, err := ParseTemplate(site.text)
+			tmpl, err := botflota.ParseTemplate(site.text)
 			if err != nil {
 				continue // reported by the action pass
 			}
@@ -107,23 +108,23 @@ func validateNodeTemplates(
 func checkReference(
 	action spec.Action, path, site string,
 	nodeVars, graphVars, requests map[string]bool,
-) *TemplateIssue {
-	root, segments, err := ParseTemplatePath(path)
+) *templateIssue {
+	root, segments, err := botflota.ParseTemplatePath(path)
 	if err != nil {
 		return nil // reported as a syntax error
 	}
-	issue := &TemplateIssue{Site: site}
+	issue := &templateIssue{Site: site}
 	name := segments[0]
 	switch root {
-	case RootInput:
+	case botflota.RootInput:
 		if _, ok := action.Inputs[name]; !ok {
 			issue.Err = fmt.Errorf("input %q is not declared", name)
 		}
-	case RootGraph:
+	case botflota.RootGraph:
 		if !graphVars[name] {
 			issue.Err = fmt.Errorf("graph.%s is not declared in initial_context", name)
 		}
-	case RootNode:
+	case botflota.RootNode:
 		if !nodeVars[name] && !requests[name] {
 			issue.Err = fmt.Errorf("node.%s is not declared in initial_context", name)
 		}

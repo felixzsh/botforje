@@ -1,10 +1,78 @@
-package engine
+package botflota
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
+
+// Root is the first segment of a {{path}} reference: graph, node, sender,
+// message, bot, or input.
+type Root string
+
+const (
+	RootGraph   Root = "graph"
+	RootNode    Root = "node"
+	RootSender  Root = "sender"
+	RootMessage Root = "message"
+	RootBot     Root = "bot"
+	RootInput   Root = "input"
+)
+
+var (
+	// ErrInvalidPath reports a reference that is not root.name[.name...].
+	ErrInvalidPath = errors.New("invalid path")
+	// ErrUnknownRoot reports a reference whose root is not defined.
+	ErrUnknownRoot = errors.New("unknown root")
+)
+
+// Known reports whether r is a defined root.
+func (r Root) Known() bool {
+	switch r {
+	case RootGraph, RootNode, RootSender, RootMessage, RootBot, RootInput:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseTemplatePath splits a reference into its root and segments. The root
+// must be known; every segment is a non-empty name of letters, digits, `_`,
+// or `-`. Numeric segments index slices when the path is resolved.
+func ParseTemplatePath(path string) (Root, []string, error) {
+	segments := strings.Split(path, ".")
+	if len(segments) < 2 {
+		return "", nil, fmt.Errorf("%w: %q", ErrInvalidPath, path)
+	}
+	for _, segment := range segments {
+		if !ValidSegment(segment) {
+			return "", nil, fmt.Errorf("%w: %q", ErrInvalidPath, path)
+		}
+	}
+	root := Root(segments[0])
+	if !root.Known() {
+		return "", nil, fmt.Errorf("%w: %q", ErrUnknownRoot, root)
+	}
+	return root, segments[1:], nil
+}
+
+// ValidSegment reports whether segment is one path segment: non-empty and made
+// of letters, digits, `_`, or `-`.
+func ValidSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for _, r := range segment {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // Template is a parsed string of literal text and references to the runtime
 // context (ADR 0018). It performs no I/O and holds no state beyond the parsed
@@ -60,16 +128,17 @@ func ParseTemplate(s string) (Template, error) {
 	return Template{parts: parts}, nil
 }
 
-// Render resolves every reference against ctx. A missing path is an error;
-// text is never silently dropped.
-func (t Template) Render(ctx *TemplateContext) (string, error) {
+// Render resolves every reference through resolve. A missing path is an error;
+// text is never silently dropped. The resolver is the caller's runtime context:
+// the engine owns the values, the template owns the language.
+func (t Template) Render(resolve func(string) (any, error)) (string, error) {
 	var out strings.Builder
 	for _, p := range t.parts {
 		if p.ref == "" {
 			out.WriteString(p.text)
 			continue
 		}
-		value, err := ctx.Get(p.ref)
+		value, err := resolve(p.ref)
 		if err != nil {
 			return "", err
 		}
@@ -94,12 +163,12 @@ func (t Template) References() []string {
 }
 
 // RenderTemplate parses and renders s in one step.
-func RenderTemplate(s string, ctx *TemplateContext) (string, error) {
+func RenderTemplate(s string, resolve func(string) (any, error)) (string, error) {
 	t, err := ParseTemplate(s)
 	if err != nil {
 		return "", err
 	}
-	return t.Render(ctx)
+	return t.Render(resolve)
 }
 
 // format renders a scalar as text. A whole map or slice has no text form and

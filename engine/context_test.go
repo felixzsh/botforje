@@ -4,27 +4,49 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/felixzsh/botflota"
 )
 
-func reset(t *testing.T, ctx *TemplateContext, root Root, values map[string]any) {
+func reset(t *testing.T, ctx *templateContext, root botflota.Root, values map[string]any) {
 	t.Helper()
 	if err := ctx.Reset(root, values); err != nil {
 		t.Fatalf("Reset(%s): %v", root, err)
 	}
 }
 
+// testContext seeds one value per root, the shape a Handle call builds.
+func testContext(t *testing.T) *templateContext {
+	t.Helper()
+	ctx := newtemplateContext()
+	for _, seed := range []struct {
+		root   botflota.Root
+		values map[string]any
+	}{
+		{botflota.RootGraph, map[string]any{"customer": "Ana", "visits": 3}},
+		{botflota.RootNode, map[string]any{"product": "widget"}},
+		{botflota.RootSender, map[string]any{"phone": "+52155", "name": "Ana"}},
+		{botflota.RootMessage, map[string]any{"body": "hola"}},
+		{botflota.RootBot, map[string]any{"id": "support-bot"}},
+		{botflota.RootInput, map[string]any{"qty": 2}},
+	} {
+		reset(t, ctx, seed.root, seed.values)
+	}
+	return ctx
+}
+
 func TestGet(t *testing.T) {
-	ctx := NewTemplateContext()
-	reset(t, ctx, RootGraph, map[string]any{"customer": "Ana", "visits": 3})
-	reset(t, ctx, RootNode, map[string]any{
+	ctx := newtemplateContext()
+	reset(t, ctx, botflota.RootGraph, map[string]any{"customer": "Ana", "visits": 3})
+	reset(t, ctx, botflota.RootNode, map[string]any{
 		"product": "widget",
 		"resp":    map[string]any{"body": map[string]any{"id": "42"}},
 		"items":   []any{"a", "b"},
 	})
-	reset(t, ctx, RootSender, map[string]any{"phone": "+52155"})
-	reset(t, ctx, RootMessage, map[string]any{"body": "hola"})
-	reset(t, ctx, RootBot, map[string]any{"id": "support-bot"})
-	reset(t, ctx, RootInput, map[string]any{"qty": 2})
+	reset(t, ctx, botflota.RootSender, map[string]any{"phone": "+52155"})
+	reset(t, ctx, botflota.RootMessage, map[string]any{"body": "hola"})
+	reset(t, ctx, botflota.RootBot, map[string]any{"id": "support-bot"})
+	reset(t, ctx, botflota.RootInput, map[string]any{"qty": 2})
 
 	cases := []struct {
 		name string
@@ -55,9 +77,9 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetMissing(t *testing.T) {
-	ctx := NewTemplateContext()
-	reset(t, ctx, RootGraph, map[string]any{"customer": "Ana"})
-	reset(t, ctx, RootNode, map[string]any{"items": []any{"a"}})
+	ctx := newtemplateContext()
+	reset(t, ctx, botflota.RootGraph, map[string]any{"customer": "Ana"})
+	reset(t, ctx, botflota.RootNode, map[string]any{"items": []any{"a"}})
 
 	for _, path := range []string{
 		"graph.nope",
@@ -76,11 +98,12 @@ func TestGetMissing(t *testing.T) {
 }
 
 func TestGetInvalidPath(t *testing.T) {
-	ctx := NewTemplateContext()
+	ctx := newtemplateContext()
 	for _, path := range []string{"graph", "", "graph.", ".graph", "graph.a b"} {
 		t.Run(path, func(t *testing.T) {
 			_, err := ctx.Get(path)
-			if !errors.Is(err, ErrInvalidPath) && !errors.Is(err, ErrUnknownRoot) {
+			if !errors.Is(err, botflota.ErrInvalidPath) &&
+				!errors.Is(err, botflota.ErrUnknownRoot) {
 				t.Fatalf("Get(%q) error = %v, want a path error", path, err)
 			}
 		})
@@ -88,14 +111,14 @@ func TestGetInvalidPath(t *testing.T) {
 }
 
 func TestGetUnknownRoot(t *testing.T) {
-	ctx := NewTemplateContext()
-	if _, err := ctx.Get("secret.key"); !errors.Is(err, ErrUnknownRoot) {
+	ctx := newtemplateContext()
+	if _, err := ctx.Get("secret.key"); !errors.Is(err, botflota.ErrUnknownRoot) {
 		t.Fatalf("error = %v, want ErrUnknownRoot", err)
 	}
 }
 
 func TestSetWritable(t *testing.T) {
-	ctx := NewTemplateContext()
+	ctx := newtemplateContext()
 	if err := ctx.Set("graph.customer", "Ana"); err != nil {
 		t.Fatalf("Set graph: %v", err)
 	}
@@ -117,7 +140,7 @@ func TestSetWritable(t *testing.T) {
 }
 
 func TestSetRejectsReadOnly(t *testing.T) {
-	ctx := NewTemplateContext()
+	ctx := newtemplateContext()
 	for _, path := range []string{"sender.phone", "message.body", "bot.id", "input.qty"} {
 		t.Run(path, func(t *testing.T) {
 			if err := ctx.Set(path, "x"); !errors.Is(err, ErrReadOnly) {
@@ -128,7 +151,7 @@ func TestSetRejectsReadOnly(t *testing.T) {
 }
 
 func TestSetRejectsNestedOrUnknown(t *testing.T) {
-	ctx := NewTemplateContext()
+	ctx := newtemplateContext()
 	for _, path := range []string{"graph.a.b", "unknown.key", "graph", ""} {
 		t.Run(path, func(t *testing.T) {
 			if err := ctx.Set(path, "x"); err == nil {
@@ -139,9 +162,9 @@ func TestSetRejectsNestedOrUnknown(t *testing.T) {
 }
 
 func TestResetNodeClearsPrevious(t *testing.T) {
-	ctx := NewTemplateContext()
-	reset(t, ctx, RootNode, map[string]any{"product": "widget"})
-	reset(t, ctx, RootNode, map[string]any{"quantity": 1})
+	ctx := newtemplateContext()
+	reset(t, ctx, botflota.RootNode, map[string]any{"product": "widget"})
+	reset(t, ctx, botflota.RootNode, map[string]any{"quantity": 1})
 	if _, err := ctx.Get("node.product"); !errors.Is(err, ErrMissingPath) {
 		t.Fatalf("node.product survived the reset: %v", err)
 	}
@@ -152,8 +175,8 @@ func TestResetNodeClearsPrevious(t *testing.T) {
 
 func TestResetClonesValues(t *testing.T) {
 	initial := map[string]any{"customer": "Ana"}
-	ctx := NewTemplateContext()
-	reset(t, ctx, RootGraph, initial)
+	ctx := newtemplateContext()
+	reset(t, ctx, botflota.RootGraph, initial)
 	if err := ctx.Set("graph.customer", "Bob"); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -163,14 +186,16 @@ func TestResetClonesValues(t *testing.T) {
 }
 
 func TestResetUnknownRoot(t *testing.T) {
-	if err := NewTemplateContext().Reset("secret", nil); !errors.Is(err, ErrUnknownRoot) {
+	if err := newtemplateContext().Reset("secret", nil); !errors.Is(
+		err, botflota.ErrUnknownRoot,
+	) {
 		t.Fatalf("error = %v, want ErrUnknownRoot", err)
 	}
 }
 
 func TestSetRequest(t *testing.T) {
-	ctx := NewTemplateContext()
-	err := ctx.SetRequest("lookup", RequestResult{
+	ctx := newtemplateContext()
+	err := ctx.SetRequest("lookup", requestResult{
 		Status:   200,
 		Headers:  map[string]string{"Authorization": "Bearer x"},
 		Body:     map[string]any{"id": "42", "tags": []any{"a", "b"}},
@@ -204,9 +229,33 @@ func TestSetRequest(t *testing.T) {
 }
 
 func TestSetRequestRejectsBadName(t *testing.T) {
-	if err := NewTemplateContext().SetRequest("bad.name", RequestResult{}); !errors.Is(
-		err, ErrInvalidPath,
+	if err := newtemplateContext().SetRequest("bad.name", requestResult{}); !errors.Is(
+		err, botflota.ErrInvalidPath,
 	) {
 		t.Fatalf("error = %v, want ErrInvalidPath", err)
+	}
+}
+
+// TestMessageStepRenders mirrors a message step whose body references a
+// captured request result (Phase 2 gate): the engine's context resolves the
+// path and the core template renders it.
+func TestMessageStepRenders(t *testing.T) {
+	ctx := testContext(t)
+	err := ctx.SetRequest("lead-capture", requestResult{
+		Status:   201,
+		Body:     map[string]any{"id": 7},
+		Duration: 250 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("SetRequest: %v", err)
+	}
+	got, err := botflota.RenderTemplate(
+		"Thanks! We created lead {{node.lead-capture.resp.body.id}}.", ctx.Get)
+	if err != nil {
+		t.Fatalf("RenderTemplate: %v", err)
+	}
+	want := "Thanks! We created lead 7."
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

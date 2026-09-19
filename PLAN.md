@@ -58,8 +58,8 @@ Deliverables:
   graph `routing`, `llms`). Align `config/examples/reference.yml` and the draft
   `config.schema.json` with it.
 - [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
-  LLM. They moved to `spec`, with the template parser and runtime context in
-  `engine` (ADR 0035).
+  LLM. They moved to `spec`; the template language lives in the core and the
+  runtime context in `engine` (ADR 0035, ADR 0036).
 - [x] Loader: main config plus `include` fragments (file, glob, directory,
   recursive), scope merging, and cycle-safe dedupe (ADR 0016).
 - [x] Runtime validation in Go: strict YAML decoding plus semantic checks.
@@ -198,8 +198,8 @@ Deliverables:
 
 - [x] Package layout settled before the API: root contracts, one package per
   capability, `adapters/`, and `internal` as a last resort (ADR 0034).
-- [x] Declarative objects moved to `spec`; the template parser and runtime
-  context moved into `engine` (ADR 0035).
+- [x] Declarative objects moved to `spec`; the template language moved to the
+  core and the runtime context into `engine` (ADR 0035, ADR 0036).
 - [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
   `fleet run|status|stop|restart|reload`, `message list|tail`.
 - [x] CLI help: `usage`, description, commands, options, and examples for every

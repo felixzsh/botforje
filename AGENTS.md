@@ -61,13 +61,14 @@ Prefer the Make targets; they wrap the underlying Go commands.
 ## Structure
 
 - Root package `botflota` — core contracts: messages, persisted records,
-  ports, errors, and the structured logger; standard library only.
+  ports, errors, the structured logger, and the template language; standard
+  library only.
 - `spec` — declarative objects: scopes, graphs, actions, bots, and model
   profiles, with their YAML/JSON tags.
 - `config` — configuration documents: load, includes, interpolation, origin,
-  and semantic validation.
-- `engine` — execution of `spec` plus the template parser and the runtime
-  context; `fleet` — one actor per bot.
+  semantic validation, and template reference checks.
+- `engine` — execution of `spec` plus the runtime context; `fleet` — one
+  actor per bot.
 - `adapters/` — concrete implementations of the core ports, grouped by
   technology: `sqlite`, `whatsapp`; later channels and providers join them.
 - `cmd/` — entrypoints; argument parsing and assembly only.
@@ -79,9 +80,10 @@ its owner or, as a last resort, in `internal`. Binary versus library does not
 decide visibility: packages outside `internal/` are importable because
 Botflota's own code composes them, not because they are an SDK, and they
 carry no compatibility promise to other projects (ADR 0034). Dependencies
-point along `config → engine → spec`; the engine never imports `config`, and
-the core never imports adapters (ADR 0004, ADR 0035). The package map lives
-in `docs/architecture.md`; keep it current.
+point along `config → spec` and `engine → spec`; neither imports the other,
+and both use the core template language. The core never imports adapters
+(ADR 0004, ADR 0035, ADR 0036). The package map lives in
+`docs/architecture.md`; keep it current.
 
 ## Never
 

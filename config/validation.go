@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/felixzsh/botflota/engine"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -76,11 +75,11 @@ func Validate(cfg *Config) []ValidationError {
 	return errs
 }
 
-// validateScopeTemplates runs the engine's template checks and attributes each
-// finding to the file and entity that declared it (ADR 0018). The engine owns
-// the language; config owns the provenance.
+// validateScopeTemplates runs the template checks and attributes each finding
+// to the file and entity that declared it (ADR 0018, ADR 0036). The template
+// language lives in the core; config owns the provenance.
 func validateScopeTemplates(cfg *Config, scopeName string, scope spec.Scope, add addError) {
-	for _, issue := range engine.ValidateTemplates(scope) {
+	for _, issue := range validateTemplates(scope) {
 		if issue.Graph != "" {
 			file := cfg.originOf("graph", scopeName, issue.Graph)
 			entity := fmt.Sprintf("graph %q (scope %q) node %q",

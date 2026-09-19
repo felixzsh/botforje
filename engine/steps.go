@@ -43,7 +43,7 @@ func (r *run) steps(steps []spec.Step, where string) error {
 func (r *run) message(m spec.Message) error {
 	recipient := r.msg.Sender
 	if m.To != "" {
-		rendered, err := RenderTemplate(m.To, r.tctx)
+		rendered, err := botflota.RenderTemplate(m.To, r.tctx.Get)
 		if err != nil {
 			return err
 		}
@@ -54,7 +54,7 @@ func (r *run) message(m spec.Message) error {
 	}
 	body := r.pickVariant(m.Body)
 	if body != "" {
-		rendered, err := RenderTemplate(body, r.tctx)
+		rendered, err := botflota.RenderTemplate(body, r.tctx.Get)
 		if err != nil {
 			return err
 		}
@@ -100,17 +100,17 @@ func (r *run) pickVariant(body spec.Text) string {
 // request renders and performs an HTTP call, retrying on failure, and stores
 // the captured result under the node root as {{node.<name>.resp.*}}.
 func (r *run) request(req spec.Request) error {
-	url, err := RenderTemplate(req.URL, r.tctx)
+	url, err := botflota.RenderTemplate(req.URL, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	body, err := RenderTemplate(req.Body, r.tctx)
+	body, err := botflota.RenderTemplate(req.Body, r.tctx.Get)
 	if err != nil {
 		return err
 	}
 	headers := make(map[string]string, len(req.Headers))
 	for name, value := range req.Headers {
-		rendered, err := RenderTemplate(value, r.tctx)
+		rendered, err := botflota.RenderTemplate(value, r.tctx.Get)
 		if err != nil {
 			return err
 		}
@@ -141,7 +141,7 @@ func (r *run) request(req spec.Request) error {
 
 func (r *run) doRequest(
 	method, url string, headers map[string]string, body string, timeout time.Duration,
-) (RequestResult, error) {
+) (requestResult, error) {
 	ctx, cancel := context.WithTimeout(r.ctx, timeout)
 	defer cancel()
 	var reader io.Reader
@@ -150,21 +150,21 @@ func (r *run) doRequest(
 	}
 	request, err := http.NewRequestWithContext(ctx, method, url, reader)
 	if err != nil {
-		return RequestResult{}, err
+		return requestResult{}, err
 	}
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
 	response, err := r.engine.http.Do(request)
 	if err != nil {
-		return RequestResult{}, err
+		return requestResult{}, err
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return RequestResult{}, err
+		return requestResult{}, err
 	}
-	return RequestResult{
+	return requestResult{
 		Status:  response.StatusCode,
 		Headers: flattenHeaders(response.Header),
 		Body:    decodeBody(response.Header.Get("Content-Type"), data),
@@ -172,19 +172,19 @@ func (r *run) doRequest(
 }
 
 func (r *run) location(loc spec.Location) error {
-	name, err := RenderTemplate(loc.Name, r.tctx)
+	name, err := botflota.RenderTemplate(loc.Name, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	address, err := RenderTemplate(loc.Address, r.tctx)
+	address, err := botflota.RenderTemplate(loc.Address, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	url, err := RenderTemplate(loc.URL, r.tctx)
+	url, err := botflota.RenderTemplate(loc.URL, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	description, err := RenderTemplate(loc.Description, r.tctx)
+	description, err := botflota.RenderTemplate(loc.Description, r.tctx.Get)
 	if err != nil {
 		return err
 	}

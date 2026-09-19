@@ -133,8 +133,8 @@ func (e *Engine) Handle(
 		}
 	}
 
-	session.GraphContext = r.tctx.Values(RootGraph)
-	session.NodeContext = r.tctx.Values(RootNode)
+	session.GraphContext = r.tctx.Values(botflota.RootGraph)
+	session.NodeContext = r.tctx.Values(botflota.RootNode)
 	session.UpdatedAt = now
 	session.ExpiresAt = e.expiry(now)
 	if err := e.store.Save(ctx, session); err != nil {
@@ -207,21 +207,21 @@ func (e *Engine) expiry(now time.Time) time.Time {
 
 func (e *Engine) contextOf(
 	session *botflota.Session, msg botflota.IncomingMessage, sender *botflota.Sender,
-) *TemplateContext {
-	tctx := NewTemplateContext()
+) *templateContext {
+	tctx := newtemplateContext()
 	// The roots seeded here are constants, so Reset cannot reject them.
-	_ = tctx.Reset(RootGraph, session.GraphContext)
-	_ = tctx.Reset(RootNode, session.NodeContext)
-	_ = tctx.Reset(RootSender, map[string]any{
+	_ = tctx.Reset(botflota.RootGraph, session.GraphContext)
+	_ = tctx.Reset(botflota.RootNode, session.NodeContext)
+	_ = tctx.Reset(botflota.RootSender, map[string]any{
 		"phone": msg.Sender,
 		"name":  sender.DisplayName,
 	})
-	_ = tctx.Reset(RootMessage, map[string]any{
+	_ = tctx.Reset(botflota.RootMessage, map[string]any{
 		"body": msg.Body,
 		"id":   msg.ID,
 		"at":   formatAt(msg.At),
 	})
-	_ = tctx.Reset(RootBot, map[string]any{
+	_ = tctx.Reset(botflota.RootBot, map[string]any{
 		"id":    e.bot,
 		"scope": e.scope,
 	})
@@ -234,7 +234,7 @@ type run struct {
 	engine      *Engine
 	session     *botflota.Session
 	chat        *botflota.Chat
-	tctx        *TemplateContext
+	tctx        *templateContext
 	msg         botflota.IncomingMessage
 	out         []botflota.OutgoingMessage
 	guardsDirty bool
@@ -251,7 +251,7 @@ func (r *run) move(target string, runExit bool) error {
 	r.engine.log.Debug("transition", "from", r.session.Node, "to", target, "exit", runExit)
 	r.session.Node = target
 	r.session.NodeContext = maps.Clone(r.engine.graph.Nodes[target].InitialContext)
-	if err := r.tctx.Reset(RootNode, r.session.NodeContext); err != nil {
+	if err := r.tctx.Reset(botflota.RootNode, r.session.NodeContext); err != nil {
 		return err
 	}
 	r.session.VisitedNodes = reorder(r.session.VisitedNodes, target)

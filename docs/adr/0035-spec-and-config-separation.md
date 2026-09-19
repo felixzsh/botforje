@@ -1,6 +1,7 @@
 # ADR 0035 — Declarative specifications are separate from config loading
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09). The template ownership is superseded by ADR 0036;
+the split of the declarative objects into `spec` stands.
 
 ## Context
 

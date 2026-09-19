@@ -1,4 +1,4 @@
-package engine
+package config
 
 import (
 	"strings"
@@ -34,7 +34,7 @@ func templateScope() spec.Scope {
 	}
 }
 
-func setBody(s *spec.Scope, action, body string) {
+func setTemplateBody(s *spec.Scope, action, body string) {
 	a := s.Actions[action]
 	a.Steps = []spec.Step{{Message: &spec.Message{Body: spec.Text{body}}}}
 	s.Actions[action] = a
@@ -56,22 +56,22 @@ func TestValidateTemplates(t *testing.T) {
 	}{
 		{"valid does not report", func(*spec.Scope) {}, ""},
 		{"unknown root", func(s *spec.Scope) {
-			setBody(s, "greet", "{{secret.api_key}}")
+			setTemplateBody(s, "greet", "{{secret.api_key}}")
 		}, "unknown root"},
 		{"unterminated reference", func(s *spec.Scope) {
-			setBody(s, "greet", "open {{graph.customer_name")
+			setTemplateBody(s, "greet", "open {{graph.customer_name")
 		}, "unterminated"},
 		{"undeclared graph variable", func(s *spec.Scope) {
-			setBody(s, "greet", "{{graph.missing}}")
+			setTemplateBody(s, "greet", "{{graph.missing}}")
 		}, "graph.missing is not declared"},
 		{"undeclared node variable", func(s *spec.Scope) {
-			setBody(s, "greet", "{{node.missing}}")
+			setTemplateBody(s, "greet", "{{node.missing}}")
 		}, "node.missing is not declared"},
 		{"request result is declared", func(s *spec.Scope) {
 			// The base scope already reads node.call, captured by lookup.
 		}, ""},
 		{"undeclared request result", func(s *spec.Scope) {
-			setBody(s, "report", "{{node.other.resp.body.id}}")
+			setTemplateBody(s, "report", "{{node.other.resp.body.id}}")
 		}, "node.other is not declared"},
 		{"undeclared input", func(s *spec.Scope) {
 			s.Actions["search"] = spec.Action{
@@ -87,7 +87,7 @@ func TestValidateTemplates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			scope := templateScope()
 			tc.mutate(&scope)
-			issues := ValidateTemplates(scope)
+			issues := validateTemplates(scope)
 			if tc.want == "" {
 				if len(issues) != 0 {
 					t.Fatalf("issues = %#v, want none", issues)
@@ -108,8 +108,8 @@ func TestValidateTemplates(t *testing.T) {
 // finding to the file and entity that declared it.
 func TestValidateTemplatesContext(t *testing.T) {
 	scope := templateScope()
-	setBody(&scope, "greet", "{{node.missing}}")
-	issues := ValidateTemplates(scope)
+	setTemplateBody(&scope, "greet", "{{node.missing}}")
+	issues := validateTemplates(scope)
 	if len(issues) != 1 {
 		t.Fatalf("issues = %#v, want exactly one", issues)
 	}
