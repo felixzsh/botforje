@@ -62,9 +62,6 @@
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds); a bot references one with `llm` or replies from
   prescribed bodies without it (ADR 0017, ADR 0031).
-- LLM provider — language model implementation (cloud or local) used for
-  reply realization and the tool loop only, as an opt-in; it never routes
-  (ADR 0030, ADR 0032).
 - Agent — a conventional external agent runtime (for example OpenClaw), a
   possible future integration behind a port. It does not name Botflota's own
   LLM behavior; that is the tool loop.

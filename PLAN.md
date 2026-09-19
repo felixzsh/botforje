@@ -229,7 +229,9 @@ Deliverables:
 - [ ] REST API: status, bots, chats, sessions, messages, and config. Every
   addressable object carries its scope, and a message carries its bot as
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
-  scoped authority (Phase 13) both route by that pair.
+  scoped authority (Phase 13) both route by that pair. The `config` read
+  serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
+  (`shared`, `ldms`) surface without reworking handlers.
 - [ ] Bot service: move what the CLI and the API share out of `cmd/` (pairing
   pre-checks, scope disambiguation, bot status) into a package, so the API
   does not reimplement it.

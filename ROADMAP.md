@@ -285,9 +285,6 @@ Deliverables:
   stub, flagged in validation and listed as a checklist item.
 - [ ] Review flow in the dashboard: accept or reject each suggestion, then
   publish through Phase 15.
-- [ ] Optional shared llm catalog: an instance-level provider a scope may
-  reference, for hosts that provide the model themselves; BYOK stays
-  (supersedes part of ADR 0017).
 - [ ] Tests: fixture transcripts to a deterministic draft shape, stub
   detection, and a publish of the generated draft.
 

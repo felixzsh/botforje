@@ -18,7 +18,7 @@ browser automation.
 
 ## Status
 
-Pre-code; implementation has not started.
+Implementation is underway; `PLAN.md` tracks phase progress.
 
 ## Documentation
 
