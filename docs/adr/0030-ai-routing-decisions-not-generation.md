@@ -11,7 +11,7 @@ to be parsed, validated against the edge set, and tolerated when it drifts.
 It also gives no calibrated uncertainty: a wrong route and a certain one look
 the same.
 
-A Large Decision Model (LDM) is a different tool. It answers typed questions —
+A System One model is a different tool. It answers typed questions —
 a choice from a closed set, a score on a rubric, or a probability — with
 calibrated confidence and no generated text. TypeSafe calls this class System
 One and ships Jev as its first model, behind one endpoint
@@ -22,14 +22,14 @@ replace the state machine.
 
 ## Decision
 
-AI routing is decision-only, and the LDM is the project's main and recommended
-AI path. An LDM is the only model that takes part in routing; a generative LLM
-never decides a transition.
+AI routing is decision-only, and System One is the project's main and
+recommended AI path. A System One model is the only model that takes part in
+routing; a generative LLM never decides a transition.
 
 - Triggers and the default edge (ADR 0019, ADR 0010) remain the first line and
   work with no provider configured.
 - Two ports replace the single `LLMProvider` of ADR 0004:
-  `LDMProvider.Decide` returns a typed decision with confidence, and
+  `SystemOneProvider.Decide` returns a typed decision with confidence, and
   `LLMProvider` keeps reply realization and the tool loop only.
 - A decision request carries one question per candidate edge intent, as a
   choice from the closed set of intents. The winner, the tie-break, and the

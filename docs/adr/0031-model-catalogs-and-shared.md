@@ -5,7 +5,7 @@ Status: Accepted (2026-09)
 ## Context
 
 ADR 0017 gives each scope a named `llms` catalog, and a bot references one
-`llm`. ADR 0030 separates routing (an LDM) from reply realization (an LLM), so
+`llm`. ADR 0030 separates routing (a System One model) from reply realization (an LLM), so
 one profile can no longer carry both. A host also wants to offer a provider
 once instead of repeating it in every scope, and a tenant wants to bring its
 own key (BYOK) or keep a scope self-contained for export.
@@ -17,13 +17,13 @@ definitions, and definitions belong to the instance, not to a tenant.
 
 ## Decision
 
-Each scope holds `ldms` and `llms` catalogs; a bot references one of each by
-name with `ldm` and `llm`, next to `graph`. The instance holds a `shared`
+Each scope holds `system_one` and `llms` catalogs; a bot references one of each by
+name with `system_one` and `llm`, next to `graph`. The instance holds a `shared`
 catalog with the same two catalogs, in the main config file only.
 
 ```yaml
 shared:
-  ldms:
+  system_one:
     default:
       provider: "typesafe"
       model: "jev-latest"
@@ -41,12 +41,12 @@ shared:
 
 scopes:
   support:
-    # ldms:
+    # system_one:
     #   default: { api_key: "${SUPPORT_TYPESAFE_KEY}" }  # scope wins
     bots:
       support-bot:
         graph: "faq-support"
-        ldm: "default"
+        system_one: "default"
         llm: "standard"          # optional
 ```
 
@@ -57,16 +57,16 @@ Resolution and rules:
 - `shared` is the host's, not a tenant: it is not a scope, is not listed, and
   is not addressable by a scoped principal (the authority phase, ROADMAP
   Phase 13, changes nothing here).
-- `shared` admits `ldms` and `llms` only. `bots` never; `actions` and `graphs`
+- `shared` admits `system_one` and `llms` only. `bots` never; `actions` and `graphs`
   wait for a governance story (who edits, how it is versioned, what a change
   to a referenced entity does to every tenant).
 - `shared` lives in the main file only for now; fragments may contribute later.
-- `ldms.<name>`: `provider` and `model` required; `routing` and
+- `system_one.<name>`: `provider` and `model` required; `routing` and
   `confidence_threshold` default here and a graph may override them (ADR 0015);
   `bounds` holds the call timeout.
 - `llms.<name>`: `provider` and `model` required; `realization` and `bounds`;
-  no `routing`, which moved to the LDM.
-- A bot with neither `ldm` nor `llm` runs deterministically. An `ldm` without
+  no `routing`, which moved to the System One model.
+- A bot with neither `system_one` nor `llm` runs deterministically. A `system_one` without
   an `llm` routes with AI and replies from prescribed bodies; this is the
   recommended shape (ADR 0032).
 - The shape lands in config v1 in Phase 8 (`config.schema.json`,
@@ -76,10 +76,10 @@ Resolution and rules:
 
 - A host defines a provider once; a tenant overrides it for BYOK or stays
   self-contained, so a scope still exports on its own.
-- `routing` moves from `llms` to `ldms`; `realization` stays on `llms`.
-- LDM and LLM are configured and operated separately.
+- `routing` moves from `llms` to `system_one`; `realization` stays on `llms`.
+- System One and LLM are configured and operated separately.
 - `shared` is one concept, not a second kind of scope: lists, quotas, and
   authority stay tenant-only with no exceptions.
-- ADR 0017 is amended: `llms` keeps realization, `ldms` is added, and the
+- ADR 0017 is amended: `llms` keeps realization, `system_one` is added, and the
   "no shared llms across scopes" rule becomes "no references between tenant
   scopes".

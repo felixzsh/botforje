@@ -15,6 +15,6 @@ SaaS infrastructure:
 - CLI: `config` and `bot` groups, plus `fleet`.
 - REST API with key-based auth.
 - Hybrid AI support designed in from the start: deterministic routing works
-  with no model configured; an LDM (Jev) routes, prescribed replies are the
+  with no model configured; a System One model (Jev) routes, prescribed replies are the
   default, and an LLM realizes replies and runs tools only when enabled
   (ADR 0030, ADR 0032).

@@ -10,7 +10,7 @@ Three independent ports sit beside the config engine and persistence:
 - `MessageChannel` — transport port. A channel is one implementation that
   reaches a messaging provider; the provider (WhatsApp) can have several
   channels, such as whatsmeow today or the official Cloud API later.
-- `LDMProvider` — Large Decision Model port for routing and policy: typed
+- `SystemOneProvider` — System One port for routing and policy: typed
   answers (a choice from a closed set, a score, or a probability) with
   confidence and no generated text. Jev (TypeSafe System One) is the first
   adapter (ADR 0030).
@@ -21,8 +21,8 @@ The config engine loads YAML into the domain model; the engine never sees
 YAML. Persistence stores runtime state: device store, chats, sessions, and
 messages.
 
-A messaging provider, an LDM, and an LLM are different things. A bot always
-needs a channel; an LDM and an LLM are each optional and independent. A
+A messaging provider, a System One model, and an LLM are different things. A bot always
+needs a channel; a System One model and an LLM are each optional and independent. A
 generative LLM never decides a transition (ADR 0030).
 
 The YAML-free domain types and ports live in `internal/domain` (`ports.go` for
@@ -38,7 +38,7 @@ database becomes their source (ROADMAP Phase 15).
 ## Domain model
 
 - Bot — identity (account) plus settings, the reference to one graph, and
-  optional references to one ldm and one llm (ADR 0017, ADR 0031).
+  optional references to one system_one and one llm (ADR 0017, ADR 0031).
 - Sender — the durable profile of one person who writes to bots in a scope:
   phone, push name, and first/last seen, keyed by (scope, phone). The
   bot-person thread is the chat; a person may write to several bots of the same
@@ -48,8 +48,8 @@ database becomes their source (ROADMAP Phase 15).
 - Node — goal, policy, entry/exit actions, tools, and optional node-local
   context.
 - Edge — transition with a required user intent, except the default
-  (catch-all) edge. `triggers` is an optional deterministic fast path; the
-  LDM resolves input that matches no trigger (ADR 0030).
+  (catch-all) edge. `triggers` is an optional deterministic fast path;
+  System One resolves input that matches no trigger (ADR 0030).
 - Action — ordered steps (`message`, `request`, `location`) with guards and
   declared `inputs`; exposed to the LLM when a node lists it in `tools`.
 - Tool — an action the LLM may invoke with validated arguments; an input
@@ -59,14 +59,14 @@ database becomes their source (ROADMAP Phase 15).
   routing and as LLM context; reordered on each visit, never reset by
   navigation.
 - Graph context — session-wide variables that persist across nodes.
-- Scope — the top-level config namespace holding its own ldms, llms, actions,
+- Scope — the top-level config namespace holding its own system_one, llms, actions,
   graphs, and bots (ADR 0016, ADR 0031). A tenant is one use; the name is
   free. References and sessions never cross scopes.
-- Shared catalog — the instance-level `ldms` and `llms` a host provides, in
+- Shared catalog — the instance-level `system_one` and `llms` a host provides, in
   the main config file only; a bot resolves a name in its scope first, then in
   `shared`. It is not a scope (ADR 0031).
-- LDM — a named model profile that answers typed decisions with confidence for
-  routing and policy, referenced by a bot with `ldm`; it resolves in the scope
+- System One — a named model profile that answers typed decisions with confidence for
+  routing and policy, referenced by a bot with `system_one`; it resolves in the scope
   or in `shared` (ADR 0030, ADR 0031).
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds) referenced by a bot with `llm`; it resolves in the scope
@@ -91,7 +91,7 @@ Inbound:
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
 5. When the graph routing mode is `always`, or nothing matched and the mode
-   is `fallback`, the LDM decides: one Choice question over the candidate edge
+   is `fallback`, the System One model decides: one Choice question over the candidate edge
    intents, checked against the graph's confidence threshold. Below it the
    graph takes the default edge or escalates; the LLM never classifies
    (ADR 0030).
@@ -146,7 +146,7 @@ Three ways a reply reaches the queue, in order of preference (ADR 0032):
 
 - Prescribed: a `body` message, optionally a list of variants chosen at
   random. The default, and the only one that needs no provider.
-- Decision-selected: the LDM routes to a node whose prescribed body fits the
+- Decision-selected: the System One model routes to a node whose prescribed body fits the
   intent or tone. The reply is still prescribed.
 - Realized: the opt-in generative path; `body` plus `intent` anchors the model
   and doubles as the fallback. Intent-only, with no anchor, is discouraged.
@@ -214,14 +214,14 @@ such as the channel and the device store; `off` silences a category. Levels foll
 for
 per-message detail, info for lifecycle and state, warn for recoverable
 conditions, and error for failures. Message bodies are debug-only, and secrets
-stay masked by type (ADR 0014). An LDM decision logs its profile, question,
+stay masked by type (ADR 0014). A System One decision logs its profile, question,
 answer, and confidence; the LLM logs realization and tool calls.
 
 ## Config layout
 
 A config file is global settings, an optional `shared` catalog, and `scopes`
-(ADR 0016, ADR 0031). Each scope holds its own ldms, llms, actions, graphs,
-and bots; a bot's `ldm` and `llm` resolve in the scope first and then in
+(ADR 0016, ADR 0031). Each scope holds its own system_one, llms, actions, graphs,
+and bots; a bot's `system_one` and `llm` resolve in the scope first and then in
 `shared`. `include` pulls other files that use the same shape; several files
 may extend one scope, paths resolve relative to the including file, and a file
 loaded twice is skipped, so diamond includes and cycles are safe. Global

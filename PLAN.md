@@ -24,7 +24,7 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 5. WhatsApp channel (whatsmeow)
 6. Fleet, filter, and outbox
 7. CLI and REST API
-8. LDM routing, prescribed replies, and opt-in LLM providers
+8. System One routing, prescribed replies, and opt-in LLM providers
 9. MVP hardening and release
 
 ## Phases
@@ -231,7 +231,7 @@ Deliverables:
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
-  (`shared`, `ldms`) surface without reworking handlers.
+  (`shared`, `system_one`) surface without reworking handlers.
 - [ ] Bot service: move what the CLI and the API share out of `cmd/` (pairing
   pre-checks, scope disambiguation, bot status) into a package, so the API
   does not reimplement it.
@@ -257,32 +257,32 @@ Deliverables:
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
 
-### Phase 8 — LDM routing, prescribed replies, and opt-in LLM providers
+### Phase 8 — System One routing, prescribed replies, and opt-in LLM providers
 
-Goal: the LDM becomes the primary AI path, prescribed replies are the default,
+Goal: the System One model becomes the primary AI path, prescribed replies are the default,
 and a generative LLM stays available only for reply realization and tool
 calling, as an explicit opt-in.
 
 Deliverables:
 
-- [ ] `LDMProvider` port and a Jev (TypeSafe System One) adapter: one `Choice`
+- [ ] `SystemOneProvider` port and a Jev (TypeSafe System One) adapter: one `Choice`
   question per candidate edge intent, typed answers with confidence, and the
   deterministic matcher first (ADR 0030).
-- [ ] `shared` and scope catalogs (`ldms`, `llms`): config types, generated
+- [ ] `shared` and scope catalogs (`system_one`, `llms`): config types, generated
   schema, `config/example.yml`, fixtures, and validation, with a name
   resolving in the scope first and then in `shared` (ADR 0031).
 - [ ] Confidence-gated routing: a per-graph threshold decides between taking
   the decision, the default edge, or escalation, and is logged per message.
 - [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015),
-  applied to the LDM; `always` gives it the decision even when a trigger
+  applied to the System One model; `always` gives it the decision even when a trigger
   matches.
 - [ ] Prescribed replies as the default path: `body` messages with variants
   chosen at random, and no provider required (ADR 0032).
 - [ ] Deterministic fallback when no provider is configured or a call fails:
   routing degrades to triggers and the default edge.
-- [ ] Bounded calls: a decision timeout from the `ldms` `bounds`, and the tool
+- [ ] Bounded calls: a decision timeout from the `system_one` `bounds`, and the tool
   loop limits (max tools per message, timeout) from the `llms` `bounds`.
-- [ ] Per-message logging of node, intent, LDM profile, question, answer,
+- [ ] Per-message logging of node, intent, System One profile, question, answer,
   confidence, tools called, provider, and policy version.
 - [ ] Opt-in generation (ADR 0032): `LLMProvider` implementations for reply
   realization only (one cloud and one local), `body` plus `intent` anchored and
@@ -299,7 +299,7 @@ Deliverables:
   resolution across scope and `shared`, tool argument validation, policy
   rejection fallback, and evaluation fixtures (golden conversations).
 
-Gate: a graph runs deterministically and with LDM routing plus prescribed
+Gate: a graph runs deterministically and with System One routing plus prescribed
 replies, with logs that explain each decision. The generative path is optional
 and off by default.
 
@@ -340,10 +340,10 @@ and additional channels, each with its own phase, order, and open decisions.
   success condition (Phase 4/8).
 - Context variable typing and empty-versus-default semantics (Phase 4).
 - Confirmation guard for tools with side effects (Phase 8).
-- Adopt TypeSafe Jev as the first LDM (early access): confirm access and
+- Adopt TypeSafe Jev as the first System One (early access): confirm access and
   pricing before Phase 8 starts (ADR 0030).
-- LDM confidence threshold: default and per-graph override (Phase 8).
-- Whether policy checks and output verification use the LDM too, or stay with
+- System One confidence threshold: default and per-graph override (Phase 8).
+- Whether policy checks and output verification use the System One model too, or stay with
   the LLM (Phase 8).
 - Selecting a reply variant with a decision, or separate nodes for now
   (Phase 8; ADR 0032).
@@ -362,7 +362,7 @@ Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
 Trigger matching and its threshold are in ADR 0019. AI routing is
-decision-only via an LDM (ADR 0030), model catalogs are scoped with a shared
+decision-only via a System One model (ADR 0030), model catalogs are scoped with a shared
 host catalog (ADR 0031), and prescribed replies are the default (ADR 0032).
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of

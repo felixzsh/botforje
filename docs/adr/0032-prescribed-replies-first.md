@@ -10,7 +10,7 @@ It is also often a patch for weak routing: when the model does not know what
 the user meant, the reply is improvised instead of selected.
 
 Tolerance of paraphrase is a property of routing, not of writing. With a
-calibrated LDM (ADR 0030) the graph already knows which intent won, so the
+calibrated System One (ADR 0030) the graph already knows which intent won, so the
 reply for that intent is already the right one. Two problems often attributed
 to prescribed text have answers without generation: repetition is handled by
 `body` variants chosen at random, and tone is handled by routing to a node
@@ -19,10 +19,10 @@ whose prescribed body fits.
 ## Decision
 
 The recommended and default reply path is prescribed. A node carries `body`
-messages, optionally as a list of variants; the graph, guided by the LDM,
+messages, optionally as a list of variants; the graph, guided by the System One model,
 selects which node and therefore which prescribed reply goes out.
 
-- A bot with an `ldm` and no `llm` is the recommended shape: AI routing,
+- A bot with `system_one` and no `llm` is the recommended shape: AI routing,
   prescribed replies.
 - Tone and register are chosen by routing, not by generation. A decision
   question (a score or a noul) may drive the choice, but the reply is still a
@@ -41,7 +41,7 @@ selects which node and therefore which prescribed reply goes out.
 
 - The default path cannot hallucinate, is auditable, cheap, and testable from
   the graph alone.
-- Graph authors write the messages; the LDM handles paraphrases and picks the
+- Graph authors write the messages; the System One model handles paraphrases and picks the
   branch. This is the project's identity, not a fallback.
 - A bot that needs free-form text, multilingual replies, or LLM tools opts in
   and accepts the cost and the review that come with it.

@@ -1,7 +1,7 @@
 # ADR 0017 — LLM configuration lives in scoped llms
 
 Status: Accepted (2026-09). Amended by ADR 0031: `llms` keeps realization,
-`ldms` is added, and a `shared` host catalog may serve both, so "no shared
+`system_one` is added, and a `shared` host catalog may serve both, so "no shared
 llms across scopes" now means no references between tenant scopes.
 
 ## Context

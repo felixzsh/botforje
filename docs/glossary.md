@@ -1,12 +1,12 @@
 # Glossary
 
 - Bot — one WhatsApp account bound to a graph, its settings, and optional
-  ldm and llm; the deployable unit.
+  system_one and llm; the deployable unit.
 - Fleet — the set of bots a single Botflota instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
   and sessions (ADR 0016); a free name, never derived from folders.
 - Graph — conversation state machine owned by one bot; may override the
-  routing mode of the bot's ldm (ADR 0015).
+  routing mode of the bot's system_one (ADR 0015).
 - Node — a state: goal, policy, entry/exit actions, tools, and optional
   node-local context.
 - Goal — the LLM's objective in a node, short and clear.
@@ -53,12 +53,14 @@
   the JID that identifies the paired companion device; keyed by (scope, bot).
   Pairing is the lifecycle around it: paired, not paired, or unpaired
   (ADR 0006).
-- Shared catalog — the instance-level `ldms` and `llms` a host provides, in
-  the main config file only; a bot resolves `ldm` and `llm` in its scope first
+- Shared catalog — the instance-level `system_one` and `llms` a host provides, in
+  the main config file only; a bot resolves `system_one` and `llm` in its scope first
   and then in `shared`, which is not a scope (ADR 0031).
-- LDM (Large Decision Model) — a model class that answers typed questions with
-  calibrated confidence instead of generating text; the project's main AI
-  path. Jev (TypeSafe System One) is the first implementation (ADR 0030).
+- System One — a model class that answers typed questions with calibrated
+  confidence instead of generating text; the project's main AI path. Its three
+  question types are `choice` (pick one option), `score` (rate on a rubric)
+  and `noul` (probability that a statement is true). Jev (TypeSafe) is the
+  first implementation (ADR 0030).
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds); a bot references one with `llm` or replies from
   prescribed bodies without it (ADR 0017, ADR 0031).

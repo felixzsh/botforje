@@ -1,7 +1,8 @@
 # ADR 0015 — Routing mode can be overridden per graph
 
-Status: Accepted (2026-09). The actor is the LDM (ADR 0030) and the setting
-lives on `ldms` (ADR 0031); the modes and the override stand.
+Status: Accepted (2026-09). The actor is the System One model (ADR 0030) and
+the setting lives on `system_one` (ADR 0031); the modes and the override
+stand.
 
 ## Context
 

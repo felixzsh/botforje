@@ -17,7 +17,7 @@ so on). It also let a forgotten `scope` silently place an entity in
 
 A config file is global settings plus `scopes`, and an optional `shared`
 catalog of model profiles the host provides (ADR 0031). Each scope holds its
-own `ldms`, `llms`, `actions`, `graphs`, and `bots` (ADR 0017, ADR 0031).
+own `system_one`, `llms`, `actions`, `graphs`, and `bots` (ADR 0017, ADR 0031).
 Scope names are free strings; `default` is just a name, with no special
 behavior, and `shared` is not a scope.
 

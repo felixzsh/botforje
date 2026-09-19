@@ -24,7 +24,7 @@ When Phase 9 closes, a clean machine and one config file give:
 - `config validate` over a frozen config v1, with a generated schema for
   editors.
 - A fleet of WhatsApp accounts paired with `bot pair` and run with
-  `fleet run`, answering from YAML graphs deterministically, with LDM routing
+  `fleet run`, answering from YAML graphs deterministically, with System One routing
   plus prescribed replies, or with an optional LLM.
 - SQLite persistence for the device store, chats, sessions, and messages.
 - CLI groups `config`, `bot`, `fleet`, and `message`, plus a REST API with a
@@ -55,7 +55,7 @@ These shape every phase and become ADRs when the phase that owns them starts.
 - A passkey or a browser session is never imported: the companion identity lives
   in the device store and runs on a server, while every passkey ceremony happens
   on the account owner's device (ADR 0028).
-- AI stays optional and specialised (ADR 0030, ADR 0032): an LDM (Jev) makes
+- AI stays optional and specialised (ADR 0030, ADR 0032): a System One model (Jev) makes
   typed, confidence-bearing decisions for routing and policy, prescribed
   replies are the default, and a generative LLM only realizes replies and
   calls tools as an opt-in. Deterministic matching comes first.
