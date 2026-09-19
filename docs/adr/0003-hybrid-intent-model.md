@@ -1,6 +1,7 @@
 # ADR 0003 — Hybrid intent model
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09). The reply-mode weighting is amended by ADR 0032:
+prescribed `body` is the default and intent-only is discouraged.
 
 ## Context
 

@@ -15,10 +15,11 @@ so on). It also let a forgotten `scope` silently place an entity in
 
 ## Decision
 
-A config file is global settings plus a `scopes` map. Each scope holds its
-own `deciders`, `llms`, `actions`, `graphs`, and `bots` (ADR 0017, ADR 0031).
+A config file is global settings plus `scopes`, and an optional `shared`
+catalog of model profiles the host provides (ADR 0031). Each scope holds its
+own `ldms`, `llms`, `actions`, `graphs`, and `bots` (ADR 0017, ADR 0031).
 Scope names are free strings; `default` is just a name, with no special
-behavior.
+behavior, and `shared` is not a scope.
 
 ```yaml
 version: 1

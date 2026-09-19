@@ -1,7 +1,7 @@
 # ADR 0004 — Messaging channel and LLM provider are separate ports
 
 Status: Accepted (2026-09). The classification role of `LLMProvider` is
-superseded by ADR 0030; the rest stands.
+superseded by the `LDMProvider` port of ADR 0030; the rest stands.
 
 ## Context
 

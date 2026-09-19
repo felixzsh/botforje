@@ -32,6 +32,6 @@ and short triggers are exact matches, which keeps menu options predictable.
   typos within about a fifth of the text still match.
 - The threshold and the discrete scores live in one place and are pinned by
   tests.
-- No stemmer, synonyms, or embeddings: the decision provider (Phase 8,
-  ADR 0030) covers what matching misses.
+- No stemmer, synonyms, or embeddings: the LDM (Phase 8, ADR 0030) covers
+  what matching misses.
 - Ties prefer recent nodes, so "back" works without duplicating edges.

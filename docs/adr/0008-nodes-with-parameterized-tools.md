@@ -1,6 +1,7 @@
 # ADR 0008 — Nodes with parameterized tools
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09). Tool calling is part of the opt-in generative
+extension; the core path uses deterministic `request` steps (ADR 0032).
 
 ## Context
 
