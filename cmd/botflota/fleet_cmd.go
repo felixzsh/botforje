@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -149,6 +150,74 @@ func runFleet(args []string) int {
 		return 1
 	}
 	logger.Info("fleet stopped")
+	return 0
+}
+
+type fleetStatusCmd struct {
+	fs     *flag.FlagSet
+	config *string
+	json   *bool
+}
+
+func newFleetStatusCmd() *fleetStatusCmd {
+	fs := flag.NewFlagSet("fleet status", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &fleetStatusCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		json:   fs.Bool("json", false, "machine-readable output"),
+	}
+}
+
+// runFleetStatus asks the running instance for its state: uptime and each
+// bot's connection state, outbox depth, and active sessions. It is an API
+// client, so the fleet must be running (ADR 0025).
+func runFleetStatus(args []string) int {
+	cmd := newFleetStatusCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
+	}
+	cfg, code := loadConfig(*cmd.config)
+	if code != 0 {
+		return code
+	}
+	client, err := newAPIClient(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx := context.Background()
+	if *cmd.json {
+		body, err := client.getRaw(ctx, "/api/v1/status")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		_, _ = os.Stdout.Write(body)
+		return 0
+	}
+	var status struct {
+		UptimeSeconds int `json:"uptime_seconds"`
+		Bots          []struct {
+			Bot      string `json:"bot"`
+			Scope    string `json:"scope"`
+			State    string `json:"state"`
+			Outbox   int    `json:"outbox"`
+			Sessions int    `json:"sessions"`
+		} `json:"bots"`
+	}
+	if err := client.get(ctx, "/api/v1/status", &status); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	uptime := time.Duration(status.UptimeSeconds) * time.Second
+	fmt.Printf("uptime %s\n", uptime)
+	fmt.Printf("%-24s %-12s %-12s %6s %8s\n",
+		"BOT", "SCOPE", "STATE", "OUTBOX", "SESSIONS")
+	for _, bot := range status.Bots {
+		fmt.Printf("%-24s %-12s %-12s %6d %8d\n",
+			bot.Bot, bot.Scope, bot.State, bot.Outbox, bot.Sessions)
+	}
 	return 0
 }
 

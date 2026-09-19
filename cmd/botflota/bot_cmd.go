@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -50,12 +51,26 @@ func newUnpairCmd() *unpairCmd {
 type botListCmd struct {
 	fs     *flag.FlagSet
 	config *string
+	json   *bool
 }
 
 func newBotListCmd() *botListCmd {
 	fs := flag.NewFlagSet("bot list", flag.ContinueOnError)
 	fs.Usage = func() {}
-	return &botListCmd{fs: fs, config: configFlag(fs)}
+	return &botListCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		json:   fs.Bool("json", false, "machine-readable output"),
+	}
+}
+
+// botListEntry is one row of bot list, in table and JSON form.
+type botListEntry struct {
+	Bot        string     `json:"bot"`
+	Scope      string     `json:"scope"`
+	Phone      string     `json:"phone,omitempty"`
+	Status     string     `json:"status"`
+	LastChange *time.Time `json:"last_change,omitempty"`
 }
 
 func runPair(args []string) int {
@@ -175,12 +190,11 @@ func runBotList(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
-		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
+	entries := make([]botListEntry, 0)
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
 			state := botflota.PairingNotPaired
-			phone := "-"
+			phone := ""
 			account, err := db.LinkedAccounts().Get(ctx, scopeName, botName)
 			switch {
 			case errors.Is(err, botflota.ErrNotFound):
@@ -205,19 +219,44 @@ func runBotList(args []string) int {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			}
-			lastChange := time.Time{}
-			if err == nil && pairingStatus.State == state {
-				lastChange = pairingStatus.LastChange
+			entry := botListEntry{
+				Bot: botName, Scope: scopeName, Phone: phone, Status: string(state),
 			}
-			printStatusRow(botName, scopeName, phone, string(state), lastChange)
+			if err == nil && pairingStatus.State == state {
+				lastChange := pairingStatus.LastChange
+				entry.LastChange = &lastChange
+			}
+			entries = append(entries, entry)
 		}
+	}
+	if *cmd.json {
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(entries); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
+		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
+	for _, entry := range entries {
+		printStatusRow(entry)
 	}
 	return 0
 }
 
-func printStatusRow(bot, scope, phone, status string, lastChange time.Time) {
+func printStatusRow(entry botListEntry) {
+	phone := entry.Phone
+	if phone == "" {
+		phone = "-"
+	}
+	lastChange := time.Time{}
+	if entry.LastChange != nil {
+		lastChange = *entry.LastChange
+	}
 	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
-		bot, scope, phone, status, formatLastChange(lastChange))
+		entry.Bot, entry.Scope, phone, entry.Status, formatLastChange(lastChange))
 }
 
 func formatLastChange(lastChange time.Time) string {

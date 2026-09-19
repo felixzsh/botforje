@@ -18,6 +18,10 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
+// version is the build version, set with
+// `-ldflags "-X main.version=..."` at release time.
+var version = "dev"
+
 func main() {
 	os.Exit(dispatch(cliTree(), nil, os.Args[1:]))
 }

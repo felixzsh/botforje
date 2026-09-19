@@ -205,8 +205,8 @@ Deliverables:
   process lifecycle belongs to the supervisor (ADR 0025).
 - [x] CLI help: `usage`, description, commands, options, and examples for every
   group and subcommand; `--help` exits 0 and usage errors exit 2.
-- [ ] CLI `--version` and a decision on global versus per-subcommand flags.
-- [ ] `--json` for `bot list` and `fleet status`.
+- [x] CLI `--version` and a decision on global versus per-subcommand flags.
+- [x] `--json` for `bot list` and `fleet status`.
 - [ ] Optional: `completion` for bash, zsh, and fish.
 - [ ] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
@@ -215,12 +215,12 @@ Deliverables:
   elsewhere silently loses every description.
 - [x] Config discovery: `--config`, then `~/.config/botflota/config.yml`, then
   `/etc/botflota/config.yml` (first match wins).
-- [ ] `fleet status` is an API client and reports uptime, per-bot connection
+- [x] `fleet status` is an API client and reports uptime, per-bot connection
   state, outbox depth, and active sessions; a `--json` mode serves scripts.
 - [x] Message history persistence: the engine appends the inbound message and
   every reply under the chat and the session run that handled them (ADR 0026).
   Only live traffic is recorded; the history-sync backlog stays out of scope.
-- [ ] Message history commands: list or tail one chat with
+- [x] Message history commands: list or tail one chat with
   `message list|tail <bot> <sender> [--limit n] [--follow]`, served through the
   API when it exists.
 - [x] Sender profiles: record each sender's push name and first/last seen from

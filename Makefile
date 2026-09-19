@@ -1,5 +1,6 @@
 GO ?= go
 BIN := bin/botflota
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 CONFIG ?= config/examples/reference.yml
 DEV_CONFIG ?= config/dev.yml
 DEV_DATA ?= .dev-data
@@ -16,7 +17,7 @@ help: ## Show this help
 		| sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build the binary into bin/botflota
-	$(GO) build -o $(BIN) ./cmd/botflota
+	$(GO) build -ldflags "-X main.version=$(VERSION)" -o $(BIN) ./cmd/botflota
 
 run: build ## Run the CLI against the real config: make run ARGS="config validate"
 	exec $(BIN) $(ARGS)

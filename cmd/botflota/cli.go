@@ -37,6 +37,11 @@ func dispatch(node *commandHelp, path, args []string) int {
 	case "help", "-h", "--help":
 		printHelp(os.Stdout, path...)
 		return 0
+	case "--version":
+		// The only global flag: everything else lives on its subcommand
+		// (ADR 0025).
+		fmt.Printf("botflota %s\n", version)
+		return 0
 	}
 	child := childNamed(node, args[0])
 	if child == nil {
@@ -78,6 +83,13 @@ func cliTree() *commandHelp {
 			"botflota bot list",
 			"botflota bot pair support-bot",
 			"botflota fleet run",
+			"botflota fleet status",
+			"botflota message tail support-bot 5215500000000 --follow",
+		},
+		flags: func() *flag.FlagSet {
+			fs := flag.NewFlagSet("botflota", flag.ContinueOnError)
+			fs.Bool("version", false, "print the version and exit")
+			return fs
 		},
 		moreHelp: "for more help on a command: botflota <command> --help",
 		sub: []commandHelp{
@@ -176,10 +188,11 @@ func cliTree() *commandHelp {
 			{
 				name:    "fleet",
 				summary: "run and manage the fleet",
-				long:    "Run the fleet of paired bots and, in a later phase, inspect and control it.",
+				long:    "Run the fleet of paired bots and inspect the running one.",
 				usage:   "botflota fleet <command> [options]",
 				examples: []string{
 					"botflota fleet run",
+					"botflota fleet status",
 				},
 				moreHelp: "for more help: botflota fleet <command> --help",
 				sub: []commandHelp{
@@ -195,6 +208,60 @@ func cliTree() *commandHelp {
 						},
 						flags: func() *flag.FlagSet { return newFleetRunCmd().fs },
 						run:   runFleet,
+					},
+					{
+						name:    "status",
+						summary: "show the running fleet's state",
+						long: "Ask the running instance for its uptime and each bot's\n" +
+							"connection state, outbox depth, and active sessions. It reads\n" +
+							"the REST API, so the fleet must be running.",
+						usage: "botflota fleet status [options]",
+						examples: []string{
+							"botflota fleet status",
+							"botflota fleet status --json",
+						},
+						flags: func() *flag.FlagSet { return newFleetStatusCmd().fs },
+						run:   runFleetStatus,
+					},
+				},
+			},
+			{
+				name:    "message",
+				summary: "read a chat's message history",
+				long:    "Read the stored messages of one chat through the REST API.",
+				usage:   "botflota message <command> [options]",
+				examples: []string{
+					"botflota message list support-bot 5215500000000",
+					"botflota message tail support-bot 5215500000000 --follow",
+				},
+				moreHelp: "for more help: botflota message <command> --help",
+				sub: []commandHelp{
+					{
+						name:    "list",
+						summary: "print the newest messages of one chat",
+						long: "Print the last messages exchanged with one sender, oldest\n" +
+							"first. The bot is named as in bot list; add --scope when the\n" +
+							"name exists in more than one scope.",
+						usage: "botflota message list [options] <bot> <sender>",
+						examples: []string{
+							"botflota message list support-bot 5215500000000",
+							"botflota message list --limit 100 support-bot 5215500000000",
+						},
+						flags: func() *flag.FlagSet { return newMessageCmd("message list", false).fs },
+						run:   runMessageList,
+					},
+					{
+						name:    "tail",
+						summary: "follow one chat's messages",
+						long: "Print the newest messages and, with --follow, keep polling\n" +
+							"for new ones until interrupted.",
+						usage: "botflota message tail [options] <bot> <sender>",
+						examples: []string{
+							"botflota message tail support-bot 5215500000000",
+							"botflota message tail --follow support-bot 5215500000000",
+						},
+						flags: func() *flag.FlagSet { return newMessageCmd("message tail", true).fs },
+						run:   runMessageTail,
 					},
 				},
 			},
