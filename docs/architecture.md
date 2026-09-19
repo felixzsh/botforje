@@ -251,11 +251,14 @@ under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
 scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
 `sessions`, and `messages`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
-pair plus the sender's phone number. Errors use one shape,
-`{"error":{"code","message"}}`.
+pair plus the sender's phone number. `messages` returns the last messages of a
+chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
+polls; `status` and `bots` report each bot's active sessions. Errors use one
+shape, `{"error":{"code","message"}}`.
 
-One middleware resolves the credential to a `Principal`, and handlers
-authorize against it (ROADMAP Phase 10). Two authorities exist: the instance
+One middleware resolves the credential to a `Principal` through a small
+`PrincipalResolver` port (`Auth` is the built-in implementation), and handlers
+authorize against it (ROADMAP Phase 10, Phase 13). Two authorities exist: the instance
 owner (the owner token) sees every scope, instance settings, and credential
 management; a scoped access token sees only its scopes. A scoped principal
 requesting another scope receives 404, never 403, so it cannot infer that the

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/felixzsh/botflota"
@@ -305,6 +306,23 @@ func (s *SessionStore) Delete(ctx context.Context, chatID int64) error {
 	return nil
 }
 
+// CountActive returns how many session runs of one bot are unexpired at at. A
+// run without an expiry never expires (botflota.Session.Expired).
+func (s *SessionStore) CountActive(
+	ctx context.Context, scope, bot string, at time.Time,
+) (int, error) {
+	const query = `SELECT COUNT(*) FROM sessions
+		JOIN chats ON chats.id = sessions.chat_id
+		WHERE chats.scope = ? AND chats.bot = ?
+		AND (sessions.expires_at = '' OR sessions.expires_at > ?)`
+	var count int
+	err := s.db.QueryRowContext(ctx, query, scope, bot, formatTime(at)).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: count active sessions: %w", err)
+	}
+	return count, nil
+}
+
 // MessageStore persists message history (ADR 0026).
 type MessageStore struct{ db *sql.DB }
 
@@ -332,16 +350,35 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	return nil
 }
 
-// List returns up to limit messages of a chat, oldest first.
-func (s *MessageStore) List(
-	ctx context.Context, chatID int64, limit int,
+// History returns up to limit messages of a chat, oldest first: the last ones
+// when afterID is zero, or the messages newer than afterID otherwise.
+func (s *MessageStore) History(
+	ctx context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {
+	if afterID > 0 {
+		const query = `SELECT ` + messageColumns +
+			` FROM messages WHERE chat_id = ? AND id > ? ORDER BY id LIMIT ?`
+		rows, err := s.db.QueryContext(ctx, query, chatID, afterID, limit)
+		if err != nil {
+			return nil, fmt.Errorf("sqlite: message history: %w", err)
+		}
+		return scanMessages(rows)
+	}
 	const query = `SELECT ` + messageColumns +
-		` FROM messages WHERE chat_id = ? ORDER BY id LIMIT ?`
+		` FROM messages WHERE chat_id = ? ORDER BY id DESC LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, query, chatID, limit)
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: list messages: %w", err)
+		return nil, fmt.Errorf("sqlite: message history: %w", err)
 	}
+	messages, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+	slices.Reverse(messages)
+	return messages, nil
+}
+
+func scanMessages(rows *sql.Rows) ([]botflota.Message, error) {
 	defer rows.Close()
 	var messages []botflota.Message
 	for rows.Next() {

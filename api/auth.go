@@ -21,9 +21,11 @@ import (
 // CLI reads it to call the API (ADR 0025).
 const OwnerTokenFile = "owner.token"
 
-// errUnauthenticated is the only failure the middleware reports as 401; every
-// other resolution error is internal.
-var errUnauthenticated = errors.New("api: unauthenticated")
+// ErrUnauthenticated reports a missing, unknown, revoked, or expired
+// credential; the middleware answers 401 for it. Every other resolution error
+// is internal, and a custom resolver must return this one (or wrap it) so a
+// failure stays a 401.
+var ErrUnauthenticated = errors.New("api: unauthenticated")
 
 // Auth resolves a request credential to a Principal: the owner token is the
 // instance owner, and a stored access token is scoped. The clear credentials
@@ -82,28 +84,28 @@ func RotateOwnerToken(
 }
 
 // Resolve turns the request credential into a Principal. A missing, unknown,
-// revoked, or expired credential fails with errUnauthenticated.
+// revoked, or expired credential fails with ErrUnauthenticated.
 func (a *Auth) Resolve(r *http.Request) (*Principal, error) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
-		return nil, errUnauthenticated
+		return nil, ErrUnauthenticated
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
 	if subtle.ConstantTimeCompare(sum[:], a.ownerHash) == 1 {
 		return &Principal{Kind: KindOwner}, nil
 	}
 	if a.tokens == nil {
-		return nil, errUnauthenticated
+		return nil, ErrUnauthenticated
 	}
 	access, err := a.tokens.FindByHash(r.Context(), sum[:])
 	if errors.Is(err, botflota.ErrNotFound) {
-		return nil, errUnauthenticated
+		return nil, ErrUnauthenticated
 	}
 	if err != nil {
 		return nil, err
 	}
 	if !access.Active(time.Now()) {
-		return nil, errUnauthenticated
+		return nil, ErrUnauthenticated
 	}
 	scopes := make(map[string]bool, len(access.Scopes))
 	for _, scope := range access.Scopes {

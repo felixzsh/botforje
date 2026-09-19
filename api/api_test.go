@@ -194,7 +194,10 @@ func (f fakeChats) SaveGuards(
 	return nil
 }
 
-type fakeSessions struct{ sessions map[int64]botflota.Session }
+type fakeSessions struct {
+	sessions map[int64]botflota.Session
+	active   map[string]int
+}
 
 func (f fakeSessions) Latest(_ context.Context, chatID int64) (*botflota.Session, error) {
 	session, ok := f.sessions[chatID]
@@ -208,16 +211,31 @@ func (f fakeSessions) Save(context.Context, *botflota.Session) error { return ni
 
 func (f fakeSessions) Delete(context.Context, int64) error { return nil }
 
+func (f fakeSessions) CountActive(
+	_ context.Context, scope, bot string, _ time.Time,
+) (int, error) {
+	return f.active[scope+"/"+bot], nil
+}
+
 type fakeMessages struct{ messages map[int64][]botflota.Message }
 
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
 
-func (f fakeMessages) List(
-	_ context.Context, chatID int64, limit int,
+func (f fakeMessages) History(
+	_ context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {
+	if afterID > 0 {
+		var out []botflota.Message
+		for _, message := range f.messages[chatID] {
+			if message.ID > afterID && len(out) < limit {
+				out = append(out, message)
+			}
+		}
+		return out, nil
+	}
 	messages := f.messages[chatID]
 	if len(messages) > limit {
-		messages = messages[:limit]
+		messages = messages[len(messages)-limit:]
 	}
 	return messages, nil
 }
@@ -316,14 +334,17 @@ func testServer(t *testing.T) *Server {
 			"support/demo/7": chat,
 			"support/demo/8": quietChat,
 		}},
-		Sessions: fakeSessions{sessions: map[int64]botflota.Session{
-			chat.ID: {
-				ID: 9, ChatID: chat.ID, Node: "menu",
-				VisitedNodes: []string{"menu"},
-				CreatedAt:    testTime, UpdatedAt: testTime,
-				ExpiresAt: testTime.Add(time.Hour),
+		Sessions: fakeSessions{
+			sessions: map[int64]botflota.Session{
+				chat.ID: {
+					ID: 9, ChatID: chat.ID, Node: "menu",
+					VisitedNodes: []string{"menu"},
+					CreatedAt:    testTime, UpdatedAt: testTime,
+					ExpiresAt: testTime.Add(time.Hour),
+				},
 			},
-		}},
+			active: map[string]int{"support/demo": 1},
+		},
 		Messages: fakeMessages{messages: map[int64][]botflota.Message{
 			chat.ID: {
 				{
@@ -337,8 +358,8 @@ func testServer(t *testing.T) *Server {
 				},
 			},
 		}},
-		Tokens: tokens,
-		Auth:   NewAuth(hashOf(testOwnerToken), tokens),
+		Tokens:   tokens,
+		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -387,10 +408,11 @@ func TestStatusEndpoint(t *testing.T) {
 	var body struct {
 		UptimeSeconds int `json:"uptime_seconds"`
 		Bots          []struct {
-			Scope  string `json:"scope"`
-			Bot    string `json:"bot"`
-			State  string `json:"state"`
-			Outbox int    `json:"outbox"`
+			Scope    string `json:"scope"`
+			Bot      string `json:"bot"`
+			State    string `json:"state"`
+			Outbox   int    `json:"outbox"`
+			Sessions int    `json:"sessions"`
 		} `json:"bots"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -401,7 +423,7 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	bot := body.Bots[0]
 	if bot.Scope != "support" || bot.Bot != "demo" ||
-		bot.State != "connected" || bot.Outbox != 2 {
+		bot.State != "connected" || bot.Outbox != 2 || bot.Sessions != 1 {
 		t.Fatalf("bot = %#v", bot)
 	}
 	if body.UptimeSeconds < 0 {
@@ -515,9 +537,43 @@ func TestMessagesEndpoint(t *testing.T) {
 	if body.Scope != "support" || body.Bot != "demo" || body.ChatID != 3 {
 		t.Fatalf("messages envelope = %#v", body)
 	}
-	if len(body.Messages) != 1 || body.Messages[0].Body != "hola" ||
-		body.Messages[0].Direction != string(botflota.Inbound) {
-		t.Fatalf("messages = %#v", body.Messages)
+	if len(body.Messages) != 1 || body.Messages[0].Body != "hi" ||
+		body.Messages[0].Direction != string(botflota.Outbound) {
+		t.Fatalf("messages = %#v, want the newest one", body.Messages)
+	}
+}
+
+// TestMessagesAfterCursor follows a chat with ?after_id=, the polling contract
+// of `message tail --follow`.
+func TestMessagesAfterCursor(t *testing.T) {
+	server := testServer(t)
+	base := "/api/v1/scopes/support/messages?bot=demo&sender=5215500000000"
+	var body struct {
+		Messages []struct {
+			ID   int64  `json:"id"`
+			Body string `json:"body"`
+		} `json:"messages"`
+	}
+	recorder := get(t, server.Handler(), base+"&after_id=1", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Messages) != 1 || body.Messages[0].ID != 2 {
+		t.Fatalf("after_id=1 = %#v, want message 2", body.Messages)
+	}
+
+	recorder = get(t, server.Handler(), base+"&after_id=2", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Messages) != 0 {
+		t.Fatalf("after_id=2 = %#v, want none", body.Messages)
 	}
 }
 
@@ -552,6 +608,9 @@ func TestQueryErrors(t *testing.T) {
 		{"unknown scope", "/api/v1/scopes/nope/chats", http.StatusNotFound},
 		{"unknown bot", "/api/v1/scopes/support/chats?bot=nope", http.StatusNotFound},
 		{"bad limit", "/api/v1/scopes/support/chats?limit=zero", http.StatusBadRequest},
+		{"bad after_id",
+			"/api/v1/scopes/support/messages?bot=demo&sender=5215500000000&after_id=abc",
+			http.StatusBadRequest},
 		{"missing sender",
 			"/api/v1/scopes/support/messages?bot=demo", http.StatusBadRequest},
 		{"unknown sender",

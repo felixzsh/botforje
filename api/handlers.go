@@ -19,14 +19,15 @@ const (
 )
 
 // botView is one configured bot as the API reports it: its identity, its
-// stored pairing, and its live state.
+// stored pairing, its live state, and its active sessions.
 type botView struct {
-	Scope   string `json:"scope"`
-	Bot     string `json:"bot"`
-	JID     string `json:"jid,omitempty"`
-	Pairing string `json:"pairing,omitempty"`
-	State   string `json:"state,omitempty"`
-	Outbox  int    `json:"outbox"`
+	Scope    string `json:"scope"`
+	Bot      string `json:"bot"`
+	JID      string `json:"jid,omitempty"`
+	Pairing  string `json:"pairing,omitempty"`
+	State    string `json:"state,omitempty"`
+	Outbox   int    `json:"outbox"`
+	Sessions int    `json:"sessions"`
 }
 
 // senderView is the profile of the person on the other side of a chat.
@@ -78,11 +79,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if !principal.Allows(status.Scope) {
 			continue
 		}
+		sessions, err := s.activeSessions(r.Context(), status.Scope, status.Bot)
+		if err != nil {
+			s.fail(w, "count sessions", err)
+			return
+		}
 		bots = append(bots, botView{
-			Scope:  status.Scope,
-			Bot:    status.Bot,
-			State:  status.State,
-			Outbox: status.OutboxDepth,
+			Scope:    status.Scope,
+			Bot:      status.Bot,
+			State:    status.State,
+			Outbox:   status.OutboxDepth,
+			Sessions: sessions,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -137,6 +144,11 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 		view := live[bot]
 		view.Scope = scope
 		view.Bot = bot
+		sessions, err := s.activeSessions(ctx, scope, bot)
+		if err != nil {
+			return nil, err
+		}
+		view.Sessions = sessions
 		account, err := s.accounts.Get(ctx, scope, bot)
 		switch {
 		case err == nil:
@@ -230,7 +242,9 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMessages lists the stored messages of one chat, oldest first. The chat
-// is addressed by scope, bot, and the sender's phone, like the CLI.
+// is addressed by scope, bot, and the sender's phone, like the CLI. Without a
+// cursor it returns the last messages; with ?after_id= it returns the ones
+// newer than that id, so a follower can poll.
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	scope, bot, chat, ok := s.chatParams(w, r)
 	if !ok {
@@ -241,7 +255,12 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	messages, err := s.messages.List(r.Context(), chat.ID, limit)
+	afterID, err := afterIDParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	messages, err := s.messages.History(r.Context(), chat.ID, afterID, limit)
 	if err != nil {
 		s.fail(w, "list messages", err)
 		return
@@ -361,6 +380,26 @@ func (s *Server) botParam(w http.ResponseWriter, r *http.Request, scope string) 
 		return "", false
 	}
 	return bot, true
+}
+
+// afterIDParam reads ?after_id=, defaulting to zero (no cursor). A follower
+// polls with the last id it saw.
+func afterIDParam(r *http.Request) (int64, error) {
+	raw := r.URL.Query().Get("after_id")
+	if raw == "" {
+		return 0, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id < 0 {
+		return 0, fmt.Errorf("after_id must be a non-negative integer")
+	}
+	return id, nil
+}
+
+// activeSessions counts the unexpired session runs of one bot for the status
+// views.
+func (s *Server) activeSessions(ctx context.Context, scope, bot string) (int, error) {
+	return s.sessions.CountActive(ctx, scope, bot, time.Now())
 }
 
 // limitParam reads ?limit=, defaulting to defaultLimit and capping at

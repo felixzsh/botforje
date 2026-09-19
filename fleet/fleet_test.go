@@ -234,6 +234,23 @@ func (s *memStore) Delete(_ context.Context, chatID int64) error {
 	return nil
 }
 
+func (s *memStore) CountActive(
+	_ context.Context, scope, bot string, at time.Time,
+) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for _, chat := range s.chats {
+		if chat.Scope != scope || chat.Bot != bot {
+			continue
+		}
+		if session, ok := s.sessions[chat.ID]; ok && !session.Expired(at) {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -243,19 +260,23 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
-func (s *memStore) List(
-	_ context.Context, chatID int64, limit int,
+func (s *memStore) History(
+	_ context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []botflota.Message
 	for _, message := range s.messages {
-		if message.ChatID == chatID {
+		if message.ChatID == chatID && message.ID > afterID {
 			out = append(out, *message)
 		}
 	}
 	if limit > 0 && len(out) > limit {
-		out = out[len(out)-limit:]
+		if afterID == 0 {
+			out = out[len(out)-limit:]
+		} else {
+			out = out[:limit]
+		}
 	}
 	return out, nil
 }

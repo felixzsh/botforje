@@ -326,15 +326,31 @@ func TestChatAndMessages(t *testing.T) {
 		}
 	}
 
-	got, err := db.Messages().List(ctx, chat.ID, 10)
+	got, err := db.Messages().History(ctx, chat.ID, 0, 10)
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("History: %v", err)
 	}
 	if len(got) != 2 || got[0].Body != "hello" || got[1].Body != "hi there" {
-		t.Fatalf("List = %#v", got)
+		t.Fatalf("History = %#v", got)
 	}
 	if got[0].SessionID != session.ID {
 		t.Fatalf("SessionID = %d, want %d", got[0].SessionID, session.ID)
+	}
+
+	// A zero cursor keeps the newest messages; a cursor resumes from it.
+	last, err := db.Messages().History(ctx, chat.ID, 0, 1)
+	if err != nil {
+		t.Fatalf("History(1): %v", err)
+	}
+	if len(last) != 1 || last[0].Body != "hi there" {
+		t.Fatalf("History(1) = %#v, want the newest", last)
+	}
+	newer, err := db.Messages().History(ctx, chat.ID, got[0].ID, 10)
+	if err != nil {
+		t.Fatalf("History(after): %v", err)
+	}
+	if len(newer) != 1 || newer[0].ID != got[1].ID {
+		t.Fatalf("History(after) = %#v, want only the newer message", newer)
 	}
 }
 
@@ -349,12 +365,47 @@ func TestMessageWithoutSession(t *testing.T) {
 	if err := db.Messages().Append(ctx, message); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
-	got, err := db.Messages().List(ctx, chat.ID, 10)
+	got, err := db.Messages().History(ctx, chat.ID, 0, 10)
 	if err != nil {
-		t.Fatalf("List: %v", err)
+		t.Fatalf("History: %v", err)
 	}
 	if len(got) != 1 || got[0].SessionID != 0 {
 		t.Fatalf("SessionID = %#v, want 0", got)
+	}
+}
+
+// TestSessionCountActive covers the status metric: only unexpired runs of the
+// bot count, and a run without expiry never expires.
+func TestSessionCountActive(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	active := testSession(chat.ID)
+	if err := db.Sessions().Save(ctx, active); err != nil {
+		t.Fatalf("Save active: %v", err)
+	}
+	never := testSession(chat.ID)
+	never.ExpiresAt = time.Time{}
+	if err := db.Sessions().Save(ctx, never); err != nil {
+		t.Fatalf("Save never-expiring: %v", err)
+	}
+	expired := testSession(chat.ID)
+	expired.ExpiresAt = t1.Add(-time.Hour)
+	if err := db.Sessions().Save(ctx, expired); err != nil {
+		t.Fatalf("Save expired: %v", err)
+	}
+
+	count, err := db.Sessions().CountActive(ctx, chat.Scope, chat.Bot, t1)
+	if err != nil {
+		t.Fatalf("CountActive: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("CountActive = %d, want 2 (expired excluded)", count)
+	}
+	if count, err = db.Sessions().CountActive(ctx, chat.Scope, "other", t1); err != nil {
+		t.Fatalf("CountActive other: %v", err)
+	} else if count != 0 {
+		t.Fatalf("CountActive other = %d, want 0", count)
 	}
 }
 

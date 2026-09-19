@@ -188,7 +188,7 @@ func serveAPI(
 		Sessions: db.Sessions(),
 		Messages: db.Messages(),
 		Tokens:   db.AccessTokens(),
-		Auth:     api.NewAuth(ownerHash, db.AccessTokens()),
+		Resolver: api.NewAuth(ownerHash, db.AccessTokens()),
 		Log:      logger,
 	})
 	if err != nil {

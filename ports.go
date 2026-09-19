@@ -87,17 +87,22 @@ type SenderStore interface {
 }
 
 // SessionStore records a chat's session runs. Latest returns the most recent
-// one, or ErrNotFound when the chat never had a session (ADR 0026).
+// one, or ErrNotFound when the chat never had a session; CountActive counts
+// the unexpired runs of one bot at a time, for status (ADR 0026).
 type SessionStore interface {
 	Latest(ctx context.Context, chatID int64) (*Session, error)
 	Save(ctx context.Context, session *Session) error
 	Delete(ctx context.Context, chatID int64) error
+	CountActive(ctx context.Context, scope, bot string, at time.Time) (int, error)
 }
 
-// MessageStore records message history (ADR 0026).
+// MessageStore records message history (ADR 0026). History returns up to
+// limit messages of a chat, oldest first: the last ones when afterID is zero,
+// or the messages newer than afterID otherwise. A reader shows the
+// conversation in order and a follower resumes from the last id it saw.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
-	List(ctx context.Context, chatID int64, limit int) ([]Message, error)
+	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
 }
 
 // LinkedAccountStore records the channel identity linked to each bot

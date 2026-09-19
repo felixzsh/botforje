@@ -1,6 +1,17 @@
 package api
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
+
+// PrincipalResolver turns the credential of a request into a Principal. Auth
+// is the built-in implementation; a host may inject another resolver, for
+// example for delegated sign-in, and the handlers never change (ROADMAP
+// Phase 13).
+type PrincipalResolver interface {
+	Resolve(r *http.Request) (*Principal, error)
+}
 
 // Kind is the authority of an authenticated principal.
 type Kind string

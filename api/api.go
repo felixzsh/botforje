@@ -38,7 +38,7 @@ type Options struct {
 	Sessions botflota.SessionStore
 	Messages botflota.MessageStore
 	Tokens   botflota.AccessTokenStore
-	Auth     *Auth
+	Resolver PrincipalResolver
 	Log      *slog.Logger
 }
 
@@ -53,7 +53,7 @@ type Server struct {
 	sessions botflota.SessionStore
 	messages botflota.MessageStore
 	tokens   botflota.AccessTokenStore
-	auth     *Auth
+	resolver PrincipalResolver
 	log      *slog.Logger
 	started  time.Time
 	handler  http.Handler
@@ -88,8 +88,8 @@ func New(opts Options) (*Server, error) {
 	if opts.Tokens == nil {
 		return nil, errors.New("api: no access-token store")
 	}
-	if opts.Auth == nil {
-		return nil, errors.New("api: no auth")
+	if opts.Resolver == nil {
+		return nil, errors.New("api: no principal resolver")
 	}
 	logger := opts.Log
 	if logger == nil {
@@ -100,7 +100,7 @@ func New(opts Options) (*Server, error) {
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		senders: opts.Senders, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
-		tokens: opts.Tokens, auth: opts.Auth, log: logger, started: time.Now(),
+		tokens: opts.Tokens, resolver: opts.Resolver, log: logger, started: time.Now(),
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -136,9 +136,9 @@ func (s *Server) routes() http.Handler {
 // request context.
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		principal, err := s.auth.Resolve(r)
+		principal, err := s.resolver.Resolve(r)
 		switch {
-		case errors.Is(err, errUnauthenticated):
+		case errors.Is(err, ErrUnauthenticated):
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			writeError(w, http.StatusUnauthorized, "unauthorized",
 				"missing or invalid credential")
