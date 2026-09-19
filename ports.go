@@ -112,3 +112,10 @@ type PairingStore interface {
 	Get(ctx context.Context, scope, bot string) (*PairingStatus, error)
 	Set(ctx context.Context, status *PairingStatus) error
 }
+
+// AdminKeyStore stores the instance's single administrator key (ADR 0025). It
+// reports ErrNotFound until the API creates one on first run.
+type AdminKeyStore interface {
+	Get(ctx context.Context) (*AdminKey, error)
+	Put(ctx context.Context, key *AdminKey) error
+}

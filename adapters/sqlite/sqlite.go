@@ -77,6 +77,11 @@ var schema = []string{
 		last_change TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
+	`CREATE TABLE IF NOT EXISTS admin_key (
+		id         INTEGER PRIMARY KEY CHECK (id = 1),
+		hash       BLOB NOT NULL,
+		created_at TEXT NOT NULL
+	)`,
 }
 
 // DB is an open SQLite database with its schema applied.
@@ -127,6 +132,9 @@ func (d *DB) LinkedAccounts() *LinkedAccountStore { return &LinkedAccountStore{d
 
 // Pairings returns the pairing-status repository.
 func (d *DB) Pairings() *PairingStore { return &PairingStore{db: d.DB} }
+
+// AdminKeys returns the administrator-key repository.
+func (d *DB) AdminKeys() *AdminKeyStore { return &AdminKeyStore{db: d.DB} }
 
 func applySchema(db *sql.DB) error {
 	for _, statement := range schema {

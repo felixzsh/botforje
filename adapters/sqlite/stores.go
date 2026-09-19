@@ -416,6 +416,47 @@ func (s *PairingStore) Set(ctx context.Context, status *botflota.PairingStatus) 
 	return nil
 }
 
+// AdminKeyStore persists the instance's single administrator key (ADR 0025).
+// Only the hash is stored; the clear key lives in a 0600 file under data_dir.
+type AdminKeyStore struct{ db *sql.DB }
+
+// Get loads the stored admin key. It reports ErrNotFound until the API
+// creates one on first run.
+func (s *AdminKeyStore) Get(ctx context.Context) (*botflota.AdminKey, error) {
+	var key botflota.AdminKey
+	var createdAt string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT hash, created_at FROM admin_key WHERE id = 1").
+		Scan(&key.Hash, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, botflota.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get admin key: %w", err)
+	}
+	key.CreatedAt = parseTime(createdAt)
+	return &key, nil
+}
+
+// Put replaces the stored admin key.
+func (s *AdminKeyStore) Put(ctx context.Context, key *botflota.AdminKey) error {
+	if key == nil || len(key.Hash) == 0 {
+		return errors.New("sqlite: admin key has no hash")
+	}
+	if key.CreatedAt.IsZero() {
+		return errors.New("sqlite: admin key has no creation time")
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO admin_key (id, hash, created_at) VALUES (1, ?, ?)
+		 ON CONFLICT (id) DO UPDATE SET hash = excluded.hash,
+		 created_at = excluded.created_at`,
+		key.Hash, formatTime(key.CreatedAt))
+	if err != nil {
+		return fmt.Errorf("sqlite: put admin key: %w", err)
+	}
+	return nil
+}
+
 func encodeJSON(value any) (string, error) {
 	data, err := json.Marshal(value)
 	if err != nil {

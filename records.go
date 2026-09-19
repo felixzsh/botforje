@@ -121,3 +121,11 @@ type PairingStatus struct {
 	State      PairingState
 	LastChange time.Time
 }
+
+// AdminKey is the instance's single administrator credential (ADR 0025). Only
+// the hash is stored; the clear key is written once to a 0600 file under
+// data_dir and never kept here.
+type AdminKey struct {
+	Hash      []byte
+	CreatedAt time.Time
+}

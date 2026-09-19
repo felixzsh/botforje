@@ -491,6 +491,36 @@ func TestPairingStatusRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAdminKeyRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	if _, err := db.AdminKeys().Get(ctx); !errors.Is(err, botflota.ErrNotFound) {
+		t.Fatalf("Get missing = %v, want ErrNotFound", err)
+	}
+	want := &botflota.AdminKey{Hash: []byte{1, 2, 3}, CreatedAt: t0}
+	if err := db.AdminKeys().Put(ctx, want); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := db.AdminKeys().Get(ctx)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("AdminKey = %#v, want %#v", got, want)
+	}
+	rotated := &botflota.AdminKey{Hash: []byte{9}, CreatedAt: t1}
+	if err := db.AdminKeys().Put(ctx, rotated); err != nil {
+		t.Fatalf("Put rotate: %v", err)
+	}
+	got, err = db.AdminKeys().Get(ctx)
+	if err != nil {
+		t.Fatalf("Get after rotate: %v", err)
+	}
+	if !reflect.DeepEqual(got, rotated) {
+		t.Fatalf("AdminKey after rotate = %#v, want %#v", got, rotated)
+	}
+}
+
 func TestForeignKeysEnforced(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
