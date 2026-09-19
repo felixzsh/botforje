@@ -167,8 +167,9 @@ Deliverables:
 - [ ] Roles, kept small: `viewer` reads, `operator` also controls
   conversations, `admin` also manages configuration and tokens inside the
   scope. Instance authority additionally has `owner`.
-- [ ] Scoped API keys: mint, list, revoke, hashed at rest, optional expiry,
-  usable by scripts and by server-to-server callers.
+- [x] Scoped API keys: mint, list, revoke, hashed at rest, optional expiry,
+  usable by scripts and by server-to-server callers. (Landed with the
+  authorization base in Phase 7.)
 - [ ] Browser sessions: scope-limited, HttpOnly cookie, CSRF token on mutating
   requests, logout invalidates the session.
 - [ ] Isolation guarantees, enforced as tests: a scoped principal cannot read,

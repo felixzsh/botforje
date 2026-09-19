@@ -1,7 +1,8 @@
-// Package api serves the read-only REST API that fleet run composes and hosts
-// in its own process (ADR 0025, ADR 0034). Handlers stay small and direct:
-// they read the live fleet and the stores, and every addressable object
-// carries its scope.
+// Package api serves the REST API that fleet run composes and hosts in its own
+// process (ADR 0025, ADR 0034). Handlers stay small and direct: they read the
+// live fleet and the stores, and every addressable object carries its scope.
+// One middleware resolves the credential to a Principal; handlers authorize
+// against it (ROADMAP Phase 10/13).
 package api
 
 import (
@@ -36,6 +37,7 @@ type Options struct {
 	Chats    botflota.ChatStore
 	Sessions botflota.SessionStore
 	Messages botflota.MessageStore
+	Keys     botflota.APIKeyStore
 	Auth     *Auth
 	Log      *slog.Logger
 }
@@ -50,6 +52,7 @@ type Server struct {
 	chats    botflota.ChatStore
 	sessions botflota.SessionStore
 	messages botflota.MessageStore
+	keys     botflota.APIKeyStore
 	auth     *Auth
 	log      *slog.Logger
 	started  time.Time
@@ -82,6 +85,9 @@ func New(opts Options) (*Server, error) {
 	if opts.Messages == nil {
 		return nil, errors.New("api: no message store")
 	}
+	if opts.Keys == nil {
+		return nil, errors.New("api: no api-key store")
+	}
 	if opts.Auth == nil {
 		return nil, errors.New("api: no auth")
 	}
@@ -94,24 +100,56 @@ func New(opts Options) (*Server, error) {
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		senders: opts.Senders, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
-		auth: opts.Auth, log: logger, started: time.Now(),
+		keys: opts.Keys, auth: opts.Auth, log: logger, started: time.Now(),
 	}
 	server.handler = server.routes()
 	return server, nil
 }
 
-// Handler returns the routes with auth applied. Tests use it directly.
+// Handler returns the routes with authentication applied. Tests use it
+// directly.
 func (s *Server) Handler() http.Handler { return s.handler }
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+
+	// Instance level: status and bots are filtered by authority, the rest is
+	// owner only.
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/bots", s.handleBots)
-	mux.HandleFunc("GET /api/v1/chats", s.handleChats)
-	mux.HandleFunc("GET /api/v1/sessions", s.handleSessions)
-	mux.HandleFunc("GET /api/v1/messages", s.handleMessages)
 	mux.HandleFunc("GET /api/v1/config", s.handleConfig)
-	return s.auth.Middleware(mux)
+	mux.HandleFunc("POST /api/v1/keys", s.handleKeysCreate)
+	mux.HandleFunc("GET /api/v1/keys", s.handleKeysList)
+	mux.HandleFunc("DELETE /api/v1/keys/{id}", s.handleKeysRevoke)
+
+	// Scope level: the scope is part of the address.
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/chats", s.handleChats)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/sessions", s.handleSessions)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)
+
+	return s.authenticate(mux)
+}
+
+// authenticate resolves the credential once and stores the Principal in the
+// request context.
+func (s *Server) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, err := s.auth.Resolve(r)
+		switch {
+		case errors.Is(err, errUnauthenticated):
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			writeError(w, http.StatusUnauthorized, "unauthorized",
+				"missing or invalid credential")
+			return
+		case err != nil:
+			s.log.Error("api authenticate failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal", "internal error")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal)))
+	})
 }
 
 // Listen binds the configured address so a bad address fails at startup

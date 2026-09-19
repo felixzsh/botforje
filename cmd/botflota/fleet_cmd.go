@@ -162,7 +162,7 @@ func serveAPI(
 	if err != nil {
 		return err
 	}
-	auth, created, err := api.EnsureAuth(ctx, db.AdminKeys(), dataDir)
+	adminHash, created, err := api.EnsureAuth(ctx, db.AdminKeys(), dataDir)
 	if err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func serveAPI(
 			"file", filepath.Join(dataDir, api.KeyFile))
 	}
 	if rotate {
-		if auth, err = api.Rotate(ctx, db.AdminKeys(), dataDir); err != nil {
+		if adminHash, err = api.Rotate(ctx, db.AdminKeys(), dataDir); err != nil {
 			return err
 		}
 		logger.Warn("admin key rotated", "file", filepath.Join(dataDir, api.KeyFile))
@@ -185,7 +185,8 @@ func serveAPI(
 		Chats:    db.Chats(),
 		Sessions: db.Sessions(),
 		Messages: db.Messages(),
-		Auth:     auth,
+		Keys:     db.APIKeys(),
+		Auth:     api.NewAuth(adminHash, db.APIKeys()),
 		Log:      logger,
 	})
 	if err != nil {

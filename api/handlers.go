@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -67,10 +68,16 @@ type sessionView struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
+// handleStatus reports the live fleet, filtered to the scopes the principal
+// may see.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	principal := principalFrom(r.Context())
 	statuses := s.fleet.Status()
 	bots := make([]botView, 0, len(statuses))
 	for _, status := range statuses {
+		if !principal.Allows(status.Scope) {
+			continue
+		}
 		bots = append(bots, botView{
 			Scope:  status.Scope,
 			Bot:    status.Bot,
@@ -84,43 +91,71 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleBots reports every configured bot the principal may see.
 func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	principal := principalFrom(r.Context())
+	bots := make([]botView, 0)
+	for _, scope := range config.SortedKeys(s.cfg.Scopes) {
+		if !principal.Allows(scope) {
+			continue
+		}
+		views, err := s.botsView(r.Context(), scope)
+		if err != nil {
+			s.fail(w, "read bots", err)
+			return
+		}
+		bots = append(bots, views...)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"bots": bots})
+}
+
+// handleScopeBots reports the configured bots of one scope.
+func (s *Server) handleScopeBots(w http.ResponseWriter, r *http.Request) {
+	scope, ok := s.scopeParam(w, r)
+	if !ok {
+		return
+	}
+	bots, err := s.botsView(r.Context(), scope)
+	if err != nil {
+		s.fail(w, "read bots", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "bots": bots})
+}
+
+// botsView joins the configured bots of one scope with their stored pairing
+// and their live state.
+func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) {
 	live := make(map[string]botView)
 	for _, status := range s.fleet.Status() {
-		live[status.Scope+"\x00"+status.Bot] = botView{
-			State:  status.State,
-			Outbox: status.OutboxDepth,
+		if status.Scope == scope {
+			live[status.Bot] = botView{State: status.State, Outbox: status.OutboxDepth}
 		}
 	}
 	bots := make([]botView, 0)
-	for _, scope := range config.SortedKeys(s.cfg.Scopes) {
-		for _, bot := range config.SortedKeys(s.cfg.Scopes[scope].Bots) {
-			view := live[scope+"\x00"+bot]
-			view.Scope = scope
-			view.Bot = bot
-			account, err := s.accounts.Get(ctx, scope, bot)
-			switch {
-			case err == nil:
-				view.JID = account.JID
-			case errors.Is(err, botflota.ErrNotFound):
-			default:
-				s.fail(w, "read linked account", err)
-				return
-			}
-			pairing, err := s.pairings.Get(ctx, scope, bot)
-			switch {
-			case err == nil:
-				view.Pairing = string(pairing.State)
-			case errors.Is(err, botflota.ErrNotFound):
-			default:
-				s.fail(w, "read pairing status", err)
-				return
-			}
-			bots = append(bots, view)
+	for _, bot := range config.SortedKeys(s.cfg.Scopes[scope].Bots) {
+		view := live[bot]
+		view.Scope = scope
+		view.Bot = bot
+		account, err := s.accounts.Get(ctx, scope, bot)
+		switch {
+		case err == nil:
+			view.JID = account.JID
+		case errors.Is(err, botflota.ErrNotFound):
+		default:
+			return nil, err
 		}
+		pairing, err := s.pairings.Get(ctx, scope, bot)
+		switch {
+		case err == nil:
+			view.Pairing = string(pairing.State)
+		case errors.Is(err, botflota.ErrNotFound):
+		default:
+			return nil, err
+		}
+		bots = append(bots, view)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"bots": bots})
+	return bots, nil
 }
 
 // handleChats lists the chats of a scope, newest first. An empty bot means
@@ -231,14 +266,30 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleConfig serves the typed model the loader produced, so the Phase 8
-// catalogs surface without reworking handlers. Secrets marshal masked
-// (ADR 0014).
+// handleConfig serves the full typed model to the instance owner; secrets
+// marshal masked (ADR 0014).
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if !principalFrom(r.Context()).Owner() {
+		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
+		return
+	}
 	writeJSON(w, http.StatusOK, s.cfg)
 }
 
-// chatParams reads the required scope, bot, and sender of a chat address.
+// handleScopeConfig serves one scope of the typed model to any principal
+// allowed on it.
+func (s *Server) handleScopeConfig(w http.ResponseWriter, r *http.Request) {
+	scope, ok := s.scopeParam(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"scope":  scope,
+		"config": s.cfg.Scopes[scope],
+	})
+}
+
+// chatParams reads the required bot and sender of a chat address.
 func (s *Server) chatParams(
 	w http.ResponseWriter, r *http.Request,
 ) (scope, bot string, chat *botflota.Chat, ok bool) {
@@ -281,11 +332,14 @@ func (s *Server) chatParams(
 	return scope, bot, chat, true
 }
 
-// scopeParam reads and checks ?scope=.
+// scopeParam reads {scope} from the path and returns it only when the
+// principal may use it and the scope exists. An out-of-scope target answers
+// 404, never 403, so a scoped principal cannot infer that another scope
+// exists (ROADMAP Phase 13).
 func (s *Server) scopeParam(w http.ResponseWriter, r *http.Request) (string, bool) {
-	scope := r.URL.Query().Get("scope")
-	if scope == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "scope is required")
+	scope := r.PathValue("scope")
+	if !principalFrom(r.Context()).Allows(scope) {
+		writeError(w, http.StatusNotFound, "not_found", "unknown scope")
 		return "", false
 	}
 	if _, ok := s.cfg.Scopes[scope]; !ok {

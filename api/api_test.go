@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -20,7 +21,12 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-const testAdminKey = "test-admin-key"
+const (
+	testAdminKey   = "test-admin-key"
+	testScopeKey   = "test-scope-key"
+	testDeadKey    = "test-revoked-key"
+	testExpiredKey = "test-expired-key"
+)
 
 var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
@@ -78,6 +84,53 @@ func (f *fakeKeyStore) Get(context.Context) (*botflota.AdminKey, error) {
 func (f *fakeKeyStore) Put(_ context.Context, key *botflota.AdminKey) error {
 	f.key = key
 	return nil
+}
+
+// fakeKeys is the token store: it matches hashes like the real store, assigns
+// ids, and records revocation.
+type fakeKeys struct {
+	keys   []botflota.APIKey
+	nextID int64
+}
+
+func (f *fakeKeys) Create(_ context.Context, key *botflota.APIKey) error {
+	f.nextID++
+	key.ID = f.nextID
+	f.keys = append(f.keys, *key)
+	return nil
+}
+
+func (f *fakeKeys) FindByHash(
+	_ context.Context, hash []byte,
+) (*botflota.APIKey, error) {
+	for _, key := range f.keys {
+		if bytes.Equal(key.Hash, hash) {
+			found := key
+			return &found, nil
+		}
+	}
+	return nil, botflota.ErrNotFound
+}
+
+func (f *fakeKeys) List(context.Context) ([]botflota.APIKey, error) {
+	keys := make([]botflota.APIKey, 0, len(f.keys))
+	for _, key := range f.keys {
+		key.Hash = nil
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+func (f *fakeKeys) Revoke(_ context.Context, id int64, at time.Time) error {
+	for i := range f.keys {
+		if f.keys[i].ID == id {
+			if f.keys[i].RevokedAt.IsZero() {
+				f.keys[i].RevokedAt = at
+			}
+			return nil
+		}
+	}
+	return botflota.ErrNotFound
 }
 
 type fakeSenders struct{ senders map[string]botflota.Sender }
@@ -189,6 +242,9 @@ func testServer(t *testing.T) *Server {
 				},
 				Bots: map[string]spec.Bot{"demo": {}},
 			},
+			"ventas": {
+				Bots: map[string]spec.Bot{"other": {}},
+			},
 		},
 	}
 	accounts := fakeAccounts{accounts: map[string]botflota.LinkedAccount{
@@ -219,10 +275,27 @@ func testServer(t *testing.T) *Server {
 		},
 		Phone: quiet.Phone, DisplayName: quiet.DisplayName,
 	}
+	keys := &fakeKeys{nextID: 3, keys: []botflota.APIKey{
+		{
+			ID: 1, Name: "scoped", Hash: hashOf(testScopeKey),
+			Scopes: []string{"support"}, CreatedAt: testTime,
+		},
+		{
+			ID: 2, Name: "revoked", Hash: hashOf(testDeadKey),
+			Scopes: []string{"support"}, CreatedAt: testTime,
+			RevokedAt: testTime,
+		},
+		{
+			ID: 3, Name: "expired", Hash: hashOf(testExpiredKey),
+			Scopes: []string{"support"}, CreatedAt: testTime,
+			ExpiresAt: time.Now().Add(-time.Hour),
+		},
+	}}
 	server, err := New(Options{
 		Config: cfg,
 		Fleet: fakeFleet{statuses: []fleet.BotStatus{
 			{Scope: "support", Bot: "demo", State: "connected", OutboxDepth: 2},
+			{Scope: "ventas", Bot: "other", State: "connected", OutboxDepth: 1},
 		}},
 		Accounts: accounts,
 		Pairings: pairings,
@@ -255,7 +328,8 @@ func testServer(t *testing.T) *Server {
 				},
 			},
 		}},
-		Auth: &Auth{hash: hashOf(testAdminKey)},
+		Keys: keys,
+		Auth: NewAuth(hashOf(testAdminKey), keys),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -313,8 +387,8 @@ func TestStatusEndpoint(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Bots) != 1 {
-		t.Fatalf("bots = %#v, want one", body.Bots)
+	if len(body.Bots) != 2 {
+		t.Fatalf("bots = %#v, want two", body.Bots)
 	}
 	bot := body.Bots[0]
 	if bot.Scope != "support" || bot.Bot != "demo" ||
@@ -344,8 +418,8 @@ func TestBotsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Bots) != 1 {
-		t.Fatalf("bots = %#v, want one", body.Bots)
+	if len(body.Bots) != 2 {
+		t.Fatalf("bots = %#v, want two", body.Bots)
 	}
 	bot := body.Bots[0]
 	if bot.Scope != "support" || bot.Bot != "demo" ||
@@ -372,7 +446,7 @@ func TestConfigEndpointMasksSecrets(t *testing.T) {
 
 func TestChatsEndpoint(t *testing.T) {
 	server := testServer(t)
-	recorder := get(t, server.Handler(), "/api/v1/chats?scope=support&bot=demo", testAdminKey)
+	recorder := get(t, server.Handler(), "/api/v1/scopes/support/chats?bot=demo", testAdminKey)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -405,7 +479,7 @@ func TestChatsEndpoint(t *testing.T) {
 func TestMessagesEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/messages?scope=support&bot=demo&sender=5215500000000&limit=1",
+		"/api/v1/scopes/support/messages?bot=demo&sender=5215500000000&limit=1",
 		testAdminKey)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
@@ -435,7 +509,7 @@ func TestMessagesEndpoint(t *testing.T) {
 func TestSessionsEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/sessions?scope=support&bot=demo&sender=5215500000000", testAdminKey)
+		"/api/v1/scopes/support/sessions?bot=demo&sender=5215500000000", testAdminKey)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -460,15 +534,15 @@ func TestQueryErrors(t *testing.T) {
 		path string
 		want int
 	}{
-		{"missing scope", "/api/v1/chats", http.StatusBadRequest},
-		{"unknown scope", "/api/v1/chats?scope=nope", http.StatusNotFound},
-		{"unknown bot", "/api/v1/chats?scope=support&bot=nope", http.StatusNotFound},
-		{"bad limit", "/api/v1/chats?scope=support&limit=zero", http.StatusBadRequest},
-		{"missing sender", "/api/v1/messages?scope=support&bot=demo", http.StatusBadRequest},
+		{"unknown scope", "/api/v1/scopes/nope/chats", http.StatusNotFound},
+		{"unknown bot", "/api/v1/scopes/support/chats?bot=nope", http.StatusNotFound},
+		{"bad limit", "/api/v1/scopes/support/chats?limit=zero", http.StatusBadRequest},
+		{"missing sender",
+			"/api/v1/scopes/support/messages?bot=demo", http.StatusBadRequest},
 		{"unknown sender",
-			"/api/v1/messages?scope=support&bot=demo&sender=000", http.StatusNotFound},
+			"/api/v1/scopes/support/messages?bot=demo&sender=000", http.StatusNotFound},
 		{"no session",
-			"/api/v1/sessions?scope=support&bot=demo&sender=5215599999999",
+			"/api/v1/scopes/support/sessions?bot=demo&sender=5215599999999",
 			http.StatusNotFound},
 	}
 	for _, tc := range cases {
@@ -497,19 +571,22 @@ func TestEnsureAuthCreatesKeyFile(t *testing.T) {
 	dataDir := t.TempDir()
 	store := &fakeKeyStore{}
 
-	auth, created, err := EnsureAuth(ctx, store, dataDir)
+	hash, created, err := EnsureAuth(ctx, store, dataDir)
 	if err != nil {
 		t.Fatalf("EnsureAuth: %v", err)
 	}
 	if !created || store.key == nil {
 		t.Fatal("EnsureAuth did not create a key")
 	}
+	if !bytes.Equal(hash, store.key.Hash) {
+		t.Fatal("returned hash does not match the stored key")
+	}
 	path := filepath.Join(dataDir, KeyFile)
 	clear, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read key file: %v", err)
 	}
-	if hash := hashOf(strings.TrimSpace(string(clear))); !bytes.Equal(hash, store.key.Hash) {
+	if fileHash := hashOf(strings.TrimSpace(string(clear))); !bytes.Equal(fileHash, hash) {
 		t.Fatal("stored hash does not match the key file")
 	}
 	info, err := os.Stat(path)
@@ -527,7 +604,7 @@ func TestEnsureAuthCreatesKeyFile(t *testing.T) {
 	if created {
 		t.Fatal("EnsureAuth created a second key")
 	}
-	if !bytes.Equal(again.hash, auth.hash) {
+	if !bytes.Equal(again, hash) {
 		t.Fatal("EnsureAuth did not reuse the stored key")
 	}
 }
@@ -544,14 +621,14 @@ func TestRotateReplacesKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Rotate: %v", err)
 	}
-	if bytes.Equal(first.hash, second.hash) {
+	if bytes.Equal(first, second) {
 		t.Fatal("Rotate kept the same key")
 	}
 	clear, err := os.ReadFile(filepath.Join(dataDir, KeyFile))
 	if err != nil {
 		t.Fatalf("read key file: %v", err)
 	}
-	if hash := hashOf(strings.TrimSpace(string(clear))); !bytes.Equal(hash, second.hash) {
+	if fileHash := hashOf(strings.TrimSpace(string(clear))); !bytes.Equal(fileHash, second) {
 		t.Fatal("key file does not match the rotated key")
 	}
 }
@@ -568,6 +645,141 @@ func TestNewRequiresDependencies(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := New(tc.opts); err == nil {
 				t.Fatal("New accepted incomplete options")
+			}
+		})
+	}
+}
+
+func TestScopedTokenIsolation(t *testing.T) {
+	server := testServer(t)
+	handler := server.Handler()
+
+	recorder := get(t, handler, "/api/v1/scopes/support/chats", testScopeKey)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("own scope status = %d, want 200", recorder.Code)
+	}
+	// Another configured scope answers 404, never 403, so a scoped principal
+	// cannot infer that it exists (ROADMAP Phase 13).
+	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", testScopeKey)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("other scope status = %d, want 404", recorder.Code)
+	}
+	for _, path := range []string{"/api/v1/config", "/api/v1/keys"} {
+		recorder = get(t, handler, path, testScopeKey)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("%s status = %d, want 403", path, recorder.Code)
+		}
+	}
+	recorder = get(t, handler, "/api/v1/bots", testScopeKey)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("bots status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Bots []struct {
+			Scope string `json:"scope"`
+		} `json:"bots"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Bots) != 1 || body.Bots[0].Scope != "support" {
+		t.Fatalf("bots = %#v, want only support", body.Bots)
+	}
+}
+
+func TestRejectedTokens(t *testing.T) {
+	server := testServer(t)
+	for _, key := range []string{testDeadKey, testExpiredKey} {
+		recorder := get(t, server.Handler(), "/api/v1/status", key)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("status with %q = %d, want 401", key, recorder.Code)
+		}
+	}
+}
+
+func TestKeysEndpoints(t *testing.T) {
+	server := testServer(t)
+	handler := server.Handler()
+
+	body := strings.NewReader(`{"name":"ci","scopes":["support"]}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/keys", body)
+	request.Header.Set("Authorization", "Bearer "+testAdminKey)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201: %s", recorder.Code, recorder.Body)
+	}
+	var created struct {
+		ID     int64    `json:"id"`
+		Name   string   `json:"name"`
+		Key    string   `json:"key"`
+		Scopes []string `json:"scopes"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if created.ID != 4 || created.Name != "ci" || created.Key == "" {
+		t.Fatalf("created = %#v", created)
+	}
+
+	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Key)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("minted key status = %d, want 200", recorder.Code)
+	}
+	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", created.Key)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("minted key other scope = %d, want 404", recorder.Code)
+	}
+
+	recorder = get(t, handler, "/api/v1/keys", testAdminKey)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", recorder.Code)
+	}
+	if strings.Contains(recorder.Body.String(), created.Key) {
+		t.Fatal("key list exposed a clear key")
+	}
+
+	request = httptest.NewRequest(http.MethodDelete,
+		fmt.Sprintf("/api/v1/keys/%d", created.ID), nil)
+	request.Header.Set("Authorization", "Bearer "+testAdminKey)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("revoke status = %d, want 204", recorder.Code)
+	}
+	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Key)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked key status = %d, want 401", recorder.Code)
+	}
+}
+
+func TestKeyMintValidation(t *testing.T) {
+	server := testServer(t)
+	cases := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"malformed body", `{`, http.StatusBadRequest},
+		{"no name", `{"scopes":["support"]}`, http.StatusBadRequest},
+		{"no scopes", `{"name":"x"}`, http.StatusBadRequest},
+		{"unknown scope", `{"name":"x","scopes":["nope"]}`, http.StatusBadRequest},
+		{"duplicate scope", `{"name":"x","scopes":["support","support"]}`,
+			http.StatusBadRequest},
+		{"past expiry",
+			`{"name":"x","scopes":["support"],"expires_at":"2000-01-01T00:00:00Z"}`,
+			http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/keys",
+				strings.NewReader(tc.body))
+			request.Header.Set("Authorization", "Bearer "+testAdminKey)
+			recorder := httptest.NewRecorder()
+			server.Handler().ServeHTTP(recorder, request)
+			if recorder.Code != tc.want {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, tc.want,
+					recorder.Body)
 			}
 		})
 	}

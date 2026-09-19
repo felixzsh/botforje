@@ -82,6 +82,20 @@ var schema = []string{
 		hash       BLOB NOT NULL,
 		created_at TEXT NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS api_keys (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		name       TEXT NOT NULL,
+		hash       BLOB NOT NULL UNIQUE,
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL DEFAULT '',
+		revoked_at TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE TABLE IF NOT EXISTS api_key_scopes (
+		api_key_id INTEGER NOT NULL
+			REFERENCES api_keys (id) ON DELETE CASCADE,
+		scope      TEXT NOT NULL,
+		PRIMARY KEY (api_key_id, scope)
+	)`,
 }
 
 // DB is an open SQLite database with its schema applied.
@@ -135,6 +149,9 @@ func (d *DB) Pairings() *PairingStore { return &PairingStore{db: d.DB} }
 
 // AdminKeys returns the administrator-key repository.
 func (d *DB) AdminKeys() *AdminKeyStore { return &AdminKeyStore{db: d.DB} }
+
+// APIKeys returns the scoped API-key repository.
+func (d *DB) APIKeys() *APIKeyStore { return &APIKeyStore{db: d.DB} }
 
 func applySchema(db *sql.DB) error {
 	for _, statement := range schema {

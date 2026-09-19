@@ -516,6 +516,172 @@ func (s *AdminKeyStore) Put(ctx context.Context, key *botflota.AdminKey) error {
 	return nil
 }
 
+// APIKeyStore persists scoped API keys (ROADMAP Phase 13). Only hashes are
+// stored; the clear key leaves the process once, when it is minted.
+type APIKeyStore struct{ db *sql.DB }
+
+// Create stores a new key with its scopes and sets its ID.
+func (s *APIKeyStore) Create(ctx context.Context, key *botflota.APIKey) error {
+	if key == nil || len(key.Hash) == 0 {
+		return errors.New("sqlite: api key has no hash")
+	}
+	if key.Name == "" {
+		return errors.New("sqlite: api key has no name")
+	}
+	if len(key.Scopes) == 0 {
+		return errors.New("sqlite: api key has no scopes")
+	}
+	if key.CreatedAt.IsZero() {
+		return errors.New("sqlite: api key has no creation time")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("sqlite: create api key: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx,
+		`INSERT INTO api_keys (name, hash, created_at, expires_at, revoked_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		key.Name, key.Hash, formatTime(key.CreatedAt),
+		formatTime(key.ExpiresAt), formatTime(key.RevokedAt))
+	if err != nil {
+		return fmt.Errorf("sqlite: create api key: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("sqlite: api key id: %w", err)
+	}
+	for _, scope := range key.Scopes {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO api_key_scopes (api_key_id, scope) VALUES (?, ?)",
+			id, scope); err != nil {
+			return fmt.Errorf("sqlite: create api key scope: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("sqlite: create api key: %w", err)
+	}
+	key.ID = id
+	return nil
+}
+
+// FindByHash loads a key by its hash or returns botflota.ErrNotFound. A
+// revoked or expired key is still returned; the caller checks Active.
+func (s *APIKeyStore) FindByHash(
+	ctx context.Context, hash []byte,
+) (*botflota.APIKey, error) {
+	var (
+		key                             botflota.APIKey
+		createdAt, expiresAt, revokedAt string
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, name, hash, created_at, expires_at, revoked_at
+		 FROM api_keys WHERE hash = ?`, hash).
+		Scan(&key.ID, &key.Name, &key.Hash, &createdAt, &expiresAt, &revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, botflota.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: find api key: %w", err)
+	}
+	key.CreatedAt = parseTime(createdAt)
+	key.ExpiresAt = parseTime(expiresAt)
+	key.RevokedAt = parseTime(revokedAt)
+	scopes, err := s.scopes(ctx, key.ID)
+	if err != nil {
+		return nil, err
+	}
+	key.Scopes = scopes
+	return &key, nil
+}
+
+// List returns every key, oldest first, without hashes.
+func (s *APIKeyStore) List(ctx context.Context) ([]botflota.APIKey, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, name, created_at, expires_at, revoked_at
+		 FROM api_keys ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: list api keys: %w", err)
+	}
+	defer rows.Close()
+	var keys []botflota.APIKey
+	for rows.Next() {
+		var (
+			key                             botflota.APIKey
+			createdAt, expiresAt, revokedAt string
+		)
+		if err := rows.Scan(&key.ID, &key.Name, &createdAt, &expiresAt,
+			&revokedAt); err != nil {
+			return nil, err
+		}
+		key.CreatedAt = parseTime(createdAt)
+		key.ExpiresAt = parseTime(expiresAt)
+		key.RevokedAt = parseTime(revokedAt)
+		keys = append(keys, key)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("sqlite: list api keys: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sqlite: list api keys: %w", err)
+	}
+	for i := range keys {
+		scopes, err := s.scopes(ctx, keys[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		keys[i].Scopes = scopes
+	}
+	return keys, nil
+}
+
+// Revoke marks a key as revoked at at. Revoking an already revoked key is a
+// no-op; an unknown id reports botflota.ErrNotFound.
+func (s *APIKeyStore) Revoke(ctx context.Context, id int64, at time.Time) error {
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at = ''",
+		formatTime(at), id)
+	if err != nil {
+		return fmt.Errorf("sqlite: revoke api key: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("sqlite: revoke api key: %w", err)
+	}
+	if affected > 0 {
+		return nil
+	}
+	var count int
+	err = s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM api_keys WHERE id = ?", id).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("sqlite: revoke api key: %w", err)
+	}
+	if count == 0 {
+		return botflota.ErrNotFound
+	}
+	return nil
+}
+
+// scopes loads a key's scopes in a stable order.
+func (s *APIKeyStore) scopes(ctx context.Context, id int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT scope FROM api_key_scopes WHERE api_key_id = ? ORDER BY scope", id)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: api key scopes: %w", err)
+	}
+	defer rows.Close()
+	var scopes []string
+	for rows.Next() {
+		var scope string
+		if err := rows.Scan(&scope); err != nil {
+			return nil, err
+		}
+		scopes = append(scopes, scope)
+	}
+	return scopes, rows.Err()
+}
+
 func encodeJSON(value any) (string, error) {
 	data, err := json.Marshal(value)
 	if err != nil {

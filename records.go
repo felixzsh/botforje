@@ -137,3 +137,24 @@ type AdminKey struct {
 	Hash      []byte
 	CreatedAt time.Time
 }
+
+// APIKey is a scoped bearer credential for the API (ROADMAP Phase 13). Only
+// the hash is stored; the clear key is shown once when it is minted. An empty
+// ExpiresAt never expires, an empty RevokedAt is active.
+type APIKey struct {
+	ID        int64
+	Name      string
+	Hash      []byte
+	Scopes    []string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt time.Time
+}
+
+// Active reports whether the key may still authenticate at t.
+func (k *APIKey) Active(t time.Time) bool {
+	if !k.RevokedAt.IsZero() {
+		return false
+	}
+	return k.ExpiresAt.IsZero() || t.Before(k.ExpiresAt)
+}

@@ -21,10 +21,22 @@ import (
 // reads it to call the API (ADR 0025).
 const KeyFile = "admin.key"
 
-// Auth validates the admin key on every request. This side only holds the
-// hash; the clear key lives in the key file.
+// errUnauthenticated is the only failure the middleware reports as 401; every
+// other resolution error is internal.
+var errUnauthenticated = errors.New("api: unauthenticated")
+
+// Auth resolves a request credential to a Principal: the admin key is the
+// instance owner, and a stored API key is scoped. The clear credentials never
+// enter logs.
 type Auth struct {
-	hash []byte
+	adminHash []byte
+	tokens    botflota.APIKeyStore
+}
+
+// NewAuth builds the resolver from the admin key hash and the token store.
+// Both are read-only: the admin key is bootstrapped separately.
+func NewAuth(adminHash []byte, tokens botflota.APIKeyStore) *Auth {
+	return &Auth{adminHash: adminHash, tokens: tokens}
 }
 
 // EnsureAuth loads the stored admin key and creates one on first run. created
@@ -32,27 +44,27 @@ type Auth struct {
 // 0600. The clear key never enters logs.
 func EnsureAuth(
 	ctx context.Context, store botflota.AdminKeyStore, dataDir string,
-) (auth *Auth, created bool, err error) {
+) (hash []byte, created bool, err error) {
 	key, err := store.Get(ctx)
 	switch {
 	case err == nil:
-		return &Auth{hash: key.Hash}, false, nil
+		return key.Hash, false, nil
 	case !errors.Is(err, botflota.ErrNotFound):
 		return nil, false, fmt.Errorf("api: load admin key: %w", err)
 	}
-	auth, err = Rotate(ctx, store, dataDir)
+	hash, err = Rotate(ctx, store, dataDir)
 	if err != nil {
 		return nil, false, err
 	}
-	return auth, true, nil
+	return hash, true, nil
 }
 
 // Rotate replaces the stored admin key with a fresh one and rewrites the key
 // file. Use it when the key or its file is lost.
 func Rotate(
 	ctx context.Context, store botflota.AdminKeyStore, dataDir string,
-) (*Auth, error) {
-	clear, err := newAdminKey()
+) ([]byte, error) {
+	clear, err := newSecret()
 	if err != nil {
 		return nil, err
 	}
@@ -66,35 +78,46 @@ func Rotate(
 	if err := writeKeyFile(dataDir, clear); err != nil {
 		return nil, err
 	}
-	return &Auth{hash: hash[:]}, nil
+	return hash[:], nil
 }
 
-// Middleware requires the admin key on every request.
-func (a *Auth) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.match(r) {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			writeError(w, http.StatusUnauthorized, "unauthorized",
-				"missing or invalid admin key")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (a *Auth) match(r *http.Request) bool {
+// Resolve turns the request credential into a Principal. A missing, unknown,
+// revoked, or expired credential fails with errUnauthenticated.
+func (a *Auth) Resolve(r *http.Request) (*Principal, error) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
-		return false
+		return nil, errUnauthenticated
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
-	return subtle.ConstantTimeCompare(sum[:], a.hash) == 1
+	if subtle.ConstantTimeCompare(sum[:], a.adminHash) == 1 {
+		return &Principal{Kind: KindOwner}, nil
+	}
+	if a.tokens == nil {
+		return nil, errUnauthenticated
+	}
+	key, err := a.tokens.FindByHash(r.Context(), sum[:])
+	if errors.Is(err, botflota.ErrNotFound) {
+		return nil, errUnauthenticated
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !key.Active(time.Now()) {
+		return nil, errUnauthenticated
+	}
+	scopes := make(map[string]bool, len(key.Scopes))
+	for _, scope := range key.Scopes {
+		scopes[scope] = true
+	}
+	return &Principal{Kind: KindScoped, Scopes: scopes}, nil
 }
 
-func newAdminKey() (string, error) {
+// newSecret returns 256 random bits as a URL-safe string, for the admin key
+// and for minted API keys.
+func newSecret() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("api: generate admin key: %w", err)
+		return "", fmt.Errorf("api: generate secret: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

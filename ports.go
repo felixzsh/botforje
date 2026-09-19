@@ -122,3 +122,13 @@ type AdminKeyStore interface {
 	Get(ctx context.Context) (*AdminKey, error)
 	Put(ctx context.Context, key *AdminKey) error
 }
+
+// APIKeyStore stores the scoped API keys (ROADMAP Phase 13). FindByHash
+// reports ErrNotFound for an unknown hash; Revoke reports ErrNotFound for an
+// unknown id.
+type APIKeyStore interface {
+	Create(ctx context.Context, key *APIKey) error
+	FindByHash(ctx context.Context, hash []byte) (*APIKey, error)
+	List(ctx context.Context) ([]APIKey, error)
+	Revoke(ctx context.Context, id int64, at time.Time) error
+}
