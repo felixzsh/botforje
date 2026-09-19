@@ -4,15 +4,15 @@ Status: Accepted (2026-09)
 
 ## Context
 
-One process serves several clients, and each wants its own provider, model, and
-key (BYOK). A single instance-level model section cannot express that, so model
+One process serves several scopes, and each wants its own provider, model, and
+key. A single instance-level model section cannot express that, so model
 profiles live in the scope. A host also wants to offer a provider once instead
 of repeating it in every scope.
 
-A shared scope was considered and rejected: a scope is a tenant boundary, so
-sharing one means either it is not a tenant (every tenant operation needs an
-exception) or it is (and it cannot be shared). What is shared is a set of
-definitions, and definitions belong to the instance, not to a tenant.
+A shared scope was considered and rejected: a scope is an isolation boundary,
+so sharing one means it is not isolated (every operation needs an exception).
+What is shared is a set of definitions, and definitions belong to the
+instance, not to a scope.
 
 Since ADR 0030, routing is a System One concern and realization is a separate
 LLM concern, so one profile can no longer carry both.
@@ -55,10 +55,11 @@ scopes:
 Resolution and rules:
 
 - A name resolves in the scope first, then in `shared`; the scope entry wins.
-  References never cross tenant scopes.
-- `shared` is the host's, not a tenant: it is not a scope, is not listed, and
-  is not addressable by a scoped principal. It admits `system_one` and `llms`
-  only; `bots` never, and `actions`/`graphs` wait for a governance story.
+  References never cross scopes.
+- `shared` belongs to the instance, not to a scope: it is not a scope, is not
+  listed, and is not addressable by a scoped principal. It admits `system_one`
+  and `llms` only; `bots` never, and `actions`/`graphs` wait for a governance
+  story.
 - `shared` lives in the main file only for now.
 - `system_one.<name>`: `provider` and `model` required; `routing` and
   `confidence_threshold` default here and a graph may override `routing`
@@ -73,10 +74,10 @@ Resolution and rules:
 
 ## Consequences
 
-- A host defines a provider once; a tenant overrides it for BYOK or stays
-  self-contained, so a scope still exports on its own.
+- A host defines a provider once; a scope overrides it with its own key or
+  stays self-contained, so a scope still exports on its own.
 - `routing` lives on `system_one`; `realization` stays on `llms`.
 - System One and LLM are configured and operated separately.
 - `shared` is one concept, not a second kind of scope: lists, quotas, and
-  authority stay tenant-only with no exceptions.
+  scoped authority stay scope-only with no exceptions.
 - Each scope repeats its own definitions; that is the isolation cost.

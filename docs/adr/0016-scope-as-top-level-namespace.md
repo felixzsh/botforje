@@ -33,9 +33,9 @@ scopes:
   behavior; `shared` is not a scope.
 - Actions, graphs, and bots resolve references only inside their own scope.
   Model names (`system_one`, `llm`) resolve in the scope first and then in
-  `shared` (ADR 0031); references never cross tenant scopes.
+  `shared` (ADR 0031); references never cross scopes.
 - Scope is never derived from folders. Users pick their own file layout, and
-  includes are organization only.
+  includes organize files only.
 - Global settings live in the main file only.
 
 Includes:

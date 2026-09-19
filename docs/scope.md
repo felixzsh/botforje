@@ -2,8 +2,8 @@
 
 What the MVP includes. Everything else is deferred (`../PLAN.md`).
 
-A config-driven fleet runner with these capabilities, without dashboard or
-SaaS infrastructure:
+A config-driven fleet runner with these capabilities, without a dashboard or a
+hosting platform:
 
 - One instance runs multiple WhatsApp bots.
 - Bots, graphs, and actions defined in YAML; YAML is the behavior source of

@@ -31,5 +31,5 @@ by the per-bot actor model.
 - The schema is one list applied on open. Pre-release it is edited in place
   and the development database is recreated (`make dev-reset`); versioned,
   append-only migrations begin at the first release.
-- Dashboard and SaaS phases may add tables and an import path; the storage
-  engine stays SQLite.
+- A dashboard or a hosting integration may add tables and an import path; the
+  storage engine stays SQLite.

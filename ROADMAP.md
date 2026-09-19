@@ -32,8 +32,8 @@ When Phase 9 closes, a clean machine and one config file give:
 - One reference bot and operational notes for systemd, backup, and account
   safety.
 
-No dashboard, no tenants, no browser. That is the base every phase below
-builds on.
+No dashboard, no browser, and no hosting platform. That is the base every
+phase below builds on.
 
 ## Settled direction
 
@@ -41,13 +41,13 @@ These shape every phase and become ADRs when the phase that owns them starts.
 
 - One binary, two audiences: an instance view (every scope) and a scoped view
   (one scope) that cannot prove another scope exists.
-- Scope is the isolation boundary and the only place a tenant appears.
-  Isolation is enforced on the server for every route, never in the UI.
-- Botflota knows nothing about whoever hosts it. It knows trusted issuers,
-  scoped credentials, and webhooks; accounts, signup, and account management
-  live outside this repository.
-- One scope per tenant is a convention a host may follow, not a rule Botflota
-  enforces.
+- Scope is the isolation boundary. Isolation is enforced on the server for
+  every route, never in the UI.
+- Botflota knows nothing about whoever hosts it: it knows trusted issuers,
+  scoped credentials, and webhooks, and the host's account system lives outside
+  this repository.
+- How a host maps its own accounts to scopes is its convention, not a rule
+  Botflota enforces.
 - The dashboard ships inside the release binary: no auxiliary process and no
   Node runtime in production.
 - Behavior stays in YAML until Phase 15 moves it to the database. Until then
@@ -203,9 +203,9 @@ Gate: the same binary serves an instance dashboard that sees every scope and a
 scope dashboard that sees one, and the isolation test suite passes with no
 route exempt.
 
-### Phase 14 — Multi-tenant surface and host integration
+### Phase 14 — Scoped surface and host integration
 
-Goal: a tenant user lands in Botflota and sees only their scope, while the
+Goal: a scoped user lands in Botflota and sees only their scope, while the
 system that authenticated them stays something Botflota knows nothing about.
 
 Deliverables:
@@ -214,14 +214,14 @@ Deliverables:
   and no instance settings, and a header that shows the scope name.
 - [ ] Scope provisioning: apply a scope config document to the running
   instance (validate, write one include fragment per scope, reload, keep the
-  previous state on any error), so a tenant is created without hand-editing
-  the main file. Reuses include fragments (ADR 0016) and reload classes
+  previous state on any error), so a scope is created without hand-editing the
+  main file. Reuses include fragments (ADR 0016) and reload classes
   (ADR 0009).
 - [ ] Instance identity: `instance_id`, version, and build info in responses
   and events, so a caller with several instances can tell them apart.
 - [ ] Signed outbound webhooks with retries and backoff: bot connected,
   disconnected, logged out, or banned; bot created or removed; per-scope
-  message counters and connected bot time for usage reports; threshold
+  message counters and connected bot time as integration facts; threshold
   warnings.
 - [ ] `docs/integration/scoped-hosting.md`: the Botflota side of the contract
   only (issuer configuration, token claims, webhook payloads and signatures,
@@ -323,7 +323,7 @@ log.
 
 ### Phase 18 — Reach and scale
 
-Goal: more channels and more tenants than one process should carry.
+Goal: more channels and more scopes than one process should carry.
 
 Deliverables:
 
@@ -334,7 +334,7 @@ Deliverables:
 - [ ] Telegram channel (`adapters/telegram`), the cheapest proof that the
   port is provider agnostic and the dashboard is not WhatsApp-specific.
 - [ ] Instance sharding: several instances, one identity each, and documented
-  guidance for mapping a tenant to an instance; aggregation lives outside
+  guidance for spreading scopes across instances; aggregation lives outside
   Botflota.
 - [ ] Per-scope quotas: bot count, message rate, and storage, enforced with
   clear errors; the host sets them, Botflota enforces them.
@@ -401,7 +401,7 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 
 - `/api/v1` with additive changes only inside a version; deprecations
   announced one minor version ahead with a date. The caller pins a version.
-- The migration runner stays append-only (ADR 0006): once a tenant exists,
+- The migration runner stays append-only (ADR 0006): once a release ships,
   migrations are forever.
 
 ### Licensing and branding
@@ -409,22 +409,22 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 - MIT, decided. Anyone may host Botflota commercially; that is the cost of
   adoption, and the value of a hosted service is operation, not the source.
 - Keep a hosted product brand-independent: no endorsement implied, and no
-  Botflota name in a tenant-facing product.
+  Botflota name in the host's product.
 - Contributions need no CLA, so relicensing later would require every
   copyright holder; decide that now, not after the first outside contribution.
 
 ### Topology
 
 - One instance can carry many scopes; sharding is an operations decision, not
-  a code branch. Group tenants by volume and risk, and keep the
-  tenant-to-instance mapping outside Botflota.
+  a code branch. Group scopes by volume and risk; how a host maps its accounts
+  to instances is its own concern.
 
 ## Ordering and dependencies
 
 - 10 → 11 → 12 is the shortest path to running a fleet without a terminal:
   watch and take over.
-- 13 before 14, authority before tenant surface, never the reverse.
-- 14 before onboarding real tenants: provisioning, sign-in, and webhooks come
+- 13 before 14, authority before the scoped surface, never the reverse.
+- 14 before onboarding real users: provisioning, sign-in, and webhooks come
   first.
 - 15 before 16: the assistant's output must be reviewable and publishable.
 - 17 last: it needs 15 (revisions), 16 (analysis), and a base of real
@@ -446,18 +446,17 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 - Retention defaults per scope and who may change them (Phase 16).
 - Scope provisioning: where the writable config directory lives and whether a
   previous version is kept per applied document (Phase 14).
-- Sharding threshold, and whether the host or Botflota maps a tenant to an
-  instance (Phase 18).
+- Sharding threshold, and whether the host or Botflota maps accounts to
+  instances (Phase 18).
 - Quota dimensions and the enforcement point (Phase 18).
 
 ## Outside the boundary
 
 Recorded here only to keep the boundary visible. Botflota is the runner, not
-the account system: accounts, signup, plans, and tenant-facing branding belong
-to whatever hosts it. Such a system reaches a Botflota instance through the
-Phase 13 and Phase 14 surface and nothing else: it configures an issuer, signs
-short-lived scoped tokens, listens to webhooks for usage, and provisions
-scopes.
+the account system: accounts, signup, plans, and branding belong to whatever
+hosts it. Such a system reaches a Botflota instance through the Phase 13 and
+Phase 14 surface and nothing else: it configures an issuer, signs short-lived
+scoped tokens, listens to webhooks for usage, and provisions scopes.
 
 Providing the model is the same boundary: a host-run gateway is just an `llm`
 entry with a `base_url` and a key, so Botflota needs no new concept to route
@@ -466,9 +465,9 @@ model traffic through a gateway.
 ## Explicitly not planned
 
 - Account-system features inside Botflota: user registry, signup, plans, or
-  tenant-facing branding.
+  branding.
 - Browser automation for WhatsApp.
 - Behavior in the database before Phase 15.
 - References or graphs shared between scopes.
-- A second database engine for the multi-tenant path; SQLite is enough until a
+- A second database engine for the hosted path; SQLite is enough until a
   real limit appears.

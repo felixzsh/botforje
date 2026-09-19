@@ -102,8 +102,9 @@ generic `control` facade.
   navigation.
 - Graph context — session-wide variables that persist across nodes.
 - Scope — the top-level config namespace holding its own system_one, llms, actions,
-  graphs, and bots (ADR 0016, ADR 0031). A tenant is one use; the name is
-  free. References and sessions never cross scopes.
+  graphs, and bots (ADR 0016, ADR 0031). A scope may hold a product
+  environment, a team, or a workload; the name is free. References and sessions
+  never cross scopes.
 - Shared catalog — the instance-level `system_one` and `llms` a host provides, in
   the main config file only; a bot resolves a name in its scope first, then in
   `shared`. It is not a scope (ADR 0031).

@@ -52,4 +52,4 @@ an include path, or any other ordinary string is a validation error.
 - Redaction is a property of the field and the string, not a convention:
   `request` headers and model keys need a sensitive string type that keeps the
   placeholder and reveals on demand, and ordinary strings reject `${...}`.
-- Per-tenant config secrets in the database are deferred to a later phase.
+- Per-scope config secrets in the database are deferred to a later phase.
