@@ -1,6 +1,6 @@
 // Package whatsapp implements the MessageChannel port with whatsmeow
 // (ADR 0001, ADR 0004). It owns the device store, reconnection, dedup, sender
-// resolution, and presence (ADR 0011, ADR 0013).
+// resolution, and presence (ADR 0011, ADR 0020).
 package whatsapp
 
 import (
@@ -404,7 +404,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	}
 }
 
-// lookupPN resolves a LID through the WhatsApp LID store (ADR 0013).
+// lookupPN resolves a LID through the WhatsApp LID store (ADR 0020).
 func (a *Adapter) lookupPN(lid types.JID) (types.JID, bool) {
 	a.mu.Lock()
 	client := a.client

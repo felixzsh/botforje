@@ -13,8 +13,10 @@ which document owns what, read `README.md`.
 - Read the document that owns a topic before changing it, and update that
   document instead of repeating content elsewhere. Cross-reference files or
   sections.
-- Read the relevant ADR in `docs/adr/` before touching a settled decision. To
-  change one, add or supersede an ADR; do not re-litigate it in code.
+- ADRs describe only current decisions, with no superseded or retired files
+  kept as history. When a decision changes, update or replace its canonical ADR
+  and delete the obsolete one after moving any rationale still worth keeping;
+  do not re-litigate it in code. Renumbering is avoided, so gaps are fine.
 - Do not hand-edit generated files; `config.schema.json` is generated from Go
   types starting in Phase 1.
 
@@ -27,10 +29,11 @@ which document owns what, read `README.md`.
 - The core (`botflota` root package) never imports YAML, SQL, whatsmeow, or
   LLM SDK types.
 - Declarative objects live in `spec`, documents are loaded by `config`, and
-  `engine` executes them and owns the template language and its validation.
-  The engine never imports `config`; `config` calls
-  `engine.ValidateTemplates` and adds file and entity context (ADR 0035).
-- Define interfaces at the consumer; keep them small and intentional.
+  `engine` executes them and owns the runtime context. The template language
+  lives in the core, and `config` validates references and adds file and entity
+  context (ADR 0034).
+- Keep interfaces small and intentional; the core owns the ports that adapters
+  implement (ADR 0004, ADR 0034).
 - Tests are table-driven with `t.Run`; fixtures live in `testdata/`; prefer
   hand-written fakes over a mocking library.
 - Keep code, comments, logs, and documentation in English.
@@ -82,7 +85,7 @@ Botflota's own code composes them, not because they are an SDK, and they
 carry no compatibility promise to other projects (ADR 0034). Dependencies
 point along `config → spec` and `engine → spec`; neither imports the other,
 and both use the core template language. The core never imports adapters
-(ADR 0004, ADR 0035, ADR 0036). The package map lives in
+(ADR 0004, ADR 0034). The package map lives in
 `docs/architecture.md`; keep it current.
 
 ## Never

@@ -6,7 +6,7 @@
 - Scope — the top-level config namespace that isolates entities, references,
   and sessions (ADR 0016); a free name, never derived from folders.
 - Graph — conversation state machine owned by one bot; may override the
-  routing mode of the bot's system_one (ADR 0015).
+  routing mode of the bot's system_one (ADR 0030).
 - Node — a state: goal, policy, entry/exit actions, tools, and optional
   node-local context.
 - Goal — the LLM's objective in a node, short and clear.
@@ -28,7 +28,7 @@
   parameters from the message, System One selects tools and maps values to
   real catalog entries, and code validates and applies (ADR 0033).
 - Tool loop — the LLM-driven tool mode, the alternative to the tool pipeline
-  for nodes a pipeline cannot bound (ADR 0008, ADR 0033).
+  for nodes a pipeline cannot bound (ADR 0033).
 - Step — single operation inside an action.
 - Guard — rule that limits how often an action runs per sender, such as a
   cooldown (minimum interval) or a rate limit (maximum per window).
@@ -66,15 +66,16 @@
   first implementation (ADR 0030).
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds); a bot references one with `llm` or replies from
-  prescribed bodies without it (ADR 0017, ADR 0031).
+  prescribed bodies without it (ADR 0031).
 - Agent — a conventional external agent runtime (for example OpenClaw), a
   possible future integration behind a port. It does not name Botflota's own
   LLM behavior; that is the tool loop.
 - Filter — one bot's inbound rules (ignore groups, allow/ignore senders)
   applied before the engine; the fleet routes events to the bot.
 - Outbox — per-bot FIFO queue that paces outbound messages.
-- Secret reference — a `${ENV_VAR}` placeholder in config, resolved from the
-  process environment at load and masked in logs (ADR 0014).
+- Secret reference — a `${ENV_VAR}` placeholder, allowed only in fields enabled
+  for secrets (model `api_key`, request header values), resolved from the
+  process environment at load; the whole string is sensitive (ADR 0014).
 - Template — a string with `{{path.to.value}}` references resolved against the
   runtime context; a missing path is an error (ADR 0018).
 - Runtime context — the values a template reads: graph and node variables,

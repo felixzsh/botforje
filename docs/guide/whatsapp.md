@@ -55,7 +55,7 @@ paired bot, answers inbound messages with the configured pacing, and stops on
 Ctrl-C after draining the outbox.
 
 Bots without a local pairing are not initialized (ADR 0022). The fleet logs a
-`WARN` naming only `bot pair` and continues with the paired bots (ADR 0023); the
+`WARN` naming only `bot pair` and continues with the paired bots (ADR 0025); the
 command's own usage explains its flags and arguments. If none are paired, the
 fleet stays idle until Ctrl-C instead of failing.
 

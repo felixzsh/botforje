@@ -1,41 +1,47 @@
-# ADR 0009 — Config reload semantics
+# ADR 0009 — Config hot reload is automatic and always on
 
 Status: Accepted (2026-09)
 
 ## Context
 
-A running fleet should adopt config changes without dropping WhatsApp
-sessions, and it should never lose the last known-good configuration. Some
-changes are safe at any moment; others would break sessions that are in the
-middle of a conversation.
+A running fleet should adopt configuration changes without dropping WhatsApp
+sessions, and it must never lose the last known-good configuration. Operators
+edit YAML by hand, so reload cannot depend on a command they must remember.
+Hot reload is a first-class capability, not an operation to trigger.
+
+Two kinds of change exist: those a running bot can adopt at the next message or
+session, and those that change the shape of what is already running.
 
 ## Decision
 
-The fleet watches config files and reloads on SIGHUP. Every reload runs the
-full validation pipeline. If validation fails, the previous valid config
-stays in effect and the error is logged.
+The fleet watches the main config file and every file reached through
+`include`, and reloads automatically when one changes. Watching is the
+mechanism; the CLI needs no `reload` command.
 
-Changes are classified:
+Every reload runs the full pipeline: load, includes, interpolation, and
+semantic validation.
 
-- Safe: new or updated actions, graphs, bots, nodes, and edges that no active
-  session depends on. Applied immediately.
-- Incompatible: removing or structurally changing nodes or edges used by
-  active sessions. They enter a pending queue.
+- If validation fails, the previous configuration stays in effect and the
+  error is logged. No partial configuration is ever applied.
+- A change a bot can adopt safely at the next message or session is applied
+  immediately to every bot, without a restart and without touching connected
+  WhatsApp sessions.
+- A change that cannot be applied to a running bot — a global setting, a
+  removed bot, or a removed or structurally changed node or edge an active
+  session depends on — is not applied and is never kept silent. The fleet logs
+  a warning that a restart is required and names the change.
 
-A pending queue is applied through maintenance mode for the affected graph:
-
-1. Stop accepting new sessions for the graph.
-2. Let active sessions finish or expire.
-3. Apply the queued changes.
-4. Reactivate the graph.
-
-Reload never touches connected WhatsApp sessions and never applies global
-settings; those require a restart.
+Global settings and the set of bots require a restart; the running fleet keeps
+serving with the old values until then.
 
 ## Consequences
 
-- Config can evolve in production without downtime for safe changes.
-- Incompatible changes are explicit, queued, and applied when safe.
-- The pending queue and maintenance mode add state to persist and expose
-  through the API (`fleet status`, `fleet reload`).
-- Tests must cover validation fallback and both change classes.
+- Safe changes reach production as soon as the file is saved; incompatible
+  ones are explicit and never silent.
+- Editing an included file triggers a reload too, so a multi-file config
+  behaves like one document.
+- Validation is all-or-nothing, so a broken edit cannot take the fleet down.
+- A pending queue, per-graph maintenance mode, and session draining are
+  deliberately out of scope for the MVP; a restart covers them.
+- Tests must cover validation fallback, live application, and the
+  restart-required warning.

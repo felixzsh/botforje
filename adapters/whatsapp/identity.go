@@ -20,7 +20,7 @@ func Number(jid string) string {
 	return number
 }
 
-// pnLookup resolves a LID to its phone number through the LID store (ADR 0013).
+// pnLookup resolves a LID to its phone number through the LID store (ADR 0020).
 type pnLookup func(lid types.JID) (types.JID, bool)
 
 // resolveSender returns the sender's phone number JID. It uses the JID itself

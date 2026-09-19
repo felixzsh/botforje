@@ -48,30 +48,30 @@ Out of scope: any product code.
 
 ### Phase 1 — Config engine, config v1, and `config validate`
 
-Goal: freeze the config v1 shape and turn YAML into a validated typed model
-with precise errors.
+Goal: settle the config v1 baseline and turn YAML into a validated typed model
+with precise errors. The baseline keeps evolving through the MVP; v1 freezes at
+release.
 
 Deliverables:
 
-- [x] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
+- [x] Design task first: settle the config v1 baseline (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
   graph `routing`, `llms`). Align `config/examples/reference.yml` and the draft
   `config.schema.json` with it.
 - [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
   LLM. They moved to `spec`; the template language lives in the core and the
-  runtime context in `engine` (ADR 0035, ADR 0036).
+  runtime context in `engine` (ADR 0034).
 - [x] Loader: main config plus `include` fragments (file, glob, directory,
   recursive), scope merging, and cycle-safe dedupe (ADR 0016).
 - [x] Runtime validation in Go: strict YAML decoding plus semantic checks.
   The JSON Schema is generated from the Go types for editors only (ADR 0007).
-- [x] Environment interpolation: expand `${ENV_VAR}` in config strings after
-  decoding; missing variables fail validation (ADR 0014).
-- [x] Secret values use a type that masks itself in logs and errors
-  (ADR 0014).
+- [x] Secret references: resolve `${ENV_VAR}` after decoding; missing variables
+  fail validation (ADR 0014). The baseline resolves them in any string; the
+  secret-only restriction is a Phase 7 item.
+- [x] Secret values mask themselves in logs and errors (ADR 0014).
 - [x] Semantic validation: reference resolution, scope isolation, uniqueness by
   (type, scope, name), node reachability, and message mode rules.
-- [x] Schema generation: pick and approve a generator (candidate:
-  `invopop/jsonschema`) and wire the regeneration step.
+- [x] Schema generation: `invopop/jsonschema` and the regeneration step.
 - [x] CLI command `config validate` with readable output and a `--json` mode.
 - [x] Fixtures: valid and invalid cases for every rule.
 
@@ -136,8 +136,8 @@ Deliverables:
 - [x] Guards: cooldown and rate limit per sender per action; blocked-action
   behavior.
 - [x] Hybrid intent semantics: classification fallback, rendering modes with
-  anchor plus fallback, and policy checks (shape frozen in Phase 1;
-  ADR 0003).
+  anchor plus fallback, and policy checks (shape settled in Phase 1;
+  ADR 0032).
 - [x] Tests: simulated conversations including fallback, timeout, guards,
   request failures, template reference errors, and the same input with
   different visit histories.
@@ -157,7 +157,7 @@ Deliverables:
   (ADR 0011).
 - [x] Inbound event mapping to `IncomingMessage` plus deduplication.
 - [x] Sender identity: resolve LID to PN via `SenderAlt` and the LID store
-  before sessions and filters (ADR 0013).
+  before sessions and filters (ADR 0020).
 - [x] Outbound send: text and location; mark inbound read and show composing
   presence before replies (ADR 0011).
 - [x] Logout and ban detection: stop the bot, keep the session, and report
@@ -199,9 +199,9 @@ Deliverables:
 - [x] Package layout settled before the API: root contracts, one package per
   capability, `adapters/`, and `internal` as a last resort (ADR 0034).
 - [x] Declarative objects moved to `spec`; the template language moved to the
-  core and the runtime context into `engine` (ADR 0035, ADR 0036).
+  core and the runtime context into `engine` (ADR 0034).
 - [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
-  `fleet run|status|stop|restart|reload`, `message list|tail`.
+  `fleet run|status|stop|restart`, `message list|tail`.
 - [x] CLI help: `usage`, description, commands, options, and examples for every
   group and subcommand; `--help` exits 0 and usage errors exit 2.
 - [ ] CLI `--version` and a decision on global versus per-subcommand flags.
@@ -228,8 +228,8 @@ Deliverables:
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
   history is recorded.
 - [ ] Signals: SIGINT/SIGTERM graceful shutdown; `fleet stop` signals the
-  running fleet, `fleet reload` (SIGHUP) reloads config, and `fleet restart`
-  does a full restart.
+  running fleet and `fleet restart` does a full restart. Config reload is
+  automatic and needs no signal (ADR 0009).
 - [ ] REST API (`api/`): status, bots, chats, sessions, messages, and config.
   Every addressable object carries its scope, and a message carries its bot as
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
@@ -253,13 +253,19 @@ Deliverables:
   the future UI. Resolve one principal per request behind a single seam and
   keep routes scope-addressed, so the scoped authority of Phase 13 replaces
   the resolver instead of every handler.
-- [ ] Config reload (ADR 0009): failed validation keeps the previous config;
-  safe changes apply immediately; incompatible changes wait in a pending
-  queue for maintenance mode.
-- [ ] Tests: API handlers, auth, config discovery, and both reload classes.
+- [ ] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
+  and request header values, reject it in every other string, keep the
+  placeholder when serializing, and reveal the value only to the consumer that
+  sends it.
+- [ ] Hot reload (ADR 0009): watch the main file and its includes, replace the
+  config atomically only after full validation, apply safe changes immediately,
+  and log a restart-required warning for the rest. No pending queue or
+  maintenance mode.
+- [ ] Tests: API handlers, auth, config discovery, and reload behavior
+  (validation fallback, live application, restart-required).
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
-and reloaded through CLI and API only.
+and reconfigured by editing its files, through CLI and API only.
 
 ### Phase 8 — System One routing, replies, and tools
 
@@ -276,7 +282,7 @@ Deliverables:
   with a name resolving in the scope first and then in `shared` (ADR 0031).
 - [ ] Confidence-gated routing: a per-graph threshold decides between taking
   the decision, the default edge, or escalation, and is logged per message.
-- [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015),
+- [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0030),
   applied to System One; `always` gives it the decision even when a trigger
   matches.
 - [ ] Prescribed replies as the default path: `body` messages with variants
@@ -297,7 +303,7 @@ Deliverables:
 - [ ] Opt-in generation (ADR 0032): `LLMProvider` implementations for reply
   realization only (one cloud and one local), `body` plus `intent` anchored
   and used as fallback, and policy checks before queueing.
-- [ ] Opt-in LLM tool loop (ADR 0008) for nodes whose calls a pipeline cannot
+- [ ] Opt-in LLM tool loop (ADR 0033) for nodes whose calls a pipeline cannot
   bound, sharing `inputs` validation and the edge rule.
 - [ ] Slot filling: a missing required input returns a tool error or asks the
   user, and bound variables remember the answer; `bind` targets are validated
@@ -378,7 +384,8 @@ and additional channels, each with its own phase, order, and open decisions.
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
-conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
+conventions are in `AGENTS.md`. The config v1 baseline settles in Phase 1 and
+keeps evolving until the MVP release.
 Trigger matching and its threshold are in ADR 0019. AI routing is
 decision-only via System One (ADR 0030), model catalogs are scoped with a
 shared host catalog (ADR 0031), prescribed replies are the default (ADR

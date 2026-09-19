@@ -7,7 +7,7 @@ type Action struct {
 	Steps  []Step           `yaml:"steps" json:"steps"`
 }
 
-// Input is a named, typed argument of a tool (ADR 0008).
+// Input is a named, typed argument of a tool (ADR 0033).
 type Input struct {
 	Type        string `yaml:"type" json:"type,omitempty"`
 	Required    bool   `yaml:"required" json:"required,omitempty"`
@@ -43,7 +43,7 @@ type Step struct {
 	Location *Location `yaml:"location" json:"location,omitempty"`
 }
 
-// Message is a reply: deterministic, LLM-realized, or anchored (ADR 0003). To
+// Message is a reply: deterministic, LLM-realized, or anchored (ADR 0032). To
 // is an optional recipient override, a phone number or a template; empty means
 // the sender.
 type Message struct {

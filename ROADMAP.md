@@ -21,7 +21,7 @@ lead to the MVP (0 to 9); this file owns Phase 10 onward. The MVP scope is in
 
 When Phase 9 closes, a clean machine and one config file give:
 
-- `config validate` over a frozen config v1, with a generated schema for
+- `config validate` over a settled config v1, with a generated schema for
   editors.
 - A fleet of WhatsApp accounts paired with `bot pair` and run with
   `fleet run`, answering from YAML graphs deterministically, with System One routing
@@ -57,7 +57,7 @@ These shape every phase and become ADRs when the phase that owns them starts.
   on the account owner's device (ADR 0028).
 - Package layout: a product capability gets its own package; a subordinate
   detail lives inside its owner or, as a last resort, in `internal/`
-  (ADR 0034, ADR 0035; the map is in `docs/architecture.md`).
+  (ADR 0034; the map is in `docs/architecture.md`).
 - AI stays optional and specialised (ADR 0030, ADR 0032, ADR 0033): System
   One (Jev) makes typed, confidence-bearing decisions for routing, policy, and
   tools, prescribed replies are the default, and a generative LLM only reads

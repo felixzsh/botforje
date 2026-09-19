@@ -25,6 +25,7 @@ Candidate order, tie-breaking, and default-edge rules live in
 - "Back" navigation works without duplicating edges in every node.
 - Routing depends on the visit path: tests must cover the same input with
   different histories.
-- The visited-nodes list is small (node names) but must be persisted and
-  capped for prompt use.
+- The visited-nodes list holds node names with no duplicates, so it cannot
+  exceed the number of nodes in the graph; it needs no separate storage cap.
+  Bounding it when it is handed to a model as context is a prompt decision.
 - No `common_edges` mechanism is needed; this supersedes it.

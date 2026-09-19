@@ -1,5 +1,5 @@
 // Package spec holds the declarative objects Botflota understands: scopes,
-// actions, graphs, bots, and model profiles (ADR 0035). YAML and JSON tags
+// actions, graphs, bots, and model profiles (ADR 0034). YAML and JSON tags
 // are metadata for decoding; the engine and the future database read the
 // fields directly.
 package spec

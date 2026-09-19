@@ -2,7 +2,7 @@
 // adapters: messages, persisted records, ports, errors, the structured logger,
 // and the template language (ports.go, records.go, logging.go, template.go).
 // It never imports YAML, SQL, whatsmeow, or LLM SDK types (ADR 0004, ADR 0034,
-// ADR 0036).
+// ADR 0034).
 package botflota
 
 import (

@@ -19,7 +19,7 @@ conversation matters most.
 A reference is `{{`, a dot-separated path, and `}}`; whitespace just inside
 the braces is ignored. The first segment selects a root:
 
-- `graph`, `node` — read-write variables (ADR 0008); `node` resets on every
+- `graph`, `node` — read-write variables (ADR 0033); `node` resets on every
   node entry.
 - `sender`, `message`, `bot`, `input` — read-only for the duration of a
   message; the engine seeds them.
@@ -41,7 +41,8 @@ Rules:
 - Failures surface at the step that introduced them, not in the user's chat.
 - A step renders only against a context that declares its variables;
   `initial_context` and tool `inputs` are the source of those declarations.
-- Config-time validation of a reference against declared variables is still
-  open and lands with the engine (Phase 4).
+- Config-time validation checks every reference against the declared graph and
+  node variables, tool inputs, and request results before the fleet starts
+  (`config/template_validation.go`).
 - Escaping is one small documented rule; no alternate template syntax
   appears.

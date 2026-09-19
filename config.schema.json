@@ -100,7 +100,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Bounds limits the tool loop inside a node (ADR 0008)."
+      "description": "Bounds limits the tool loop inside a node (ADR 0033)."
     },
     "Config": {
       "properties": {
@@ -221,7 +221,7 @@
         "root",
         "nodes"
       ],
-      "description": "Graph is a conversation state machine (ADR 0010, ADR 0015)."
+      "description": "Graph is a conversation state machine (ADR 0010, ADR 0030)."
     },
     "Guards": {
       "properties": {
@@ -254,7 +254,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Input is a named, typed argument of a tool (ADR 0008)."
+      "description": "Input is a named, typed argument of a tool (ADR 0033)."
     },
     "LLM": {
       "properties": {
@@ -286,7 +286,7 @@
         "provider",
         "model"
       ],
-      "description": "LLM is a named, scoped model profile referenced by a bot (ADR 0017)."
+      "description": "LLM is a named, scoped model profile referenced by a bot (ADR 0031)."
     },
     "Location": {
       "properties": {
@@ -334,7 +334,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Message is a reply: deterministic, LLM-realized, or anchored (ADR 0003)."
+      "description": "Message is a reply: deterministic, LLM-realized, or anchored (ADR 0032)."
     },
     "Node": {
       "properties": {
@@ -374,7 +374,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Node is a state (ADR 0003, ADR 0008)."
+      "description": "Node is a state (ADR 0032, ADR 0033)."
     },
     "RateLimit": {
       "properties": {

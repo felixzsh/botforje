@@ -62,7 +62,7 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
 
 Dependencies point along `config → spec` and `engine → spec`; neither `config`
 nor `engine` imports the other, and both use the core template language
-(ADR 0035, ADR 0036).
+(ADR 0034).
 
 Planned capabilities land as `api` (REST handlers and routes), `control`
 (operations shared by the CLI and the API), `dashboard` (embedded UI), `auth`
@@ -73,13 +73,13 @@ package per channel or model provider under `adapters/`.
 ## Domain model
 
 - Bot — identity (account) plus settings, the reference to one graph, and
-  optional references to one system_one and one llm (ADR 0017, ADR 0031).
+  optional references to one system_one and one llm (ADR 0031).
 - Sender — the durable profile of one person who writes to bots in a scope:
   phone, push name, and first/last seen, keyed by (scope, phone). The
   bot-person thread is the chat; a person may write to several bots of the same
   scope (ADR 0029).
 - Graph — state machine with root, fallback, timeout, a routing override
-  (ADR 0015), and a map of nodes.
+  (ADR 0030), and a map of nodes.
 - Node — goal, policy, entry/exit actions, tools, and optional node-local
   context.
 - Edge — transition with a required user intent, except the default
@@ -105,7 +105,7 @@ package per channel or model provider under `adapters/`.
   or in `shared` (ADR 0030, ADR 0031).
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds) referenced by a bot with `llm`; it resolves in the scope
-  or in `shared` (ADR 0017, ADR 0031).
+  or in `shared` (ADR 0031).
 
 ## Message lifecycle
 
@@ -132,7 +132,7 @@ Inbound:
    (ADR 0030).
 6. A node with tools handles the message through the pipeline (ADR 0033):
    System One decides, the LLM reads free text, and code applies. The node
-   stays unless an exit edge is taken. The LLM loop (ADR 0008) is the opt-in
+   stays unless an exit edge is taken. The LLM loop (ADR 0033) is the opt-in
    alternative for calls a pipeline cannot bound.
 7. Tool results feed the next step; a missing required argument is a tool
    error that asks the user, storing the answer in the bound variable.
@@ -170,11 +170,11 @@ read-only, and `node` resets on every node entry. A missing path, an unknown
 root, and a whole map or slice are errors, never empty or literal text; a
 literal `{{` is written `\{{` (ADR 0018). The language lives in the core
 (`template.go`), the runtime context in `engine` (`context.go`), and the
-reference checks in `config` (`config/template_validation.go`) (ADR 0036).
+reference checks in `config` (`config/template_validation.go`) (ADR 0034).
 
-The engine resolves only runtime conversation values here. Secrets are not a
-template context: config strings interpolate `${ENV_VAR}` once at load
-(ADR 0014).
+The language resolves only runtime conversation values. `${ENV_VAR}` is a
+separate secret mechanism, allowed only in model keys and request header
+values, and it never combines with `{{...}}` (ADR 0014).
 
 ## Reply strategies
 
@@ -189,8 +189,9 @@ Three ways a reply reaches the queue, in order of preference (ADR 0032):
 
 ## Tool pipeline
 
-A node with tools handles an inbound message in place; the LLM loop (ADR
-0008) is the opt-in alternative for calls a pipeline cannot bound (ADR 0033).
+A node with tools handles an inbound message in place; the LLM loop is the
+opt-in alternative for calls a pipeline cannot bound (ADR 0033). The exact
+sequence below is the Phase 8 design.
 
 1. Intake gate (System One): is the message actionable and clear for this
    node? The answers choose among act, ask and stay, delegate to extraction,
@@ -252,6 +253,10 @@ pending step is reported and the bot stays stopped (ADR 0028).
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
+- The engine and the outbox are independent, each serialized; a bot keeps
+  reading inbound while its outbox paces earlier replies (ADR 0011).
+- Config hot reload watches the main file and its includes and is
+  all-or-nothing; a restart-required change is logged, never silent (ADR 0009).
 - One WhatsApp phone number belongs to one Botflota bot. Multiple linked
   companion devices for the same number would receive the same traffic and can
   produce duplicate replies.
@@ -288,18 +293,18 @@ and bots; a bot's `system_one` and `llm` resolve in the scope first and then in
 may extend one scope, paths resolve relative to the including file, and a file
 loaded twice is skipped, so diamond includes and cycles are safe. Global
 settings and `shared` are only valid in the main file, and scope is never
-derived from folders (ADR 0005). A relative `data_dir` resolves against the
+derived from folders (ADR 0016). A relative `data_dir` resolves against the
 directory of the config file, like include paths; an empty one falls back to
 the XDG data home.
 
 ## Configuration pipeline
 
 ```
-YAML -> strict decode -> ${ENV_VAR} expansion -> semantic validation -> engine
+YAML -> strict decode -> secret references -> semantic validation -> engine
 ```
 
-Environment interpolation runs on decoded strings, so secret characters
-cannot break the YAML.
+`${ENV_VAR}` resolves only in the fields enabled for secrets, after decoding,
+so secret characters cannot break the YAML; any other string rejects it.
 
 Runtime validation happens in Go only: strict YAML decoding rejects unknown
 fields and wrong types, and semantic checks cover reference resolution,

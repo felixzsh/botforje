@@ -1,35 +1,35 @@
-# ADR 0004 — Messaging channel and LLM provider are separate ports
+# ADR 0004 — Messaging, decision, and generation are separate ports
 
-Status: Accepted (2026-09). The classification role of `LLMProvider` is
-superseded by the `SystemOneProvider` port of ADR 0030; the rest stands.
+Status: Accepted (2026-09)
 
 ## Context
 
-A bot needs a messaging transport; it may also use a language model. These
-are independent concerns with different vendors, failure modes, and
-lifecycles. Conflating them would tie the graph engine to both WhatsApp and
-one LLM vendor at the same time.
+A bot always needs a messaging transport. It may also use a decision model
+(System One) to route, and optionally a generative model to read free text or
+write replies. These are independent concerns with different vendors, failure
+modes, and lifecycles. Conflating them would tie the engine to WhatsApp and one
+model vendor at once.
 
 ## Decision
 
-Define two small ports, owned by the consumer:
+Three small ports, defined once in the core package so adapters implement them
+without importing the engine (ADR 0034):
 
 - `MessageChannel`: connect, disconnect, send, and a stream of inbound
-  messages. A channel is an implementation for a messaging provider, not the
-  provider itself: WhatsApp is reached through whatsmeow today, and can be
-  reached through other clients or the official Cloud API later.
-- `LLMProvider`: classification and reply realization. Multiple providers
-  (cloud or local) sit behind the same interface and are selected per
-  instance; a SaaS deployment may let clients bring their own key.
+  messages. WhatsApp is reached through whatsmeow today, and can be reached
+  through the official Cloud API later.
+- `SystemOneProvider`: typed decisions with calibrated confidence for routing,
+  tool selection, and value mapping (ADR 0030). It never generates text.
+- `LLMProvider`: reply realization and free-text extraction for the tool
+  pipeline (ADR 0033). It never decides a transition.
 
-Ports stay separate from config and persistence. Domain code never imports
-whatsmeow, an LLM SDK, YAML, or SQL.
+Ports stay separate from config and persistence. Core code never imports
+whatsmeow, a System One or LLM SDK, YAML, or SQL.
 
 ## Consequences
 
-- The engine is testable with a fake channel and a fake provider.
-- Another channel (for example the official WhatsApp Cloud API), another
-  messaging provider (Telegram), or a local model is a new package, not a
-  rewrite.
-- Two configuration sections and two lifecycles to operate.
-- Provider API drift is contained inside adapter packages.
+- The engine is testable with fake channel, decision, and generation ports.
+- A new channel, decision model, or LLM is a new adapter, not a rewrite.
+- A bot with no model runs deterministically; each model port is optional, the
+  channel is not.
+- Provider API drift stays inside `adapters/`.

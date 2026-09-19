@@ -4,23 +4,28 @@ Status: Accepted (2026-09)
 
 ## Context
 
-ADR 0013 keyed an unresolved session on the LID and carried the LID (and the
-arrival JID) through the domain. That leaked into logs, filters, templates, and
-the session table, and made LIDs visible everywhere even though a LID is only
-WhatsApp's internal addressing. In practice a message almost always carries the
-phone number in the JID server or `SenderAlt`, or the LID store already has the
-mapping from history sync.
+WhatsApp is migrating from phone-number JIDs (`user@s.whatsapp.net`, PN) to
+hidden user JIDs (`user@lid`, LID). An inbound message may be addressed by
+either form, and the alternative address is not always present. Sessions and
+business flows need a stable identity, and the phone number keys sessions,
+filters, logs, and templates.
+
+An earlier shape keyed unresolved sessions on the LID and carried the LID (and
+the arrival JID) through the domain. That leaked WhatsApp addressing into logs,
+filters, templates, and the session table.
 
 ## Decision
 
-The domain only ever sees the **phone number in plain digits** (for example
-`5215500000000`) as a sender identity. That value keys sessions, matches the bot's
+The domain only ever sees the phone number in plain digits (for example
+`5215500000000`) as a sender identity. It keys sessions, matches the bot's
 filter, appears in logs, and is what templates read as `sender.phone`.
 
 The JID and the LID live only inside the whatsapp adapter:
 
-- At parse time it resolves the phone number from the JID server, then
-  `SenderAlt`, then the LID store.
+- At parse time it resolves the phone number in this order: the JID itself
+  when its server is `s.whatsapp.net`, then the message alternative address
+  (`SenderAlt`), then the LID store (`Store.LIDs.GetPNForLID`), which
+  whatsmeow persists from history sync and mapping events.
 - If no phone number can be resolved, it drops the message and logs a warning;
   it never opens a session keyed on a LID.
 - For delivery it maps the recipient's phone number back to a transport
@@ -28,9 +33,8 @@ The JID and the LID live only inside the whatsapp adapter:
   phone-number JID. The transport address is never logged or shown to
   templates.
 
-This supersedes the unresolved-session reconciliation of ADR 0013. The rest of
-ADR 0013 stands: resolution happens in the channel adapter, groups are handled
-separately, and the domain sees a resolved sender.
+Groups are handled separately: the sender is the participant, and the chat is
+the group.
 
 ## Consequences
 
@@ -38,8 +42,8 @@ separately, and the domain sees a resolved sender.
   suffix is not logged either; it is added only when building a transport
   address.
 - A message whose phone number is unknown is dropped (rare, and the LID store
-  fills in from history sync). Losing it is preferred over keying anything on a
-  LID.
-- `sender.lid` disappears from the template context and the session no longer
-  stores the LID.
+  fills the mapping in from history sync). Losing it is preferred over keying
+  anything on a LID.
+- `sender.lid` is not part of the template context and the session does not
+  store a LID.
 - The LID store remains necessary, but only for resolution inside the adapter.

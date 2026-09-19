@@ -19,7 +19,7 @@ For contributors and agents working on this repository:
 ## User guide
 
 For people running bots. It lives in `guide/` and is written once config v1
-is frozen (Phase 1), then finalized when the CLI and API exist.
+reaches its v1 baseline (Phase 1), then finalized when the CLI and API exist.
 
 ## Where things live
 

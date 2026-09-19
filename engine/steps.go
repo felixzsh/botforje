@@ -35,7 +35,7 @@ func (r *run) steps(steps []spec.Step, where string) error {
 	return nil
 }
 
-// message renders a reply (ADR 0003). The body is the deterministic text and
+// message renders a reply (ADR 0032). The body is the deterministic text and
 // the fallback; the intent asks the LLM to realize it. With no provider, an
 // anchored message keeps the body and an intent-only message fails. An
 // optional To overrides the recipient; a To that resolves empty is an error,

@@ -19,7 +19,7 @@ type StateReporter interface {
 	ChannelState() string
 }
 
-// LLMProvider classifies unmatched input and realizes replies (ADR 0003).
+// LLMProvider classifies unmatched input and realizes replies (ADR 0032).
 // Phase 4 defines the port with a null implementation; Phase 8 adds real
 // providers and may refine the request shapes.
 type LLMProvider interface {
@@ -48,7 +48,7 @@ type RealizeRequest struct {
 	Text   string
 }
 
-// NullLLM is the deterministic provider for a bot with no `llm` (ADR 0017):
+// NullLLM is the deterministic provider for a bot with no `llm` (ADR 0031):
 // it never classifies and refuses to realize.
 type NullLLM struct{}
 

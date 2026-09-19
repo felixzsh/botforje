@@ -29,7 +29,7 @@ func (e ValidationError) Error() string {
 }
 
 // Validate runs the semantic checks that a JSON Schema cannot express
-// (ADR 0007, ADR 0008, ADR 0010, ADR 0015, ADR 0016).
+// (ADR 0007, ADR 0033, ADR 0010, ADR 0030, ADR 0016).
 func Validate(cfg *Config) []ValidationError {
 	if cfg == nil {
 		return []ValidationError{{Reason: "nil config"}}
@@ -76,7 +76,7 @@ func Validate(cfg *Config) []ValidationError {
 }
 
 // validateScopeTemplates runs the template checks and attributes each finding
-// to the file and entity that declared it (ADR 0018, ADR 0036). The template
+// to the file and entity that declared it (ADR 0018, ADR 0034). The template
 // language lives in the core; config owns the provenance.
 func validateScopeTemplates(cfg *Config, scopeName string, scope spec.Scope, add addError) {
 	for _, issue := range validateTemplates(scope) {

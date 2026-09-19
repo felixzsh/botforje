@@ -31,7 +31,7 @@ The generated schema file is never edited by hand once generation exists.
 - One artifact to maintain; the DSL and its editor schema cannot drift.
 - No JSON Schema validator at runtime; fewer dependencies and better error
   messages from the decoder and semantic checks.
-- A generation step and a small generator dependency are needed (candidate:
-  `invopop/jsonschema`; approval is required before adding it).
+- A generation step and a small generator dependency are needed; the project
+  uses `invopop/jsonschema`.
 - Editor hints depend on regenerating the schema after struct changes; a
   build or make target must do it.

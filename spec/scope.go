@@ -8,7 +8,7 @@ type Scope struct {
 	Bots    map[string]Bot    `yaml:"bots" json:"bots,omitempty"`
 }
 
-// LLM is a named, scoped model profile referenced by a bot (ADR 0017).
+// LLM is a named, scoped model profile referenced by a bot (ADR 0031).
 type LLM struct {
 	Provider    string  `yaml:"provider" json:"provider"`
 	Model       string  `yaml:"model" json:"model"`
@@ -19,7 +19,7 @@ type LLM struct {
 	Bounds      *Bounds `yaml:"bounds" json:"bounds,omitempty"`
 }
 
-// Bounds limits the tool loop inside a node (ADR 0008).
+// Bounds limits the tool loop inside a node (ADR 0033).
 type Bounds struct {
 	MaxToolsPerMessage int `yaml:"max_tools_per_message" json:"max_tools_per_message,omitempty"`
 	Timeout            int `yaml:"timeout" json:"timeout,omitempty"`

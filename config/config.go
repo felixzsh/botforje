@@ -1,6 +1,6 @@
 // Package config loads, interpolates, and validates Botflota configuration
 // documents: files, includes, origin tracking, and semantic checks. The
-// declarative objects themselves live in spec (ADR 0035).
+// declarative objects themselves live in spec (ADR 0034).
 package config
 
 import "github.com/felixzsh/botflota/spec"

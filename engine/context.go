@@ -18,7 +18,7 @@ var (
 )
 
 // writable reports whether the engine lets steps write the root. Graph and
-// node variables are read-write (ADR 0008); the rest are fixed by the engine
+// node variables are read-write (ADR 0033); the rest are fixed by the engine
 // for the duration of a message.
 func writable(root botflota.Root) bool {
 	return root == botflota.RootGraph || root == botflota.RootNode
@@ -59,7 +59,7 @@ func (c *templateContext) Reset(root botflota.Root, values map[string]any) error
 }
 
 // Set writes one graph or node variable. Bind targets are exactly one level
-// deep (ADR 0008); read-only roots reject the write.
+// deep (ADR 0033); read-only roots reject the write.
 func (c *templateContext) Set(path string, value any) error {
 	root, segments, err := botflota.ParseTemplatePath(path)
 	if err != nil {

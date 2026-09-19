@@ -4,22 +4,18 @@ Status: Accepted (2026-09)
 
 ## Context
 
-ADR 0005 introduced `scope` as a field on each entity, with identity
-`(type, scope, name)`. The config shape, however, was a map keyed by name
-only: `actions: { greet: ... }`. The scope field did not participate in the
-key, so two scopes could not both define `greet`, and a scope could not
-define two entities with the same name. That contradicts ADR 0005 and the
-motivating case (several clients, each with its own `pricing`, `greet`, and
-so on). It also let a forgotten `scope` silently place an entity in
-`default`.
+An earlier shape carried an optional `scope` field on each entity, with
+identity `(type, scope, name)`, but kept entities in a map keyed by name only.
+The scope field did not participate in the key, so two scopes could not both
+define `greet`, and a forgotten `scope` silently placed an entity in
+`default`. Deriving scope from directories instead couples a domain concept to
+file layout.
 
 ## Decision
 
 A config file is global settings plus `scopes`, and an optional `shared`
-catalog of model profiles the host provides (ADR 0031). Each scope holds its
-own `system_one`, `llms`, `actions`, `graphs`, and `bots` (ADR 0017, ADR 0031).
-Scope names are free strings; `default` is just a name, with no special
-behavior, and `shared` is not a scope.
+catalog the host provides (ADR 0031). Each scope holds its own `system_one`,
+`llms`, `actions`, `graphs`, and `bots`.
 
 ```yaml
 version: 1
@@ -31,32 +27,31 @@ scopes:
     bots:    { support-bot: {...} }
 ```
 
-- Entities no longer carry a `scope` field; the namespace is structural.
-- Identity is `(scope, type, name)` by construction.
-- References resolve only inside the same scope.
-- Global settings remain only in the main file.
+- Entities do not carry a `scope` field; the namespace is structural and
+  identity is `(scope, type, name)` by construction.
+- Scope names are free strings. `default` is just a name with no special
+  behavior; `shared` is not a scope.
+- Actions, graphs, and bots resolve references only inside their own scope.
+  Model names (`system_one`, `llm`) resolve in the scope first and then in
+  `shared` (ADR 0031); references never cross tenant scopes.
+- Scope is never derived from folders. Users pick their own file layout, and
+  includes are organization only.
+- Global settings live in the main file only.
 
 Includes:
 
-- Any file may `include` others; included files use the same `scopes` shape
-  and may not set global settings.
-- Several files may contribute to the same scope, under the same rules as a
-  single file (duplicate `(scope, type, name)` is an error).
+- Any file may `include` others; included files use the same `scopes` shape and
+  may not set global settings.
+- Several files may contribute to the same scope; a duplicate `(scope, type,
+  name)` is an error.
 - Include paths resolve relative to the including file.
-- A file already loaded is skipped, which both allows diamond includes and
-  breaks cycles.
-
-This supersedes the entity-field placement of ADR 0005. The rest of ADR 0005
-stands: scope is not derived from folders, includes are for organization, and
-global settings live in the main file.
+- A file already loaded is skipped, which allows diamond includes and breaks
+  cycles.
 
 ## Consequences
 
-- The same names can repeat across scopes, which is the point.
+- The same names repeat across scopes, which is the point.
 - The isolation boundary is structural: a forgotten scope cannot happen.
+- Sessions are isolated per scope; two scopes never share conversation state.
 - One file per scope, or several fragments per scope, both work and match a
   folder layout without the folder defining the namespace.
-- The config shape changes; `config.example.yaml`, the loader, validation,
-  and fixtures are updated with it.
-- Deleting or renaming a scope is a whole-block change, which is easy to
-  review.
