@@ -57,7 +57,7 @@ These shape every phase and become ADRs when the phase that owns them starts.
   on the account owner's device (ADR 0028).
 - Package layout: a product capability gets its own package; a subordinate
   detail lives inside its owner or, as a last resort, in `internal/`
-  (ADR 0034; the map is in `docs/architecture.md`).
+  (ADR 0034, ADR 0035; the map is in `docs/architecture.md`).
 - AI stays optional and specialised (ADR 0030, ADR 0032, ADR 0033): System
   One (Jev) makes typed, confidence-bearing decisions for routing, policy, and
   tools, prescribed replies are the default, and a generative LLM only reads
@@ -257,10 +257,9 @@ Deliverables:
 - [ ] Starter templates: packaged graphs (support menu, appointment request,
   quote) a scope can instantiate and edit.
 - [ ] Import and export of a whole scope as YAML, with the publish validation.
-- [ ] Decide where behavior types live once the database is their source:
-  `config` owns `Graph`, `Action`, and `Node` today and the engine imports
-  them. Split loading from the behavior model (planned package `behavior`)
-  when the store lands, not before.
+- [ ] Behavior from the database: `spec` already owns `Graph`, `Action`, and
+  `Node`, so the store builds `spec` values. Revisit only if the YAML and
+  schema coupling forces a split.
 - [ ] Tests: migration from a fixture config directory, concurrent edit
   conflict, publish and rollback, simulator cases.
 

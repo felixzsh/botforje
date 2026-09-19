@@ -5,7 +5,7 @@ DEV_CONFIG ?= config/dev.yml
 DEV_DATA ?= .dev-data
 ARGS ?=
 LINE_MAX := 100
-GO_DIRS := $(wildcard cmd/*) $(wildcard adapters/*) config engine fleet template
+GO_DIRS := $(wildcard cmd/*) $(wildcard adapters/*) config engine fleet spec
 
 .DEFAULT_GOAL := help
 .PHONY: help build run dev dev-reset test test-race vet fmt fmt-check \

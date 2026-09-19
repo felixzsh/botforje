@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/spec"
 )
 
 func TestWhatsappSettingsMapsPacing(t *testing.T) {
 	enabled := true
-	got := whatsappSettings(config.BotSettings{
+	got := whatsappSettings(spec.BotSettings{
 		ReadReceipts:     &enabled,
 		ReadReceiptDelay: 700,
 		ReplyDelay:       900,

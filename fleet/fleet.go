@@ -15,13 +15,14 @@ import (
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/engine"
+	"github.com/felixzsh/botflota/spec"
 )
 
 // BotSpec identifies a bot to the channel factory.
 type BotSpec struct {
 	Scope    string
 	Name     string
-	Settings config.BotSettings
+	Settings spec.BotSettings
 }
 
 // Options configures a Fleet. Store, Chats, Senders, and NewChannel are
@@ -242,14 +243,14 @@ func (b *Bot) run(ctx context.Context) error {
 	}
 }
 
-func settingsOf(settings *config.BotSettings) config.BotSettings {
+func settingsOf(settings *spec.BotSettings) spec.BotSettings {
 	if settings == nil {
-		return config.BotSettings{}
+		return spec.BotSettings{}
 	}
 	return *settings
 }
 
-func ignoreGroups(settings config.BotSettings) bool {
+func ignoreGroups(settings spec.BotSettings) bool {
 	if settings.IgnoreGroups == nil {
 		return true
 	}

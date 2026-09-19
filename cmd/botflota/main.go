@@ -15,6 +15,7 @@ import (
 	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/spec"
 )
 
 func main() {
@@ -92,15 +93,15 @@ func openDevices(
 	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
 }
 
-func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {
+func findBot(cfg *config.Config, name, scope string) (string, spec.Bot, error) {
 	if scope != "" {
 		s, ok := cfg.Scopes[scope]
 		if !ok {
-			return "", config.Bot{}, fmt.Errorf("unknown scope %q", scope)
+			return "", spec.Bot{}, fmt.Errorf("unknown scope %q", scope)
 		}
 		bot, ok := s.Bots[name]
 		if !ok {
-			return "", config.Bot{}, fmt.Errorf("bot %q not found in scope %q", name, scope)
+			return "", spec.Bot{}, fmt.Errorf("bot %q not found in scope %q", name, scope)
 		}
 		return scope, bot, nil
 	}
@@ -112,11 +113,11 @@ func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error)
 	}
 	switch len(matches) {
 	case 0:
-		return "", config.Bot{}, fmt.Errorf("bot %q not found", name)
+		return "", spec.Bot{}, fmt.Errorf("bot %q not found", name)
 	case 1:
 		return matches[0], cfg.Scopes[matches[0]].Bots[name], nil
 	default:
-		return "", config.Bot{}, fmt.Errorf("bot %q exists in scopes %s",
+		return "", spec.Bot{}, fmt.Errorf("bot %q exists in scopes %s",
 			name, strings.Join(matches, ", "))
 	}
 }

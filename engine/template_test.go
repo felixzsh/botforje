@@ -1,4 +1,4 @@
-package template
+package engine
 
 import (
 	"errors"
@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-func testContext(t *testing.T) *Context {
+func testContext(t *testing.T) *TemplateContext {
 	t.Helper()
-	ctx := New()
+	ctx := NewTemplateContext()
 	for _, seed := range []struct {
 		root   Root
 		values map[string]any
@@ -50,12 +50,12 @@ func TestRender(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Render(tc.in, ctx)
+			got, err := RenderTemplate(tc.in, ctx)
 			if err != nil {
-				t.Fatalf("Render(%q): %v", tc.in, err)
+				t.Fatalf("RenderTemplate(%q): %v", tc.in, err)
 			}
 			if got != tc.want {
-				t.Fatalf("Render(%q) = %q, want %q", tc.in, got, tc.want)
+				t.Fatalf("RenderTemplate(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}
@@ -63,7 +63,7 @@ func TestRender(t *testing.T) {
 
 func TestRenderMissingPath(t *testing.T) {
 	ctx := testContext(t)
-	_, err := Render("Hi {{graph.nope}}", ctx)
+	_, err := RenderTemplate("Hi {{graph.nope}}", ctx)
 	if err == nil {
 		t.Fatal("want an error for the missing path")
 	}
@@ -76,11 +76,11 @@ func TestRenderMissingPath(t *testing.T) {
 }
 
 func TestRenderNonScalar(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	if err := ctx.Reset(RootGraph, map[string]any{"obj": map[string]any{"a": 1}}); err != nil {
 		t.Fatalf("Reset: %v", err)
 	}
-	if _, err := Render("{{graph.obj}}", ctx); err == nil {
+	if _, err := RenderTemplate("{{graph.obj}}", ctx); err == nil {
 		t.Fatal("want an error rendering a map")
 	}
 }
@@ -95,19 +95,19 @@ func TestParseErrors(t *testing.T) {
 		"open {{graph.x",
 	} {
 		t.Run(in, func(t *testing.T) {
-			if _, err := Parse(in); err == nil {
-				t.Fatalf("Parse(%q) succeeded, want error", in)
+			if _, err := ParseTemplate(in); err == nil {
+				t.Fatalf("ParseTemplate(%q) succeeded, want error", in)
 			}
 		})
 	}
 }
 
 func TestTemplateReuse(t *testing.T) {
-	tmpl, err := Parse("{{graph.customer}}")
+	tmpl, err := ParseTemplate("{{graph.customer}}")
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatalf("ParseTemplate: %v", err)
 	}
-	ctx := New()
+	ctx := NewTemplateContext()
 	if err := ctx.Reset(RootGraph, map[string]any{"customer": "Ana"}); err != nil {
 		t.Fatalf("Reset: %v", err)
 	}
@@ -125,9 +125,9 @@ func TestTemplateReuse(t *testing.T) {
 }
 
 func TestReferences(t *testing.T) {
-	tmpl, err := Parse("Hi {{graph.customer}}, {{ input.qty }} items")
+	tmpl, err := ParseTemplate("Hi {{graph.customer}}, {{ input.qty }} items")
 	if err != nil {
-		t.Fatalf("Parse: %v", err)
+		t.Fatalf("ParseTemplate: %v", err)
 	}
 	want := []string{"graph.customer", "input.qty"}
 	if got := tmpl.References(); !slices.Equal(got, want) {
@@ -147,9 +147,9 @@ func TestMessageStepRenders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetRequest: %v", err)
 	}
-	got, err := Render("Thanks! We created lead {{node.lead-capture.resp.body.id}}.", ctx)
+	got, err := RenderTemplate("Thanks! We created lead {{node.lead-capture.resp.body.id}}.", ctx)
 	if err != nil {
-		t.Fatalf("Render: %v", err)
+		t.Fatalf("RenderTemplate: %v", err)
 	}
 	want := "Thanks! We created lead 7."
 	if got != want {

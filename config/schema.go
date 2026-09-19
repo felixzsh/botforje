@@ -19,6 +19,7 @@ func JSONSchema() ([]byte, error) {
 		AllowAdditionalProperties: false,
 	}
 	reflector.AddGoComments(modulePath(), packageRelPath())
+	reflector.AddGoComments(modulePath(), filepath.Join(packageRelPath(), "..", "spec"))
 	schema := reflector.Reflect(&Config{})
 	schema.Version = "https://json-schema.org/draft/2020-12/schema"
 

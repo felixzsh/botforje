@@ -19,8 +19,9 @@ subordinate mechanisms.
 - The root package `botflota` holds the core contracts: messages, persisted
   records, ports, errors, and the structured logger. It depends on the
   standard library only.
-- Top-level capability packages: `config`, `template`, `engine`, and `fleet`
-  (its filter and outbox are unexported parts of the package).
+- Top-level capability packages: `spec`, `config`, `engine`, and `fleet`
+  (its filter and outbox are unexported parts of the package). `spec` holds
+  the declarative objects; ADR 0035 refines the boundary.
 - Concrete implementations of the core ports live under `adapters/`, grouped
   by technology: `adapters/sqlite`, `adapters/whatsapp`.
 - `cmd/botflota` parses arguments and assembles; it holds no domain logic.
@@ -41,5 +42,7 @@ subordinate mechanisms.
   SDK); the core stays free of them.
 - Path references in ADR 0026 and the docs were updated; no decision changed.
 - Future capabilities arrive with their own package (`api`, `control`,
-  `dashboard`, `auth`, `webhook`, `behavior`), recorded in
-  `docs/architecture.md`; `internal/` reopens only under the rule above.
+  `dashboard`, `auth`, `webhook`), recorded in `docs/architecture.md`;
+  `internal/` reopens only under the rule above.
+- ADR 0035 extracted the declarative objects to `spec` and moved the
+  template parser into `engine`; the top-level `template` package is gone.

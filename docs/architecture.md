@@ -27,15 +27,18 @@ generative LLM never decides a transition (ADR 0030).
 
 The YAML-free core types and ports live in the root package `botflota`
 (`ports.go` for the ports, `records.go` for the persisted shapes,
-`logging.go` for the structured logger), the graph engine in `engine`, and
-the YAML loader, validation, and schema in `config`. The fleet, with its
-per-bot filter, lives in `fleet`; the outbox is an unexported part of that
-package. Concrete integrations are separate: `adapters/sqlite` implements
-the store ports and `adapters/whatsapp` implements `MessageChannel`.
+`logging.go` for the structured logger). The declarative objects (`Graph`,
+`Node`, `Action`, `Bot`, and model profiles) live in `spec`; `config` loads,
+interpolates, and validates documents against them; `engine` executes them
+and owns the template parser, the runtime context, and template validation
+(`template.go`, `context.go`, `template_validate.go`). The fleet, with its
+per-bot filter, lives in `fleet`; the
+outbox is an unexported part of that package. Concrete integrations are
+separate: `adapters/sqlite` implements the store ports and
+`adapters/whatsapp` implements `MessageChannel`.
 
-Behavior types (`Graph`, `Action`, `Node`) still live in `config` beside the
-YAML loader, and the engine imports them. They move only when the database
-becomes their source (ROADMAP Phase 15).
+Behavior types (`Graph`, `Action`, `Node`) live in `spec`; a store may build
+them directly when the database becomes their source (ROADMAP Phase 15).
 
 ## Package layout
 
@@ -45,12 +48,19 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
 - `botflota` (root) — core contracts: messages, persisted records, ports,
   errors, and logging; standard library only, never YAML, SQL, whatsmeow, or
   an LLM SDK.
-- `config`, `template`, `engine`, `fleet` — one product capability each.
+- `spec` — declarative objects: scopes, graphs, actions, bots, model
+  profiles, and the `Text` and `Secret` value types.
+- `config` — documents: load, includes, interpolation, origin, validation.
+- `engine` — execution of `spec`, the template parser, the runtime context,
+  and template validation; `fleet` — one actor per bot.
 - `adapters/<technology>` — concrete implementations of the core ports; an
   adapter may import the core, never the reverse.
 - `cmd/botflota` — argument parsing and assembly.
 - `internal/` — only a shared implementation detail that is not a capability
   and has no owner; nothing lives there today.
+
+Dependencies point along `config → engine → spec`; the engine never imports
+`config` (ADR 0035).
 
 Planned capabilities land as `api` (REST handlers and routes), `control`
 (operations shared by the CLI and the API), `dashboard` (embedded UI), `auth`
@@ -157,7 +167,7 @@ and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 read-only, and `node` resets on every node entry. A missing path, an unknown
 root, and a whole map or slice are errors, never empty or literal text; a
 literal `{{` is written `\{{` (ADR 0018). The context and the resolver both
-live in `template`.
+live in `engine`.
 
 The engine resolves only runtime conversation values here. Secrets are not a
 template context: config strings interpolate `${ENV_VAR}` once at load

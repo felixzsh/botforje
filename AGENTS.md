@@ -26,6 +26,10 @@ which document owns what, read `README.md`.
 
 - The core (`botflota` root package) never imports YAML, SQL, whatsmeow, or
   LLM SDK types.
+- Declarative objects live in `spec`, documents are loaded by `config`, and
+  `engine` executes them and owns the template language and its validation.
+  The engine never imports `config`; `config` calls
+  `engine.ValidateTemplates` and adds file and entity context (ADR 0035).
 - Define interfaces at the consumer; keep them small and intentional.
 - Tests are table-driven with `t.Run`; fixtures live in `testdata/`; prefer
   hand-written fakes over a mocking library.
@@ -58,7 +62,12 @@ Prefer the Make targets; they wrap the underlying Go commands.
 
 - Root package `botflota` — core contracts: messages, persisted records,
   ports, errors, and the structured logger; standard library only.
-- `config`, `template`, `engine`, `fleet` — one product capability each.
+- `spec` — declarative objects: scopes, graphs, actions, bots, and model
+  profiles, with their YAML/JSON tags.
+- `config` — configuration documents: load, includes, interpolation, origin,
+  and semantic validation.
+- `engine` — execution of `spec` plus the template parser and the runtime
+  context; `fleet` — one actor per bot.
 - `adapters/` — concrete implementations of the core ports, grouped by
   technology: `sqlite`, `whatsapp`; later channels and providers join them.
 - `cmd/` — entrypoints; argument parsing and assembly only.
@@ -69,9 +78,10 @@ A product capability gets its own package; a subordinate detail lives inside
 its owner or, as a last resort, in `internal`. Binary versus library does not
 decide visibility: packages outside `internal/` are importable because
 Botflota's own code composes them, not because they are an SDK, and they
-carry no compatibility promise to other projects (ADR 0034). Adapters depend
-on the core; the core never imports adapters (ADR 0004). The package map
-lives in `docs/architecture.md`; keep it current.
+carry no compatibility promise to other projects (ADR 0034). Dependencies
+point along `config → engine → spec`; the engine never imports `config`, and
+the core never imports adapters (ADR 0004, ADR 0035). The package map lives
+in `docs/architecture.md`; keep it current.
 
 ## Never
 

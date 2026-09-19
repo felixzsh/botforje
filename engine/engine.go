@@ -14,8 +14,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
-	"github.com/felixzsh/botflota/config"
-	"github.com/felixzsh/botflota/template"
+	"github.com/felixzsh/botflota/spec"
 )
 
 // Options configures an Engine. Bot, Graph, Actions, Store, Chats, and Senders
@@ -23,8 +22,8 @@ import (
 type Options struct {
 	Bot            string
 	Scope          string
-	Graph          config.Graph
-	Actions        map[string]config.Action
+	Graph          spec.Graph
+	Actions        map[string]spec.Action
 	Store          botflota.SessionStore
 	Chats          botflota.ChatStore
 	Senders        botflota.SenderStore
@@ -41,8 +40,8 @@ type Options struct {
 type Engine struct {
 	bot            string
 	scope          string
-	graph          config.Graph
-	actions        map[string]config.Action
+	graph          spec.Graph
+	actions        map[string]spec.Action
 	store          botflota.SessionStore
 	chats          botflota.ChatStore
 	senders        botflota.SenderStore
@@ -134,8 +133,8 @@ func (e *Engine) Handle(
 		}
 	}
 
-	session.GraphContext = r.tctx.Values(template.RootGraph)
-	session.NodeContext = r.tctx.Values(template.RootNode)
+	session.GraphContext = r.tctx.Values(RootGraph)
+	session.NodeContext = r.tctx.Values(RootNode)
 	session.UpdatedAt = now
 	session.ExpiresAt = e.expiry(now)
 	if err := e.store.Save(ctx, session); err != nil {
@@ -208,21 +207,21 @@ func (e *Engine) expiry(now time.Time) time.Time {
 
 func (e *Engine) contextOf(
 	session *botflota.Session, msg botflota.IncomingMessage, sender *botflota.Sender,
-) *template.Context {
-	tctx := template.New()
+) *TemplateContext {
+	tctx := NewTemplateContext()
 	// The roots seeded here are constants, so Reset cannot reject them.
-	_ = tctx.Reset(template.RootGraph, session.GraphContext)
-	_ = tctx.Reset(template.RootNode, session.NodeContext)
-	_ = tctx.Reset(template.RootSender, map[string]any{
+	_ = tctx.Reset(RootGraph, session.GraphContext)
+	_ = tctx.Reset(RootNode, session.NodeContext)
+	_ = tctx.Reset(RootSender, map[string]any{
 		"phone": msg.Sender,
 		"name":  sender.DisplayName,
 	})
-	_ = tctx.Reset(template.RootMessage, map[string]any{
+	_ = tctx.Reset(RootMessage, map[string]any{
 		"body": msg.Body,
 		"id":   msg.ID,
 		"at":   formatAt(msg.At),
 	})
-	_ = tctx.Reset(template.RootBot, map[string]any{
+	_ = tctx.Reset(RootBot, map[string]any{
 		"id":    e.bot,
 		"scope": e.scope,
 	})
@@ -235,7 +234,7 @@ type run struct {
 	engine      *Engine
 	session     *botflota.Session
 	chat        *botflota.Chat
-	tctx        *template.Context
+	tctx        *TemplateContext
 	msg         botflota.IncomingMessage
 	out         []botflota.OutgoingMessage
 	guardsDirty bool
@@ -252,7 +251,7 @@ func (r *run) move(target string, runExit bool) error {
 	r.engine.log.Debug("transition", "from", r.session.Node, "to", target, "exit", runExit)
 	r.session.Node = target
 	r.session.NodeContext = maps.Clone(r.engine.graph.Nodes[target].InitialContext)
-	if err := r.tctx.Reset(template.RootNode, r.session.NodeContext); err != nil {
+	if err := r.tctx.Reset(RootNode, r.session.NodeContext); err != nil {
 		return err
 	}
 	r.session.VisitedNodes = reorder(r.session.VisitedNodes, target)
@@ -287,7 +286,7 @@ func (r *run) action(name string) error {
 
 // applyGuards checks an action's guards and records the run when they allow it.
 // A blocking guard reports true and has already run its on_blocked steps.
-func (r *run) applyGuards(name string, guards *config.Guards) (bool, error) {
+func (r *run) applyGuards(name string, guards *spec.Guards) (bool, error) {
 	if guards == nil {
 		return false, nil
 	}
@@ -313,7 +312,7 @@ func (r *run) applyGuards(name string, guards *config.Guards) (bool, error) {
 // recordGuards stamps an allowed run in the chat so the next one is judged
 // against it (ADR 0027).
 func (r *run) recordGuards(
-	name string, guards *config.Guards, state botflota.GuardState,
+	name string, guards *spec.Guards, state botflota.GuardState,
 	now time.Time, window time.Duration,
 ) {
 	if guards.Cooldown != nil {

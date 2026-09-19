@@ -10,13 +10,12 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
-	"github.com/felixzsh/botflota/config"
-	"github.com/felixzsh/botflota/template"
+	"github.com/felixzsh/botflota/spec"
 )
 
 const defaultRequestTimeout = 10 * time.Second
 
-func (r *run) steps(steps []config.Step, where string) error {
+func (r *run) steps(steps []spec.Step, where string) error {
 	for i, step := range steps {
 		var err error
 		switch {
@@ -41,10 +40,10 @@ func (r *run) steps(steps []config.Step, where string) error {
 // anchored message keeps the body and an intent-only message fails. An
 // optional To overrides the recipient; a To that resolves empty is an error,
 // never a silent reply to the sender.
-func (r *run) message(m config.Message) error {
+func (r *run) message(m spec.Message) error {
 	recipient := r.msg.Sender
 	if m.To != "" {
-		rendered, err := template.Render(m.To, r.tctx)
+		rendered, err := RenderTemplate(m.To, r.tctx)
 		if err != nil {
 			return err
 		}
@@ -55,7 +54,7 @@ func (r *run) message(m config.Message) error {
 	}
 	body := r.pickVariant(m.Body)
 	if body != "" {
-		rendered, err := template.Render(body, r.tctx)
+		rendered, err := RenderTemplate(body, r.tctx)
 		if err != nil {
 			return err
 		}
@@ -87,7 +86,7 @@ func (r *run) message(m config.Message) error {
 	return nil
 }
 
-func (r *run) pickVariant(body config.Text) string {
+func (r *run) pickVariant(body spec.Text) string {
 	switch len(body) {
 	case 0:
 		return ""
@@ -100,18 +99,18 @@ func (r *run) pickVariant(body config.Text) string {
 
 // request renders and performs an HTTP call, retrying on failure, and stores
 // the captured result under the node root as {{node.<name>.resp.*}}.
-func (r *run) request(req config.Request) error {
-	url, err := template.Render(req.URL, r.tctx)
+func (r *run) request(req spec.Request) error {
+	url, err := RenderTemplate(req.URL, r.tctx)
 	if err != nil {
 		return err
 	}
-	body, err := template.Render(req.Body, r.tctx)
+	body, err := RenderTemplate(req.Body, r.tctx)
 	if err != nil {
 		return err
 	}
 	headers := make(map[string]string, len(req.Headers))
 	for name, value := range req.Headers {
-		rendered, err := template.Render(value, r.tctx)
+		rendered, err := RenderTemplate(value, r.tctx)
 		if err != nil {
 			return err
 		}
@@ -142,7 +141,7 @@ func (r *run) request(req config.Request) error {
 
 func (r *run) doRequest(
 	method, url string, headers map[string]string, body string, timeout time.Duration,
-) (template.RequestResult, error) {
+) (RequestResult, error) {
 	ctx, cancel := context.WithTimeout(r.ctx, timeout)
 	defer cancel()
 	var reader io.Reader
@@ -151,41 +150,41 @@ func (r *run) doRequest(
 	}
 	request, err := http.NewRequestWithContext(ctx, method, url, reader)
 	if err != nil {
-		return template.RequestResult{}, err
+		return RequestResult{}, err
 	}
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
 	response, err := r.engine.http.Do(request)
 	if err != nil {
-		return template.RequestResult{}, err
+		return RequestResult{}, err
 	}
 	defer response.Body.Close()
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
-		return template.RequestResult{}, err
+		return RequestResult{}, err
 	}
-	return template.RequestResult{
+	return RequestResult{
 		Status:  response.StatusCode,
 		Headers: flattenHeaders(response.Header),
 		Body:    decodeBody(response.Header.Get("Content-Type"), data),
 	}, nil
 }
 
-func (r *run) location(loc config.Location) error {
-	name, err := template.Render(loc.Name, r.tctx)
+func (r *run) location(loc spec.Location) error {
+	name, err := RenderTemplate(loc.Name, r.tctx)
 	if err != nil {
 		return err
 	}
-	address, err := template.Render(loc.Address, r.tctx)
+	address, err := RenderTemplate(loc.Address, r.tctx)
 	if err != nil {
 		return err
 	}
-	url, err := template.Render(loc.URL, r.tctx)
+	url, err := RenderTemplate(loc.URL, r.tctx)
 	if err != nil {
 		return err
 	}
-	description, err := template.Render(loc.Description, r.tctx)
+	description, err := RenderTemplate(loc.Description, r.tctx)
 	if err != nil {
 		return err
 	}

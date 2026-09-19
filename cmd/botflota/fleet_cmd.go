@@ -12,6 +12,7 @@ import (
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
+	"github.com/felixzsh/botflota/spec"
 )
 
 type fleetRunCmd struct {
@@ -129,7 +130,7 @@ func runFleet(args []string) int {
 	return 0
 }
 
-func whatsappSettings(settings config.BotSettings) whatsapp.Settings {
+func whatsappSettings(settings spec.BotSettings) whatsapp.Settings {
 	return whatsapp.Settings{
 		ReadReceipts:     settings.ReadReceipts != nil && *settings.ReadReceipts,
 		ReadReceiptDelay: time.Duration(settings.ReadReceiptDelay) * time.Millisecond,

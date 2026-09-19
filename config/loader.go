@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/felixzsh/botflota/spec"
 )
 
 // Loader reads configuration files.
@@ -98,7 +100,7 @@ func (s *includeState) loadFragment(path string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
-	var frag Fragment
+	var frag fragment
 	if err := decodeStrict(path, data, &frag); err != nil {
 		return err
 	}
@@ -108,11 +110,11 @@ func (s *includeState) loadFragment(path string, cfg *Config) error {
 	return s.runIncludes(path, frag.Include, cfg)
 }
 
-func mergeScopes(cfg *Config, file string, scopes map[string]Scope) error {
+func mergeScopes(cfg *Config, file string, scopes map[string]spec.Scope) error {
 	for _, scopeName := range SortedKeys(scopes) {
 		src := scopes[scopeName]
 		if cfg.Scopes == nil {
-			cfg.Scopes = map[string]Scope{}
+			cfg.Scopes = map[string]spec.Scope{}
 		}
 		dst := cfg.Scopes[scopeName]
 		var err error

@@ -3,6 +3,9 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"github.com/felixzsh/botflota/engine"
+	"github.com/felixzsh/botflota/spec"
 )
 
 // ValidationError names the file, the entity, and the reason (Phase 1 gate).
@@ -68,11 +71,30 @@ func Validate(cfg *Config) []ValidationError {
 		for _, name := range SortedKeys(scope.Bots) {
 			validateBot(cfg, scopeName, scope, name, scope.Bots[name], add)
 		}
+		validateScopeTemplates(cfg, scopeName, scope, add)
 	}
 	return errs
 }
 
-func validateLLM(cfg *Config, scope, name string, llm LLM, add addError) {
+// validateScopeTemplates runs the engine's template checks and attributes each
+// finding to the file and entity that declared it (ADR 0018). The engine owns
+// the language; config owns the provenance.
+func validateScopeTemplates(cfg *Config, scopeName string, scope spec.Scope, add addError) {
+	for _, issue := range engine.ValidateTemplates(scope) {
+		if issue.Graph != "" {
+			file := cfg.originOf("graph", scopeName, issue.Graph)
+			entity := fmt.Sprintf("graph %q (scope %q) node %q",
+				issue.Graph, scopeName, issue.Node)
+			add(file, entity, "%s: %v", issue.Site, issue.Err)
+			continue
+		}
+		file := cfg.originOf("action", scopeName, issue.Action)
+		entity := fmt.Sprintf("action %q (scope %q)", issue.Action, scopeName)
+		add(file, entity, "%s: %v", issue.Site, issue.Err)
+	}
+}
+
+func validateLLM(cfg *Config, scope, name string, llm spec.LLM, add addError) {
 	file := cfg.originOf("llm", scope, name)
 	entity := fmt.Sprintf("llm %q (scope %q)", name, scope)
 	if llm.Provider == "" {
@@ -107,7 +129,7 @@ var httpMethods = map[string]bool{
 	"PATCH": true, "HEAD": true, "OPTIONS": true,
 }
 
-func validateAction(cfg *Config, scope, name string, a Action, add addError) {
+func validateAction(cfg *Config, scope, name string, a spec.Action, add addError) {
 	file := cfg.originOf("action", scope, name)
 	entity := fmt.Sprintf("action %q (scope %q)", name, scope)
 
@@ -127,10 +149,9 @@ func validateAction(cfg *Config, scope, name string, a Action, add addError) {
 	}
 	validateSteps(file, entity, a.Steps, add, "")
 	validateGuards(file, entity, a.Guards, add)
-	validateTemplateSyntax(file, entity, a, add)
 }
 
-func validateGuards(file, entity string, guards *Guards, add addError) {
+func validateGuards(file, entity string, guards *spec.Guards, add addError) {
 	if guards == nil {
 		return
 	}
@@ -151,7 +172,7 @@ func validateGuards(file, entity string, guards *Guards, add addError) {
 	}
 }
 
-func validateSteps(file, entity string, steps []Step, add addError, where string) {
+func validateSteps(file, entity string, steps []spec.Step, add addError, where string) {
 	prefix := ""
 	if where != "" {
 		prefix = where + ": "
@@ -176,7 +197,7 @@ func validateSteps(file, entity string, steps []Step, add addError, where string
 	}
 }
 
-func validateMessage(file, entity, prefix string, i int, m Message, add addError) {
+func validateMessage(file, entity, prefix string, i int, m spec.Message, add addError) {
 	if len(m.Body) == 0 && m.Intent == "" {
 		add(file, entity, "%sstep %d: message needs body or intent", prefix, i)
 	}
@@ -189,7 +210,7 @@ func validateMessage(file, entity, prefix string, i int, m Message, add addError
 }
 
 func validateRequest(
-	file, entity, prefix string, i int, r Request, names map[string]bool, add addError,
+	file, entity, prefix string, i int, r spec.Request, names map[string]bool, add addError,
 ) {
 	if r.Name == "" {
 		add(file, entity, "%sstep %d: request needs a name", prefix, i)
@@ -209,7 +230,9 @@ func validateRequest(
 	}
 }
 
-func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Graph, add addError) {
+func validateGraph(
+	cfg *Config, scopeName string, scope spec.Scope, name string, g spec.Graph, add addError,
+) {
 	file := cfg.originOf("graph", scopeName, name)
 	entity := fmt.Sprintf("graph %q (scope %q)", name, scopeName)
 
@@ -261,32 +284,17 @@ func validateGraph(cfg *Config, scopeName string, scope Scope, name string, g Gr
 	}
 }
 
-func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add addError) {
-	graphVars := keySet(g.InitialContext)
-	nodeVars := keySet(node.InitialContext)
-	requests := map[string]bool{}
-	for _, ref := range append(append([]string{}, node.OnEnter...), node.OnExit...) {
-		if action, reason := lookupAction(scope, ref); reason == "" {
-			mergeKeys(requests, requestNames(action))
-		}
-	}
-	for _, tool := range node.Tools {
-		if action, reason := lookupAction(scope, tool); reason == "" {
-			mergeKeys(requests, requestNames(action))
-		}
-	}
-
+func validateNodeRefs(
+	scope spec.Scope, g spec.Graph, node spec.Node, file, entity string, add addError,
+) {
 	for _, group := range []struct {
 		label  string
 		values []string
 	}{{"on_enter", node.OnEnter}, {"on_exit", node.OnExit}} {
 		for _, ref := range group.values {
-			action, reason := lookupAction(scope, ref)
-			if reason != "" {
+			if _, reason := lookupAction(scope, ref); reason != "" {
 				add(file, entity, "%s action %q: %s", group.label, ref, reason)
-				continue
 			}
-			validateTemplateVars(file, entity, action, nodeVars, graphVars, requests, add)
 		}
 	}
 	for _, tool := range node.Tools {
@@ -295,7 +303,6 @@ func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add 
 			add(file, entity, "tool %q: %s", tool, reason)
 			continue
 		}
-		validateTemplateVars(file, entity, action, nodeVars, graphVars, requests, add)
 		for _, in := range SortedKeys(action.Inputs) {
 			input := action.Inputs[in]
 			if input.Bind == "" {
@@ -321,7 +328,9 @@ func validateNodeRefs(scope Scope, g Graph, node Node, file, entity string, add 
 	}
 }
 
-func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot, add addError) {
+func validateBot(
+	cfg *Config, scopeName string, scope spec.Scope, name string, b spec.Bot, add addError,
+) {
 	file := cfg.originOf("bot", scopeName, name)
 	entity := fmt.Sprintf("bot %q (scope %q)", name, scopeName)
 	if b.Graph == "" {
@@ -352,26 +361,26 @@ func validateBot(cfg *Config, scopeName string, scope Scope, name string, b Bot,
 	}
 }
 
-func lookupAction(scope Scope, name string) (Action, string) {
+func lookupAction(scope spec.Scope, name string) (spec.Action, string) {
 	a, ok := scope.Actions[name]
 	if !ok {
-		return Action{}, "not found"
+		return spec.Action{}, "not found"
 	}
 	return a, ""
 }
 
-func lookupGraph(scope Scope, name string) (Graph, string) {
+func lookupGraph(scope spec.Scope, name string) (spec.Graph, string) {
 	g, ok := scope.Graphs[name]
 	if !ok {
-		return Graph{}, "not found"
+		return spec.Graph{}, "not found"
 	}
 	return g, ""
 }
 
-func lookupLLM(scope Scope, name string) (LLM, string) {
+func lookupLLM(scope spec.Scope, name string) (spec.LLM, string) {
 	l, ok := scope.LLMs[name]
 	if !ok {
-		return LLM{}, "not found"
+		return spec.LLM{}, "not found"
 	}
 	return l, ""
 }
@@ -387,7 +396,7 @@ func splitBind(bind string) (kind, name string, ok bool) {
 	return kind, name, true
 }
 
-func reachable(g Graph) map[string]bool {
+func reachable(g spec.Graph) map[string]bool {
 	seen := map[string]bool{}
 	var visit func(string)
 	visit = func(name string) {

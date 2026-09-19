@@ -1,4 +1,4 @@
-package template
+package engine
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func reset(t *testing.T, ctx *Context, root Root, values map[string]any) {
+func reset(t *testing.T, ctx *TemplateContext, root Root, values map[string]any) {
 	t.Helper()
 	if err := ctx.Reset(root, values); err != nil {
 		t.Fatalf("Reset(%s): %v", root, err)
@@ -14,7 +14,7 @@ func reset(t *testing.T, ctx *Context, root Root, values map[string]any) {
 }
 
 func TestGet(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	reset(t, ctx, RootGraph, map[string]any{"customer": "Ana", "visits": 3})
 	reset(t, ctx, RootNode, map[string]any{
 		"product": "widget",
@@ -55,7 +55,7 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetMissing(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	reset(t, ctx, RootGraph, map[string]any{"customer": "Ana"})
 	reset(t, ctx, RootNode, map[string]any{"items": []any{"a"}})
 
@@ -76,7 +76,7 @@ func TestGetMissing(t *testing.T) {
 }
 
 func TestGetInvalidPath(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	for _, path := range []string{"graph", "", "graph.", ".graph", "graph.a b"} {
 		t.Run(path, func(t *testing.T) {
 			_, err := ctx.Get(path)
@@ -88,14 +88,14 @@ func TestGetInvalidPath(t *testing.T) {
 }
 
 func TestGetUnknownRoot(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	if _, err := ctx.Get("secret.key"); !errors.Is(err, ErrUnknownRoot) {
 		t.Fatalf("error = %v, want ErrUnknownRoot", err)
 	}
 }
 
 func TestSetWritable(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	if err := ctx.Set("graph.customer", "Ana"); err != nil {
 		t.Fatalf("Set graph: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestSetWritable(t *testing.T) {
 }
 
 func TestSetRejectsReadOnly(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	for _, path := range []string{"sender.phone", "message.body", "bot.id", "input.qty"} {
 		t.Run(path, func(t *testing.T) {
 			if err := ctx.Set(path, "x"); !errors.Is(err, ErrReadOnly) {
@@ -128,7 +128,7 @@ func TestSetRejectsReadOnly(t *testing.T) {
 }
 
 func TestSetRejectsNestedOrUnknown(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	for _, path := range []string{"graph.a.b", "unknown.key", "graph", ""} {
 		t.Run(path, func(t *testing.T) {
 			if err := ctx.Set(path, "x"); err == nil {
@@ -139,7 +139,7 @@ func TestSetRejectsNestedOrUnknown(t *testing.T) {
 }
 
 func TestResetNodeClearsPrevious(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	reset(t, ctx, RootNode, map[string]any{"product": "widget"})
 	reset(t, ctx, RootNode, map[string]any{"quantity": 1})
 	if _, err := ctx.Get("node.product"); !errors.Is(err, ErrMissingPath) {
@@ -152,7 +152,7 @@ func TestResetNodeClearsPrevious(t *testing.T) {
 
 func TestResetClonesValues(t *testing.T) {
 	initial := map[string]any{"customer": "Ana"}
-	ctx := New()
+	ctx := NewTemplateContext()
 	reset(t, ctx, RootGraph, initial)
 	if err := ctx.Set("graph.customer", "Bob"); err != nil {
 		t.Fatalf("Set: %v", err)
@@ -163,13 +163,13 @@ func TestResetClonesValues(t *testing.T) {
 }
 
 func TestResetUnknownRoot(t *testing.T) {
-	if err := New().Reset("secret", nil); !errors.Is(err, ErrUnknownRoot) {
+	if err := NewTemplateContext().Reset("secret", nil); !errors.Is(err, ErrUnknownRoot) {
 		t.Fatalf("error = %v, want ErrUnknownRoot", err)
 	}
 }
 
 func TestSetRequest(t *testing.T) {
-	ctx := New()
+	ctx := NewTemplateContext()
 	err := ctx.SetRequest("lookup", RequestResult{
 		Status:   200,
 		Headers:  map[string]string{"Authorization": "Bearer x"},
@@ -204,7 +204,9 @@ func TestSetRequest(t *testing.T) {
 }
 
 func TestSetRequestRejectsBadName(t *testing.T) {
-	if err := New().SetRequest("bad.name", RequestResult{}); !errors.Is(err, ErrInvalidPath) {
+	if err := NewTemplateContext().SetRequest("bad.name", RequestResult{}); !errors.Is(
+		err, ErrInvalidPath,
+	) {
 		t.Fatalf("error = %v, want ErrInvalidPath", err)
 	}
 }

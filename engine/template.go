@@ -1,7 +1,4 @@
-// Package template owns the runtime conversation context and the parsing and
-// rendering of {{path.to.value}} references against it (ADR 0018). It
-// performs no I/O and holds no state beyond a parsed template.
-package template
+package engine
 
 import (
 	"fmt"
@@ -9,7 +6,9 @@ import (
 	"strings"
 )
 
-// Template is a parsed string of literal text and references.
+// Template is a parsed string of literal text and references to the runtime
+// context (ADR 0018). It performs no I/O and holds no state beyond the parsed
+// template.
 type Template struct {
 	parts []part
 }
@@ -20,10 +19,10 @@ type part struct {
 	ref  string
 }
 
-// Parse compiles s. A reference is written {{graph.customer_name}}; spaces
-// just inside the braces are ignored, a literal {{ is written \{{, and \\ is
-// one backslash.
-func Parse(s string) (Template, error) {
+// ParseTemplate compiles s. A reference is written {{graph.customer_name}};
+// spaces just inside the braces are ignored, a literal {{ is written \{{, and
+// \\ is one backslash.
+func ParseTemplate(s string) (Template, error) {
 	var parts []part
 	var literal strings.Builder
 	flush := func() {
@@ -47,7 +46,7 @@ func Parse(s string) (Template, error) {
 				return Template{}, fmt.Errorf("unterminated reference at %q", s[i:])
 			}
 			ref := strings.TrimSpace(s[i+2 : i+2+end])
-			if _, _, err := ParsePath(ref); err != nil {
+			if _, _, err := ParseTemplatePath(ref); err != nil {
 				return Template{}, fmt.Errorf("invalid reference %q: %w", ref, err)
 			}
 			parts = append(parts, part{ref: ref})
@@ -63,7 +62,7 @@ func Parse(s string) (Template, error) {
 
 // Render resolves every reference against ctx. A missing path is an error;
 // text is never silently dropped.
-func (t Template) Render(ctx *Context) (string, error) {
+func (t Template) Render(ctx *TemplateContext) (string, error) {
 	var out strings.Builder
 	for _, p := range t.parts {
 		if p.ref == "" {
@@ -94,9 +93,9 @@ func (t Template) References() []string {
 	return refs
 }
 
-// Render parses and renders s in one step.
-func Render(s string, ctx *Context) (string, error) {
-	t, err := Parse(s)
+// RenderTemplate parses and renders s in one step.
+func RenderTemplate(s string, ctx *TemplateContext) (string, error) {
+	t, err := ParseTemplate(s)
 	if err != nil {
 		return "", err
 	}

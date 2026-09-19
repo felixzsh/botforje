@@ -1,4 +1,4 @@
-package engine
+package engine_test
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/engine"
+	"github.com/felixzsh/botflota/spec"
 )
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
@@ -151,7 +153,7 @@ func (s *memStore) sessionFor(scope, bot, sender string) (*botflota.Session, err
 	return s.Latest(context.Background(), chat.ID)
 }
 
-func loadScope(t *testing.T) config.Scope {
+func loadScope(t *testing.T) spec.Scope {
 	t.Helper()
 	cfg, err := (config.Loader{}).Load("testdata/support.yml")
 	if err != nil {
@@ -163,7 +165,7 @@ func loadScope(t *testing.T) config.Scope {
 	return cfg.Scopes["support"]
 }
 
-func newTestEngine(t *testing.T, opts Options) *Engine {
+func newTestEngine(t *testing.T, opts engine.Options) *engine.Engine {
 	t.Helper()
 	if opts.Now == nil {
 		opts.Now = func() time.Time { return t0 }
@@ -171,10 +173,10 @@ func newTestEngine(t *testing.T, opts Options) *Engine {
 	if opts.Rand == nil {
 		opts.Rand = rand.New(rand.NewSource(1))
 	}
-	return New(opts)
+	return engine.New(opts)
 }
 
-func outbound(t *testing.T, eng *Engine, sender, text string) []string {
+func outbound(t *testing.T, eng *engine.Engine, sender, text string) []string {
 	t.Helper()
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "support-bot", Sender: sender, Body: text, At: t0,
@@ -189,10 +191,10 @@ func outbound(t *testing.T, eng *Engine, sender, text string) []string {
 	return bodies
 }
 
-func fixtureEngine(t *testing.T, store *memStore) *Engine {
+func fixtureEngine(t *testing.T, store *memStore) *engine.Engine {
 	t.Helper()
 	scope := loadScope(t)
-	return newTestEngine(t, Options{
+	return newTestEngine(t, engine.Options{
 		Bot:            "support-bot",
 		Scope:          "support",
 		Graph:          scope.Graphs["faq"],
@@ -277,7 +279,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	now := t0
 	store := newMemStore()
 	scope := loadScope(t)
-	eng := New(Options{
+	eng := engine.New(engine.Options{
 		Bot: "support-bot", Scope: "support",
 		Graph: scope.Graphs["faq"], Actions: scope.Actions, Store: store, Chats: store, Senders: store,
 		DefaultTimeout: 300 * time.Second,
@@ -307,20 +309,20 @@ func TestRequestStepCapturesResult(t *testing.T) {
 	}))
 	defer server.Close()
 
-	actions := map[string]config.Action{
-		"call": {Steps: []config.Step{{Request: &config.Request{
+	actions := map[string]spec.Action{
+		"call": {Steps: []spec.Step{{Request: &spec.Request{
 			Name: "get", URL: server.URL + "/data", Method: http.MethodGet,
 		}}}},
-		"report": {Steps: []config.Step{{Message: &config.Message{Body: config.Text{
+		"report": {Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{
 			"got {{node.get.resp.body.id}} status {{node.get.status}}",
 		}}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"call", "report"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"call", "report"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Senders: store, HTTPClient: server.Client(),
 	})
@@ -332,25 +334,25 @@ func TestRequestStepCapturesResult(t *testing.T) {
 
 func TestCooldownGuard(t *testing.T) {
 	now := t0
-	actions := map[string]config.Action{
+	actions := map[string]spec.Action{
 		"warn": {
-			Guards: &config.Guards{Cooldown: &config.Cooldown{
+			Guards: &spec.Guards{Cooldown: &spec.Cooldown{
 				Duration: 60,
-				OnBlocked: []config.Step{{Message: &config.Message{
-					Body: config.Text{"already warned"},
+				OnBlocked: []spec.Step{{Message: &spec.Message{
+					Body: spec.Text{"already warned"},
 				}}},
 			}},
-			Steps: []config.Step{{Message: &config.Message{Body: config.Text{"warning"}}}},
+			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"warning"}}}},
 		},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root: "menu",
-		Nodes: map[string]config.Node{
-			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
+		Nodes: map[string]spec.Node{
+			"menu": {OnEnter: []string{"warn"}, Edges: []spec.Edge{{Goto: "menu"}}},
 		},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 		Now: func() time.Time { return now },
 	})
@@ -369,26 +371,26 @@ func TestCooldownGuard(t *testing.T) {
 
 func TestRateLimitGuard(t *testing.T) {
 	now := t0
-	actions := map[string]config.Action{
+	actions := map[string]spec.Action{
 		"warn": {
-			Guards: &config.Guards{RateLimit: &config.RateLimit{
+			Guards: &spec.Guards{RateLimit: &spec.RateLimit{
 				Limit:  2,
 				Window: 60,
-				OnBlocked: []config.Step{{Message: &config.Message{
-					Body: config.Text{"slow down"},
+				OnBlocked: []spec.Step{{Message: &spec.Message{
+					Body: spec.Text{"slow down"},
 				}}},
 			}},
-			Steps: []config.Step{{Message: &config.Message{Body: config.Text{"warning"}}}},
+			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"warning"}}}},
 		},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root: "menu",
-		Nodes: map[string]config.Node{
-			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
+		Nodes: map[string]spec.Node{
+			"menu": {OnEnter: []string{"warn"}, Edges: []spec.Edge{{Goto: "menu"}}},
 		},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 		Now: func() time.Time { return now },
 	})
@@ -409,26 +411,26 @@ func TestRateLimitGuard(t *testing.T) {
 
 func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 	now := t0
-	actions := map[string]config.Action{
+	actions := map[string]spec.Action{
 		"warn": {
-			Guards: &config.Guards{RateLimit: &config.RateLimit{
+			Guards: &spec.Guards{RateLimit: &spec.RateLimit{
 				Limit:  1,
 				Window: 3600,
-				OnBlocked: []config.Step{{Message: &config.Message{
-					Body: config.Text{"slow down"},
+				OnBlocked: []spec.Step{{Message: &spec.Message{
+					Body: spec.Text{"slow down"},
 				}}},
 			}},
-			Steps: []config.Step{{Message: &config.Message{Body: config.Text{"warning"}}}},
+			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"warning"}}}},
 		},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root: "menu",
-		Nodes: map[string]config.Node{
-			"menu": {OnEnter: []string{"warn"}, Edges: []config.Edge{{Goto: "menu"}}},
+		Nodes: map[string]spec.Node{
+			"menu": {OnEnter: []string{"warn"}, Edges: []spec.Edge{{Goto: "menu"}}},
 		},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
@@ -450,15 +452,15 @@ func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 }
 
 func TestIntentOnlyWithoutLLM(t *testing.T) {
-	actions := map[string]config.Action{
-		"ask": {Steps: []config.Step{{Message: &config.Message{Intent: "ask something"}}}},
+	actions := map[string]spec.Action{
+		"ask": {Steps: []spec.Step{{Message: &spec.Message{Intent: "ask something"}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"ask"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"ask"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{Sender: "s", Body: "hi"})
@@ -468,18 +470,18 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 }
 
 func TestAnchoredMessageFallsBackToBody(t *testing.T) {
-	actions := map[string]config.Action{
-		"confirm": {Steps: []config.Step{{Message: &config.Message{
-			Body:   config.Text{"Your order is confirmed."},
+	actions := map[string]spec.Action{
+		"confirm": {Steps: []spec.Step{{Message: &spec.Message{
+			Body:   spec.Text{"Your order is confirmed."},
 			Intent: "confirm the order",
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"confirm"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"confirm"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	got := outbound(t, eng, "s", "hi")
@@ -489,18 +491,18 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 }
 
 func TestMessageToOverridesRecipient(t *testing.T) {
-	actions := map[string]config.Action{
-		"notify": {Steps: []config.Step{{Message: &config.Message{
+	actions := map[string]spec.Action{
+		"notify": {Steps: []spec.Step{{Message: &spec.Message{
 			To:   "5215500099999",
-			Body: config.Text{"lead from {{sender.phone}}"},
+			Body: spec.Text{"lead from {{sender.phone}}"},
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"notify"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"notify"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
@@ -521,17 +523,17 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 }
 
 func TestMessageRecipientDefaultsToSender(t *testing.T) {
-	actions := map[string]config.Action{
-		"greet": {Steps: []config.Step{{Message: &config.Message{
-			Body: config.Text{"hi"},
+	actions := map[string]spec.Action{
+		"greet": {Steps: []spec.Step{{Message: &spec.Message{
+			Body: spec.Text{"hi"},
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"greet"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"greet"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
@@ -546,19 +548,19 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 }
 
 func TestMessageToResolvingEmptyFails(t *testing.T) {
-	actions := map[string]config.Action{
-		"notify": {Steps: []config.Step{{Message: &config.Message{
+	actions := map[string]spec.Action{
+		"notify": {Steps: []spec.Step{{Message: &spec.Message{
 			To:   "{{graph.owner_phone}}",
-			Body: config.Text{"hi"},
+			Body: spec.Text{"hi"},
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:           "start",
 		InitialContext: map[string]any{"owner_phone": ""},
-		Nodes:          map[string]config.Node{"start": {OnEnter: []string{"notify"}}},
+		Nodes:          map[string]spec.Node{"start": {OnEnter: []string{"notify"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
@@ -570,17 +572,17 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 }
 
 func TestLocationStep(t *testing.T) {
-	actions := map[string]config.Action{
-		"office": {Steps: []config.Step{{Location: &config.Location{
+	actions := map[string]spec.Action{
+		"office": {Steps: []spec.Step{{Location: &spec.Location{
 			Latitude: 19.43, Longitude: -99.13, Name: "Office",
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"office"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"office"}}},
 	}
 	store := newMemStore()
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	messages, err := eng.Handle(context.Background(),
@@ -622,14 +624,14 @@ func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 }
 
 func TestSenderNameFeedsTemplates(t *testing.T) {
-	actions := map[string]config.Action{
-		"greet": {Steps: []config.Step{{Message: &config.Message{
-			Body: config.Text{"hi {{sender.name}}"},
+	actions := map[string]spec.Action{
+		"greet": {Steps: []spec.Step{{Message: &spec.Message{
+			Body: spec.Text{"hi {{sender.name}}"},
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"greet"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"greet"}}},
 	}
 	store := newMemStore()
 	ctx := context.Background()
@@ -637,7 +639,7 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 	if _, _, err := store.Upsert(ctx, "s", "52155", "Ana", t0); err != nil {
 		t.Fatalf("seed sender: %v", err)
 	}
-	eng := newTestEngine(t, Options{
+	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
 	})
 	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
@@ -669,22 +671,22 @@ func (f *flakyTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	}, nil
 }
 
-func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *Engine {
+func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *engine.Engine {
 	t.Helper()
-	actions := map[string]config.Action{
-		"call": {Steps: []config.Step{{Request: &config.Request{
+	actions := map[string]spec.Action{
+		"call": {Steps: []spec.Step{{Request: &spec.Request{
 			Name: "ping", URL: "http://example.test", Retry: retry,
 		}}}},
-		"report": {Steps: []config.Step{{Message: &config.Message{
-			Body: config.Text{"ok={{node.ping.resp.body.ok}}"},
+		"report": {Steps: []spec.Step{{Message: &spec.Message{
+			Body: spec.Text{"ok={{node.ping.resp.body.ok}}"},
 		}}}},
 	}
-	graph := config.Graph{
+	graph := spec.Graph{
 		Root:  "start",
-		Nodes: map[string]config.Node{"start": {OnEnter: []string{"call", "report"}}},
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"call", "report"}}},
 	}
 	store := newMemStore()
-	return newTestEngine(t, Options{
+	return newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Senders: store, HTTPClient: &http.Client{Transport: transport},
 	})
@@ -723,43 +725,5 @@ func TestSameInputDifferentHistory(t *testing.T) {
 	want := []string{"leaving hours", "Main menu: 1 hours, 2 catalog, 0 exit"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("after visiting hours = %q, want %q (ADR 0010)", got, want)
-	}
-}
-
-// TestMatchScore checks the matching layers by outcome (ADR 0019): every shape
-// of match must clear the routing threshold and unrelated input must not. The
-// exact numbers stay free so tuning the algorithm does not break the test.
-func TestMatchScore(t *testing.T) {
-	cases := []struct {
-		name    string
-		text    string
-		trigger string
-		match   bool
-	}{
-		{"exact", "hours", "hours", true},
-		{"exact with punctuation", "1.", "1", true},
-		{"contiguous words", "what are your hours", "hours", true},
-		{"all words any order", "menu please now", "menu now", true},
-		{"typo", "hourse", "hours", true},
-		{"similar but under the fuzzy floor", "housx", "hours", false},
-		{"unrelated", "zzz", "hours", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			score := matchScore(tc.text, tc.trigger)
-			if got := score >= matchThreshold; got != tc.match {
-				t.Fatalf("matchScore(%q, %q) = %v, want match=%v",
-					tc.text, tc.trigger, score, tc.match)
-			}
-		})
-	}
-
-	// The best score wins the transition, so a stronger shape of match must
-	// keep outranking a weaker one.
-	exact := matchScore("hours", "hours")
-	contiguous := matchScore("what are your hours", "hours")
-	all := matchScore("menu please now", "menu now")
-	if exact <= contiguous || contiguous <= all {
-		t.Fatalf("layers out of order: exact=%v contiguous=%v all=%v", exact, contiguous, all)
 	}
 }

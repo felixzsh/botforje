@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/felixzsh/botflota/spec"
 )
 
 func testLoader() Loader {
@@ -181,7 +183,7 @@ func TestIncludeFileAndDir(t *testing.T) {
 }
 
 func TestSecretMasks(t *testing.T) {
-	s := Secret("super-secret")
+	s := spec.Secret("super-secret")
 	if s.String() != "***" || s.GoString() != "***" {
 		t.Fatalf("secret leaks through formatting: %q %q", s.String(), s.GoString())
 	}

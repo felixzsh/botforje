@@ -1,4 +1,4 @@
-package template
+package engine
 
 import (
 	"errors"
@@ -48,10 +48,10 @@ func (r Root) Known() bool {
 // duration of a message.
 func (r Root) Writable() bool { return r == RootGraph || r == RootNode }
 
-// ParsePath splits a reference into its root and segments. The root must be
-// known; every segment is a non-empty name of letters, digits, `_`, or `-`.
-// Numeric segments index slices when the path is resolved.
-func ParsePath(path string) (Root, []string, error) {
+// ParseTemplatePath splits a reference into its root and segments. The root
+// must be known; every segment is a non-empty name of letters, digits, `_`,
+// or `-`. Numeric segments index slices when the path is resolved.
+func ParseTemplatePath(path string) (Root, []string, error) {
 	segments := strings.Split(path, ".")
 	if len(segments) < 2 {
 		return "", nil, fmt.Errorf("%w: %q", ErrInvalidPath, path)
@@ -83,15 +83,15 @@ func validSegment(segment string) bool {
 	return true
 }
 
-// Context holds the values a template reads, grouped by root. It is not safe
-// for concurrent use; one bot actor owns it (docs/architecture.md).
-type Context struct {
+// TemplateContext holds the values a template reads, grouped by root. It is
+// not safe for concurrent use; one bot actor owns it (docs/architecture.md).
+type TemplateContext struct {
 	values map[Root]map[string]any
 }
 
-// New returns an empty context with every root ready to use.
-func New() *Context {
-	c := &Context{values: map[Root]map[string]any{}}
+// NewTemplateContext returns an empty context with every root ready to use.
+func NewTemplateContext() *TemplateContext {
+	c := &TemplateContext{values: map[Root]map[string]any{}}
 	for _, root := range []Root{
 		RootGraph, RootNode, RootSender, RootMessage, RootBot, RootInput,
 	} {
@@ -104,7 +104,7 @@ func New() *Context {
 // (graph), a node entry (node), a message (sender, message, bot), and a tool
 // call (input). The values are cloned, so later writes never mutate the config
 // that produced them.
-func (c *Context) Reset(root Root, values map[string]any) error {
+func (c *TemplateContext) Reset(root Root, values map[string]any) error {
 	if !root.Known() {
 		return fmt.Errorf("%w: %q", ErrUnknownRoot, root)
 	}
@@ -118,8 +118,8 @@ func (c *Context) Reset(root Root, values map[string]any) error {
 
 // Set writes one graph or node variable. Bind targets are exactly one level
 // deep (ADR 0008); read-only roots reject the write.
-func (c *Context) Set(path string, value any) error {
-	root, segments, err := ParsePath(path)
+func (c *TemplateContext) Set(path string, value any) error {
+	root, segments, err := ParseTemplatePath(path)
 	if err != nil {
 		return err
 	}
@@ -135,8 +135,8 @@ func (c *Context) Set(path string, value any) error {
 
 // Get resolves path to its value. A step that references an unset value is an
 // error, never an empty string (ADR 0018).
-func (c *Context) Get(path string) (any, error) {
-	root, segments, err := ParsePath(path)
+func (c *TemplateContext) Get(path string) (any, error) {
+	root, segments, err := ParseTemplatePath(path)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func step(value any, segment string) (any, error) {
 // Values returns the live map behind a root so the engine can persist it back
 // after running a step. The caller must not mutate it once the context is
 // reused.
-func (c *Context) Values(root Root) map[string]any {
+func (c *TemplateContext) Values(root Root) map[string]any {
 	if !root.Known() {
 		return nil
 	}
@@ -190,7 +190,7 @@ type RequestResult struct {
 
 // SetRequest stores a captured request under the node root, addressable as
 // {{node.<name>.resp.body.*}}, .resp.headers.*, .status, and .duration.
-func (c *Context) SetRequest(name string, result RequestResult) error {
+func (c *TemplateContext) SetRequest(name string, result RequestResult) error {
 	if !validSegment(name) {
 		return fmt.Errorf("%w: request name %q", ErrInvalidPath, name)
 	}
