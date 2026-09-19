@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/felixzsh/botflota/spec"
 )
 
 func testLoader() Loader {
@@ -182,12 +180,128 @@ func TestIncludeFileAndDir(t *testing.T) {
 	}
 }
 
-func TestSecretMasks(t *testing.T) {
-	s := spec.Secret("super-secret")
-	if s.String() != "***" || s.GoString() != "***" {
-		t.Fatalf("secret leaks through formatting: %q %q", s.String(), s.GoString())
+func TestSecretRefKeepsPlaceholder(t *testing.T) {
+	path := writeTemp(t, t.TempDir(), "config.yml", `version: 1
+scopes:
+  default:
+    llms:
+      primary:
+        provider: openai
+        model: gpt
+        api_key: "${OPENAI_API_KEY}"
+    actions:
+      call:
+        steps:
+          - request:
+              name: ping
+              url: "http://example.test"
+              headers:
+                Authorization: "Bearer ${API_TOKEN}"
+`)
+	cfg, err := testLoader().Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
 	}
-	if s.Reveal() != "super-secret" {
-		t.Fatal("Reveal must return the real value")
+	if errs := Validate(cfg); len(errs) != 0 {
+		t.Fatalf("validate returned errors: %v", errs)
+	}
+	llm := cfg.Scopes["default"].LLMs["primary"]
+	if llm.APIKey.Reveal() != "sk-test" {
+		t.Fatalf("api_key Reveal = %q, want the resolved value", llm.APIKey.Reveal())
+	}
+	if llm.APIKey.String() != "${OPENAI_API_KEY}" || llm.APIKey.Raw() != "${OPENAI_API_KEY}" {
+		t.Fatalf("api_key lost its placeholder: %q %q",
+			llm.APIKey.String(), llm.APIKey.Raw())
+	}
+	header := cfg.Scopes["default"].Actions["call"].Steps[0].Request.Headers["Authorization"]
+	if header.Reveal() != "Bearer token" {
+		t.Fatalf("header Reveal = %q, want the resolved value", header.Reveal())
+	}
+	if header.String() != "Bearer ${API_TOKEN}" || !header.HasRef() {
+		t.Fatalf("header lost its placeholder: %q hasRef=%v",
+			header.String(), header.HasRef())
+	}
+}
+
+// TestSecretRefOutsideSecretFieldRejected checks that an ordinary string
+// keeps its `${...}` text at load and validation reports it: a secret can
+// never be expanded into a message, a URL, or a context value (ADR 0014).
+func TestSecretRefOutsideSecretFieldRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "message body",
+			body: `    actions:
+      call:
+        steps: [{message: {body: "token ${API_TOKEN}"}}]
+`,
+			want: "steps[0].message.body[0]",
+		},
+		{
+			name: "request url",
+			body: `    actions:
+      call:
+        steps:
+          - request: {name: ping, url: "http://example.test/${API_TOKEN}"}
+`,
+			want: "steps[0].request.url",
+		},
+		{
+			name: "graph context",
+			body: `    graphs:
+      menu:
+        initial_context: {token: "${API_TOKEN}"}
+        nodes: {start: {}}
+`,
+			want: "initial_context[token]",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTemp(t, t.TempDir(), "config.yml",
+				"version: 1\nscopes:\n  default:\n"+tc.body)
+			cfg, err := testLoader().Load(path)
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			errs := Validate(cfg)
+			if len(errs) == 0 {
+				t.Fatal("want a validation error for the secret reference")
+			}
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e.Error(), tc.want) &&
+					strings.Contains(e.Error(), "secret reference") {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("errors = %v, want one naming %q", errs, tc.want)
+			}
+		})
+	}
+}
+
+// TestSecretRefMissingVariable checks that a malformed or unset reference in a
+// secret field fails at load instead of being sent literally.
+func TestSecretRefMissingVariable(t *testing.T) {
+	path := writeTemp(t, t.TempDir(), "config.yml", `version: 1
+scopes:
+  default:
+    actions:
+      call:
+        steps:
+          - request:
+              name: ping
+              url: "http://example.test"
+              headers:
+                Authorization: "Bearer ${NOT_SET_ANYWHERE}"
+`)
+	_, err := testLoader().Load(path)
+	if err == nil || !strings.Contains(err.Error(), "NOT_SET_ANYWHERE") {
+		t.Fatalf("want a missing variable error, got %v", err)
 	}
 }

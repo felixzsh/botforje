@@ -128,7 +128,13 @@ func (r *run) request(req spec.Request) error {
 	}
 	headers := make(map[string]string, len(req.Headers))
 	for name, value := range req.Headers {
-		rendered, err := botflota.RenderTemplate(value, r.tctx.Get)
+		if value.HasRef() {
+			// A secret reference is revealed here, the one consumer that
+			// sends it, and never rendered as a template (ADR 0014).
+			headers[name] = value.Reveal()
+			continue
+		}
+		rendered, err := botflota.RenderTemplate(value.Raw(), r.tctx.Get)
 		if err != nil {
 			return err
 		}

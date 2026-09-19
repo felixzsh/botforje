@@ -157,7 +157,11 @@ func templateSites(a spec.Action) []templateSite {
 				add(where+" request url", step.Request.URL)
 				add(where+" request body", step.Request.Body)
 				for _, name := range slices.Sorted(maps.Keys(step.Request.Headers)) {
-					add(where+" request header "+name, step.Request.Headers[name])
+					header := step.Request.Headers[name]
+					if header.HasRef() {
+						continue // a secret reference is not a template (ADR 0014)
+					}
+					add(where+" request header "+name, header.Raw())
 				}
 			}
 			if step.Location != nil {

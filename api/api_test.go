@@ -237,8 +237,17 @@ func testServer(t *testing.T) *Server {
 				LLMs: map[string]spec.LLM{
 					"primary": {
 						Provider: "openai", Model: "gpt-4o-mini",
-						APIKey: spec.Secret("sk-live-secret"),
+						APIKey: spec.NewSecret("sk-live-secret"),
 					},
+				},
+				Actions: map[string]spec.Action{
+					"ping": {Steps: []spec.Step{{Request: &spec.Request{
+						Name: "ping", URL: "http://example.test",
+						Headers: map[string]spec.Secret{
+							"Authorization": spec.NewSecretRef(
+								"Bearer ${API_TOKEN}", "Bearer sk-live-header"),
+						},
+					}}}},
 				},
 				Bots: map[string]spec.Bot{"demo": {}},
 			},
@@ -441,6 +450,12 @@ func TestConfigEndpointMasksSecrets(t *testing.T) {
 	}
 	if !strings.Contains(body, `"***"`) {
 		t.Fatalf("masked secret missing from %s", body)
+	}
+	if strings.Contains(body, "sk-live-header") {
+		t.Fatal("config response leaked the request header secret")
+	}
+	if !strings.Contains(body, `"Bearer ${API_TOKEN}"`) {
+		t.Fatalf("header placeholder missing from %s", body)
 	}
 }
 

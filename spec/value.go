@@ -55,15 +55,46 @@ func (Text) JSONSchema() *jsonschema.Schema {
 }
 
 // Secret is a value that must not leak into logs, errors, or the API
-// (ADR 0014). Use Reveal to read it.
-type Secret string
+// (ADR 0014). It keeps the string as written, so serialization shows the
+// `${ENV_VAR}` reference when the config used one and a mask when it did not.
+// Use Reveal to read the resolved value.
+type Secret struct {
+	ref   string // the string as written when the loader resolved a reference
+	value string // the resolved value, or the literal text
+}
+
+// NewSecret returns a secret with a literal value and no environment
+// reference.
+func NewSecret(value string) Secret { return Secret{value: value} }
+
+// NewSecretRef returns a secret written as ref (a `${ENV_VAR}` reference, or a
+// string embedding one) whose resolved value is value. The loader builds these
+// during interpolation; Raw keeps the placeholder for serialization.
+func NewSecretRef(ref, value string) Secret { return Secret{ref: ref, value: value} }
+
+// Raw returns the string as written: the reference when the config used one,
+// otherwise the value itself.
+func (s Secret) Raw() string {
+	if s.ref != "" {
+		return s.ref
+	}
+	return s.value
+}
+
+// HasRef reports whether the loader resolved a `${...}` reference for this
+// secret.
+func (s Secret) HasRef() bool { return s.ref != "" }
 
 // Reveal returns the real value. Call it only where the secret is consumed.
-func (s Secret) Reveal() string { return string(s) }
+func (s Secret) Reveal() string { return s.value }
 
-// String masks the value.
+// String shows the reference when there was one and a mask otherwise, so
+// formatting and encoding never reveal the value.
 func (s Secret) String() string {
-	if s == "" {
+	if s.ref != "" {
+		return s.ref
+	}
+	if s.value == "" {
 		return ""
 	}
 	return "***"
@@ -72,10 +103,24 @@ func (s Secret) String() string {
 // GoString masks the value under %#v.
 func (s Secret) GoString() string { return s.String() }
 
-// MarshalJSON emits the masked value.
+// IsZero reports an empty secret, so omitempty and omitzero drop it.
+func (s Secret) IsZero() bool { return s.ref == "" && s.value == "" }
+
+// UnmarshalYAML reads the string as written; the loader resolves references
+// and records both forms with NewSecretRef (ADR 0014).
+func (s *Secret) UnmarshalYAML(value *yaml.Node) error {
+	var raw string
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*s = Secret{value: raw}
+	return nil
+}
+
+// MarshalJSON emits the reference or the mask, never the value.
 func (s Secret) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
-// MarshalYAML emits the masked value.
+// MarshalYAML emits the reference or the mask, never the value.
 func (s Secret) MarshalYAML() (any, error) { return s.String(), nil }
 
 // JSONSchema describes Secret as a string.

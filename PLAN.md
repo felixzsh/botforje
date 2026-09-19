@@ -263,7 +263,7 @@ Deliverables:
   principal.
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
-- [ ] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
+- [x] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
   and request header values, reject it in every other string, keep the
   placeholder when serializing, and reveal the value only to the consumer that
   sends it.

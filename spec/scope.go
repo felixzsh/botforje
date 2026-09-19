@@ -12,7 +12,7 @@ type Scope struct {
 type LLM struct {
 	Provider    string  `yaml:"provider" json:"provider"`
 	Model       string  `yaml:"model" json:"model"`
-	APIKey      Secret  `yaml:"api_key" json:"api_key,omitempty"`
+	APIKey      Secret  `yaml:"api_key" json:"api_key,omitzero"`
 	BaseURL     string  `yaml:"base_url" json:"base_url,omitempty"`
 	Routing     string  `yaml:"routing" json:"routing,omitempty"`
 	Realization string  `yaml:"realization" json:"realization,omitempty"`

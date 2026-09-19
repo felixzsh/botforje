@@ -60,15 +60,19 @@ func Validate(cfg *Config) []ValidationError {
 		scope := cfg.Scopes[scopeName]
 		for _, name := range SortedKeys(scope.LLMs) {
 			validateLLM(cfg, scopeName, name, scope.LLMs[name], add)
+			checkSecretRefs(cfg, add, "llm", scopeName, name, scope.LLMs[name])
 		}
 		for _, name := range SortedKeys(scope.Actions) {
 			validateAction(cfg, scopeName, name, scope.Actions[name], add)
+			checkSecretRefs(cfg, add, "action", scopeName, name, scope.Actions[name])
 		}
 		for _, name := range SortedKeys(scope.Graphs) {
 			validateGraph(cfg, scopeName, scope, name, scope.Graphs[name], add)
+			checkSecretRefs(cfg, add, "graph", scopeName, name, scope.Graphs[name])
 		}
 		for _, name := range SortedKeys(scope.Bots) {
 			validateBot(cfg, scopeName, scope, name, scope.Bots[name], add)
+			checkSecretRefs(cfg, add, "bot", scopeName, name, scope.Bots[name])
 		}
 		validateScopeTemplates(cfg, scopeName, scope, add)
 	}

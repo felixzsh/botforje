@@ -412,7 +412,7 @@
         },
         "headers": {
           "additionalProperties": {
-            "type": "string"
+            "$ref": "#/$defs/Secret"
           },
           "type": "object"
         },

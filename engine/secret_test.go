@@ -3,11 +3,28 @@ package engine
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
 )
+
+// fakeLLM returns fixed text from Realize, so a test controls what a model
+// would generate for a message.
+type fakeLLM struct{ body string }
+
+func (f fakeLLM) Classify(
+	context.Context, botflota.ClassifyRequest,
+) (botflota.ClassifyResult, error) {
+	return botflota.ClassifyResult{}, nil
+}
+
+func (f fakeLLM) Realize(context.Context, botflota.RealizeRequest) (string, error) {
+	return f.body, nil
+}
 
 func TestCheckNoSecret(t *testing.T) {
 	cases := []struct {
@@ -68,5 +85,70 @@ func TestLocationRejectsSecret(t *testing.T) {
 	}
 	if len(r.out) != 0 {
 		t.Fatalf("queued %d messages, want none", len(r.out))
+	}
+}
+
+// TestGeneratedBodyRejectsSecret covers a model tricked into writing a secret
+// reference: the guard runs after realization and before the message is
+// queued, so nothing leaves (ADR 0014).
+func TestGeneratedBodyRejectsSecret(t *testing.T) {
+	r := testRun()
+	r.engine = New(Options{LLM: fakeLLM{body: "the key is ${API_TOKEN}"}})
+	err := r.message(spec.Message{Intent: "greet"})
+	if !errors.Is(err, errSecretInMessage) {
+		t.Fatalf("message error = %v, want errSecretInMessage", err)
+	}
+	if len(r.out) != 0 {
+		t.Fatalf("queued %d messages, want none", len(r.out))
+	}
+}
+
+func TestGeneratedBodyQueuesPlainText(t *testing.T) {
+	r := testRun()
+	r.engine = New(Options{LLM: fakeLLM{body: "hello there"}})
+	if err := r.message(spec.Message{Intent: "greet"}); err != nil {
+		t.Fatalf("message: %v", err)
+	}
+	if len(r.out) != 1 || r.out[0].Body != "hello there" {
+		t.Fatalf("out = %#v, want the generated body", r.out)
+	}
+}
+
+// headerTransport records the headers of one request.
+type headerTransport struct{ header http.Header }
+
+func (h *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	h.header = req.Header.Clone()
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/plain"}},
+		Body:       io.NopCloser(strings.NewReader("ok")),
+	}, nil
+}
+
+// TestRequestHeaderRevealsSecret checks that a secret header reaches the call
+// resolved, while an ordinary header stays a template (ADR 0014, ADR 0018).
+func TestRequestHeaderRevealsSecret(t *testing.T) {
+	transport := &headerTransport{}
+	r := testRun()
+	if err := r.tctx.Reset(botflota.RootSender, map[string]any{"phone": "52155"}); err != nil {
+		t.Fatal(err)
+	}
+	r.engine = New(Options{HTTPClient: &http.Client{Transport: transport}})
+	err := r.request(spec.Request{
+		Name: "ping", URL: "http://example.test",
+		Headers: map[string]spec.Secret{
+			"Authorization": spec.NewSecretRef("Bearer ${API_TOKEN}", "Bearer sk-live"),
+			"X-Phone":       spec.NewSecret("{{sender.phone}}"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if got := transport.header.Get("Authorization"); got != "Bearer sk-live" {
+		t.Fatalf("Authorization = %q, want the revealed value", got)
+	}
+	if got := transport.header.Get("X-Phone"); got != "52155" {
+		t.Fatalf("X-Phone = %q, want the rendered template", got)
 	}
 }

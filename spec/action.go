@@ -53,12 +53,13 @@ type Message struct {
 	To     string `yaml:"to" json:"to,omitempty"`
 }
 
-// Request is an HTTP call whose result is addressable by Name.
+// Request is an HTTP call whose result is addressable by Name. A header value
+// is a template or a secret reference, never both (ADR 0014, ADR 0018).
 type Request struct {
 	Name    string            `yaml:"name" json:"name"`
 	URL     string            `yaml:"url" json:"url"`
 	Method  string            `yaml:"method" json:"method,omitempty"`
-	Headers map[string]string `yaml:"headers" json:"headers,omitempty"`
+	Headers map[string]Secret `yaml:"headers" json:"headers,omitempty"`
 	Body    string            `yaml:"body" json:"body,omitempty"`
 	Timeout int               `yaml:"timeout" json:"timeout,omitempty"`
 	Retry   int               `yaml:"retry" json:"retry,omitempty"`
