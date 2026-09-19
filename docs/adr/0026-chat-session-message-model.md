@@ -23,7 +23,7 @@ Three concepts, three tables:
 - **Message** — one inbound or outbound message. It belongs to a chat and may
   reference the session run that handled it.
 
-Schema (`internal/sqlite`):
+Schema (`adapters/sqlite`):
 
 - `chats (id, scope, bot, sender_id -> senders, started_at, updated_at,
   message_count, guards)`, unique `(scope, bot, sender_id)`; `guards` is the
@@ -48,7 +48,7 @@ the bounded state is a session. The word still describes dialogue in prose.
 - The engine resolves a chat (get-or-create) and then the chat's newest
   session; an expired session starts a new run instead of overwriting.
 - The store ports mirror the tables: `ChatStore`, `SessionStore`, and
-  `MessageStore` (`internal/domain`).
+  `MessageStore` (root package `botflota`).
 - Message recording at runtime (writing inbound and outbound rows) is a later
   step; the schema and ports already support it.
 - Pre-release, the schema is edited in place (ADR 0006), so an existing

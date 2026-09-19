@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/felixzsh/botflota/internal/config"
-	"github.com/felixzsh/botflota/internal/logging"
-	"github.com/felixzsh/botflota/internal/sqlite"
-	"github.com/felixzsh/botflota/internal/whatsapp"
+	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/sqlite"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/config"
 )
 
 func main() {
@@ -87,9 +87,9 @@ func openDevices(
 	ctx context.Context, db *sqlite.DB, log *slog.Logger, depsLevel string,
 ) (*whatsapp.Devices, error) {
 	if log == nil {
-		log = logging.Discard()
+		log = botflota.DiscardLogger()
 	}
-	return whatsapp.OpenDevices(ctx, db.DB, log, logging.ParseLevel(depsLevel))
+	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
 }
 
 func findBot(cfg *config.Config, name, scope string) (string, config.Bot, error) {

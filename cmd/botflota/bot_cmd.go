@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/felixzsh/botflota/internal/config"
-	"github.com/felixzsh/botflota/internal/domain"
-	"github.com/felixzsh/botflota/internal/whatsapp"
+	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/config"
 )
 
 type pairCmd struct {
@@ -179,11 +179,11 @@ func runBotList(args []string) int {
 		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
-			state := domain.PairingNotPaired
+			state := botflota.PairingNotPaired
 			phone := "-"
 			account, err := db.LinkedAccounts().Get(ctx, scopeName, botName)
 			switch {
-			case errors.Is(err, domain.ErrNotFound):
+			case errors.Is(err, botflota.ErrNotFound):
 			case err != nil:
 				fmt.Fprintln(os.Stderr, err)
 				return 1
@@ -194,14 +194,14 @@ func runBotList(args []string) int {
 					return 1
 				}
 				if !ready {
-					state = domain.PairingUnpaired
+					state = botflota.PairingUnpaired
 				} else {
-					state = domain.PairingPaired
+					state = botflota.PairingPaired
 					phone = whatsapp.Number(account.JID)
 				}
 			}
 			pairingStatus, err := db.Pairings().Get(ctx, scopeName, botName)
-			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+			if err != nil && !errors.Is(err, botflota.ErrNotFound) {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			}

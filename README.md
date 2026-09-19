@@ -25,6 +25,6 @@ Implementation is underway; `PLAN.md` tracks phase progress.
 - `PLAN.md` — phases to the MVP, progress checkboxes, and open decisions.
 - `ROADMAP.md` — phases after the MVP and the order they arrive in.
 - `docs/README.md` — documentation map: references, developer docs, guide.
-- `config/example.yml` — reference configuration.
+- `config/examples/reference.yml` — reference configuration.
 - `CONTRIBUTING.md` — design principles.
 - `AGENTS.md` — rules for agent-assisted development.

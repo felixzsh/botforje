@@ -28,7 +28,8 @@ is frozen (Phase 1), then finalized when the CLI and API exist.
 - Mechanics: `architecture.md`.
 - Rationale: `adr/`.
 - Direction: `../PLAN.md` and `../ROADMAP.md`.
-- Config shapes: `../config.schema.json` and `../config/example.yml`.
+- Config shapes: `../config.schema.json` and
+  `../config/examples/reference.yml`.
 - Working rules for agents: `../AGENTS.md`.
 
 ## Rules

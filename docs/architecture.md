@@ -25,15 +25,38 @@ A messaging provider, a System One model, and an LLM are different things. A bot
 needs a channel; a System One model and an LLM are each optional and independent. A
 generative LLM never decides a transition (ADR 0030).
 
-The YAML-free domain types and ports live in `internal/domain` (`ports.go` for
-the ports, `records.go` for the persisted shapes), the graph engine in
-`internal/engine`, the SQLite adapter in `internal/sqlite`, and the whatsmeow
-channel in `internal/whatsapp`. The fleet, with its per-bot filter, lives in
-`internal/fleet`; the outbox in `internal/outbox`.
+The YAML-free core types and ports live in the root package `botflota`
+(`ports.go` for the ports, `records.go` for the persisted shapes,
+`logging.go` for the structured logger), the graph engine in `engine`, and
+the YAML loader, validation, and schema in `config`. The fleet, with its
+per-bot filter, lives in `fleet`; the outbox is an unexported part of that
+package. Concrete integrations are separate: `adapters/sqlite` implements
+the store ports and `adapters/whatsapp` implements `MessageChannel`.
 
-Behavior types (`Graph`, `Action`, `Node`) still live in `internal/config`
-beside the YAML loader, and the engine imports them. They move only when the
-database becomes their source (ROADMAP Phase 15).
+Behavior types (`Graph`, `Action`, `Node`) still live in `config` beside the
+YAML loader, and the engine imports them. They move only when the database
+becomes their source (ROADMAP Phase 15).
+
+## Package layout
+
+A product capability gets its own package; a subordinate detail lives inside
+its owner or, as a last resort, in `internal/` (ADR 0034).
+
+- `botflota` (root) — core contracts: messages, persisted records, ports,
+  errors, and logging; standard library only, never YAML, SQL, whatsmeow, or
+  an LLM SDK.
+- `config`, `template`, `engine`, `fleet` — one product capability each.
+- `adapters/<technology>` — concrete implementations of the core ports; an
+  adapter may import the core, never the reverse.
+- `cmd/botflota` — argument parsing and assembly.
+- `internal/` — only a shared implementation detail that is not a capability
+  and has no owner; nothing lives there today.
+
+Planned capabilities land as `api` (REST handlers and routes), `control`
+(operations shared by the CLI and the API), `dashboard` (embedded UI), `auth`
+(authority and credentials), `webhook` (outbound delivery), `behavior`
+(`Graph`, `Action`, and `Node` once the database is their source), and one
+package per channel or model provider under `adapters/`.
 
 ## Domain model
 
@@ -134,7 +157,7 @@ and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 read-only, and `node` resets on every node entry. A missing path, an unknown
 root, and a whole map or slice are errors, never empty or literal text; a
 literal `{{` is written `\{{` (ADR 0018). The context and the resolver both
-live in `internal/template`.
+live in `template`.
 
 The engine resolves only runtime conversation values here. Secrets are not a
 template context: config strings interpolate `${ENV_VAR}` once at load

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/config"
 )
 
 type validateCmd struct {

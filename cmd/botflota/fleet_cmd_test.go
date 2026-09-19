@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/felixzsh/botflota/internal/config"
+	"github.com/felixzsh/botflota/config"
 )
 
 func TestWhatsappSettingsMapsPacing(t *testing.T) {

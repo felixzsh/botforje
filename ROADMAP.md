@@ -55,6 +55,9 @@ These shape every phase and become ADRs when the phase that owns them starts.
 - A passkey or a browser session is never imported: the companion identity lives
   in the device store and runs on a server, while every passkey ceremony happens
   on the account owner's device (ADR 0028).
+- Package layout: a product capability gets its own package; a subordinate
+  detail lives inside its owner or, as a last resort, in `internal/`
+  (ADR 0034; the map is in `docs/architecture.md`).
 - AI stays optional and specialised (ADR 0030, ADR 0032, ADR 0033): System
   One (Jev) makes typed, confidence-bearing decisions for routing, policy, and
   tools, prescribed replies are the default, and a generative LLM only reads
@@ -255,9 +258,9 @@ Deliverables:
   quote) a scope can instantiate and edit.
 - [ ] Import and export of a whole scope as YAML, with the publish validation.
 - [ ] Decide where behavior types live once the database is their source:
-  `internal/config` owns `Graph`, `Action`, and `Node` today and the engine
-  imports them. Split loading from the behavior model when the store lands,
-  not before.
+  `config` owns `Graph`, `Action`, and `Node` today and the engine imports
+  them. Split loading from the behavior model (planned package `behavior`)
+  when the store lands, not before.
 - [ ] Tests: migration from a fixture config directory, concurrent edit
   conflict, publish and rollback, simulator cases.
 
@@ -324,11 +327,12 @@ Goal: more channels and more tenants than one process should carry.
 
 Deliverables:
 
-- [ ] WhatsApp Cloud API channel behind `MessageChannel`, for accounts that
-  prefer the official path and for accounts the unofficial path cannot serve
-  (ADR 0028); onboarding and pricing differ, the graph does not.
-- [ ] Telegram channel, the cheapest proof that the port is provider agnostic
-  and the dashboard is not WhatsApp-specific.
+- [ ] WhatsApp Cloud API channel (`adapters/whatsappcloud`) behind
+  `MessageChannel`, for accounts that prefer the official path and for
+  accounts the unofficial path cannot serve (ADR 0028); onboarding and
+  pricing differ, the graph does not.
+- [ ] Telegram channel (`adapters/telegram`), the cheapest proof that the
+  port is provider agnostic and the dashboard is not WhatsApp-specific.
 - [ ] Instance sharding: several instances, one identity each, and documented
   guidance for mapping a tenant to an instance; aggregation lives outside
   Botflota.

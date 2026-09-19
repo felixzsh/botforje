@@ -24,7 +24,8 @@ which document owns what, read `README.md`.
 
 ## Conventions
 
-- The domain never imports YAML, SQL, whatsmeow, or LLM SDK types.
+- The core (`botflota` root package) never imports YAML, SQL, whatsmeow, or
+  LLM SDK types.
 - Define interfaces at the consumer; keep them small and intentional.
 - Tests are table-driven with `t.Run`; fixtures live in `testdata/`; prefer
   hand-written fakes over a mocking library.
@@ -55,9 +56,22 @@ Prefer the Make targets; they wrap the underlying Go commands.
 
 ## Structure
 
-- `cmd/` — entrypoints.
-- `internal/` — packages grouped by concern; adapters never leak into the
-  domain (ADR 0004).
+- Root package `botflota` — core contracts: messages, persisted records,
+  ports, errors, and the structured logger; standard library only.
+- `config`, `template`, `engine`, `fleet` — one product capability each.
+- `adapters/` — concrete implementations of the core ports, grouped by
+  technology: `sqlite`, `whatsapp`; later channels and providers join them.
+- `cmd/` — entrypoints; argument parsing and assembly only.
+- `internal/` — a last resort, never the default: only a shared
+  implementation detail that is not a capability and has no natural owner.
+
+A product capability gets its own package; a subordinate detail lives inside
+its owner or, as a last resort, in `internal`. Binary versus library does not
+decide visibility: packages outside `internal/` are importable because
+Botflota's own code composes them, not because they are an SDK, and they
+carry no compatibility promise to other projects (ADR 0034). Adapters depend
+on the core; the core never imports adapters (ADR 0004). The package map
+lives in `docs/architecture.md`; keep it current.
 
 ## Never
 

@@ -70,7 +70,7 @@ Resolution and rules:
   an `llm` routes with AI and replies from prescribed bodies; this is the
   recommended shape (ADR 0032).
 - The shape lands in config v1 in Phase 8 (`config.schema.json`,
-  `config/example.yml`, fixtures, validation).
+  `config/examples/reference.yml`, fixtures, validation).
 
 ## Consequences
 

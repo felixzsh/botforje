@@ -1,10 +1,11 @@
 GO ?= go
 BIN := bin/botflota
-CONFIG ?= config/example.yml
+CONFIG ?= config/examples/reference.yml
 DEV_CONFIG ?= config/dev.yml
 DEV_DATA ?= .dev-data
 ARGS ?=
 LINE_MAX := 100
+GO_DIRS := $(wildcard cmd/*) $(wildcard adapters/*) config engine fleet template
 
 .DEFAULT_GOAL := help
 .PHONY: help build run dev dev-reset test test-race vet fmt fmt-check \
@@ -37,10 +38,10 @@ vet: ## Run go vet
 	$(GO) vet ./...
 
 fmt: ## Format the source
-	gofmt -w cmd internal
+	gofmt -w *.go $(GO_DIRS)
 
 fmt-check: ## Fail if any file is not gofmt'd
-	@out=$$(gofmt -l cmd internal); \
+	@out=$$(gofmt -l *.go $(GO_DIRS)); \
 	if [ -n "$$out" ]; then echo "not formatted:"; echo "$$out"; exit 1; fi
 
 lines-check: ## Fail if a tracked file has a line longer than LINE_MAX

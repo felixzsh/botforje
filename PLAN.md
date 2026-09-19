@@ -55,11 +55,11 @@ Deliverables:
 
 - [x] Design task first: freeze config v1 (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
-  graph `routing`, `llms`). Align `config/example.yml` and the draft
+  graph `routing`, `llms`). Align `config/examples/reference.yml` and the draft
   `config.schema.json` with it.
 - [x] Domain types: Action, Graph, Node, Edge, Step, Bot, Settings, Guard,
-  LLM. They live in `internal/config` for now; split out when the engine
-  needs a YAML-free domain.
+  LLM. They live in `config` for now; split out when the engine needs a
+  YAML-free domain.
 - [x] Loader: main config plus `include` fragments (file, glob, directory,
   recursive), scope merging, and cycle-safe dedupe (ADR 0016).
 - [x] Runtime validation in Go: strict YAML decoding plus semantic checks.
@@ -196,6 +196,8 @@ Goal: operate a fleet without hand-editing config for daily operations.
 
 Deliverables:
 
+- [x] Package layout settled before the API: root contracts, one package per
+  capability, `adapters/`, and `internal` as a last resort (ADR 0034).
 - [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
   `fleet run|status|stop|restart|reload`, `message list|tail`.
 - [x] CLI help: `usage`, description, commands, options, and examples for every
@@ -226,14 +228,14 @@ Deliverables:
 - [ ] Signals: SIGINT/SIGTERM graceful shutdown; `fleet stop` signals the
   running fleet, `fleet reload` (SIGHUP) reloads config, and `fleet restart`
   does a full restart.
-- [ ] REST API: status, bots, chats, sessions, messages, and config. Every
-  addressable object carries its scope, and a message carries its bot as
+- [ ] REST API (`api/`): status, bots, chats, sessions, messages, and config.
+  Every addressable object carries its scope, and a message carries its bot as
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
   (`shared`, `system_one`) surface without reworking handlers.
 - [ ] Bot service: move what the CLI and the API share out of `cmd/` (pairing
-  pre-checks, scope disambiguation, bot status) into a package, so the API
+  pre-checks, scope disambiguation, bot status) into `control/`, so the API
   does not reimplement it.
 - [ ] Pairing methods: keep the QR and add the eight-digit pairing code, so an
   account whose passkey step happens on the phone can link without another
@@ -268,8 +270,8 @@ Deliverables:
 - [ ] `SystemOneProvider` port and a Jev (TypeSafe) adapter: typed questions
   with confidence, and the deterministic matcher first (ADR 0030).
 - [ ] `shared` and scope catalogs (`system_one`, `llms`): config types,
-  generated schema, `config/example.yml`, fixtures, and validation, with a
-  name resolving in the scope first and then in `shared` (ADR 0031).
+  generated schema, `config/examples/reference.yml`, fixtures, and validation,
+  with a name resolving in the scope first and then in `shared` (ADR 0031).
 - [ ] Confidence-gated routing: a per-graph threshold decides between taking
   the decision, the default edge, or escalation, and is logged per message.
 - [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015),

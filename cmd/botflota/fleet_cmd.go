@@ -8,11 +8,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/felixzsh/botflota/internal/config"
-	"github.com/felixzsh/botflota/internal/domain"
-	"github.com/felixzsh/botflota/internal/fleet"
-	"github.com/felixzsh/botflota/internal/logging"
-	"github.com/felixzsh/botflota/internal/whatsapp"
+	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/fleet"
 )
 
 type fleetRunCmd struct {
@@ -35,7 +34,7 @@ func runFleet(args []string) int {
 	if code != 0 {
 		return code
 	}
-	logger := logging.New(cfg.LogLevel, os.Stderr)
+	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
 
 	db, err := openDatabase(cfg)
 	if err != nil {
@@ -65,7 +64,7 @@ func runFleet(args []string) int {
 					"bot", botName, "error", err)
 				return 1
 			}
-			if state == domain.PairingPaired {
+			if state == botflota.PairingPaired {
 				continue
 			}
 			if skipped[scopeName] == nil {
@@ -87,7 +86,7 @@ func runFleet(args []string) int {
 		},
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,
-		NewChannel: func(spec fleet.BotSpec) (domain.MessageChannel, error) {
+		NewChannel: func(spec fleet.BotSpec) (botflota.MessageChannel, error) {
 			return whatsapp.New(whatsapp.Options{
 				Scope:        spec.Scope,
 				Bot:          spec.Name,
@@ -96,7 +95,7 @@ func runFleet(args []string) int {
 				Pairings:     db.Pairings(),
 				Settings:     whatsappSettings(spec.Settings),
 				Log:          logger.With("scope", spec.Scope, "bot", spec.Name),
-				DepsLogLevel: logging.ParseLevel(cfg.LogLevelDeps),
+				DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
 			})
 		},
 	})
