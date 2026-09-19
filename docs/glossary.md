@@ -59,16 +59,6 @@
 - LDM (Large Decision Model) — a model class that answers typed questions with
   calibrated confidence instead of generating text; the project's main AI
   path. Jev (TypeSafe System One) is the first implementation (ADR 0030).
-- LDM provider — an implementation of the `LDMProvider` port; a bot references
-  one with `ldm` (ADR 0030, ADR 0031).
-- Decision — the typed answer an LDM returns: a choice from a closed set, a
-  score on a rubric, or a probability; choice and score carry confidence
-  (ADR 0030).
-- Confidence — how certain an LDM is in a choice or score, from 0 to 1; a
-  threshold decides whether the graph acts or defers (ADR 0030).
-- Prescribed reply — a `body` message, optionally one of several variants
-  chosen at random; the default reply path, which needs no provider
-  (ADR 0032).
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds); a bot references one with `llm` or replies from
   prescribed bodies without it (ADR 0017, ADR 0031).

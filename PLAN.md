@@ -24,7 +24,7 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 5. WhatsApp channel (whatsmeow)
 6. Fleet, filter, and outbox
 7. CLI and REST API
-8. LDM routing, prescribed replies, and optional generation
+8. LDM routing, prescribed replies, and opt-in LLM providers
 9. MVP hardening and release
 
 ## Phases
@@ -255,10 +255,11 @@ Deliverables:
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
 
-### Phase 8 — LDM routing, prescribed replies, and optional generation
+### Phase 8 — LDM routing, prescribed replies, and opt-in LLM providers
 
 Goal: the LDM becomes the primary AI path, prescribed replies are the default,
-and a generative LLM is an explicit opt-in.
+and a generative LLM stays available only for reply realization and tool
+calling, as an explicit opt-in.
 
 Deliverables:
 
