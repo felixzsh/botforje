@@ -24,8 +24,8 @@ When Phase 9 closes, a clean machine and one config file give:
 - `config validate` over a frozen config v1, with a generated schema for
   editors.
 - A fleet of WhatsApp accounts paired with `bot pair` and run with
-  `fleet run`, answering from YAML graphs, deterministically, with decision
-  routing, or with an LLM.
+  `fleet run`, answering from YAML graphs deterministically, with LDM routing
+  plus prescribed replies, or with an optional LLM.
 - SQLite persistence for the device store, chats, sessions, and messages.
 - CLI groups `config`, `bot`, `fleet`, and `message`, plus a REST API with a
   single admin key and no UI.
@@ -55,9 +55,10 @@ These shape every phase and become ADRs when the phase that owns them starts.
 - A passkey or a browser session is never imported: the companion identity lives
   in the device store and runs on a server, while every passkey ceremony happens
   on the account owner's device (ADR 0028).
-- AI stays optional and specialised (ADR 0030): a decision provider (Jev) makes
-  typed, confidence-bearing decisions for routing and policy, while a generative
-  LLM only realizes replies and calls tools. Deterministic matching comes first.
+- AI stays optional and specialised (ADR 0030, ADR 0032): an LDM (Jev) makes
+  typed, confidence-bearing decisions for routing and policy, prescribed
+  replies are the default, and a generative LLM only realizes replies and
+  calls tools as an opt-in. Deterministic matching comes first.
 
 ## Phases
 
@@ -437,8 +438,9 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
   or metadata only with explicit opt-in (Phase 11/13).
 - Token transport for delegated sign-in: landing page with a fragment and a
   one-time exchange, or a code exchange (Phase 13).
-- Whether the shared llm catalog supersedes the per-scope only rule of
-  ADR 0017 (Phase 16).
+- Whether `shared` may ever carry `actions` or `graphs`, and the governance
+  that would need (Phase 15).
+- How export and import inline a scope's reference to `shared` (Phase 18).
 - Retention defaults per scope and who may change them (Phase 16).
 - Scope provisioning: where the writable config directory lives and whether a
   previous version is kept per applied document (Phase 14).

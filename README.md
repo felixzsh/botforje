@@ -11,8 +11,8 @@ browser automation.
   changing the runtime.
 - One runtime: a single binary, no mandatory auxiliary processes.
 - The graph is the core: models drive and enrich conversations but never
-  replace the state machine. AI routing is decision-only; a generative LLM
-  writes replies (ADR 0030).
+  replace the state machine. An LDM routes; replies are prescribed by default
+  and a generative LLM is opt-in (ADR 0030, ADR 0032).
 - Config can be authored by hand, by a UI, or AI-assisted; the runtime does
   not change for any of them.
 

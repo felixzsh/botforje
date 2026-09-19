@@ -24,7 +24,7 @@ settled decisions live in `docs/adr/`; open decisions are listed at the end.
 5. WhatsApp channel (whatsmeow)
 6. Fleet, filter, and outbox
 7. CLI and REST API
-8. Decision routing, LLM providers, and tools
+8. LDM routing, prescribed replies, and optional generation
 9. MVP hardening and release
 
 ## Phases
@@ -255,46 +255,50 @@ Deliverables:
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reloaded through CLI and API only.
 
-### Phase 8 — Decision routing, LLM providers, and tools
+### Phase 8 — LDM routing, prescribed replies, and optional generation
 
-Goal: AI becomes usable without becoming mandatory: a decision provider routes,
-an LLM realizes replies, and the deterministic graph runs without either.
+Goal: the LDM becomes the primary AI path, prescribed replies are the default,
+and a generative LLM is an explicit opt-in.
 
 Deliverables:
 
-- [ ] `DecisionProvider` port and a Jev (TypeSafe System One) adapter: one
-  `Choice` question per candidate edge intent, typed answers with confidence,
-  and the deterministic matcher first (ADR 0030).
+- [ ] `LDMProvider` port and a Jev (TypeSafe System One) adapter: one `Choice`
+  question per candidate edge intent, typed answers with confidence, and the
+  deterministic matcher first (ADR 0030).
+- [ ] `shared` and scope catalogs (`ldms`, `llms`): config types, generated
+  schema, `config/example.yml`, fixtures, and validation, with a name
+  resolving in the scope first and then in `shared` (ADR 0031).
 - [ ] Confidence-gated routing: a per-graph threshold decides between taking
   the decision, the default edge, or escalation, and is logged per message.
 - [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0015),
-  applied to the decision provider; `always` gives it the decision even when a
-  trigger matches.
-- [ ] `LLMProvider` implementations for reply realization only: at least one
-  cloud provider and one local option, selected by config (ADR 0004, ADR 0030).
-- [ ] Tool calling in nodes (ADR 0008): the LLM invokes node `tools` with
-  arguments validated against their `inputs`, chains calls, and stays in or
-  leaves the node through declared edges only.
-- [ ] Slot filling: missing required inputs return a tool error; the LLM asks
-  the user and bound variables remember the answer. `bind` targets are
-  validated against node and graph `initial_context`.
-- [ ] Reply realization within node policy; `body` plus `intent` uses the body
-  as anchor and fallback; policy checks before queueing.
+  applied to the LDM; `always` gives it the decision even when a trigger
+  matches.
+- [ ] Prescribed replies as the default path: `body` messages with variants
+  chosen at random, and no provider required (ADR 0032).
 - [ ] Deterministic fallback when no provider is configured or a call fails:
   routing degrades to triggers and the default edge.
-- [ ] Bounded calls: a decision timeout from the decider `bounds`, and the tool
-  loop limits (max tools per message, timeout) from the llm `bounds`.
+- [ ] Bounded calls: a decision timeout from the `ldms` `bounds`, and the tool
+  loop limits (max tools per message, timeout) from the `llms` `bounds`.
+- [ ] Per-message logging of node, intent, LDM profile, question, answer,
+  confidence, tools called, provider, and policy version.
+- [ ] Opt-in generation (ADR 0032): `LLMProvider` implementations for reply
+  realization only (one cloud and one local), `body` plus `intent` anchored and
+  used as fallback, and policy checks before queueing.
+- [ ] Opt-in tool calling in nodes (ADR 0008): the LLM invokes node `tools`
+  with arguments validated against their `inputs`, chains calls, and stays in
+  or leaves the node through declared edges only.
+- [ ] Slot filling for the generative path: missing required inputs return a
+  tool error; the LLM asks the user and bound variables remember the answer.
+  `bind` targets are validated against node and graph `initial_context`.
 - [ ] Async APIs: LLM-driven polling within the tool budget (call, check
   status, retry); longer waits continue on later messages.
-- [ ] Per-message logging of node, intent, decision provider, question, answer,
-  confidence, tools called, provider, and policy version.
-- [ ] Tests: provider fakes, decision cases with confidence thresholds, tool
-  argument validation, policy rejection fallback, and evaluation fixtures
-  (golden conversations).
+- [ ] Tests: provider fakes, decision cases with confidence thresholds, config
+  resolution across scope and `shared`, tool argument validation, policy
+  rejection fallback, and evaluation fixtures (golden conversations).
 
-Gate: the same graph runs deterministically, with a decision provider only
-(routing), with an LLM only (realization and tools), and with both, with logs
-that explain each decision.
+Gate: a graph runs deterministically and with LDM routing plus prescribed
+replies, with logs that explain each decision. The generative path is optional
+and off by default.
 
 ### Phase 9 — MVP hardening and release
 
@@ -333,11 +337,16 @@ and additional channels, each with its own phase, order, and open decisions.
   success condition (Phase 4/8).
 - Context variable typing and empty-versus-default semantics (Phase 4).
 - Confirmation guard for tools with side effects (Phase 8).
-- Adopt TypeSafe Jev as the first decision provider (early access): confirm
-  access and pricing before Phase 8 starts (ADR 0030).
-- Decision confidence threshold: default and per-graph override (Phase 8).
-- Whether policy checks and output verification use the decision provider too,
-  or stay with the LLM (Phase 8).
+- Adopt TypeSafe Jev as the first LDM (early access): confirm access and
+  pricing before Phase 8 starts (ADR 0030).
+- LDM confidence threshold: default and per-graph override (Phase 8).
+- Whether policy checks and output verification use the LDM too, or stay with
+  the LLM (Phase 8).
+- Selecting a reply variant with a decision, or separate nodes for now
+  (Phase 8; ADR 0032).
+- Whether `shared` may ever carry `actions` or `graphs`, and the governance
+  that would need (Phase 8/15).
+- How export and import inline a scope's reference to `shared` (Phase 18).
 - LLM bounds defaults: max tools per message and timeout (Phase 8).
 - Which LLM providers ship first for realization (close in Phase 8).
 - Whether the CLI acts as a client of the REST API for fleet operations
@@ -350,8 +359,8 @@ Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 shape is frozen in Phase 1.
 Trigger matching and its threshold are in ADR 0019. AI routing is
-decision-only (ADR 0030) and its configuration lives on scoped `deciders`
-(ADR 0031).
+decision-only via an LDM (ADR 0030), model catalogs are scoped with a shared
+host catalog (ADR 0031), and prescribed replies are the default (ADR 0032).
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
 `gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, the pure-Go SQLite
