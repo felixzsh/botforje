@@ -68,6 +68,14 @@ type Message struct {
 	At        time.Time
 }
 
+// ChatSummary is a chat joined with its sender profile, for the read API
+// (ADR 0026, ADR 0029).
+type ChatSummary struct {
+	Chat
+	Phone       string
+	DisplayName string
+}
+
 // Session is one bounded run of the graph for a chat; a chat has many over
 // time (ADR 0026). It is the persisted state the engine resumes.
 type Session struct {

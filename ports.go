@@ -66,11 +66,14 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 // implements them (ADR 0006). The persisted shapes live in records.go.
 
 // ChatStore records the durable chat with each person. Ensure is a
-// get-or-create keyed by the sender's profile; RecordMessage updates last
-// activity and the inbound count; SaveGuards persists the chat's per-action
-// guard state (ADR 0026, ADR 0027, ADR 0029).
+// get-or-create keyed by the sender's profile; ForSender and Recent are the
+// read side of the API; RecordMessage updates last activity and the inbound
+// count; SaveGuards persists the chat's per-action guard state (ADR 0026,
+// ADR 0027, ADR 0029).
 type ChatStore interface {
 	Ensure(ctx context.Context, scope, bot string, senderID int64, at time.Time) (*Chat, error)
+	ForSender(ctx context.Context, scope, bot string, senderID int64) (*Chat, error)
+	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
 	RecordMessage(ctx context.Context, id int64, at time.Time) error
 	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
 }

@@ -54,6 +54,8 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
   and template reference checks.
 - `engine` — execution of `spec` and the runtime context; `fleet` — one actor
   per bot.
+- `api` — REST handlers and routes; `fleet run` injects the live fleet and
+  the stores.
 - `adapters/<technology>` — concrete implementations of the core ports; an
   adapter may import the core, never the reverse.
 - `cmd/botflota` — argument parsing and assembly.
@@ -64,8 +66,8 @@ Dependencies point along `config → spec` and `engine → spec`; neither `confi
 nor `engine` imports the other, and both use the core template language
 (ADR 0034).
 
-Planned capabilities land as `api` (REST handlers and routes), `dashboard`
-(embedded UI), `auth` (authority and credentials), `webhook` (outbound delivery), `behavior`
+Planned capabilities land as `dashboard` (embedded UI), `auth` (authority and
+credentials), `webhook` (outbound delivery), `behavior`
 (`Graph`, `Action`, and `Node` once the database is their source), and one
 package per channel or model provider under `adapters/`.
 
@@ -239,6 +241,25 @@ message history live in SQLite (ADR 0026).
 The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
+
+## REST API
+
+`fleet run` hosts the read-only API in the same process when `port` is set;
+`port: 0` keeps the API off and the address defaults to `127.0.0.1`. The
+routes live under `/api/v1`: `status`, `bots`, `chats`, `sessions`,
+`messages`, and `config`. Every addressable object carries its scope, a
+message carries its bot as a (scope, bot) pair, and a chat is addressed by that
+pair plus the sender's phone number. Errors use one shape,
+`{"error":{"code","message"}}`.
+
+Authentication is the instance admin key: created on first run, stored as a
+hash in SQLite, and written once to `admin.key` under `data_dir` with mode
+0600 for the CLI; `fleet run --new-admin-key` regenerates it. Every request
+carries `Authorization: Bearer` and resolves one principal behind a single
+seam, so scoped authority (Phase 13) replaces the resolver. `config` serves
+the typed model with secrets masked (ADR 0014). Handlers stay small and
+direct; a narrow service is extracted only when a second real caller shares
+the operation.
 
 ## Pairing
 

@@ -230,10 +230,10 @@ Deliverables:
 - [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
   Config reload is automatic and needs no signal (ADR 0009). Starting,
   stopping, and restarting are supervisor operations (ADR 0025).
-- [ ] REST API (`api/`): status, bots, chats, sessions, messages, and config.
+- [x] REST API (`api/`): status, bots, chats, sessions, messages, and config.
   `fleet run` serves it from the same process and injects the live fleet and
-  stores; operational CLI commands call it. Start with direct, small handlers
-  and extract a narrow service only after real duplication appears.
+  stores; operational CLI commands call it. Handlers are small and direct; a
+  narrow service is extracted only after real duplication appears.
   Every addressable object carries its scope, and a message carries its bot as
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
   scoped authority (Phase 13) both route by that pair. The `config` read
@@ -249,11 +249,12 @@ Deliverables:
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).
-- [ ] Auth: generate one admin key on first run, store its hash in SQLite, and
-  write the one-time clear key to a `0600` file under `data_dir` for the CLI;
-  it is regenerable. Add a session cookie for the future UI. Resolve one
-  principal per request behind a single seam and keep routes scope-addressed,
-  so Phase 13 replaces the resolver instead of every handler.
+- [x] Admin key auth: generated on first run, hashed in SQLite, written once to
+  a `0600` file under `data_dir` for the CLI, and regenerable with
+  `fleet run --new-admin-key`. Every request resolves one principal behind a
+  single bearer seam and the routes stay scope-addressed.
+- [ ] Session cookie for the future UI, so Phase 13 replaces the resolver
+  instead of every handler.
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [ ] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
@@ -264,8 +265,9 @@ Deliverables:
   config atomically only after full validation, apply safe changes immediately,
   and log a restart-required warning for the rest. No pending queue or
   maintenance mode.
-- [ ] Tests: API handlers, auth, config discovery, and reload behavior
-  (validation fallback, live application, restart-required).
+- [x] Tests: API handlers and auth.
+- [ ] Tests: config discovery and reload behavior (validation fallback, live
+  application, restart-required).
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured by editing its files, through CLI and API only.

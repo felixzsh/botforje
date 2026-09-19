@@ -181,6 +181,10 @@ func serveAPI(
 		Fleet:    runner,
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),
+		Senders:  db.Senders(),
+		Chats:    db.Chats(),
+		Sessions: db.Sessions(),
+		Messages: db.Messages(),
 		Auth:     auth,
 		Log:      logger,
 	})

@@ -154,6 +154,43 @@ func TestChatGuardsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestChatGetAndList(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	sender := ensureSender(t, db)
+	chat := ensureChat(t, db)
+	got, err := db.Chats().ForSender(ctx, "support", "support-bot", sender.ID)
+	if err != nil {
+		t.Fatalf("ForSender: %v", err)
+	}
+	if got.ID != chat.ID {
+		t.Fatalf("ForSender = %d, want %d", got.ID, chat.ID)
+	}
+	if _, err := db.Chats().ForSender(ctx, "support", "other", sender.ID); !errors.Is(
+		err, botflota.ErrNotFound,
+	) {
+		t.Fatalf("ForSender missing = %v, want ErrNotFound", err)
+	}
+	chats, err := db.Chats().Recent(ctx, "support", "", 10)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(chats) != 1 || chats[0].ID != chat.ID {
+		t.Fatalf("Recent = %#v", chats)
+	}
+	if chats[0].Phone != "5215500000000" || chats[0].DisplayName != "Ana" {
+		t.Fatalf("Recent sender profile = %#v", chats[0])
+	}
+	if byBot, err := db.Chats().Recent(ctx, "support", "support-bot", 10); err != nil ||
+		len(byBot) != 1 {
+		t.Fatalf("Recent by bot = %#v, %v", byBot, err)
+	}
+	if other, err := db.Chats().Recent(ctx, "support", "other", 10); err != nil ||
+		len(other) != 0 {
+		t.Fatalf("Recent other = %#v, %v", other, err)
+	}
+}
+
 func TestSessionRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))

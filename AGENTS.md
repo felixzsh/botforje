@@ -72,6 +72,8 @@ Prefer the Make targets; they wrap the underlying Go commands.
   semantic validation, and template reference checks.
 - `engine` — execution of `spec` plus the runtime context; `fleet` — one
   actor per bot.
+- `api` — REST handlers and routes; `fleet run` injects the live fleet and
+  the stores.
 - `adapters/` — concrete implementations of the core ports, grouped by
   technology: `sqlite`, `whatsapp`; later channels and providers join them.
 - `cmd/` — entrypoints; argument parsing and assembly only.

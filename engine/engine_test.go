@@ -97,6 +97,22 @@ func (s *memStore) Ensure(
 	return chat, nil
 }
 
+func (s *memStore) ForSender(
+	_ context.Context, scope, bot string, senderID int64,
+) (*botflota.Chat, error) {
+	chat, ok := s.chats[storeKey(scope, bot, senderID)]
+	if !ok {
+		return nil, botflota.ErrNotFound
+	}
+	return chat, nil
+}
+
+func (s *memStore) Recent(
+	_ context.Context, scope, bot string, limit int,
+) ([]botflota.ChatSummary, error) {
+	return nil, nil
+}
+
 func (s *memStore) RecordMessage(_ context.Context, id int64, at time.Time) error {
 	for _, chat := range s.chats {
 		if chat.ID == id {

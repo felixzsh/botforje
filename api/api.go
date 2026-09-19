@@ -25,13 +25,17 @@ type Fleet interface {
 	Status() []fleet.BotStatus
 }
 
-// Options are the dependencies fleet run injects. Config, Fleet, Accounts,
-// Pairings, and Auth are required.
+// Options are the dependencies fleet run injects. Every field is required
+// except Log.
 type Options struct {
 	Config   *config.Config
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	Senders  botflota.SenderStore
+	Chats    botflota.ChatStore
+	Sessions botflota.SessionStore
+	Messages botflota.MessageStore
 	Auth     *Auth
 	Log      *slog.Logger
 }
@@ -42,6 +46,10 @@ type Server struct {
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
+	senders  botflota.SenderStore
+	chats    botflota.ChatStore
+	sessions botflota.SessionStore
+	messages botflota.MessageStore
 	auth     *Auth
 	log      *slog.Logger
 	started  time.Time
@@ -62,6 +70,18 @@ func New(opts Options) (*Server, error) {
 	if opts.Pairings == nil {
 		return nil, errors.New("api: no pairing store")
 	}
+	if opts.Senders == nil {
+		return nil, errors.New("api: no sender store")
+	}
+	if opts.Chats == nil {
+		return nil, errors.New("api: no chat store")
+	}
+	if opts.Sessions == nil {
+		return nil, errors.New("api: no session store")
+	}
+	if opts.Messages == nil {
+		return nil, errors.New("api: no message store")
+	}
 	if opts.Auth == nil {
 		return nil, errors.New("api: no auth")
 	}
@@ -72,6 +92,8 @@ func New(opts Options) (*Server, error) {
 	server := &Server{
 		cfg: opts.Config, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
+		senders: opts.Senders, chats: opts.Chats,
+		sessions: opts.Sessions, messages: opts.Messages,
 		auth: opts.Auth, log: logger, started: time.Now(),
 	}
 	server.handler = server.routes()
@@ -85,6 +107,9 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/bots", s.handleBots)
+	mux.HandleFunc("GET /api/v1/chats", s.handleChats)
+	mux.HandleFunc("GET /api/v1/sessions", s.handleSessions)
+	mux.HandleFunc("GET /api/v1/messages", s.handleMessages)
 	mux.HandleFunc("GET /api/v1/config", s.handleConfig)
 	return s.auth.Middleware(mux)
 }

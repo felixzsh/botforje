@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/config"
@@ -19,6 +21,8 @@ import (
 )
 
 const testAdminKey = "test-admin-key"
+
+var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
 type fakeFleet struct{ statuses []fleet.BotStatus }
 
@@ -76,6 +80,95 @@ func (f *fakeKeyStore) Put(_ context.Context, key *botflota.AdminKey) error {
 	return nil
 }
 
+type fakeSenders struct{ senders map[string]botflota.Sender }
+
+func (f fakeSenders) Get(_ context.Context, scope, phone string) (*botflota.Sender, error) {
+	sender, ok := f.senders[scope+"/"+phone]
+	if !ok {
+		return nil, botflota.ErrNotFound
+	}
+	return &sender, nil
+}
+
+func (f fakeSenders) Upsert(
+	context.Context, string, string, string, time.Time,
+) (*botflota.Sender, bool, error) {
+	return nil, false, nil
+}
+
+type fakeChats struct {
+	chats map[string]botflota.ChatSummary
+}
+
+func (f fakeChats) Ensure(
+	context.Context, string, string, int64, time.Time,
+) (*botflota.Chat, error) {
+	return nil, nil
+}
+
+func (f fakeChats) ForSender(
+	_ context.Context, scope, bot string, senderID int64,
+) (*botflota.Chat, error) {
+	for _, summary := range f.chats {
+		if summary.Scope == scope && summary.Bot == bot && summary.SenderID == senderID {
+			chat := summary.Chat
+			return &chat, nil
+		}
+	}
+	return nil, botflota.ErrNotFound
+}
+
+func (f fakeChats) Recent(
+	_ context.Context, scope, bot string, _ int,
+) ([]botflota.ChatSummary, error) {
+	var chats []botflota.ChatSummary
+	for _, summary := range f.chats {
+		if summary.Scope == scope && (bot == "" || summary.Bot == bot) {
+			chats = append(chats, summary)
+		}
+	}
+	slices.SortFunc(chats, func(a, b botflota.ChatSummary) int {
+		return int(a.ID - b.ID)
+	})
+	return chats, nil
+}
+
+func (f fakeChats) RecordMessage(context.Context, int64, time.Time) error { return nil }
+
+func (f fakeChats) SaveGuards(
+	context.Context, int64, map[string]botflota.GuardState,
+) error {
+	return nil
+}
+
+type fakeSessions struct{ sessions map[int64]botflota.Session }
+
+func (f fakeSessions) Latest(_ context.Context, chatID int64) (*botflota.Session, error) {
+	session, ok := f.sessions[chatID]
+	if !ok {
+		return nil, botflota.ErrNotFound
+	}
+	return &session, nil
+}
+
+func (f fakeSessions) Save(context.Context, *botflota.Session) error { return nil }
+
+func (f fakeSessions) Delete(context.Context, int64) error { return nil }
+
+type fakeMessages struct{ messages map[int64][]botflota.Message }
+
+func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
+
+func (f fakeMessages) List(
+	_ context.Context, chatID int64, limit int,
+) ([]botflota.Message, error) {
+	messages := f.messages[chatID]
+	if len(messages) > limit {
+		messages = messages[:limit]
+	}
+	return messages, nil
+}
+
 func hashOf(key string) []byte {
 	sum := sha256.Sum256([]byte(key))
 	return sum[:]
@@ -106,6 +199,26 @@ func testServer(t *testing.T) *Server {
 	pairings := fakePairings{states: map[string]botflota.PairingState{
 		"support/demo": botflota.PairingPaired,
 	}}
+	sender := botflota.Sender{
+		ID: 7, Scope: "support", Phone: "5215500000000", DisplayName: "Ana",
+	}
+	chat := botflota.ChatSummary{
+		Chat: botflota.Chat{
+			ID: 3, Scope: "support", Bot: "demo", SenderID: sender.ID,
+			StartedAt: testTime, UpdatedAt: testTime, MessageCount: 2,
+		},
+		Phone: sender.Phone, DisplayName: sender.DisplayName,
+	}
+	quiet := botflota.Sender{
+		ID: 8, Scope: "support", Phone: "5215599999999", DisplayName: "Luis",
+	}
+	quietChat := botflota.ChatSummary{
+		Chat: botflota.Chat{
+			ID: 4, Scope: "support", Bot: "demo", SenderID: quiet.ID,
+			StartedAt: testTime, UpdatedAt: testTime,
+		},
+		Phone: quiet.Phone, DisplayName: quiet.DisplayName,
+	}
 	server, err := New(Options{
 		Config: cfg,
 		Fleet: fakeFleet{statuses: []fleet.BotStatus{
@@ -113,7 +226,36 @@ func testServer(t *testing.T) *Server {
 		}},
 		Accounts: accounts,
 		Pairings: pairings,
-		Auth:     &Auth{hash: hashOf(testAdminKey)},
+		Senders: fakeSenders{senders: map[string]botflota.Sender{
+			"support/" + sender.Phone: sender,
+			"support/" + quiet.Phone:  quiet,
+		}},
+		Chats: fakeChats{chats: map[string]botflota.ChatSummary{
+			"support/demo/7": chat,
+			"support/demo/8": quietChat,
+		}},
+		Sessions: fakeSessions{sessions: map[int64]botflota.Session{
+			chat.ID: {
+				ID: 9, ChatID: chat.ID, Node: "menu",
+				VisitedNodes: []string{"menu"},
+				CreatedAt:    testTime, UpdatedAt: testTime,
+				ExpiresAt: testTime.Add(time.Hour),
+			},
+		}},
+		Messages: fakeMessages{messages: map[int64][]botflota.Message{
+			chat.ID: {
+				{
+					ID: 1, ChatID: chat.ID, Direction: botflota.Inbound,
+					Kind: botflota.KindText, Body: "hola", At: testTime,
+				},
+				{
+					ID: 2, ChatID: chat.ID, SessionID: 9,
+					Direction: botflota.Outbound, Kind: botflota.KindText,
+					Body: "hi", At: testTime,
+				},
+			},
+		}},
+		Auth: &Auth{hash: hashOf(testAdminKey)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -225,6 +367,117 @@ func TestConfigEndpointMasksSecrets(t *testing.T) {
 	}
 	if !strings.Contains(body, `"***"`) {
 		t.Fatalf("masked secret missing from %s", body)
+	}
+}
+
+func TestChatsEndpoint(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(), "/api/v1/chats?scope=support&bot=demo", testAdminKey)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Chats []struct {
+			ID     int64  `json:"id"`
+			Scope  string `json:"scope"`
+			Bot    string `json:"bot"`
+			Sender struct {
+				Phone string `json:"phone"`
+				Name  string `json:"name"`
+			} `json:"sender"`
+			Messages int64 `json:"messages"`
+		} `json:"chats"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Chats) != 2 {
+		t.Fatalf("chats = %#v, want two", body.Chats)
+	}
+	chat := body.Chats[0]
+	if chat.ID != 3 || chat.Scope != "support" || chat.Bot != "demo" ||
+		chat.Sender.Phone != "5215500000000" || chat.Sender.Name != "Ana" ||
+		chat.Messages != 2 {
+		t.Fatalf("chat = %#v", chat)
+	}
+}
+
+func TestMessagesEndpoint(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(),
+		"/api/v1/messages?scope=support&bot=demo&sender=5215500000000&limit=1",
+		testAdminKey)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Scope    string `json:"scope"`
+		Bot      string `json:"bot"`
+		ChatID   int64  `json:"chat_id"`
+		Messages []struct {
+			ID        int64  `json:"id"`
+			Direction string `json:"direction"`
+			Body      string `json:"body"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Scope != "support" || body.Bot != "demo" || body.ChatID != 3 {
+		t.Fatalf("messages envelope = %#v", body)
+	}
+	if len(body.Messages) != 1 || body.Messages[0].Body != "hola" ||
+		body.Messages[0].Direction != string(botflota.Inbound) {
+		t.Fatalf("messages = %#v", body.Messages)
+	}
+}
+
+func TestSessionsEndpoint(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(),
+		"/api/v1/sessions?scope=support&bot=demo&sender=5215500000000", testAdminKey)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Session struct {
+			ID   int64  `json:"id"`
+			Node string `json:"node"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Session.ID != 9 || body.Session.Node != "menu" {
+		t.Fatalf("session = %#v", body.Session)
+	}
+}
+
+func TestQueryErrors(t *testing.T) {
+	server := testServer(t)
+	cases := []struct {
+		name string
+		path string
+		want int
+	}{
+		{"missing scope", "/api/v1/chats", http.StatusBadRequest},
+		{"unknown scope", "/api/v1/chats?scope=nope", http.StatusNotFound},
+		{"unknown bot", "/api/v1/chats?scope=support&bot=nope", http.StatusNotFound},
+		{"bad limit", "/api/v1/chats?scope=support&limit=zero", http.StatusBadRequest},
+		{"missing sender", "/api/v1/messages?scope=support&bot=demo", http.StatusBadRequest},
+		{"unknown sender",
+			"/api/v1/messages?scope=support&bot=demo&sender=000", http.StatusNotFound},
+		{"no session",
+			"/api/v1/sessions?scope=support&bot=demo&sender=5215599999999",
+			http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := get(t, server.Handler(), tc.path, testAdminKey)
+			if recorder.Code != tc.want {
+				t.Fatalf("status = %d, want %d", recorder.Code, tc.want)
+			}
+		})
 	}
 }
 

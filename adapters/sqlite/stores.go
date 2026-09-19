@@ -103,19 +103,78 @@ func (s *ChatStore) Ensure(
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
 	}
-	var (
-		chat      botflota.Chat
-		startedAt string
-		updatedAt string
-		guards    string
-	)
-	err = s.db.QueryRowContext(ctx,
+	chat, err := s.ForSender(ctx, scope, bot, senderID)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
+	}
+	return chat, nil
+}
+
+// ForSender loads the chat for (scope, bot, sender) or returns
+// botflota.ErrNotFound.
+func (s *ChatStore) ForSender(
+	ctx context.Context, scope, bot string, senderID int64,
+) (*botflota.Chat, error) {
+	row := s.db.QueryRowContext(ctx,
 		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND sender_id = ?",
-		scope, bot, senderID).
-		Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.SenderID,
-			&startedAt, &updatedAt, &chat.MessageCount, &guards)
+		scope, bot, senderID)
+	chat, err := scanChat(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, botflota.ErrNotFound
+	}
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: get chat: %w", err)
+	}
+	return chat, nil
+}
+
+// Recent returns up to limit chats of a scope, newest first, each with its
+// sender profile. An empty bot means every bot in the scope.
+func (s *ChatStore) Recent(
+	ctx context.Context, scope, bot string, limit int,
+) ([]botflota.ChatSummary, error) {
+	const query = `SELECT c.id, c.scope, c.bot, c.sender_id, c.started_at,
+			c.updated_at, c.message_count, c.guards, s.phone, s.display_name
+		FROM chats c JOIN senders s ON s.id = c.sender_id
+		WHERE c.scope = ? AND (? = '' OR c.bot = ?)
+		ORDER BY c.updated_at DESC, c.id DESC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, query, scope, bot, bot, limit)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: list chats: %w", err)
+	}
+	defer rows.Close()
+	var chats []botflota.ChatSummary
+	for rows.Next() {
+		var (
+			summary              botflota.ChatSummary
+			startedAt, updatedAt string
+			guards               string
+		)
+		if err := rows.Scan(&summary.ID, &summary.Scope, &summary.Bot,
+			&summary.SenderID, &startedAt, &updatedAt, &summary.MessageCount,
+			&guards, &summary.Phone, &summary.DisplayName); err != nil {
+			return nil, err
+		}
+		summary.StartedAt = parseTime(startedAt)
+		summary.UpdatedAt = parseTime(updatedAt)
+		if err := decodeJSON(guards, &summary.Guards); err != nil {
+			return nil, fmt.Errorf("sqlite: guards: %w", err)
+		}
+		chats = append(chats, summary)
+	}
+	return chats, rows.Err()
+}
+
+// scanChat reads one chat row in chatColumns order.
+func scanChat(row interface{ Scan(...any) error }) (*botflota.Chat, error) {
+	var (
+		chat                 botflota.Chat
+		startedAt, updatedAt string
+		guards               string
+	)
+	if err := row.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.SenderID,
+		&startedAt, &updatedAt, &chat.MessageCount, &guards); err != nil {
+		return nil, err
 	}
 	chat.StartedAt = parseTime(startedAt)
 	chat.UpdatedAt = parseTime(updatedAt)
