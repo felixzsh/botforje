@@ -32,6 +32,8 @@ an include path, or any other ordinary string is a validation error.
   it (the adapter that performs the call).
 - A missing variable is a validation error that names the variable, never its
   value. The engine never sends a literal `${ENV_VAR}`.
+- The engine rejects any `${...}` that reaches an outgoing message as a last
+  guard, so a validation gap cannot leak a secret.
 - `{{...}}` stays runtime-only. It never reads the environment, and a string
   never combines `${...}` and `{{...}}`.
 - There is one mechanism: no `api_key_env`. The key is

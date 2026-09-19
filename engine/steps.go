@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,20 @@ import (
 )
 
 const defaultRequestTimeout = 10 * time.Second
+
+// errSecretInMessage reports a `${...}` reference that reached an outgoing
+// message. Config validation rejects it earlier (ADR 0014); this is a last
+// guard so a secret can never leave through a message.
+var errSecretInMessage = errors.New("unresolved secret reference in outgoing message")
+
+// checkNoSecret rejects a `${...}` reference in an outgoing string. Templates
+// use `{{...}}`, and secrets stay inside their field.
+func checkNoSecret(text string) error {
+	if strings.Contains(text, "${") {
+		return errSecretInMessage
+	}
+	return nil
+}
 
 func (r *run) steps(steps []spec.Step, where string) error {
 	for i, step := range steps {
@@ -76,6 +91,9 @@ func (r *run) message(m spec.Message) error {
 	}
 	if body == "" {
 		return nil
+	}
+	if err := checkNoSecret(body); err != nil {
+		return err
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
@@ -187,6 +205,11 @@ func (r *run) location(loc spec.Location) error {
 	description, err := botflota.RenderTemplate(loc.Description, r.tctx.Get)
 	if err != nil {
 		return err
+	}
+	for _, field := range []string{name, address, url, description} {
+		if err := checkNoSecret(field); err != nil {
+			return err
+		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
