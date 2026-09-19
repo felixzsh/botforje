@@ -212,7 +212,7 @@ Deliverables:
   `--force`. Generation must not depend on the working directory: the Go doc
   comments only resolve from the module root today, so a schema generated
   elsewhere silently loses every description.
-- [ ] Config discovery: `--config`, then `~/.config/botflota/config.yml`, then
+- [x] Config discovery: `--config`, then `~/.config/botflota/config.yml`, then
   `/etc/botflota/config.yml` (first match wins).
 - [ ] `fleet status` reports uptime, per-bot connection state, outbox depth,
   and active sessions; a `--json` mode serves scripts.
@@ -229,9 +229,10 @@ Deliverables:
   the first allowed message, keyed by (scope, phone) and shared by the scope's
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
   history is recorded.
-- [ ] Signals: SIGINT/SIGTERM graceful shutdown; `fleet stop` signals the
-  running fleet and `fleet restart` does a full restart. Config reload is
-  automatic and needs no signal (ADR 0009).
+- [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
+  Config reload is automatic and needs no signal (ADR 0009).
+- [ ] `fleet stop` and `fleet restart` reach a running fleet, served through the
+  API when it exists.
 - [ ] REST API (`api/`): status, bots, chats, sessions, messages, and config.
   Every addressable object carries its scope, and a message carries its bot as
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
@@ -255,6 +256,8 @@ Deliverables:
   the future UI. Resolve one principal per request behind a single seam and
   keep routes scope-addressed, so the scoped authority of Phase 13 replaces
   the resolver instead of every handler.
+- [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
+  message (ADR 0014).
 - [ ] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
   and request header values, reject it in every other string, keep the
   placeholder when serializing, and reveal the value only to the consumer that
