@@ -64,11 +64,16 @@ Dependencies point along `config → spec` and `engine → spec`; neither `confi
 nor `engine` imports the other, and both use the core template language
 (ADR 0034).
 
-Planned capabilities land as `api` (REST handlers and routes), `control`
-(operations shared by the CLI and the API), `dashboard` (embedded UI), `auth`
-(authority and credentials), `webhook` (outbound delivery), `behavior`
+Planned capabilities land as `api` (REST handlers and routes), `dashboard`
+(embedded UI), `auth` (authority and credentials), `webhook` (outbound delivery), `behavior`
 (`Graph`, `Action`, and `Node` once the database is their source), and one
 package per channel or model provider under `adapters/`.
+
+`fleet run` is the composition root: it loads config, opens stores and channel
+devices, builds the fleet, and gives those live dependencies to `api`. API
+handlers start with the smallest direct operation; a narrow service is
+extracted only when a second real caller needs the same logic. There is no
+generic `control` facade.
 
 ## Domain model
 
@@ -270,6 +275,15 @@ pending step is reported and the bot stays stopped (ADR 0028).
   out, banned, or rejected with 428 (passkey required) or 463 (reachout
   timelock) stops and reports instead of retrying (ADR 0011, ADR 0028).
 - A fleet supervisor starts, stops, and reports bot actors.
+
+## Process lifecycle
+
+Botflota runs in the foreground and owns no service management. It shuts down
+in order on SIGINT or SIGTERM, draining each bot's outbox before disconnecting
+(ADR 0011). Starting, stopping, and restarting the process belong to systemd,
+Docker, or another supervisor. Botflota neither detects nor invokes one. The
+CLI has no `stop` or `restart`; `fleet status` reads the API, and config hot
+reload is automatic (ADR 0009, ADR 0025).
 
 ## Logging
 

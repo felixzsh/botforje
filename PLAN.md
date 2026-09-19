@@ -201,7 +201,8 @@ Deliverables:
 - [x] Declarative objects moved to `spec`; the template language moved to the
   core and the runtime context into `engine` (ADR 0034).
 - [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
-  `fleet run|status|stop|restart`, `message list|tail`.
+  `fleet run|status`, `message list|tail`. Operational queries use the API;
+  process lifecycle belongs to the supervisor (ADR 0025).
 - [x] CLI help: `usage`, description, commands, options, and examples for every
   group and subcommand; `--help` exits 0 and usage errors exit 2.
 - [ ] CLI `--version` and a decision on global versus per-subcommand flags.
@@ -214,11 +215,8 @@ Deliverables:
   elsewhere silently loses every description.
 - [x] Config discovery: `--config`, then `~/.config/botflota/config.yml`, then
   `/etc/botflota/config.yml` (first match wins).
-- [ ] `fleet status` reports uptime, per-bot connection state, outbox depth,
-  and active sessions; a `--json` mode serves scripts.
-- [ ] When the fleet API exists, `fleet status` prefers its live data and
-  falls back to the database; the output identifies the source as `live` or
-  `stored`.
+- [ ] `fleet status` is an API client and reports uptime, per-bot connection
+  state, outbox depth, and active sessions; a `--json` mode serves scripts.
 - [x] Message history persistence: the engine appends the inbound message and
   every reply under the chat and the session run that handled them (ADR 0026).
   Only live traffic is recorded; the history-sync backlog stays out of scope.
@@ -230,18 +228,17 @@ Deliverables:
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
   history is recorded.
 - [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
-  Config reload is automatic and needs no signal (ADR 0009).
-- [ ] `fleet stop` and `fleet restart` reach a running fleet, served through the
-  API when it exists.
+  Config reload is automatic and needs no signal (ADR 0009). Starting,
+  stopping, and restarting are supervisor operations (ADR 0025).
 - [ ] REST API (`api/`): status, bots, chats, sessions, messages, and config.
+  `fleet run` serves it from the same process and injects the live fleet and
+  stores; operational CLI commands call it. Start with direct, small handlers
+  and extract a narrow service only after real duplication appears.
   Every addressable object carries its scope, and a message carries its bot as
   (scope, bot) together, never a bare name: the live stream (Phase 10) and
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
   (`shared`, `system_one`) surface without reworking handlers.
-- [ ] Bot service: move what the CLI and the API share out of `cmd/` (pairing
-  pre-checks, scope disambiguation, bot status) into `control/`, so the API
-  does not reimplement it.
 - [ ] Pairing methods: keep the QR and add the eight-digit pairing code, so an
   account whose passkey step happens on the phone can link without another
   client; a pending step is a reported state, never a wait until the code
@@ -252,10 +249,11 @@ Deliverables:
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).
-- [ ] Auth: single admin key, hashed at rest, regenerable; session cookie for
-  the future UI. Resolve one principal per request behind a single seam and
-  keep routes scope-addressed, so the scoped authority of Phase 13 replaces
-  the resolver instead of every handler.
+- [ ] Auth: generate one admin key on first run, store its hash in SQLite, and
+  write the one-time clear key to a `0600` file under `data_dir` for the CLI;
+  it is regenerable. Add a session cookie for the future UI. Resolve one
+  principal per request behind a single seam and keep routes scope-addressed,
+  so Phase 13 replaces the resolver instead of every handler.
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [ ] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
@@ -338,9 +336,11 @@ Deliverables:
 
 - [ ] Reference bot: a small support menu graph with intents and one `request`
   step.
-- [ ] Operational notes: systemd unit, backup of SQLite and the device store,
-  and account-safety practices (warmup for new accounts, no bulk outreach,
-  human fallback when a bot is restricted) (ADR 0011). Document that accounts
+- [ ] Operational notes: systemd unit and container setup, native supervisor
+  commands for start/stop/restart, restart policies, and SIGTERM graceful
+  shutdown (ADR 0025); backup of SQLite and the device store; and
+  account-safety practices (warmup for new accounts, no bulk outreach, human
+  fallback when a bot is restricted) (ADR 0011). Document that accounts
   requiring a passkey on every connection cannot be automated (ADR 0028).
 - [ ] Log and error review: actionable messages, no secrets in logs.
 - [ ] Documentation pass: README, scope, and architecture match the code.

@@ -56,8 +56,12 @@ module's own releases.
   agree by construction.
 - The core owns the syntax, `config` owns the provenance of a reference error,
   and the engine owns resolution.
-- Future capabilities arrive with their own package (`api`, `control`,
-  `dashboard`, `auth`, `webhook`); `internal/` reopens only under the rule
+- Future capabilities arrive with their own package (`api`, `dashboard`,
+  `auth`, `webhook`); `internal/` reopens only under the rule
   above.
+- Do not create a generic application-service package in anticipation of API
+  reuse. `fleet run` is the composition root and injects its live fleet and
+  stores into `api`; narrow services are extracted only after two real callers
+  share an operation.
 - When behavior moves to the database (ROADMAP Phase 15), the store builds
   `spec` values; no separate "behavior" package is planned.
