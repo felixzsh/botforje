@@ -79,9 +79,10 @@ func runFleet(args []string) int {
 	}
 
 	runner, err := fleet.New(cfg, fleet.Options{
-		Store:   db.Sessions(),
-		Chats:   db.Chats(),
-		Senders: db.Senders(),
+		Store:    db.Sessions(),
+		Chats:    db.Chats(),
+		Senders:  db.Senders(),
+		Messages: db.Messages(),
 		Skip: func(scope, bot string) bool {
 			return skipped[scope][bot]
 		},

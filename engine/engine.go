@@ -27,6 +27,7 @@ type Options struct {
 	Store          botflota.SessionStore
 	Chats          botflota.ChatStore
 	Senders        botflota.SenderStore
+	Messages       botflota.MessageStore
 	LLM            botflota.LLMProvider
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -45,6 +46,7 @@ type Engine struct {
 	store          botflota.SessionStore
 	chats          botflota.ChatStore
 	senders        botflota.SenderStore
+	messages       botflota.MessageStore
 	llm            botflota.LLMProvider
 	hasLLM         bool
 	http           *http.Client
@@ -64,6 +66,7 @@ func New(opts Options) *Engine {
 		store:          opts.Store,
 		chats:          opts.Chats,
 		senders:        opts.Senders,
+		messages:       opts.Messages,
 		llm:            opts.LLM,
 		hasLLM:         opts.LLM != nil,
 		http:           opts.HTTPClient,
@@ -98,6 +101,9 @@ func (e *Engine) Handle(
 ) ([]botflota.OutgoingMessage, error) {
 	if msg.Sender == "" {
 		return nil, errors.New("engine: incoming message has no sender")
+	}
+	if e.messages == nil {
+		return nil, errors.New("engine: no message store")
 	}
 	now := e.now()
 	chat, sender, session, created, err := e.load(ctx, msg, now)
@@ -140,6 +146,9 @@ func (e *Engine) Handle(
 	if err := e.store.Save(ctx, session); err != nil {
 		return nil, err
 	}
+	if err := e.recordMessages(ctx, chat.ID, session.ID, msg, r.out, now); err != nil {
+		return nil, err
+	}
 	if err := e.chats.RecordMessage(ctx, chat.ID, now); err != nil {
 		return nil, err
 	}
@@ -149,6 +158,44 @@ func (e *Engine) Handle(
 		}
 	}
 	return r.out, nil
+}
+
+// recordMessages stores the inbound message and every reply under the chat and
+// the session run that handled them (ADR 0026). The session is saved first, so
+// its id is set; an outbound reply keeps its kind, so a location stays
+// distinguishable from text.
+func (e *Engine) recordMessages(
+	ctx context.Context,
+	chatID, sessionID int64,
+	msg botflota.IncomingMessage,
+	out []botflota.OutgoingMessage,
+	now time.Time,
+) error {
+	inbound := &botflota.Message{
+		ChatID:    chatID,
+		SessionID: sessionID,
+		Direction: botflota.Inbound,
+		Kind:      botflota.KindText,
+		Body:      msg.Body,
+		At:        msg.At,
+	}
+	if err := e.messages.Append(ctx, inbound); err != nil {
+		return fmt.Errorf("engine: record inbound: %w", err)
+	}
+	for _, reply := range out {
+		sent := &botflota.Message{
+			ChatID:    chatID,
+			SessionID: sessionID,
+			Direction: botflota.Outbound,
+			Kind:      reply.Kind,
+			Body:      reply.Body,
+			At:        now,
+		}
+		if err := e.messages.Append(ctx, sent); err != nil {
+			return fmt.Errorf("engine: record outbound: %w", err)
+		}
+	}
+	return nil
 }
 
 func (e *Engine) load(

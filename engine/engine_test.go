@@ -27,9 +27,11 @@ type memStore struct {
 	senders    map[string]*botflota.Sender
 	chats      map[string]*botflota.Chat
 	sessions   map[int64]*botflota.Session
+	messages   []*botflota.Message
 	nextSender int64
 	nextChat   int64
 	nextSess   int64
+	nextMsg    int64
 }
 
 func newMemStore() *memStore {
@@ -140,6 +142,28 @@ func (s *memStore) Delete(_ context.Context, chatID int64) error {
 	return nil
 }
 
+func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
+	s.nextMsg++
+	message.ID = s.nextMsg
+	s.messages = append(s.messages, message)
+	return nil
+}
+
+func (s *memStore) List(
+	_ context.Context, chatID int64, limit int,
+) ([]botflota.Message, error) {
+	var out []botflota.Message
+	for _, message := range s.messages {
+		if message.ChatID == chatID {
+			out = append(out, *message)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out, nil
+}
+
 // sessionFor reads a chat's current session by its config identity.
 func (s *memStore) sessionFor(scope, bot, sender string) (*botflota.Session, error) {
 	profile, ok := s.senders[senderKey(scope, sender)]
@@ -202,6 +226,7 @@ func fixtureEngine(t *testing.T, store *memStore) *engine.Engine {
 		Store:          store,
 		Chats:          store,
 		Senders:        store,
+		Messages:       store,
 		DefaultTimeout: 300 * time.Second,
 	})
 }
@@ -281,7 +306,8 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	scope := loadScope(t)
 	eng := engine.New(engine.Options{
 		Bot: "support-bot", Scope: "support",
-		Graph: scope.Graphs["faq"], Actions: scope.Actions, Store: store, Chats: store, Senders: store,
+		Graph: scope.Graphs["faq"], Actions: scope.Actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 		Rand:           rand.New(rand.NewSource(1)),
@@ -324,7 +350,7 @@ func TestRequestStepCapturesResult(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, HTTPClient: server.Client(),
+		Store: store, Chats: store, Senders: store, Messages: store, HTTPClient: server.Client(),
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"got 7 status 200"}; !slices.Equal(got, want) {
@@ -353,7 +379,8 @@ func TestCooldownGuard(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -391,7 +418,8 @@ func TestRateLimitGuard(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -431,7 +459,8 @@ func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 	})
@@ -461,7 +490,8 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{Sender: "s", Body: "hi"})
 	if !errors.Is(err, botflota.ErrNoLLM) {
@@ -482,7 +512,8 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"Your order is confirmed."}; !slices.Equal(got, want) {
@@ -503,7 +534,8 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", Sender: "5215500000000", Body: "hola", At: t0,
@@ -534,7 +566,8 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", Sender: "5215500000000", Body: "hola", At: t0,
@@ -561,7 +594,8 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", Sender: "52155", Body: "hola", At: t0,
@@ -583,7 +617,8 @@ func TestLocationStep(t *testing.T) {
 	}
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(),
 		botflota.IncomingMessage{Sender: "s", Body: "hi"})
@@ -623,6 +658,40 @@ func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 	}
 }
 
+func TestMessagesRecordedUnderChatAndSession(t *testing.T) {
+	store := newMemStore()
+	eng := fixtureEngine(t, store)
+	sender := "5215500000000"
+	outbound(t, eng, sender, "1")
+
+	ctx := context.Background()
+	profile, err := store.Get(ctx, "support", sender)
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	chat, err := store.Ensure(ctx, "support", "support-bot", profile.ID, t0)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := store.List(ctx, chat.ID, 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("recorded %d messages, want 2", len(messages))
+	}
+	inbound, reply := messages[0], messages[1]
+	if inbound.Direction != botflota.Inbound || inbound.Body != "1" {
+		t.Fatalf("inbound = %+v", inbound)
+	}
+	if reply.Direction != botflota.Outbound || reply.Body == "" {
+		t.Fatalf("outbound = %+v", reply)
+	}
+	if inbound.SessionID == 0 || inbound.SessionID != reply.SessionID {
+		t.Fatalf("session ids = %d, %d", inbound.SessionID, reply.SessionID)
+	}
+}
+
 func TestSenderNameFeedsTemplates(t *testing.T) {
 	actions := map[string]spec.Action{
 		"greet": {Steps: []spec.Step{{Message: &spec.Message{
@@ -640,7 +709,8 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 		t.Fatalf("seed sender: %v", err)
 	}
 	eng := newTestEngine(t, engine.Options{
-		Bot: "b", Scope: "s", Graph: graph, Actions: actions, Store: store, Chats: store, Senders: store,
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
 		Bot: "b", Sender: "52155", Body: "hola", At: t0,
@@ -688,7 +758,8 @@ func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *engine.E
 	store := newMemStore()
 	return newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, HTTPClient: &http.Client{Transport: transport},
+		Store: store, Chats: store, Senders: store, Messages: store,
+		HTTPClient: &http.Client{Transport: transport},
 	})
 }
 

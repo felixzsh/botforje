@@ -85,9 +85,11 @@ type memStore struct {
 	senders    map[string]*botflota.Sender
 	chats      map[string]*botflota.Chat
 	sessions   map[int64]*botflota.Session
+	messages   []*botflota.Message
 	nextSender int64
 	nextChat   int64
 	nextSess   int64
+	nextMsg    int64
 }
 
 func newStore() *memStore {
@@ -214,6 +216,32 @@ func (s *memStore) Delete(_ context.Context, chatID int64) error {
 	return nil
 }
 
+func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextMsg++
+	message.ID = s.nextMsg
+	s.messages = append(s.messages, message)
+	return nil
+}
+
+func (s *memStore) List(
+	_ context.Context, chatID int64, limit int,
+) ([]botflota.Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []botflota.Message
+	for _, message := range s.messages {
+		if message.ChatID == chatID {
+			out = append(out, *message)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out, nil
+}
+
 func buildFleet(t *testing.T, blocking string, log *slog.Logger) (*Fleet, map[string]*fakeChannel) {
 	t.Helper()
 	runner, channels, _ := buildFleetWithStore(t, blocking, log)
@@ -237,6 +265,7 @@ func buildFleetWithStore(
 		Store:          store,
 		Chats:          store,
 		Senders:        store,
+		Messages:       store,
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
@@ -267,10 +296,11 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 	var created []string
 	store := newStore()
 	runner, err := New(cfg, Options{
-		Store:   store,
-		Chats:   store,
-		Senders: store,
-		Skip:    func(_, bot string) bool { return bot == "beta" },
+		Store:    store,
+		Chats:    store,
+		Senders:  store,
+		Messages: store,
+		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
 			created = append(created, spec.Name)
 			return newFakeChannel(), nil

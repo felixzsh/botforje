@@ -31,6 +31,7 @@ type Options struct {
 	Store      botflota.SessionStore
 	Chats      botflota.ChatStore
 	Senders    botflota.SenderStore
+	Messages   botflota.MessageStore
 	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
 	// Skip omits a bot before its runtime is built. It is for recoverable
 	// runtime conditions such as a missing local pairing.
@@ -82,6 +83,9 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.Senders == nil {
 		return nil, errors.New("fleet: no sender store")
 	}
+	if opts.Messages == nil {
+		return nil, errors.New("fleet: no message store")
+	}
 	if opts.NewChannel == nil {
 		return nil, errors.New("fleet: no channel factory")
 	}
@@ -111,6 +115,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			eng := engine.New(engine.Options{
 				Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
 				Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
+				Messages:   opts.Messages,
 				HTTPClient: opts.HTTPClient, Now: opts.Now,
 				Rand: rand.New(rand.NewSource(seeds.Int63())), DefaultTimeout: opts.DefaultTimeout,
 				Log: botLog,

@@ -49,7 +49,8 @@ the bounded state is a session. The word still describes dialogue in prose.
   session; an expired session starts a new run instead of overwriting.
 - The store ports mirror the tables: `ChatStore`, `SessionStore`, and
   `MessageStore` (root package `botflota`).
-- Message recording at runtime (writing inbound and outbound rows) is a later
-  step; the schema and ports already support it.
+- Message recording happens in the engine as messages flow: the inbound
+  message and every reply are appended under the chat and the session run that
+  handled them. Listing and tailing a chat arrive with the CLI and API.
 - Pre-release, the schema is edited in place (ADR 0006), so an existing
   development database is recreated with `make dev-reset`.

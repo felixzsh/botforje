@@ -219,10 +219,12 @@ Deliverables:
 - [ ] When the fleet API exists, `fleet status` prefers its live data and
   falls back to the database; the output identifies the source as `live` or
   `stored`.
-- [ ] Message history: persist every message under its chat as it flows
-  through the actor, and list or tail one chat with
-  `message list|tail <bot> <sender> [--limit n] [--follow]`. Only live traffic
-  is recorded; the history-sync backlog stays out of scope.
+- [x] Message history persistence: the engine appends the inbound message and
+  every reply under the chat and the session run that handled them (ADR 0026).
+  Only live traffic is recorded; the history-sync backlog stays out of scope.
+- [ ] Message history commands: list or tail one chat with
+  `message list|tail <bot> <sender> [--limit n] [--follow]`, served through the
+  API when it exists.
 - [x] Sender profiles: record each sender's push name and first/last seen from
   the first allowed message, keyed by (scope, phone) and shared by the scope's
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
