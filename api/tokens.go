@@ -12,15 +12,15 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// keyRequest is the owner payload that mints a scoped API key.
-type keyRequest struct {
+// tokenRequest is the owner payload that mints a scoped access token.
+type tokenRequest struct {
 	Name      string   `json:"name"`
 	Scopes    []string `json:"scopes"`
 	ExpiresAt string   `json:"expires_at,omitempty"`
 }
 
-// keyView is a minted key without its hash or clear value.
-type keyView struct {
+// tokenView is a minted access token without its hash or clear value.
+type tokenView struct {
 	ID        int64      `json:"id"`
 	Name      string     `json:"name"`
 	Scopes    []string   `json:"scopes"`
@@ -29,14 +29,14 @@ type keyView struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 
-// handleKeysCreate mints a scoped API key. The clear key is returned once and
-// never stored; only its hash is kept (ROADMAP Phase 13).
-func (s *Server) handleKeysCreate(w http.ResponseWriter, r *http.Request) {
+// handleTokensCreate mints a scoped access token. The clear token is returned
+// once and never stored; only its hash is kept (ROADMAP Phase 13).
+func (s *Server) handleTokensCreate(w http.ResponseWriter, r *http.Request) {
 	if !principalFrom(r.Context()).Owner() {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
 		return
 	}
-	var request keyRequest
+	var request tokenRequest
 	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
@@ -83,80 +83,81 @@ func (s *Server) handleKeysCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		expiresAt = parsed.UTC()
 	}
-	clear, err := newSecret()
+	clear, err := newToken()
 	if err != nil {
-		s.fail(w, "generate api key", err)
+		s.fail(w, "generate access token", err)
 		return
 	}
 	hash := sha256.Sum256([]byte(clear))
-	key := &botflota.APIKey{
+	token := &botflota.AccessToken{
 		Name: request.Name, Hash: hash[:], Scopes: scopes,
 		CreatedAt: time.Now().UTC(), ExpiresAt: expiresAt,
 	}
-	if err := s.keys.Create(r.Context(), key); err != nil {
-		s.fail(w, "create api key", err)
+	if err := s.tokens.Create(r.Context(), token); err != nil {
+		s.fail(w, "create access token", err)
 		return
 	}
-	view := viewKey(*key)
+	view := viewToken(*token)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id": view.ID, "name": view.Name, "scopes": view.Scopes,
 		"created_at": view.CreatedAt, "expires_at": view.ExpiresAt,
-		"key": clear,
+		"token": clear,
 	})
 }
 
-// handleKeysList lists the minted keys without hashes.
-func (s *Server) handleKeysList(w http.ResponseWriter, r *http.Request) {
+// handleTokensList lists the minted tokens without hashes.
+func (s *Server) handleTokensList(w http.ResponseWriter, r *http.Request) {
 	if !principalFrom(r.Context()).Owner() {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
 		return
 	}
-	keys, err := s.keys.List(r.Context())
+	tokens, err := s.tokens.List(r.Context())
 	if err != nil {
-		s.fail(w, "list api keys", err)
+		s.fail(w, "list access tokens", err)
 		return
 	}
-	views := make([]keyView, 0, len(keys))
-	for _, key := range keys {
-		views = append(views, viewKey(key))
+	views := make([]tokenView, 0, len(tokens))
+	for _, token := range tokens {
+		views = append(views, viewToken(token))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"keys": views})
+	writeJSON(w, http.StatusOK, map[string]any{"tokens": views})
 }
 
-// handleKeysRevoke revokes one key. Revoking an already revoked key is a
+// handleTokensRevoke revokes one token. Revoking an already revoked token is a
 // no-op.
-func (s *Server) handleKeysRevoke(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleTokensRevoke(w http.ResponseWriter, r *http.Request) {
 	if !principalFrom(r.Context()).Owner() {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid_request", "invalid key id")
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid token id")
 		return
 	}
-	err = s.keys.Revoke(r.Context(), id, time.Now().UTC())
+	err = s.tokens.Revoke(r.Context(), id, time.Now().UTC())
 	if errors.Is(err, botflota.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "unknown key")
+		writeError(w, http.StatusNotFound, "not_found", "unknown token")
 		return
 	}
 	if err != nil {
-		s.fail(w, "revoke api key", err)
+		s.fail(w, "revoke access token", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func viewKey(key botflota.APIKey) keyView {
-	view := keyView{
-		ID: key.ID, Name: key.Name, Scopes: key.Scopes, CreatedAt: key.CreatedAt,
+func viewToken(token botflota.AccessToken) tokenView {
+	view := tokenView{
+		ID: token.ID, Name: token.Name, Scopes: token.Scopes,
+		CreatedAt: token.CreatedAt,
 	}
-	if !key.ExpiresAt.IsZero() {
-		at := key.ExpiresAt
+	if !token.ExpiresAt.IsZero() {
+		at := token.ExpiresAt
 		view.ExpiresAt = &at
 	}
-	if !key.RevokedAt.IsZero() {
-		at := key.RevokedAt
+	if !token.RevokedAt.IsZero() {
+		at := token.RevokedAt
 		view.RevokedAt = &at
 	}
 	return view

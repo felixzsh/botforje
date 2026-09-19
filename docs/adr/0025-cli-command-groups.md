@@ -37,8 +37,8 @@ Vocabulary:
 - Device pairing is `pair`; removing the local pairing is `unpair`. `link` and
   `unlink` are rejected because `unpair` is local and does not unlink the
   companion in WhatsApp.
-- `auth` is reserved for authentication (admin key, sessions) and never names
-  channel pairing.
+- `auth` is reserved for authentication (owner token, access tokens, sessions)
+  and never names channel pairing.
 
 Output guidance:
 

@@ -20,18 +20,19 @@ import (
 )
 
 type fleetRunCmd struct {
-	fs          *flag.FlagSet
-	config      *string
-	newAdminKey *bool
+	fs            *flag.FlagSet
+	config        *string
+	newOwnerToken *bool
 }
 
 func newFleetRunCmd() *fleetRunCmd {
 	fs := flag.NewFlagSet("fleet run", flag.ContinueOnError)
 	fs.Usage = func() {}
 	return &fleetRunCmd{
-		fs:          fs,
-		config:      configFlag(fs),
-		newAdminKey: fs.Bool("new-admin-key", false, "rotate the admin key and rewrite the key file"),
+		fs:     fs,
+		config: configFlag(fs),
+		newOwnerToken: fs.Bool("new-owner-token", false,
+			"rotate the owner token and rewrite the token file"),
 	}
 }
 
@@ -129,11 +130,11 @@ func runFleet(args []string) int {
 	}()
 
 	if cfg.Port == 0 {
-		if *cmd.newAdminKey {
-			logger.Error("--new-admin-key needs the API; port is 0")
+		if *cmd.newOwnerToken {
+			logger.Error("--new-owner-token needs the API; port is 0")
 			return 2
 		}
-	} else if err := serveAPI(ctx, stop, cfg, runner, db, logger, *cmd.newAdminKey); err != nil {
+	} else if err := serveAPI(ctx, stop, cfg, runner, db, logger, *cmd.newOwnerToken); err != nil {
 		logger.Error("start api", "error", err)
 		return 1
 	}
@@ -162,19 +163,20 @@ func serveAPI(
 	if err != nil {
 		return err
 	}
-	adminHash, created, err := api.EnsureAuth(ctx, db.AdminKeys(), dataDir)
+	ownerHash, created, err := api.EnsureOwnerToken(ctx, db.OwnerTokens(), dataDir)
 	if err != nil {
 		return err
 	}
 	if created {
-		logger.Warn("admin key created; the CLI reads it",
-			"file", filepath.Join(dataDir, api.KeyFile))
+		logger.Warn("owner token created; the CLI reads it",
+			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
 	if rotate {
-		if adminHash, err = api.Rotate(ctx, db.AdminKeys(), dataDir); err != nil {
+		if ownerHash, err = api.RotateOwnerToken(ctx, db.OwnerTokens(), dataDir); err != nil {
 			return err
 		}
-		logger.Warn("admin key rotated", "file", filepath.Join(dataDir, api.KeyFile))
+		logger.Warn("owner token rotated",
+			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
 	server, err := api.New(api.Options{
 		Config:   cfg,
@@ -185,8 +187,8 @@ func serveAPI(
 		Chats:    db.Chats(),
 		Sessions: db.Sessions(),
 		Messages: db.Messages(),
-		Keys:     db.APIKeys(),
-		Auth:     api.NewAuth(adminHash, db.APIKeys()),
+		Tokens:   db.AccessTokens(),
+		Auth:     api.NewAuth(ownerHash, db.AccessTokens()),
 		Log:      logger,
 	})
 	if err != nil {

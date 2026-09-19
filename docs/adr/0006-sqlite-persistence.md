@@ -13,7 +13,8 @@ no external database should be required.
 SQLite is the project database. One file per instance, located through the
 `data_dir` setting (XDG default), with the schema applied on startup. Tables:
 chats, sessions, messages, accounts, pairing_status, the whatsmeow device
-store, and (with the API) web sessions and admin keys (ADR 0026). A bot's
+store, and (with the API) web sessions, the owner token, and access tokens
+(ADR 0026). A bot's
 identity comes from config; `accounts` records its paired channel identity.
 Graph and node contexts are stored as JSON on the session. The domain depends
 on repository interfaces, not on SQL.

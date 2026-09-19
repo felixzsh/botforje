@@ -37,7 +37,7 @@ type Options struct {
 	Chats    botflota.ChatStore
 	Sessions botflota.SessionStore
 	Messages botflota.MessageStore
-	Keys     botflota.APIKeyStore
+	Tokens   botflota.AccessTokenStore
 	Auth     *Auth
 	Log      *slog.Logger
 }
@@ -52,7 +52,7 @@ type Server struct {
 	chats    botflota.ChatStore
 	sessions botflota.SessionStore
 	messages botflota.MessageStore
-	keys     botflota.APIKeyStore
+	tokens   botflota.AccessTokenStore
 	auth     *Auth
 	log      *slog.Logger
 	started  time.Time
@@ -85,8 +85,8 @@ func New(opts Options) (*Server, error) {
 	if opts.Messages == nil {
 		return nil, errors.New("api: no message store")
 	}
-	if opts.Keys == nil {
-		return nil, errors.New("api: no api-key store")
+	if opts.Tokens == nil {
+		return nil, errors.New("api: no access-token store")
 	}
 	if opts.Auth == nil {
 		return nil, errors.New("api: no auth")
@@ -100,7 +100,7 @@ func New(opts Options) (*Server, error) {
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		senders: opts.Senders, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
-		keys: opts.Keys, auth: opts.Auth, log: logger, started: time.Now(),
+		tokens: opts.Tokens, auth: opts.Auth, log: logger, started: time.Now(),
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -118,9 +118,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/bots", s.handleBots)
 	mux.HandleFunc("GET /api/v1/config", s.handleConfig)
-	mux.HandleFunc("POST /api/v1/keys", s.handleKeysCreate)
-	mux.HandleFunc("GET /api/v1/keys", s.handleKeysList)
-	mux.HandleFunc("DELETE /api/v1/keys/{id}", s.handleKeysRevoke)
+	mux.HandleFunc("POST /api/v1/tokens", s.handleTokensCreate)
+	mux.HandleFunc("GET /api/v1/tokens", s.handleTokensList)
+	mux.HandleFunc("DELETE /api/v1/tokens/{id}", s.handleTokensRevoke)
 
 	// Scope level: the scope is part of the address.
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)

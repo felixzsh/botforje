@@ -528,94 +528,96 @@ func TestPairingStatusRoundTrip(t *testing.T) {
 	}
 }
 
-func TestAdminKeyRoundTrip(t *testing.T) {
+func TestOwnerTokenRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.AdminKeys().Get(ctx); !errors.Is(err, botflota.ErrNotFound) {
+	if _, err := db.OwnerTokens().Get(ctx); !errors.Is(err, botflota.ErrNotFound) {
 		t.Fatalf("Get missing = %v, want ErrNotFound", err)
 	}
-	want := &botflota.AdminKey{Hash: []byte{1, 2, 3}, CreatedAt: t0}
-	if err := db.AdminKeys().Put(ctx, want); err != nil {
+	want := &botflota.OwnerToken{Hash: []byte{1, 2, 3}, CreatedAt: t0}
+	if err := db.OwnerTokens().Put(ctx, want); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	got, err := db.AdminKeys().Get(ctx)
+	got, err := db.OwnerTokens().Get(ctx)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("AdminKey = %#v, want %#v", got, want)
+		t.Fatalf("OwnerToken = %#v, want %#v", got, want)
 	}
-	rotated := &botflota.AdminKey{Hash: []byte{9}, CreatedAt: t1}
-	if err := db.AdminKeys().Put(ctx, rotated); err != nil {
+	rotated := &botflota.OwnerToken{Hash: []byte{9}, CreatedAt: t1}
+	if err := db.OwnerTokens().Put(ctx, rotated); err != nil {
 		t.Fatalf("Put rotate: %v", err)
 	}
-	got, err = db.AdminKeys().Get(ctx)
+	got, err = db.OwnerTokens().Get(ctx)
 	if err != nil {
 		t.Fatalf("Get after rotate: %v", err)
 	}
 	if !reflect.DeepEqual(got, rotated) {
-		t.Fatalf("AdminKey after rotate = %#v, want %#v", got, rotated)
+		t.Fatalf("OwnerToken after rotate = %#v, want %#v", got, rotated)
 	}
 }
 
-func TestAPIKeyRoundTrip(t *testing.T) {
+func TestAccessTokenRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.APIKeys().FindByHash(ctx, []byte("missing")); !errors.Is(
+	if _, err := db.AccessTokens().FindByHash(ctx, []byte("missing")); !errors.Is(
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("FindByHash missing = %v, want ErrNotFound", err)
 	}
-	key := &botflota.APIKey{
+	token := &botflota.AccessToken{
 		Name: "dashboard", Hash: []byte{7, 8},
 		Scopes: []string{"ventas", "soporte"}, CreatedAt: t0, ExpiresAt: t2,
 	}
-	if err := db.APIKeys().Create(ctx, key); err != nil {
+	if err := db.AccessTokens().Create(ctx, token); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if key.ID == 0 {
+	if token.ID == 0 {
 		t.Fatal("Create did not set an id")
 	}
-	got, err := db.APIKeys().FindByHash(ctx, key.Hash)
+	got, err := db.AccessTokens().FindByHash(ctx, token.Hash)
 	if err != nil {
 		t.Fatalf("FindByHash: %v", err)
 	}
-	if got.ID != key.ID || got.Name != "dashboard" || !got.ExpiresAt.Equal(t2) {
-		t.Fatalf("key = %#v", got)
+	if got.ID != token.ID || got.Name != "dashboard" || !got.ExpiresAt.Equal(t2) {
+		t.Fatalf("token = %#v", got)
 	}
 	if !reflect.DeepEqual(got.Scopes, []string{"soporte", "ventas"}) {
 		t.Fatalf("scopes = %#v, want stable order", got.Scopes)
 	}
 	if !got.Active(t1) {
-		t.Fatal("key should be active before expiry")
+		t.Fatal("token should be active before expiry")
 	}
 	if got.Active(t2) {
-		t.Fatal("key should be expired at expires_at")
+		t.Fatal("token should be expired at expires_at")
 	}
-	keys, err := db.APIKeys().List(ctx)
+	tokens, err := db.AccessTokens().List(ctx)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(keys) != 1 || len(keys[0].Scopes) != 2 {
-		t.Fatalf("List = %#v", keys)
+	if len(tokens) != 1 || len(tokens[0].Scopes) != 2 {
+		t.Fatalf("List = %#v", tokens)
 	}
-	if len(keys[0].Hash) != 0 {
+	if len(tokens[0].Hash) != 0 {
 		t.Fatal("List must not expose hashes")
 	}
-	if err := db.APIKeys().Revoke(ctx, key.ID, t1); err != nil {
+	if err := db.AccessTokens().Revoke(ctx, token.ID, t1); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	got, err = db.APIKeys().FindByHash(ctx, key.Hash)
+	got, err = db.AccessTokens().FindByHash(ctx, token.Hash)
 	if err != nil {
 		t.Fatalf("FindByHash after revoke: %v", err)
 	}
 	if got.Active(t1) {
-		t.Fatal("revoked key still active")
+		t.Fatal("revoked token still active")
 	}
-	if err := db.APIKeys().Revoke(ctx, key.ID, t2); err != nil {
+	if err := db.AccessTokens().Revoke(ctx, token.ID, t2); err != nil {
 		t.Fatalf("Revoke again: %v", err)
 	}
-	if err := db.APIKeys().Revoke(ctx, 999, t1); !errors.Is(err, botflota.ErrNotFound) {
+	if err := db.AccessTokens().Revoke(ctx, 999, t1); !errors.Is(
+		err, botflota.ErrNotFound,
+	) {
 		t.Fatalf("Revoke unknown = %v, want ErrNotFound", err)
 	}
 }

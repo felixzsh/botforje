@@ -87,5 +87,12 @@
   link a companion or to open a connection (ADR 0028).
 - Pairing code — the eight-digit code a phone types in WhatsApp to link a
   companion without a QR code (ADR 0028).
+- Owner token — the instance owner's credential, created on first run and
+  written once to `owner.token` under `data_dir` (mode 0600). It authorizes
+  every scope, instance settings, and credential management (ADR 0025).
+- Access token — an opaque random credential for the API, stored hashed,
+  optionally expiring, and revocable. A scoped access token names the scopes
+  it may use and sees nothing else; a scoped principal requesting another
+  scope gets 404, never 403 (ROADMAP Phase 13).
 - Shortcake — Meta's internal name for the passkey companion-linking flow
   (ADR 0028).

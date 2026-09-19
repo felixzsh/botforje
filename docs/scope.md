@@ -13,7 +13,7 @@ SaaS infrastructure:
 - Filters (groups, allow/ignore senders) and a per-bot outbox with
   configurable delay and jitter, plus human-like presence (ADR 0011).
 - CLI: `config` and `bot` groups, plus `fleet`.
-- REST API with key-based auth.
+- REST API with token-based auth.
 - Hybrid AI support designed in from the start: deterministic routing works
   with no model configured; System One (Jev) routes and decides tools,
   prescribed replies are the default, and an LLM reads free text and realizes

@@ -77,12 +77,12 @@ var schema = []string{
 		last_change TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
-	`CREATE TABLE IF NOT EXISTS admin_key (
+	`CREATE TABLE IF NOT EXISTS owner_token (
 		id         INTEGER PRIMARY KEY CHECK (id = 1),
 		hash       BLOB NOT NULL,
 		created_at TEXT NOT NULL
 	)`,
-	`CREATE TABLE IF NOT EXISTS api_keys (
+	`CREATE TABLE IF NOT EXISTS access_tokens (
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		name       TEXT NOT NULL,
 		hash       BLOB NOT NULL UNIQUE,
@@ -90,11 +90,11 @@ var schema = []string{
 		expires_at TEXT NOT NULL DEFAULT '',
 		revoked_at TEXT NOT NULL DEFAULT ''
 	)`,
-	`CREATE TABLE IF NOT EXISTS api_key_scopes (
-		api_key_id INTEGER NOT NULL
-			REFERENCES api_keys (id) ON DELETE CASCADE,
-		scope      TEXT NOT NULL,
-		PRIMARY KEY (api_key_id, scope)
+	`CREATE TABLE IF NOT EXISTS access_token_scopes (
+		access_token_id INTEGER NOT NULL
+			REFERENCES access_tokens (id) ON DELETE CASCADE,
+		scope           TEXT NOT NULL,
+		PRIMARY KEY (access_token_id, scope)
 	)`,
 }
 
@@ -147,11 +147,11 @@ func (d *DB) LinkedAccounts() *LinkedAccountStore { return &LinkedAccountStore{d
 // Pairings returns the pairing-status repository.
 func (d *DB) Pairings() *PairingStore { return &PairingStore{db: d.DB} }
 
-// AdminKeys returns the administrator-key repository.
-func (d *DB) AdminKeys() *AdminKeyStore { return &AdminKeyStore{db: d.DB} }
+// OwnerTokens returns the owner-token repository.
+func (d *DB) OwnerTokens() *OwnerTokenStore { return &OwnerTokenStore{db: d.DB} }
 
-// APIKeys returns the scoped API-key repository.
-func (d *DB) APIKeys() *APIKeyStore { return &APIKeyStore{db: d.DB} }
+// AccessTokens returns the scoped access-token repository.
+func (d *DB) AccessTokens() *AccessTokenStore { return &AccessTokenStore{db: d.DB} }
 
 func applySchema(db *sql.DB) error {
 	for _, statement := range schema {

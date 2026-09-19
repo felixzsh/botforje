@@ -130,18 +130,18 @@ type PairingStatus struct {
 	LastChange time.Time
 }
 
-// AdminKey is the instance's single administrator credential (ADR 0025). Only
-// the hash is stored; the clear key is written once to a 0600 file under
-// data_dir and never kept here.
-type AdminKey struct {
+// OwnerToken is the instance owner's credential (ADR 0025). Only the hash is
+// stored; the clear token is written once to a 0600 file under data_dir and
+// never kept here.
+type OwnerToken struct {
 	Hash      []byte
 	CreatedAt time.Time
 }
 
-// APIKey is a scoped bearer credential for the API (ROADMAP Phase 13). Only
-// the hash is stored; the clear key is shown once when it is minted. An empty
-// ExpiresAt never expires, an empty RevokedAt is active.
-type APIKey struct {
+// AccessToken is a scoped bearer credential for the API (ROADMAP Phase 13).
+// Only the hash is stored; the clear token is shown once when it is minted. An
+// empty ExpiresAt never expires, an empty RevokedAt is active.
+type AccessToken struct {
 	ID        int64
 	Name      string
 	Hash      []byte
@@ -151,10 +151,10 @@ type APIKey struct {
 	RevokedAt time.Time
 }
 
-// Active reports whether the key may still authenticate at t.
-func (k *APIKey) Active(t time.Time) bool {
-	if !k.RevokedAt.IsZero() {
+// Active reports whether the token may still authenticate at at.
+func (t *AccessToken) Active(at time.Time) bool {
+	if !t.RevokedAt.IsZero() {
 		return false
 	}
-	return k.ExpiresAt.IsZero() || t.Before(k.ExpiresAt)
+	return t.ExpiresAt.IsZero() || at.Before(t.ExpiresAt)
 }

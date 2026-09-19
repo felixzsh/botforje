@@ -246,7 +246,7 @@ configured maximum.
 
 `fleet run` hosts the API in the same process when `port` is set; `port: 0`
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
-under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `keys`;
+under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
 scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
 `sessions`, and `messages`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
@@ -255,19 +255,19 @@ pair plus the sender's phone number. Errors use one shape,
 
 One middleware resolves the credential to a `Principal`, and handlers
 authorize against it (ROADMAP Phase 10). Two authorities exist: the instance
-owner (the admin key) sees every scope, instance settings, and credential
-management; a scoped API key sees only its scopes. A scoped principal
+owner (the owner token) sees every scope, instance settings, and credential
+management; a scoped access token sees only its scopes. A scoped principal
 requesting another scope receives 404, never 403, so it cannot infer that the
 scope exists (ROADMAP Phase 13).
 
-The admin key is created on first run, stored as a hash in SQLite, and written
-once to `admin.key` under `data_dir` with mode 0600 for the CLI;
-`fleet run --new-admin-key` regenerates it. Scoped keys are minted by the
-owner with `POST /api/v1/keys`, stored hashed with optional expiry, listed
-without hashes, and revoked with `DELETE /api/v1/keys/{id}`. Every request
-carries `Authorization: Bearer`. Browser sessions and CSRF arrive with the
-dashboard (Phase 11); the resolver is the seam they replace. `config` serves
-the typed model with secrets masked (ADR 0014). Handlers stay small and
+The owner token is created on first run, stored as a hash in SQLite, and
+written once to `owner.token` under `data_dir` with mode 0600 for the CLI;
+`fleet run --new-owner-token` regenerates it. Scoped access tokens are minted
+by the owner with `POST /api/v1/tokens`, stored hashed with optional expiry,
+listed without hashes, and revoked with `DELETE /api/v1/tokens/{id}`. Every
+request carries `Authorization: Bearer`. Browser sessions and CSRF arrive with
+the dashboard (Phase 11); the resolver is the seam they replace. `config`
+serves the typed model with secrets masked (ADR 0014). Handlers stay small and
 direct; a narrow service is extracted only when a second real caller shares
 the operation.
 

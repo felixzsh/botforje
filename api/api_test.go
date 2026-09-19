@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	testAdminKey   = "test-admin-key"
-	testScopeKey   = "test-scope-key"
-	testDeadKey    = "test-revoked-key"
-	testExpiredKey = "test-expired-key"
+	testOwnerToken   = "test-owner-token"
+	testAccessToken  = "test-access-token"
+	testRevokedToken = "test-revoked-token"
+	testExpiredToken = "test-expired-token"
 )
 
 var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
@@ -72,60 +72,60 @@ func (f fakePairings) Get(
 
 func (f fakePairings) Set(context.Context, *botflota.PairingStatus) error { return nil }
 
-type fakeKeyStore struct{ key *botflota.AdminKey }
+type fakeOwnerTokens struct{ token *botflota.OwnerToken }
 
-func (f *fakeKeyStore) Get(context.Context) (*botflota.AdminKey, error) {
-	if f.key == nil {
+func (f *fakeOwnerTokens) Get(context.Context) (*botflota.OwnerToken, error) {
+	if f.token == nil {
 		return nil, botflota.ErrNotFound
 	}
-	return f.key, nil
+	return f.token, nil
 }
 
-func (f *fakeKeyStore) Put(_ context.Context, key *botflota.AdminKey) error {
-	f.key = key
+func (f *fakeOwnerTokens) Put(_ context.Context, token *botflota.OwnerToken) error {
+	f.token = token
 	return nil
 }
 
-// fakeKeys is the token store: it matches hashes like the real store, assigns
-// ids, and records revocation.
-type fakeKeys struct {
-	keys   []botflota.APIKey
+// fakeAccessTokens is the token store: it matches hashes like the real store,
+// assigns ids, and records revocation.
+type fakeAccessTokens struct {
+	tokens []botflota.AccessToken
 	nextID int64
 }
 
-func (f *fakeKeys) Create(_ context.Context, key *botflota.APIKey) error {
+func (f *fakeAccessTokens) Create(_ context.Context, token *botflota.AccessToken) error {
 	f.nextID++
-	key.ID = f.nextID
-	f.keys = append(f.keys, *key)
+	token.ID = f.nextID
+	f.tokens = append(f.tokens, *token)
 	return nil
 }
 
-func (f *fakeKeys) FindByHash(
+func (f *fakeAccessTokens) FindByHash(
 	_ context.Context, hash []byte,
-) (*botflota.APIKey, error) {
-	for _, key := range f.keys {
-		if bytes.Equal(key.Hash, hash) {
-			found := key
+) (*botflota.AccessToken, error) {
+	for _, token := range f.tokens {
+		if bytes.Equal(token.Hash, hash) {
+			found := token
 			return &found, nil
 		}
 	}
 	return nil, botflota.ErrNotFound
 }
 
-func (f *fakeKeys) List(context.Context) ([]botflota.APIKey, error) {
-	keys := make([]botflota.APIKey, 0, len(f.keys))
-	for _, key := range f.keys {
-		key.Hash = nil
-		keys = append(keys, key)
+func (f *fakeAccessTokens) List(context.Context) ([]botflota.AccessToken, error) {
+	tokens := make([]botflota.AccessToken, 0, len(f.tokens))
+	for _, token := range f.tokens {
+		token.Hash = nil
+		tokens = append(tokens, token)
 	}
-	return keys, nil
+	return tokens, nil
 }
 
-func (f *fakeKeys) Revoke(_ context.Context, id int64, at time.Time) error {
-	for i := range f.keys {
-		if f.keys[i].ID == id {
-			if f.keys[i].RevokedAt.IsZero() {
-				f.keys[i].RevokedAt = at
+func (f *fakeAccessTokens) Revoke(_ context.Context, id int64, at time.Time) error {
+	for i := range f.tokens {
+		if f.tokens[i].ID == id {
+			if f.tokens[i].RevokedAt.IsZero() {
+				f.tokens[i].RevokedAt = at
 			}
 			return nil
 		}
@@ -275,18 +275,18 @@ func testServer(t *testing.T) *Server {
 		},
 		Phone: quiet.Phone, DisplayName: quiet.DisplayName,
 	}
-	keys := &fakeKeys{nextID: 3, keys: []botflota.APIKey{
+	tokens := &fakeAccessTokens{nextID: 3, tokens: []botflota.AccessToken{
 		{
-			ID: 1, Name: "scoped", Hash: hashOf(testScopeKey),
+			ID: 1, Name: "scoped", Hash: hashOf(testAccessToken),
 			Scopes: []string{"support"}, CreatedAt: testTime,
 		},
 		{
-			ID: 2, Name: "revoked", Hash: hashOf(testDeadKey),
+			ID: 2, Name: "revoked", Hash: hashOf(testRevokedToken),
 			Scopes: []string{"support"}, CreatedAt: testTime,
 			RevokedAt: testTime,
 		},
 		{
-			ID: 3, Name: "expired", Hash: hashOf(testExpiredKey),
+			ID: 3, Name: "expired", Hash: hashOf(testExpiredToken),
 			Scopes: []string{"support"}, CreatedAt: testTime,
 			ExpiresAt: time.Now().Add(-time.Hour),
 		},
@@ -328,8 +328,8 @@ func testServer(t *testing.T) *Server {
 				},
 			},
 		}},
-		Keys: keys,
-		Auth: NewAuth(hashOf(testAdminKey), keys),
+		Tokens: tokens,
+		Auth:   NewAuth(hashOf(testOwnerToken), tokens),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -337,11 +337,11 @@ func testServer(t *testing.T) *Server {
 	return server
 }
 
-func get(t *testing.T, handler http.Handler, path, key string) *httptest.ResponseRecorder {
+func get(t *testing.T, handler http.Handler, path, token string) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodGet, path, nil)
-	if key != "" {
-		request.Header.Set("Authorization", "Bearer "+key)
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -355,9 +355,9 @@ func TestAuthMiddleware(t *testing.T) {
 		key  string
 		want int
 	}{
-		{"missing key", "", http.StatusUnauthorized},
-		{"wrong key", "wrong", http.StatusUnauthorized},
-		{"admin key", testAdminKey, http.StatusOK},
+		{"missing token", "", http.StatusUnauthorized},
+		{"wrong token", "wrong", http.StatusUnauthorized},
+		{"owner token", testOwnerToken, http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -371,7 +371,7 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestStatusEndpoint(t *testing.T) {
 	server := testServer(t)
-	recorder := get(t, server.Handler(), "/api/v1/status", testAdminKey)
+	recorder := get(t, server.Handler(), "/api/v1/status", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -402,7 +402,7 @@ func TestStatusEndpoint(t *testing.T) {
 
 func TestBotsEndpoint(t *testing.T) {
 	server := testServer(t)
-	recorder := get(t, server.Handler(), "/api/v1/bots", testAdminKey)
+	recorder := get(t, server.Handler(), "/api/v1/bots", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -431,13 +431,13 @@ func TestBotsEndpoint(t *testing.T) {
 
 func TestConfigEndpointMasksSecrets(t *testing.T) {
 	server := testServer(t)
-	recorder := get(t, server.Handler(), "/api/v1/config", testAdminKey)
+	recorder := get(t, server.Handler(), "/api/v1/config", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
 	body := recorder.Body.String()
 	if strings.Contains(body, "sk-live-secret") {
-		t.Fatal("config response leaked the API key")
+		t.Fatal("config response leaked the model API key")
 	}
 	if !strings.Contains(body, `"***"`) {
 		t.Fatalf("masked secret missing from %s", body)
@@ -446,7 +446,7 @@ func TestConfigEndpointMasksSecrets(t *testing.T) {
 
 func TestChatsEndpoint(t *testing.T) {
 	server := testServer(t)
-	recorder := get(t, server.Handler(), "/api/v1/scopes/support/chats?bot=demo", testAdminKey)
+	recorder := get(t, server.Handler(), "/api/v1/scopes/support/chats?bot=demo", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -480,7 +480,7 @@ func TestMessagesEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
 		"/api/v1/scopes/support/messages?bot=demo&sender=5215500000000&limit=1",
-		testAdminKey)
+		testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -509,7 +509,7 @@ func TestMessagesEndpoint(t *testing.T) {
 func TestSessionsEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/sessions?bot=demo&sender=5215500000000", testAdminKey)
+		"/api/v1/scopes/support/sessions?bot=demo&sender=5215500000000", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -547,7 +547,7 @@ func TestQueryErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := get(t, server.Handler(), tc.path, testAdminKey)
+			recorder := get(t, server.Handler(), tc.path, testOwnerToken)
 			if recorder.Code != tc.want {
 				t.Fatalf("status = %d, want %d", recorder.Code, tc.want)
 			}
@@ -558,7 +558,7 @@ func TestQueryErrors(t *testing.T) {
 func TestMethodNotAllowed(t *testing.T) {
 	server := testServer(t)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/status", nil)
-	request.Header.Set("Authorization", "Bearer "+testAdminKey)
+	request.Header.Set("Authorization", "Bearer "+testOwnerToken)
 	recorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusMethodNotAllowed {
@@ -566,70 +566,70 @@ func TestMethodNotAllowed(t *testing.T) {
 	}
 }
 
-func TestEnsureAuthCreatesKeyFile(t *testing.T) {
+func TestEnsureOwnerTokenCreatesFile(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	store := &fakeKeyStore{}
+	store := &fakeOwnerTokens{}
 
-	hash, created, err := EnsureAuth(ctx, store, dataDir)
+	hash, created, err := EnsureOwnerToken(ctx, store, dataDir)
 	if err != nil {
-		t.Fatalf("EnsureAuth: %v", err)
+		t.Fatalf("EnsureOwnerToken: %v", err)
 	}
-	if !created || store.key == nil {
-		t.Fatal("EnsureAuth did not create a key")
+	if !created || store.token == nil {
+		t.Fatal("EnsureOwnerToken did not create a token")
 	}
-	if !bytes.Equal(hash, store.key.Hash) {
-		t.Fatal("returned hash does not match the stored key")
+	if !bytes.Equal(hash, store.token.Hash) {
+		t.Fatal("returned hash does not match the stored token")
 	}
-	path := filepath.Join(dataDir, KeyFile)
+	path := filepath.Join(dataDir, OwnerTokenFile)
 	clear, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read key file: %v", err)
+		t.Fatalf("read token file: %v", err)
 	}
 	if fileHash := hashOf(strings.TrimSpace(string(clear))); !bytes.Equal(fileHash, hash) {
-		t.Fatal("stored hash does not match the key file")
+		t.Fatal("stored hash does not match the token file")
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		t.Fatalf("stat key file: %v", err)
+		t.Fatalf("stat token file: %v", err)
 	}
 	if mode := info.Mode().Perm(); mode != 0o600 {
-		t.Fatalf("key file mode = %o, want 600", mode)
+		t.Fatalf("token file mode = %o, want 600", mode)
 	}
 
-	again, created, err := EnsureAuth(ctx, store, dataDir)
+	again, created, err := EnsureOwnerToken(ctx, store, dataDir)
 	if err != nil {
-		t.Fatalf("EnsureAuth again: %v", err)
+		t.Fatalf("EnsureOwnerToken again: %v", err)
 	}
 	if created {
-		t.Fatal("EnsureAuth created a second key")
+		t.Fatal("EnsureOwnerToken created a second token")
 	}
 	if !bytes.Equal(again, hash) {
-		t.Fatal("EnsureAuth did not reuse the stored key")
+		t.Fatal("EnsureOwnerToken did not reuse the stored token")
 	}
 }
 
-func TestRotateReplacesKey(t *testing.T) {
+func TestRotateOwnerTokenReplacesToken(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	store := &fakeKeyStore{}
-	first, _, err := EnsureAuth(ctx, store, dataDir)
+	store := &fakeOwnerTokens{}
+	first, _, err := EnsureOwnerToken(ctx, store, dataDir)
 	if err != nil {
-		t.Fatalf("EnsureAuth: %v", err)
+		t.Fatalf("EnsureOwnerToken: %v", err)
 	}
-	second, err := Rotate(ctx, store, dataDir)
+	second, err := RotateOwnerToken(ctx, store, dataDir)
 	if err != nil {
-		t.Fatalf("Rotate: %v", err)
+		t.Fatalf("RotateOwnerToken: %v", err)
 	}
 	if bytes.Equal(first, second) {
-		t.Fatal("Rotate kept the same key")
+		t.Fatal("RotateOwnerToken kept the same token")
 	}
-	clear, err := os.ReadFile(filepath.Join(dataDir, KeyFile))
+	clear, err := os.ReadFile(filepath.Join(dataDir, OwnerTokenFile))
 	if err != nil {
-		t.Fatalf("read key file: %v", err)
+		t.Fatalf("read token file: %v", err)
 	}
 	if fileHash := hashOf(strings.TrimSpace(string(clear))); !bytes.Equal(fileHash, second) {
-		t.Fatal("key file does not match the rotated key")
+		t.Fatal("token file does not match the rotated token")
 	}
 }
 
@@ -654,23 +654,23 @@ func TestScopedTokenIsolation(t *testing.T) {
 	server := testServer(t)
 	handler := server.Handler()
 
-	recorder := get(t, handler, "/api/v1/scopes/support/chats", testScopeKey)
+	recorder := get(t, handler, "/api/v1/scopes/support/chats", testAccessToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("own scope status = %d, want 200", recorder.Code)
 	}
 	// Another configured scope answers 404, never 403, so a scoped principal
 	// cannot infer that it exists (ROADMAP Phase 13).
-	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", testScopeKey)
+	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", testAccessToken)
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("other scope status = %d, want 404", recorder.Code)
 	}
-	for _, path := range []string{"/api/v1/config", "/api/v1/keys"} {
-		recorder = get(t, handler, path, testScopeKey)
+	for _, path := range []string{"/api/v1/config", "/api/v1/tokens"} {
+		recorder = get(t, handler, path, testAccessToken)
 		if recorder.Code != http.StatusForbidden {
 			t.Fatalf("%s status = %d, want 403", path, recorder.Code)
 		}
 	}
-	recorder = get(t, handler, "/api/v1/bots", testScopeKey)
+	recorder = get(t, handler, "/api/v1/bots", testAccessToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("bots status = %d, want 200", recorder.Code)
 	}
@@ -689,7 +689,7 @@ func TestScopedTokenIsolation(t *testing.T) {
 
 func TestRejectedTokens(t *testing.T) {
 	server := testServer(t)
-	for _, key := range []string{testDeadKey, testExpiredKey} {
+	for _, key := range []string{testRevokedToken, testExpiredToken} {
 		recorder := get(t, server.Handler(), "/api/v1/status", key)
 		if recorder.Code != http.StatusUnauthorized {
 			t.Fatalf("status with %q = %d, want 401", key, recorder.Code)
@@ -697,13 +697,13 @@ func TestRejectedTokens(t *testing.T) {
 	}
 }
 
-func TestKeysEndpoints(t *testing.T) {
+func TestTokensEndpoints(t *testing.T) {
 	server := testServer(t)
 	handler := server.Handler()
 
 	body := strings.NewReader(`{"name":"ci","scopes":["support"]}`)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/keys", body)
-	request.Header.Set("Authorization", "Bearer "+testAdminKey)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/tokens", body)
+	request.Header.Set("Authorization", "Bearer "+testOwnerToken)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusCreated {
@@ -712,48 +712,48 @@ func TestKeysEndpoints(t *testing.T) {
 	var created struct {
 		ID     int64    `json:"id"`
 		Name   string   `json:"name"`
-		Key    string   `json:"key"`
+		Token  string   `json:"token"`
 		Scopes []string `json:"scopes"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if created.ID != 4 || created.Name != "ci" || created.Key == "" {
+	if created.ID != 4 || created.Name != "ci" || created.Token == "" {
 		t.Fatalf("created = %#v", created)
 	}
 
-	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Key)
+	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Token)
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("minted key status = %d, want 200", recorder.Code)
+		t.Fatalf("minted token status = %d, want 200", recorder.Code)
 	}
-	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", created.Key)
+	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", created.Token)
 	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("minted key other scope = %d, want 404", recorder.Code)
+		t.Fatalf("minted token other scope = %d, want 404", recorder.Code)
 	}
 
-	recorder = get(t, handler, "/api/v1/keys", testAdminKey)
+	recorder = get(t, handler, "/api/v1/tokens", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("list status = %d, want 200", recorder.Code)
 	}
-	if strings.Contains(recorder.Body.String(), created.Key) {
-		t.Fatal("key list exposed a clear key")
+	if strings.Contains(recorder.Body.String(), created.Token) {
+		t.Fatal("token list exposed a clear token")
 	}
 
 	request = httptest.NewRequest(http.MethodDelete,
-		fmt.Sprintf("/api/v1/keys/%d", created.ID), nil)
-	request.Header.Set("Authorization", "Bearer "+testAdminKey)
+		fmt.Sprintf("/api/v1/tokens/%d", created.ID), nil)
+	request.Header.Set("Authorization", "Bearer "+testOwnerToken)
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("revoke status = %d, want 204", recorder.Code)
 	}
-	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Key)
+	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Token)
 	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("revoked key status = %d, want 401", recorder.Code)
+		t.Fatalf("revoked token status = %d, want 401", recorder.Code)
 	}
 }
 
-func TestKeyMintValidation(t *testing.T) {
+func TestTokenMintValidation(t *testing.T) {
 	server := testServer(t)
 	cases := []struct {
 		name string
@@ -772,9 +772,9 @@ func TestKeyMintValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/keys",
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/tokens",
 				strings.NewReader(tc.body))
-			request.Header.Set("Authorization", "Bearer "+testAdminKey)
+			request.Header.Set("Authorization", "Bearer "+testOwnerToken)
 			recorder := httptest.NewRecorder()
 			server.Handler().ServeHTTP(recorder, request)
 			if recorder.Code != tc.want {

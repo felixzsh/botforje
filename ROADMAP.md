@@ -28,7 +28,7 @@ When Phase 9 closes, a clean machine and one config file give:
   plus prescribed replies, or with an optional LLM.
 - SQLite persistence for the device store, chats, sessions, and messages.
 - CLI groups `config`, `bot`, `fleet`, and `message`, plus a REST API with a
-  single admin key and no UI.
+  single owner token and no UI.
 - One reference bot and operational notes for systemd, backup, and account
   safety.
 
@@ -90,7 +90,7 @@ Deliverables:
 - [ ] Bounded per-stream buffers and a documented slow-consumer policy that
   drops and resyncs instead of blocking a bot actor.
 - [ ] The principal is resolved in one place, so Phase 13 only swaps the
-  resolver; authentication stays the admin key for now.
+  resolver; authentication stays the owner token for now.
 - [ ] Tests: handlers, cursor pagination, stream ordering, and backpressure.
 
 Gate: a script follows a live conversation and reconstructs chat, session, and
@@ -106,7 +106,7 @@ Deliverables:
 - [ ] ADR: UI stack. Constraint: the release binary embeds the dashboard and
   starts with no auxiliary process; decide between server-rendered pages and
   an embedded single-page app.
-- [ ] Login with the admin key, browser session cookie, and logout.
+- [ ] Login with the owner token, browser session cookie, and logout.
 - [ ] Fleet overview: per-bot connection state, uptime, outbox depth, active
   sessions, and last error.
 - [ ] Scope list and per-scope bot list. The scope is part of every URL and
@@ -167,8 +167,8 @@ Deliverables:
 - [ ] Roles, kept small: `viewer` reads, `operator` also controls
   conversations, `admin` also manages configuration and tokens inside the
   scope. Instance authority additionally has `owner`.
-- [x] Scoped API keys: mint, list, revoke, hashed at rest, optional expiry,
-  usable by scripts and by server-to-server callers. (Landed with the
+- [x] Scoped access tokens: mint, list, revoke, hashed at rest, optional
+  expiry, usable by scripts and by server-to-server callers. (Landed with the
   authorization base in Phase 7.)
 - [ ] Browser sessions: scope-limited, HttpOnly cookie, CSRF token on mutating
   requests, logout invalidates the session.
@@ -194,7 +194,7 @@ Deliverables:
   signature offline, rejects reuse, sets the session cookie, and redirects to
   the dashboard. The token is never stored server side and never stays in the
   address bar.
-- A host with no issuer mints scoped API keys with the admin key. The
+- A host with no issuer mints scoped access tokens with the owner token. The
   fallback of one-time login links minted by the API stays in reserve.
 - Rationale: no callback, no shared session state, no vendor vocabulary, and a
   token minted for one instance is useless on another.

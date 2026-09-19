@@ -116,19 +116,19 @@ type PairingStore interface {
 	Set(ctx context.Context, status *PairingStatus) error
 }
 
-// AdminKeyStore stores the instance's single administrator key (ADR 0025). It
+// OwnerTokenStore stores the instance's single owner token (ADR 0025). It
 // reports ErrNotFound until the API creates one on first run.
-type AdminKeyStore interface {
-	Get(ctx context.Context) (*AdminKey, error)
-	Put(ctx context.Context, key *AdminKey) error
+type OwnerTokenStore interface {
+	Get(ctx context.Context) (*OwnerToken, error)
+	Put(ctx context.Context, token *OwnerToken) error
 }
 
-// APIKeyStore stores the scoped API keys (ROADMAP Phase 13). FindByHash
-// reports ErrNotFound for an unknown hash; Revoke reports ErrNotFound for an
-// unknown id.
-type APIKeyStore interface {
-	Create(ctx context.Context, key *APIKey) error
-	FindByHash(ctx context.Context, hash []byte) (*APIKey, error)
-	List(ctx context.Context) ([]APIKey, error)
+// AccessTokenStore stores the scoped access tokens (ROADMAP Phase 13).
+// FindByHash reports ErrNotFound for an unknown hash; Revoke reports
+// ErrNotFound for an unknown id.
+type AccessTokenStore interface {
+	Create(ctx context.Context, token *AccessToken) error
+	FindByHash(ctx context.Context, hash []byte) (*AccessToken, error)
+	List(ctx context.Context) ([]AccessToken, error)
 	Revoke(ctx context.Context, id int64, at time.Time) error
 }

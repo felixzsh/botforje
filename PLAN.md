@@ -249,17 +249,18 @@ Deliverables:
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).
-- [x] Admin key auth: generated on first run, hashed in SQLite, written once to
-  a `0600` file under `data_dir` for the CLI, and regenerable with
-  `fleet run --new-admin-key`. Every request resolves one principal behind a
+- [x] Owner token auth: generated on first run, hashed in SQLite, written once
+  to a `0600` file under `data_dir` for the CLI, and regenerable with
+  `fleet run --new-owner-token`. Every request resolves one principal behind a
   single bearer seam and the routes stay scope-addressed.
 - [ ] Session cookie for the future UI, so Phase 13 replaces the resolver
   instead of every handler.
 - [x] Authorization base: one `Principal` per request (owner or scoped),
-  scope-addressed routes, and scoped API keys minted with the admin key,
-  hashed at rest, optionally expiring, and revocable. A scoped principal
-  requesting another scope gets 404, never 403. This advances the scoped keys
-  of ROADMAP Phase 13 because the route shape depends on the principal.
+  scope-addressed routes, and scoped access tokens minted with the owner
+  token, hashed at rest, optionally expiring, and revocable. A scoped
+  principal requesting another scope gets 404, never 403. This advances the
+  scoped tokens of ROADMAP Phase 13 because the route shape depends on the
+  principal.
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [ ] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`

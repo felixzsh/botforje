@@ -475,187 +475,188 @@ func (s *PairingStore) Set(ctx context.Context, status *botflota.PairingStatus) 
 	return nil
 }
 
-// AdminKeyStore persists the instance's single administrator key (ADR 0025).
-// Only the hash is stored; the clear key lives in a 0600 file under data_dir.
-type AdminKeyStore struct{ db *sql.DB }
+// OwnerTokenStore persists the instance's single owner token (ADR 0025). Only
+// the hash is stored; the clear token lives in a 0600 file under data_dir.
+type OwnerTokenStore struct{ db *sql.DB }
 
-// Get loads the stored admin key. It reports ErrNotFound until the API
+// Get loads the stored owner token. It reports ErrNotFound until the API
 // creates one on first run.
-func (s *AdminKeyStore) Get(ctx context.Context) (*botflota.AdminKey, error) {
-	var key botflota.AdminKey
+func (s *OwnerTokenStore) Get(ctx context.Context) (*botflota.OwnerToken, error) {
+	var token botflota.OwnerToken
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		"SELECT hash, created_at FROM admin_key WHERE id = 1").
-		Scan(&key.Hash, &createdAt)
+		"SELECT hash, created_at FROM owner_token WHERE id = 1").
+		Scan(&token.Hash, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, botflota.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: get admin key: %w", err)
+		return nil, fmt.Errorf("sqlite: get owner token: %w", err)
 	}
-	key.CreatedAt = parseTime(createdAt)
-	return &key, nil
+	token.CreatedAt = parseTime(createdAt)
+	return &token, nil
 }
 
-// Put replaces the stored admin key.
-func (s *AdminKeyStore) Put(ctx context.Context, key *botflota.AdminKey) error {
-	if key == nil || len(key.Hash) == 0 {
-		return errors.New("sqlite: admin key has no hash")
+// Put replaces the stored owner token.
+func (s *OwnerTokenStore) Put(ctx context.Context, token *botflota.OwnerToken) error {
+	if token == nil || len(token.Hash) == 0 {
+		return errors.New("sqlite: owner token has no hash")
 	}
-	if key.CreatedAt.IsZero() {
-		return errors.New("sqlite: admin key has no creation time")
+	if token.CreatedAt.IsZero() {
+		return errors.New("sqlite: owner token has no creation time")
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO admin_key (id, hash, created_at) VALUES (1, ?, ?)
+		`INSERT INTO owner_token (id, hash, created_at) VALUES (1, ?, ?)
 		 ON CONFLICT (id) DO UPDATE SET hash = excluded.hash,
 		 created_at = excluded.created_at`,
-		key.Hash, formatTime(key.CreatedAt))
+		token.Hash, formatTime(token.CreatedAt))
 	if err != nil {
-		return fmt.Errorf("sqlite: put admin key: %w", err)
+		return fmt.Errorf("sqlite: put owner token: %w", err)
 	}
 	return nil
 }
 
-// APIKeyStore persists scoped API keys (ROADMAP Phase 13). Only hashes are
-// stored; the clear key leaves the process once, when it is minted.
-type APIKeyStore struct{ db *sql.DB }
+// AccessTokenStore persists scoped access tokens (ROADMAP Phase 13). Only
+// hashes are stored; the clear token leaves the process once, when it is
+// minted.
+type AccessTokenStore struct{ db *sql.DB }
 
-// Create stores a new key with its scopes and sets its ID.
-func (s *APIKeyStore) Create(ctx context.Context, key *botflota.APIKey) error {
-	if key == nil || len(key.Hash) == 0 {
-		return errors.New("sqlite: api key has no hash")
+// Create stores a new token with its scopes and sets its ID.
+func (s *AccessTokenStore) Create(ctx context.Context, token *botflota.AccessToken) error {
+	if token == nil || len(token.Hash) == 0 {
+		return errors.New("sqlite: access token has no hash")
 	}
-	if key.Name == "" {
-		return errors.New("sqlite: api key has no name")
+	if token.Name == "" {
+		return errors.New("sqlite: access token has no name")
 	}
-	if len(key.Scopes) == 0 {
-		return errors.New("sqlite: api key has no scopes")
+	if len(token.Scopes) == 0 {
+		return errors.New("sqlite: access token has no scopes")
 	}
-	if key.CreatedAt.IsZero() {
-		return errors.New("sqlite: api key has no creation time")
+	if token.CreatedAt.IsZero() {
+		return errors.New("sqlite: access token has no creation time")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("sqlite: create api key: %w", err)
+		return fmt.Errorf("sqlite: create access token: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx,
-		`INSERT INTO api_keys (name, hash, created_at, expires_at, revoked_at)
+		`INSERT INTO access_tokens (name, hash, created_at, expires_at, revoked_at)
 		 VALUES (?, ?, ?, ?, ?)`,
-		key.Name, key.Hash, formatTime(key.CreatedAt),
-		formatTime(key.ExpiresAt), formatTime(key.RevokedAt))
+		token.Name, token.Hash, formatTime(token.CreatedAt),
+		formatTime(token.ExpiresAt), formatTime(token.RevokedAt))
 	if err != nil {
-		return fmt.Errorf("sqlite: create api key: %w", err)
+		return fmt.Errorf("sqlite: create access token: %w", err)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("sqlite: api key id: %w", err)
+		return fmt.Errorf("sqlite: access token id: %w", err)
 	}
-	for _, scope := range key.Scopes {
+	for _, scope := range token.Scopes {
 		if _, err := tx.ExecContext(ctx,
-			"INSERT INTO api_key_scopes (api_key_id, scope) VALUES (?, ?)",
+			"INSERT INTO access_token_scopes (access_token_id, scope) VALUES (?, ?)",
 			id, scope); err != nil {
-			return fmt.Errorf("sqlite: create api key scope: %w", err)
+			return fmt.Errorf("sqlite: create access token scope: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("sqlite: create api key: %w", err)
+		return fmt.Errorf("sqlite: create access token: %w", err)
 	}
-	key.ID = id
+	token.ID = id
 	return nil
 }
 
-// FindByHash loads a key by its hash or returns botflota.ErrNotFound. A
-// revoked or expired key is still returned; the caller checks Active.
-func (s *APIKeyStore) FindByHash(
+// FindByHash loads a token by its hash or returns botflota.ErrNotFound. A
+// revoked or expired token is still returned; the caller checks Active.
+func (s *AccessTokenStore) FindByHash(
 	ctx context.Context, hash []byte,
-) (*botflota.APIKey, error) {
+) (*botflota.AccessToken, error) {
 	var (
-		key                             botflota.APIKey
+		token                           botflota.AccessToken
 		createdAt, expiresAt, revokedAt string
 	)
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, name, hash, created_at, expires_at, revoked_at
-		 FROM api_keys WHERE hash = ?`, hash).
-		Scan(&key.ID, &key.Name, &key.Hash, &createdAt, &expiresAt, &revokedAt)
+		 FROM access_tokens WHERE hash = ?`, hash).
+		Scan(&token.ID, &token.Name, &token.Hash, &createdAt, &expiresAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, botflota.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: find api key: %w", err)
+		return nil, fmt.Errorf("sqlite: find access token: %w", err)
 	}
-	key.CreatedAt = parseTime(createdAt)
-	key.ExpiresAt = parseTime(expiresAt)
-	key.RevokedAt = parseTime(revokedAt)
-	scopes, err := s.scopes(ctx, key.ID)
+	token.CreatedAt = parseTime(createdAt)
+	token.ExpiresAt = parseTime(expiresAt)
+	token.RevokedAt = parseTime(revokedAt)
+	scopes, err := s.scopes(ctx, token.ID)
 	if err != nil {
 		return nil, err
 	}
-	key.Scopes = scopes
-	return &key, nil
+	token.Scopes = scopes
+	return &token, nil
 }
 
-// List returns every key, oldest first, without hashes.
-func (s *APIKeyStore) List(ctx context.Context) ([]botflota.APIKey, error) {
+// List returns every token, oldest first, without hashes.
+func (s *AccessTokenStore) List(ctx context.Context) ([]botflota.AccessToken, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, name, created_at, expires_at, revoked_at
-		 FROM api_keys ORDER BY id`)
+		 FROM access_tokens ORDER BY id`)
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: list api keys: %w", err)
+		return nil, fmt.Errorf("sqlite: list access tokens: %w", err)
 	}
 	defer rows.Close()
-	var keys []botflota.APIKey
+	var tokens []botflota.AccessToken
 	for rows.Next() {
 		var (
-			key                             botflota.APIKey
+			token                           botflota.AccessToken
 			createdAt, expiresAt, revokedAt string
 		)
-		if err := rows.Scan(&key.ID, &key.Name, &createdAt, &expiresAt,
+		if err := rows.Scan(&token.ID, &token.Name, &createdAt, &expiresAt,
 			&revokedAt); err != nil {
 			return nil, err
 		}
-		key.CreatedAt = parseTime(createdAt)
-		key.ExpiresAt = parseTime(expiresAt)
-		key.RevokedAt = parseTime(revokedAt)
-		keys = append(keys, key)
+		token.CreatedAt = parseTime(createdAt)
+		token.ExpiresAt = parseTime(expiresAt)
+		token.RevokedAt = parseTime(revokedAt)
+		tokens = append(tokens, token)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("sqlite: list api keys: %w", err)
+		return nil, fmt.Errorf("sqlite: list access tokens: %w", err)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("sqlite: list api keys: %w", err)
+		return nil, fmt.Errorf("sqlite: list access tokens: %w", err)
 	}
-	for i := range keys {
-		scopes, err := s.scopes(ctx, keys[i].ID)
+	for i := range tokens {
+		scopes, err := s.scopes(ctx, tokens[i].ID)
 		if err != nil {
 			return nil, err
 		}
-		keys[i].Scopes = scopes
+		tokens[i].Scopes = scopes
 	}
-	return keys, nil
+	return tokens, nil
 }
 
-// Revoke marks a key as revoked at at. Revoking an already revoked key is a
-// no-op; an unknown id reports botflota.ErrNotFound.
-func (s *APIKeyStore) Revoke(ctx context.Context, id int64, at time.Time) error {
+// Revoke marks a token as revoked at at. Revoking an already revoked token is
+// a no-op; an unknown id reports botflota.ErrNotFound.
+func (s *AccessTokenStore) Revoke(ctx context.Context, id int64, at time.Time) error {
 	result, err := s.db.ExecContext(ctx,
-		"UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at = ''",
+		"UPDATE access_tokens SET revoked_at = ? WHERE id = ? AND revoked_at = ''",
 		formatTime(at), id)
 	if err != nil {
-		return fmt.Errorf("sqlite: revoke api key: %w", err)
+		return fmt.Errorf("sqlite: revoke access token: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("sqlite: revoke api key: %w", err)
+		return fmt.Errorf("sqlite: revoke access token: %w", err)
 	}
 	if affected > 0 {
 		return nil
 	}
 	var count int
 	err = s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM api_keys WHERE id = ?", id).Scan(&count)
+		"SELECT COUNT(*) FROM access_tokens WHERE id = ?", id).Scan(&count)
 	if err != nil {
-		return fmt.Errorf("sqlite: revoke api key: %w", err)
+		return fmt.Errorf("sqlite: revoke access token: %w", err)
 	}
 	if count == 0 {
 		return botflota.ErrNotFound
@@ -663,12 +664,13 @@ func (s *APIKeyStore) Revoke(ctx context.Context, id int64, at time.Time) error 
 	return nil
 }
 
-// scopes loads a key's scopes in a stable order.
-func (s *APIKeyStore) scopes(ctx context.Context, id int64) ([]string, error) {
+// scopes loads a token's scopes in a stable order.
+func (s *AccessTokenStore) scopes(ctx context.Context, id int64) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT scope FROM api_key_scopes WHERE api_key_id = ? ORDER BY scope", id)
+		"SELECT scope FROM access_token_scopes WHERE access_token_id = ? ORDER BY scope",
+		id)
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: api key scopes: %w", err)
+		return nil, fmt.Errorf("sqlite: access token scopes: %w", err)
 	}
 	defer rows.Close()
 	var scopes []string
