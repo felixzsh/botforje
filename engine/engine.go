@@ -119,12 +119,13 @@ func (e *Engine) Handle(
 		msg:     msg,
 	}
 
-	target, err := e.route(r, created)
+	result, err := e.route(r, created)
 	if err != nil {
 		return nil, err
 	}
+	r.routing = result.Method
 	switch {
-	case target == "":
+	case result.Target == "":
 		if created {
 			e.log.Debug("entered root node", "node", session.Node)
 			if err := r.enter(); err != nil {
@@ -134,7 +135,7 @@ func (e *Engine) Handle(
 			e.log.Debug("no transition", "node", session.Node)
 		}
 	default:
-		if err := r.move(target, !created); err != nil {
+		if err := r.move(result.Target, !created); err != nil {
 			return nil, err
 		}
 	}
@@ -146,7 +147,7 @@ func (e *Engine) Handle(
 	if err := e.store.Save(ctx, session); err != nil {
 		return nil, err
 	}
-	if err := e.recordMessages(ctx, chat.ID, session.ID, msg, r.out, now); err != nil {
+	if err := e.recordMessages(ctx, chat.ID, session.ID, msg, r.routing, r.out, now); err != nil {
 		return nil, err
 	}
 	if err := e.chats.RecordMessage(ctx, chat.ID, now); err != nil {
@@ -163,21 +164,27 @@ func (e *Engine) Handle(
 // recordMessages stores the inbound message and every reply under the chat and
 // the session run that handled them (ADR 0026). The session is saved first, so
 // its id is set; an outbound reply keeps its kind, so a location stays
-// distinguishable from text.
+// distinguishable from text. Provenance travels with the records: the channel
+// message id for dedup, and the routing that handled the run plus the origin
+// of each reply.
 func (e *Engine) recordMessages(
 	ctx context.Context,
 	chatID, sessionID int64,
 	msg botflota.IncomingMessage,
+	routing botflota.RoutingMethod,
 	out []botflota.OutgoingMessage,
 	now time.Time,
 ) error {
 	inbound := &botflota.Message{
-		ChatID:    chatID,
-		SessionID: sessionID,
-		Direction: botflota.Inbound,
-		Kind:      botflota.KindText,
-		Body:      msg.Body,
-		At:        msg.At,
+		ChatID:            chatID,
+		SessionID:         sessionID,
+		Direction:         botflota.Inbound,
+		Kind:              botflota.KindText,
+		Body:              msg.Body,
+		At:                msg.At,
+		ProviderMessageID: msg.ID,
+		Ingest:            botflota.IngestLive,
+		Routing:           routing,
 	}
 	if err := e.messages.Append(ctx, inbound); err != nil {
 		return fmt.Errorf("engine: record inbound: %w", err)
@@ -190,6 +197,9 @@ func (e *Engine) recordMessages(
 			Kind:      reply.Kind,
 			Body:      reply.Body,
 			At:        now,
+			Ingest:    botflota.IngestLive,
+			Origin:    reply.Origin,
+			Routing:   reply.Routing,
 		}
 		if err := e.messages.Append(ctx, sent); err != nil {
 			return fmt.Errorf("engine: record outbound: %w", err)
@@ -275,7 +285,8 @@ func (e *Engine) contextOf(
 	return tctx
 }
 
-// run is the state of one Handle call.
+// run is the state of one Handle call. Routing is how this message was
+// handled; every message the run persists carries it (ADR 0026).
 type run struct {
 	ctx         context.Context
 	engine      *Engine
@@ -284,6 +295,7 @@ type run struct {
 	tctx        *templateContext
 	msg         botflota.IncomingMessage
 	out         []botflota.OutgoingMessage
+	routing     botflota.RoutingMethod
 	guardsDirty bool
 }
 

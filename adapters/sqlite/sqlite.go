@@ -53,17 +53,24 @@ var schema = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS sessions_chat ON sessions (chat_id, id)`,
 	`CREATE TABLE IF NOT EXISTS messages (
-		id         INTEGER PRIMARY KEY AUTOINCREMENT,
-		chat_id    INTEGER NOT NULL
+		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id             INTEGER NOT NULL
 			REFERENCES chats (id) ON DELETE CASCADE,
-		session_id INTEGER
+		session_id          INTEGER
 			REFERENCES sessions (id) ON DELETE SET NULL,
-		direction  TEXT NOT NULL,
-		kind       TEXT NOT NULL,
-		body       TEXT NOT NULL,
-		sent_at    TEXT NOT NULL
+		direction           TEXT NOT NULL,
+		kind                TEXT NOT NULL,
+		body                TEXT NOT NULL,
+		sent_at             TEXT NOT NULL,
+		provider_message_id TEXT NOT NULL DEFAULT '',
+		ingest_kind         TEXT NOT NULL DEFAULT 'unknown',
+		origin              TEXT NOT NULL DEFAULT '',
+		routing             TEXT NOT NULL DEFAULT 'unknown'
 	)`,
 	`CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id, id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS messages_provider
+		ON messages (chat_id, provider_message_id)
+		WHERE provider_message_id != ''`,
 	`CREATE TABLE IF NOT EXISTS linked_accounts (
 		scope TEXT NOT NULL,
 		bot   TEXT NOT NULL,

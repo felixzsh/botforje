@@ -309,20 +309,26 @@ func TestChatAndMessages(t *testing.T) {
 		t.Fatalf("Save session: %v", err)
 	}
 
-	for _, body := range []string{"hello", "hi there"} {
-		message := &botflota.Message{
-			ChatID:    chat.ID,
-			SessionID: session.ID,
-			Direction: botflota.Inbound,
-			Kind:      botflota.KindText,
-			Body:      body,
-			At:        t1,
-		}
+	first := &botflota.Message{
+		ChatID: chat.ID, SessionID: session.ID, Direction: botflota.Inbound,
+		Kind: botflota.KindText, Body: "hello", At: t1,
+		ProviderMessageID: "MSG-1", Ingest: botflota.IngestLive,
+		Routing: botflota.RoutingTriggerExact,
+	}
+	// A synced message is honest about its provenance: unknown origin and
+	// routing, and no session run.
+	second := &botflota.Message{
+		ChatID: chat.ID, Direction: botflota.Inbound,
+		Kind: botflota.KindText, Body: "hi there", At: t1,
+		ProviderMessageID: "MSG-2", Ingest: botflota.IngestSync,
+		Origin: botflota.OriginUnknown, Routing: botflota.RoutingUnknown,
+	}
+	for _, message := range []*botflota.Message{first, second} {
 		if err := db.Messages().Append(ctx, message); err != nil {
-			t.Fatalf("Append(%q): %v", body, err)
+			t.Fatalf("Append(%q): %v", message.Body, err)
 		}
 		if message.ID == 0 {
-			t.Fatalf("Append(%q) did not set an id", body)
+			t.Fatalf("Append(%q) did not set an id", message.Body)
 		}
 	}
 
@@ -335,6 +341,17 @@ func TestChatAndMessages(t *testing.T) {
 	}
 	if got[0].SessionID != session.ID {
 		t.Fatalf("SessionID = %d, want %d", got[0].SessionID, session.ID)
+	}
+	if got[0].ProviderMessageID != "MSG-1" ||
+		got[0].Ingest != botflota.IngestLive ||
+		got[0].Routing != botflota.RoutingTriggerExact {
+		t.Fatalf("live provenance = %+v", got[0])
+	}
+	if got[1].ProviderMessageID != "MSG-2" ||
+		got[1].Ingest != botflota.IngestSync ||
+		got[1].Origin != botflota.OriginUnknown ||
+		got[1].Routing != botflota.RoutingUnknown || got[1].SessionID != 0 {
+		t.Fatalf("synced provenance = %+v", got[1])
 	}
 
 	// A zero cursor keeps the newest messages; a cursor resumes from it.
@@ -371,6 +388,32 @@ func TestMessageWithoutSession(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].SessionID != 0 {
 		t.Fatalf("SessionID = %#v, want 0", got)
+	}
+}
+
+// TestMessageProviderIDIsUnique covers the dedup key of a history import: a
+// reported channel id cannot repeat in a chat, while rows without one may.
+func TestMessageProviderIDIsUnique(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	message := func(id string) *botflota.Message {
+		return &botflota.Message{
+			ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
+			Body: "hola", At: t1, ProviderMessageID: id, Ingest: botflota.IngestLive,
+		}
+	}
+	if err := db.Messages().Append(ctx, message("A1")); err != nil {
+		t.Fatalf("first append: %v", err)
+	}
+	if err := db.Messages().Append(ctx, message("A1")); err == nil {
+		t.Fatal("want a unique violation for a repeated provider id")
+	}
+	if err := db.Messages().Append(ctx, message("")); err != nil {
+		t.Fatalf("append without provider id: %v", err)
+	}
+	if err := db.Messages().Append(ctx, message("")); err != nil {
+		t.Fatalf("second append without provider id: %v", err)
 	}
 }
 

@@ -75,6 +75,9 @@ func (r *run) message(m spec.Message) error {
 		}
 		body = rendered
 	}
+	// A reply is preset unless the model really produced the body; a failed
+	// realization that falls back to the anchor stays preset (ADR 0026).
+	origin := botflota.OriginPreset
 	if m.Intent != "" {
 		generated, err := r.engine.llm.Realize(r.ctx, botflota.RealizeRequest{
 			Intent: m.Intent,
@@ -85,6 +88,7 @@ func (r *run) message(m spec.Message) error {
 		switch {
 		case err == nil && generated != "":
 			body = generated
+			origin = botflota.OriginLLM
 		case err != nil && body == "":
 			return err
 		}
@@ -100,6 +104,8 @@ func (r *run) message(m spec.Message) error {
 		Recipient: recipient,
 		Body:      body,
 		Kind:      botflota.KindText,
+		Origin:    origin,
+		Routing:   r.routing,
 	})
 	return nil
 }
@@ -221,6 +227,8 @@ func (r *run) location(loc spec.Location) error {
 		Bot:       r.engine.bot,
 		Recipient: r.msg.Sender,
 		Kind:      botflota.KindLocation,
+		Origin:    botflota.OriginPreset,
+		Routing:   r.routing,
 		Location: &botflota.Location{
 			Latitude:    loc.Latitude,
 			Longitude:   loc.Longitude,

@@ -4,12 +4,19 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
+// routeResult is the chosen transition and how it was chosen, recorded on the
+// messages the run persists (ADR 0026).
+type routeResult struct {
+	Target string
+	Method botflota.RoutingMethod
+}
+
 // route picks the next node for the incoming message. Candidates are the
 // visited nodes with the current one last (ADR 0010); an explicit trigger
 // match wins, then the LLM when the mode allows it, then the current node's
 // default edge, then the graph fallback. On session creation only an explicit
 // match transitions; otherwise the root's entry actions run (ADR 0010).
-func (e *Engine) route(r *run, created bool) (string, error) {
+func (e *Engine) route(r *run, created bool) (routeResult, error) {
 	mode := e.graph.Routing
 	if mode == "" {
 		mode = "off"
@@ -17,39 +24,44 @@ func (e *Engine) route(r *run, created bool) (string, error) {
 	if mode == "always" && e.hasLLM {
 		target, ok, err := e.classify(r)
 		if err != nil {
-			return "", err
+			return routeResult{}, err
 		}
 		if ok {
-			return target, nil
+			return routeResult{Target: target, Method: botflota.RoutingSystemOne}, nil
 		}
 	}
-	if target := e.matchTriggers(r); target != "" {
-		return target, nil
+	if target, method := e.matchTriggers(r); target != "" {
+		return routeResult{Target: target, Method: method}, nil
 	}
 	if mode == "fallback" && e.hasLLM {
 		target, ok, err := e.classify(r)
 		if err != nil {
-			return "", err
+			return routeResult{}, err
 		}
 		if ok {
-			return target, nil
+			return routeResult{Target: target, Method: botflota.RoutingSystemOne}, nil
 		}
 	}
 	if created {
-		return "", nil
+		return routeResult{Method: botflota.RoutingRoot}, nil
 	}
 	if target := e.defaultEdge(r.session.Node); target != "" {
-		return target, nil
+		return routeResult{Target: target, Method: botflota.RoutingDefault}, nil
 	}
-	return e.graph.Fallback, nil
+	if e.graph.Fallback != "" {
+		return routeResult{Target: e.graph.Fallback, Method: botflota.RoutingFallback}, nil
+	}
+	return routeResult{Method: botflota.RoutingUnknown}, nil
 }
 
 // matchTriggers scores every trigger edge of every candidate and returns the
-// best target. Ties go to the most recent candidate.
-func (e *Engine) matchTriggers(r *run) string {
+// best target with the layer that matched. Ties go to the most recent
+// candidate.
+func (e *Engine) matchTriggers(r *run) (string, botflota.RoutingMethod) {
 	bestScore := 0.0
 	bestIndex := -1
 	bestTarget := ""
+	bestMethod := botflota.RoutingMethod("")
 	for index, nodeName := range candidates(r) {
 		node, ok := e.graph.Nodes[nodeName]
 		if !ok {
@@ -59,18 +71,17 @@ func (e *Engine) matchTriggers(r *run) string {
 			if edge.Intent == "" || len(edge.Triggers) == 0 {
 				continue
 			}
-			score := bestScoreFor(r.msg.Body, edge.Triggers)
+			score, method := bestTriggerMatch(r.msg.Body, edge.Triggers)
 			if score < matchThreshold {
 				continue
 			}
 			if score > bestScore || (score == bestScore && index > bestIndex) {
-				bestScore = score
-				bestIndex = index
-				bestTarget = edge.Goto
+				bestScore, bestIndex = score, index
+				bestTarget, bestMethod = edge.Goto, method
 			}
 		}
 	}
-	return bestTarget
+	return bestTarget, bestMethod
 }
 
 // classify asks the LLM to pick an edge intent among the candidate nodes.

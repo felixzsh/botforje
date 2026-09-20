@@ -326,7 +326,8 @@ func (s *SessionStore) CountActive(
 // MessageStore persists message history (ADR 0026).
 type MessageStore struct{ db *sql.DB }
 
-const messageColumns = `id, chat_id, session_id, direction, kind, body, sent_at`
+const messageColumns = `id, chat_id, session_id, direction, kind, body, sent_at,
+	provider_message_id, ingest_kind, origin, routing`
 
 // Append inserts the message and sets its ID.
 func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) error {
@@ -335,10 +336,12 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 		sessionID = message.SessionID
 	}
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (chat_id, session_id, direction, kind, body, sent_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO messages (chat_id, session_id, direction, kind, body, sent_at,
+		 provider_message_id, ingest_kind, origin, routing)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		message.ChatID, sessionID, string(message.Direction), string(message.Kind),
-		message.Body, formatTime(message.At))
+		message.Body, formatTime(message.At), message.ProviderMessageID,
+		string(message.Ingest), string(message.Origin), string(message.Routing))
 	if err != nil {
 		return fmt.Errorf("sqlite: append message: %w", err)
 	}
@@ -383,13 +386,15 @@ func scanMessages(rows *sql.Rows) ([]botflota.Message, error) {
 	var messages []botflota.Message
 	for rows.Next() {
 		var (
-			message         botflota.Message
-			sessionID       sql.NullInt64
-			direction, kind string
-			sentAt          string
+			message                 botflota.Message
+			sessionID               sql.NullInt64
+			direction, kind, ingest string
+			origin, routing         string
+			sentAt                  string
 		)
 		if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
-			&direction, &kind, &message.Body, &sentAt); err != nil {
+			&direction, &kind, &message.Body, &sentAt,
+			&message.ProviderMessageID, &ingest, &origin, &routing); err != nil {
 			return nil, err
 		}
 		if sessionID.Valid {
@@ -397,6 +402,9 @@ func scanMessages(rows *sql.Rows) ([]botflota.Message, error) {
 		}
 		message.Direction = botflota.Direction(direction)
 		message.Kind = botflota.MessageKind(kind)
+		message.Ingest = botflota.Ingest(ingest)
+		message.Origin = botflota.MessageOrigin(origin)
+		message.Routing = botflota.RoutingMethod(routing)
 		message.At = parseTime(sentAt)
 		messages = append(messages, message)
 	}

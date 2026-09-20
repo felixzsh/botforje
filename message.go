@@ -50,11 +50,14 @@ type Location struct {
 
 // OutgoingMessage is one message the engine asks the channel to deliver.
 // Recipient is the plain phone number the reply is for; the adapter maps it to
-// the transport address (ADR 0020).
+// the transport address (ADR 0020). Origin and Routing carry the provenance
+// the engine records with the reply (ADR 0026).
 type OutgoingMessage struct {
 	Bot       string
 	Recipient string
 	Kind      MessageKind
 	Body      string
 	Location  *Location
+	Origin    MessageOrigin
+	Routing   RoutingMethod
 }

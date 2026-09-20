@@ -44,8 +44,10 @@ func (m *messagesServer) lastQuery(t *testing.T) string {
 }
 
 const twoMessages = `{"messages":[
-	{"id":1,"direction":"in","body":"hola","at":"2026-09-13T10:05:00Z"},
-	{"id":2,"direction":"out","body":"hi","at":"2026-09-13T10:05:02Z"}
+	{"id":1,"direction":"in","ingest_kind":"live","routing":"trigger_fuzzy",
+	 "body":"hola","at":"2026-09-13T10:05:00Z"},
+	{"id":2,"direction":"out","ingest_kind":"live","origin":"preset",
+	 "routing":"trigger_fuzzy","body":"hi","at":"2026-09-13T10:05:02Z"}
 ]}`
 
 func TestPrintMessagesUsesTheNewestPage(t *testing.T) {
@@ -68,8 +70,12 @@ func TestPrintMessagesUsesTheNewestPage(t *testing.T) {
 	if last != 2 {
 		t.Fatalf("cursor = %d, want the last id 2", last)
 	}
-	if !strings.Contains(out.String(), "hola") || !strings.Contains(out.String(), "hi") {
-		t.Fatalf("output = %q, want both messages", out.String())
+	text := out.String()
+	if !strings.Contains(text, "hola") || !strings.Contains(text, "hi") {
+		t.Fatalf("output = %q, want both messages", text)
+	}
+	if !strings.Contains(text, "preset") || !strings.Contains(text, "trigger_fuzzy") {
+		t.Fatalf("output = %q, want the provenance columns", text)
 	}
 	raw := page.lastQuery(t)
 	for _, want := range []string{"bot=demo", "sender=52155", "limit=50"} {

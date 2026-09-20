@@ -47,15 +47,20 @@ type chatView struct {
 	Messages  int64      `json:"messages"`
 }
 
-// messageView is one stored message.
+// messageView is one stored message. IngestKind, Origin, and Routing carry
+// the provenance the engine recorded (ADR 0026); Origin is empty for an
+// inbound message.
 type messageView struct {
-	ID        int64                `json:"id"`
-	ChatID    int64                `json:"chat_id"`
-	SessionID int64                `json:"session_id,omitempty"`
-	Direction botflota.Direction   `json:"direction"`
-	Kind      botflota.MessageKind `json:"kind"`
-	Body      string               `json:"body"`
-	At        time.Time            `json:"at"`
+	ID         int64                  `json:"id"`
+	ChatID     int64                  `json:"chat_id"`
+	SessionID  int64                  `json:"session_id,omitempty"`
+	Direction  botflota.Direction     `json:"direction"`
+	Kind       botflota.MessageKind   `json:"kind"`
+	IngestKind botflota.Ingest        `json:"ingest_kind"`
+	Origin     botflota.MessageOrigin `json:"origin,omitempty"`
+	Routing    botflota.RoutingMethod `json:"routing"`
+	Body       string                 `json:"body"`
+	At         time.Time              `json:"at"`
 }
 
 // sessionView is the latest graph run of a chat.
@@ -268,13 +273,16 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	views := make([]messageView, 0, len(messages))
 	for _, message := range messages {
 		views = append(views, messageView{
-			ID:        message.ID,
-			ChatID:    message.ChatID,
-			SessionID: message.SessionID,
-			Direction: message.Direction,
-			Kind:      message.Kind,
-			Body:      message.Body,
-			At:        message.At,
+			ID:         message.ID,
+			ChatID:     message.ChatID,
+			SessionID:  message.SessionID,
+			Direction:  message.Direction,
+			Kind:       message.Kind,
+			IngestKind: message.Ingest,
+			Origin:     message.Origin,
+			Routing:    message.Routing,
+			Body:       message.Body,
+			At:         message.At,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

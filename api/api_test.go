@@ -350,11 +350,14 @@ func testServer(t *testing.T) *Server {
 				{
 					ID: 1, ChatID: chat.ID, Direction: botflota.Inbound,
 					Kind: botflota.KindText, Body: "hola", At: testTime,
+					Ingest: botflota.IngestLive, Routing: botflota.RoutingTriggerExact,
 				},
 				{
 					ID: 2, ChatID: chat.ID, SessionID: 9,
 					Direction: botflota.Outbound, Kind: botflota.KindText,
 					Body: "hi", At: testTime,
+					Ingest: botflota.IngestLive, Origin: botflota.OriginPreset,
+					Routing: botflota.RoutingTriggerExact,
 				},
 			},
 		}},
@@ -526,9 +529,12 @@ func TestMessagesEndpoint(t *testing.T) {
 		Bot      string `json:"bot"`
 		ChatID   int64  `json:"chat_id"`
 		Messages []struct {
-			ID        int64  `json:"id"`
-			Direction string `json:"direction"`
-			Body      string `json:"body"`
+			ID         int64  `json:"id"`
+			Direction  string `json:"direction"`
+			IngestKind string `json:"ingest_kind"`
+			Origin     string `json:"origin"`
+			Routing    string `json:"routing"`
+			Body       string `json:"body"`
 		} `json:"messages"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -540,6 +546,12 @@ func TestMessagesEndpoint(t *testing.T) {
 	if len(body.Messages) != 1 || body.Messages[0].Body != "hi" ||
 		body.Messages[0].Direction != string(botflota.Outbound) {
 		t.Fatalf("messages = %#v, want the newest one", body.Messages)
+	}
+	got := body.Messages[0]
+	if got.IngestKind != string(botflota.IngestLive) ||
+		got.Origin != string(botflota.OriginPreset) ||
+		got.Routing != string(botflota.RoutingTriggerExact) {
+		t.Fatalf("provenance = %#v", got)
 	}
 }
 

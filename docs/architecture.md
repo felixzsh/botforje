@@ -239,6 +239,13 @@ expires after the graph timeout (or `default_timeout`). An expired session is
 replaced by a new run; the next message starts at root. Chat, session, and
 message history live in SQLite (ADR 0026).
 
+Every stored message carries its provenance (ADR 0026): `ingest_kind` says
+whether it came from live traffic, a history sync, or the API; `routing` says
+which matching layer or decision handled the inbound message; and `origin`
+says whether an outbound body is `preset`, `llm`, or `operator`. An imported
+message reports `sync` with `unknown` origin, because the past cannot say who
+wrote an outbound message outside Botflota.
+
 The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.

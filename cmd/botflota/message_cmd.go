@@ -124,10 +124,13 @@ func printMessages(
 ) (int64, error) {
 	var body struct {
 		Messages []struct {
-			ID        int64     `json:"id"`
-			Direction string    `json:"direction"`
-			Body      string    `json:"body"`
-			At        time.Time `json:"at"`
+			ID         int64     `json:"id"`
+			Direction  string    `json:"direction"`
+			IngestKind string    `json:"ingest_kind"`
+			Origin     string    `json:"origin"`
+			Routing    string    `json:"routing"`
+			Body       string    `json:"body"`
+			At         time.Time `json:"at"`
 		} `json:"messages"`
 	}
 	if err := client.get(ctx, q.path(afterID), &body); err != nil {
@@ -135,14 +138,24 @@ func printMessages(
 	}
 	last := afterID
 	for _, message := range body.Messages {
-		fmt.Fprintf(w, "%-19s  %-3s  %s\n",
+		fmt.Fprintf(w, "%-19s  %-3s  %-7s  %-8s  %-16s  %s\n",
 			message.At.Local().Format("2006-01-02 15:04:05"),
-			message.Direction, message.Body)
+			message.Direction, dash(message.IngestKind), dash(message.Origin),
+			dash(message.Routing), message.Body)
 		if message.ID > last {
 			last = message.ID
 		}
 	}
 	return last, nil
+}
+
+// dash keeps a table aligned when a field is empty, like the origin of an
+// inbound message.
+func dash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 // followMessages polls the API until ctx is cancelled, printing only messages

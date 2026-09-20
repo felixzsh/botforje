@@ -13,8 +13,11 @@ import (
 )
 
 // fakeLLM returns fixed text from Realize, so a test controls what a model
-// would generate for a message.
-type fakeLLM struct{ body string }
+// would generate for a message. A non-nil err makes realization fail.
+type fakeLLM struct {
+	body string
+	err  error
+}
 
 func (f fakeLLM) Classify(
 	context.Context, botflota.ClassifyRequest,
@@ -23,7 +26,7 @@ func (f fakeLLM) Classify(
 }
 
 func (f fakeLLM) Realize(context.Context, botflota.RealizeRequest) (string, error) {
-	return f.body, nil
+	return f.body, f.err
 }
 
 func TestCheckNoSecret(t *testing.T) {

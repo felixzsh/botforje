@@ -33,7 +33,14 @@ Schema (`adapters/sqlite`):
   node_context, created_at, updated_at, expires_at)`; the newest row per chat
   is the active state.
 - `messages (id, chat_id -> chats, session_id -> sessions NULL, direction,
-  kind, body, sent_at)`.
+  kind, body, sent_at, provider_message_id, ingest_kind, origin, routing)`.
+  `provider_message_id` is the channel's own id, unique per chat when present,
+  and the dedup key of a history import. `ingest_kind` says how the row entered
+  Botflota (`live`, `sync`, `api`, `unknown`); `origin` who produced an
+  outbound body (`preset`, `llm`, `operator`, `unknown`, empty for inbound);
+  `routing` how the engine chose the transition (`trigger_exact`,
+  `trigger_sequence`, `trigger_words`, `trigger_fuzzy`, `system_one`,
+  `default`, `fallback`, `root`, `unknown`).
 
 Foreign keys: deleting a chat cascades to its sessions and messages; deleting a
 session run sets `messages.session_id` to NULL, so history outlives the run.
@@ -52,5 +59,9 @@ the bounded state is a session. The word still describes dialogue in prose.
 - Message recording happens in the engine as messages flow: the inbound
   message and every reply are appended under the chat and the session run that
   handled them. Listing and tailing a chat arrive with the CLI and API.
+- Provenance is recorded, never inferred: an imported outbound message says
+  `sync` and `unknown`, never that a human wrote it, and only a body the model
+  really produced is `llm`; a failed realization that keeps the anchor stays
+  `preset`.
 - Pre-release, the schema is edited in place (ADR 0006), so an existing
   development database is recreated with `make dev-reset`.

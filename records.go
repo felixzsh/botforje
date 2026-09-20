@@ -55,17 +55,64 @@ const (
 	Outbound Direction = "out"
 )
 
+// Ingest is how a stored message entered Botflota: live traffic, a WhatsApp
+// history sync, or an API operation. Unknown covers rows from before the
+// distinction existed.
+type Ingest string
+
+const (
+	IngestLive    Ingest = "live"
+	IngestSync    Ingest = "sync"
+	IngestAPI     Ingest = "api"
+	IngestUnknown Ingest = "unknown"
+)
+
+// MessageOrigin is who produced an outbound message. An inbound message leaves
+// it empty: its direction already says it came from the sender. An imported
+// outbound message is unknown, never guessed (ADR 0026).
+type MessageOrigin string
+
+const (
+	OriginPreset   MessageOrigin = "preset"
+	OriginLLM      MessageOrigin = "llm"
+	OriginOperator MessageOrigin = "operator"
+	OriginUnknown  MessageOrigin = "unknown"
+)
+
+// RoutingMethod is how the engine chose the transition that handled an inbound
+// message (ADR 0010, ADR 0019). Unknown covers an imported row or a run where
+// no edge applied.
+type RoutingMethod string
+
+const (
+	RoutingUnknown         RoutingMethod = "unknown"
+	RoutingRoot            RoutingMethod = "root"
+	RoutingTriggerExact    RoutingMethod = "trigger_exact"
+	RoutingTriggerSequence RoutingMethod = "trigger_sequence"
+	RoutingTriggerWords    RoutingMethod = "trigger_words"
+	RoutingTriggerFuzzy    RoutingMethod = "trigger_fuzzy"
+	RoutingSystemOne       RoutingMethod = "system_one"
+	RoutingDefault         RoutingMethod = "default"
+	RoutingFallback        RoutingMethod = "fallback"
+)
+
 // Message is one message kept for history. Kind is the shared MessageKind,
 // declared with the runtime message types. SessionID is zero when no session
-// run handled it.
+// run handled it, like an imported message. ProviderMessageID is the channel's
+// own id and the dedup key of the history import; a channel that does not
+// report one leaves it empty (ADR 0026).
 type Message struct {
-	ID        int64
-	ChatID    int64
-	SessionID int64
-	Direction Direction
-	Kind      MessageKind
-	Body      string
-	At        time.Time
+	ID                int64
+	ChatID            int64
+	SessionID         int64
+	Direction         Direction
+	Kind              MessageKind
+	Body              string
+	At                time.Time
+	ProviderMessageID string
+	Ingest            Ingest
+	Origin            MessageOrigin
+	Routing           RoutingMethod
 }
 
 // ChatSummary is a chat joined with its sender profile, for the read API
