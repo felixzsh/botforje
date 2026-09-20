@@ -16,6 +16,20 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
+// defaultDeviceName is the companion name WhatsApp shows in Linked devices
+// when the config does not set device_name.
+const defaultDeviceName = "Botflota"
+
+// applyDeviceName sets the name of the next registered companion. WhatsApp
+// only reads it while registering a new device, so an existing link keeps the
+// name it was registered with.
+func applyDeviceName(name string) {
+	if name == "" {
+		name = defaultDeviceName
+	}
+	store.SetOSInfo(name, [3]uint32{0, 1, 0})
+}
+
 // PairOptions configures QR pairing for a bot.
 type PairOptions struct {
 	Scope    string
@@ -25,6 +39,9 @@ type PairOptions struct {
 	Pairings botflota.PairingStore
 	Logger   walog.Logger
 	Force    bool // discard the existing local pairing before starting QR login
+	// DeviceName is the companion name shown in the phone's Linked devices;
+	// empty uses the default.
+	DeviceName string
 	// RenderQR draws one pairing code; the default clears the terminal and
 	// writes a compact QR on stdout.
 	RenderQR func(code string)
@@ -65,9 +82,7 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 		timeout = 3 * time.Minute
 	}
 
-	// WhatsApp shows this value as the linked-device name. It is sent only
-	// while registering a new device; existing links keep their old name.
-	store.SetOSInfo("Botflota", [3]uint32{0, 1, 0})
+	applyDeviceName(opts.DeviceName)
 	if account != nil {
 		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
 			pairingNow(opts.Now)); err != nil {

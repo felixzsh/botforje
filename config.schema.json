@@ -129,6 +129,10 @@
         "data_dir": {
           "type": "string"
         },
+        "device_name": {
+          "type": "string",
+          "description": "DeviceName is the companion name WhatsApp shows in Linked devices, sent\nonly when a bot registers a new pairing; an existing link keeps the name\nit was registered with. Empty means the adapter default."
+        },
         "include": {
           "items": {
             "type": "string"

@@ -10,16 +10,20 @@ const SchemaVersion = 1
 
 // Config is the root document: global settings plus scopes (ADR 0016).
 type Config struct {
-	Schema         string                `yaml:"$schema" json:"$schema,omitempty"`
-	Version        int                   `yaml:"version" json:"version"` // must be 1
-	Address        string                `yaml:"address" json:"address,omitempty"`
-	Port           int                   `yaml:"port" json:"port,omitempty"`
-	LogLevel       string                `yaml:"log_level" json:"log_level,omitempty"`
-	LogLevelDeps   string                `yaml:"log_level_deps" json:"log_level_deps,omitempty"`
-	DefaultTimeout int                   `yaml:"default_timeout" json:"default_timeout,omitempty"`
-	DataDir        string                `yaml:"data_dir" json:"data_dir,omitempty"`
-	Include        []string              `yaml:"include" json:"include,omitempty"`
-	Scopes         map[string]spec.Scope `yaml:"scopes" json:"scopes"`
+	Schema         string `yaml:"$schema" json:"$schema,omitempty"`
+	Version        int    `yaml:"version" json:"version"` // must be 1
+	Address        string `yaml:"address" json:"address,omitempty"`
+	Port           int    `yaml:"port" json:"port,omitempty"`
+	LogLevel       string `yaml:"log_level" json:"log_level,omitempty"`
+	LogLevelDeps   string `yaml:"log_level_deps" json:"log_level_deps,omitempty"`
+	DefaultTimeout int    `yaml:"default_timeout" json:"default_timeout,omitempty"`
+	DataDir        string `yaml:"data_dir" json:"data_dir,omitempty"`
+	// DeviceName is the companion name WhatsApp shows in Linked devices, sent
+	// only when a bot registers a new pairing; an existing link keeps the name
+	// it was registered with. Empty means the adapter default.
+	DeviceName string                `yaml:"device_name" json:"device_name,omitempty"`
+	Include    []string              `yaml:"include" json:"include,omitempty"`
+	Scopes     map[string]spec.Scope `yaml:"scopes" json:"scopes"`
 
 	origin map[string]string `yaml:"-" json:"-"`
 	source string            `yaml:"-" json:"-"`

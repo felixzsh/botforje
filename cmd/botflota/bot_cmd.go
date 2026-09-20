@@ -107,12 +107,13 @@ func runPair(args []string) int {
 	}
 
 	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
-		Scope:    scopeName,
-		Bot:      name,
-		Devices:  devices,
-		Accounts: db.LinkedAccounts(),
-		Pairings: db.Pairings(),
-		Force:    *cmd.force,
+		Scope:      scopeName,
+		Bot:        name,
+		Devices:    devices,
+		Accounts:   db.LinkedAccounts(),
+		Pairings:   db.Pairings(),
+		Force:      *cmd.force,
+		DeviceName: cfg.DeviceName,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

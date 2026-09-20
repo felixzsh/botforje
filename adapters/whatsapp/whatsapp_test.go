@@ -14,6 +14,7 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
@@ -26,6 +27,27 @@ var (
 	t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
 	t1 = time.Date(2026, 9, 13, 10, 5, 0, 0, time.UTC)
 )
+
+// TestApplyDeviceName covers the white-label name: the configured one wins and
+// an empty value falls back to the default.
+func TestApplyDeviceName(t *testing.T) {
+	oldName := store.DeviceProps.GetOs()
+	oldVersion := [3]uint32{
+		store.DeviceProps.Version.GetPrimary(),
+		store.DeviceProps.Version.GetSecondary(),
+		store.DeviceProps.Version.GetTertiary(),
+	}
+	t.Cleanup(func() { store.SetOSInfo(oldName, oldVersion) })
+
+	applyDeviceName("Acme Bots")
+	if got := store.DeviceProps.GetOs(); got != "Acme Bots" {
+		t.Fatalf("device name = %q, want the configured one", got)
+	}
+	applyDeviceName("")
+	if got := store.DeviceProps.GetOs(); got != defaultDeviceName {
+		t.Fatalf("device name = %q, want %q", got, defaultDeviceName)
+	}
+}
 
 func TestBackoffBounds(t *testing.T) {
 	b := NewBackoff(100*time.Millisecond, time.Second, rand.New(rand.NewSource(1)))
