@@ -1,0 +1,9 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - media:
+              kind: "video_note"
+              url: "https://example.com/a.mp4"

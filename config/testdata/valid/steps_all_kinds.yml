@@ -12,3 +12,18 @@ scopes:
           - location:
               latitude: 1
               longitude: 2
+          - media:
+              kind: "image"
+              url: "https://example.com/photo.png"
+              caption: "A photo"
+          - media:
+              kind: "document"
+              path: "/tmp/report.pdf"
+              name: "report.pdf"
+          - contact:
+              name: "Support"
+              phone: "5215500000000"
+          - poll:
+              question: "How are we doing?"
+              options: ["Great", "Fine"]
+              selectable: 1

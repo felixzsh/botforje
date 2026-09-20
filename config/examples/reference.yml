@@ -241,6 +241,39 @@ scopes:
               url: "https://example.com/office"
               description: "Second floor, ask for support."
 
+      # Attachment from a URL; the channel downloads and uploads the bytes, so
+      # the runtime context never holds the file
+      send-photo:
+        steps:
+          - media:
+              kind: "image"           # image, video, audio, document, sticker
+              url: "https://example.com/promo.png"
+              caption: "This week's offer"
+
+      # Document from a local path, with the file name the recipient sees
+      send-brochure:
+        steps:
+          - media:
+              kind: "document"
+              path: "/srv/botflota/brochure.pdf"
+              name: "brochure.pdf"
+              caption: "Our brochure"
+
+      # Contact card
+      share-contact:
+        steps:
+          - contact:
+              name: "Support"
+              phone: "5215500000000"
+
+      # Poll; selectable is how many options a voter may pick (default 1)
+      quick-poll:
+        steps:
+          - poll:
+              question: "How was your experience?"
+              options: ["Great", "Fine", "Poor"]
+              selectable: 1
+
     graphs:
       faq-support:
         root: "menu"

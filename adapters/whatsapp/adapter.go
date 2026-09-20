@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
@@ -56,9 +56,12 @@ type Options struct {
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
 	// History enables the inert import of that sync (ADR 0035).
-	History  bool
-	Settings Settings
-	Log      *slog.Logger
+	History bool
+	// HTTPClient fetches remote media an action sends (ADR 0036). Defaults to
+	// http.DefaultClient.
+	HTTPClient *http.Client
+	Settings   Settings
+	Log        *slog.Logger
 	// DepsLogLevel is the minimum level for logs forwarded from dependencies
 	// (whatsmeow). The zero value is info.
 	DepsLogLevel slog.Level
@@ -82,6 +85,8 @@ type Adapter struct {
 	pairings botflota.PairingStore
 	devices  *Devices
 	settings Settings
+	http     *http.Client
+	upload   uploader
 	log      *slog.Logger
 	waLogger walog.Logger
 	backoff  *Backoff
@@ -137,6 +142,10 @@ func New(opts Options) (*Adapter, error) {
 	if queue <= 0 {
 		queue = 64
 	}
+	httpClient := opts.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
 	waLogger := newWaLog(log, opts.DepsLogLevel)
 	a := &Adapter{
 		scope:     opts.Scope,
@@ -145,6 +154,7 @@ func New(opts Options) (*Adapter, error) {
 		pairings:  opts.Pairings,
 		devices:   opts.Devices,
 		settings:  opts.Settings,
+		http:      httpClient,
 		log:       log,
 		waLogger:  waLogger,
 		backoff:   NewBackoff(opts.MinBackoff, opts.MaxBackoff, rnd),
@@ -255,7 +265,7 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (strin
 			a.log.Warn("read receipt failed", "error", err)
 		}
 	}
-	content, err := buildContent(msg)
+	content, err := a.contentFor(ctx, msg)
 	if err != nil {
 		return "", err
 	}
@@ -392,11 +402,13 @@ func (a *Adapter) handleEvent(raw any) {
 }
 
 func (a *Adapter) onMessage(event *events.Message) {
-	if event.Info.IsFromMe {
+	if event.Info.IsFromMe || event.IsEdit {
 		return
 	}
-	body := messageText(event.Message)
-	if body == "" {
+	// An unclassifiable live payload is dropped rather than turned into a
+	// conversation turn; the import still keeps it as an anchor (ADR 0036).
+	kind, body, ok := contentType(event.Message)
+	if !ok || kind == botflota.KindUnknown {
 		return
 	}
 	id := string(event.Info.ID)
@@ -421,6 +433,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 		Bot:        a.bot,
 		Sender:     sender,
 		SenderName: event.Info.PushName,
+		Kind:       kind,
 		Body:       body,
 		ID:         id,
 		IsGroup:    event.Info.IsGroup,
@@ -517,17 +530,4 @@ func (a *Adapter) signalReconnect() {
 
 func (a *Adapter) stopReconnecting() {
 	a.stopOnce.Do(func() { close(a.stop) })
-}
-
-func messageText(message *waE2E.Message) string {
-	if message == nil {
-		return ""
-	}
-	if text := message.GetConversation(); text != "" {
-		return text
-	}
-	if extended := message.GetExtendedTextMessage(); extended != nil {
-		return extended.GetText()
-	}
-	return ""
 }

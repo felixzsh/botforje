@@ -1,0 +1,9 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - poll:
+              question: "Pick one"
+              options: ["only"]

@@ -14,8 +14,8 @@
   default (catch-all) edge; triggers is an optional deterministic fast path.
 - Intent — on an edge, the user trigger; on a message, the reply's goal.
   Short, clear text (not snake_case), like goal.
-- Action — reusable pipeline of steps (`message`, `request`, `location`)
-  with guards and optional declared inputs.
+- Action — reusable pipeline of steps (`message`, `request`, `location`,
+  `media`, `contact`, `poll`) with guards and optional declared inputs.
 - Tool — an action a node exposes to the LLM, invoked with validated
   arguments (`inputs`).
 - Input — named, typed argument of a tool; may bind to a node or graph
@@ -34,6 +34,10 @@
   cooldown (minimum interval) or a rate limit (maximum per window).
 - Policy — constraints for LLM decisions, tool selection, and generated text.
   Node policy is ambient; message policy refines it.
+- Message kind — the channel-neutral payload class of a message: text, image,
+  video, audio, document, sticker, location, contact, poll, event, interactive,
+  commerce, call, or unknown. A channel implements the subset it can produce
+  and send (ADR 0036).
 - Chat — durable thread between one bot and one sender, keyed by
   (scope, bot, sender); it never ends and gathers every message.
 - Session — one bounded run of a bot's graph for a chat, stored in the

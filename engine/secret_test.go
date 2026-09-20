@@ -91,6 +91,56 @@ func TestLocationRejectsSecret(t *testing.T) {
 	}
 }
 
+// TestMediaStepRejectsBadSource covers the engine guard behind config
+// validation: a media step needs exactly one source and a known kind.
+func TestMediaStepRejectsBadSource(t *testing.T) {
+	r := testRun()
+	if err := r.media(spec.Media{Kind: "image"}); err == nil {
+		t.Fatal("a media step without a source must fail")
+	}
+	if err := r.media(spec.Media{
+		Kind: "image", URL: "https://x", Path: "/tmp/x",
+	}); err == nil {
+		t.Fatal("a media step with two sources must fail")
+	}
+	if err := r.media(spec.Media{Kind: "video_note", URL: "https://x"}); err == nil {
+		t.Fatal("an unknown media kind must fail")
+	}
+}
+
+func TestMediaRejectsSecret(t *testing.T) {
+	r := testRun()
+	err := r.media(spec.Media{Kind: "image", URL: "https://x/${API_TOKEN}"})
+	if !errors.Is(err, errSecretInMessage) {
+		t.Fatalf("media error = %v, want errSecretInMessage", err)
+	}
+	if len(r.out) != 0 {
+		t.Fatalf("queued %d messages, want none", len(r.out))
+	}
+}
+
+func TestContactRejectsSecret(t *testing.T) {
+	r := testRun()
+	err := r.contact(spec.Contact{Name: "Ana", Phone: "${API_TOKEN}"})
+	if !errors.Is(err, errSecretInMessage) {
+		t.Fatalf("contact error = %v, want errSecretInMessage", err)
+	}
+	if len(r.out) != 0 {
+		t.Fatalf("queued %d messages, want none", len(r.out))
+	}
+}
+
+func TestPollRejectsSecret(t *testing.T) {
+	r := testRun()
+	err := r.poll(spec.Poll{Question: "${API_TOKEN}", Options: []string{"a", "b"}})
+	if !errors.Is(err, errSecretInMessage) {
+		t.Fatalf("poll error = %v, want errSecretInMessage", err)
+	}
+	if len(r.out) != 0 {
+		t.Fatalf("queued %d messages, want none", len(r.out))
+	}
+}
+
 // TestGeneratedBodyRejectsSecret covers a model tricked into writing a secret
 // reference: the guard runs after realization and before the message is
 // queued, so nothing leaves (ADR 0014).

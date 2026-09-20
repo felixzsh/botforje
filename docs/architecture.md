@@ -92,8 +92,9 @@ generic `control` facade.
 - Edge — transition with a required user intent, except the default
   (catch-all) edge. `triggers` is an optional deterministic fast path;
   System One resolves input that matches no trigger (ADR 0030).
-- Action — ordered steps (`message`, `request`, `location`) with guards and
-  declared `inputs`; exposed to the LLM when a node lists it in `tools`.
+- Action — ordered steps (`message`, `request`, `location`, `media`, `contact`,
+  `poll`) with guards and declared `inputs`; exposed to the LLM when a node
+  lists it in `tools`.
 - Tool — an action the LLM may invoke with validated arguments; an input
   may bind to a node or graph variable (read and write).
 - Node context — node variables that reset when the node is entered again.
@@ -115,13 +116,31 @@ generic `control` facade.
   defaults, bounds) referenced by a bot with `llm`; it resolves in the scope
   or in `shared` (ADR 0031).
 
+## Message kinds
+
+Every message carries a channel-neutral kind: `text`, `image`, `video`,
+`audio`, `document`, `sticker`, `location`, `contact`, `poll`, `event`,
+`interactive`, `commerce`, `call`, or `unknown` (ADR 0036). The kind names the
+payload; the visible text (caption, file name, question, name) travels beside
+it, and the attachment bytes never do. A channel implements the subset it can
+produce and send: the import keeps every recognized kind as an anchor, live
+traffic delivers every recognized kind to the engine, and an outbound step may
+emit the sendable ones. A channel that cannot deliver a kind answers
+`ErrUnsupportedKind` instead of dropping the message.
+
+An action sends `message` (text), `location`, `media` (image, video, audio,
+document, sticker from a templated `url` or a local `path`), `contact`, or
+`poll`. The channel reads media bytes, so a large file or a secret stays out of
+the runtime context.
+
 ## Message lifecycle
 
 Inbound:
 
-1. Channel receives an event, maps it to an `IncomingMessage`, and resolves
-   the sender to a phone number; a message with no known phone number is
-   dropped (ADR 0020).
+1. Channel receives an event, classifies it into a kind, maps it to an
+   `IncomingMessage`, and resolves the sender to a phone number; a message with
+   no known phone number, or an unclassifiable live payload, is dropped
+   (ADR 0020, ADR 0036).
 2. The fleet routes the event to the bot; the bot's filter drops it (groups,
    allow/ignore lists) or passes it to the engine, which upserts the sender
    profile before routing (ADR 0029).
@@ -247,11 +266,12 @@ message reports `sync` with `unknown` origin, because the past cannot say who
 wrote an outbound message outside Botflota.
 
 The account-wide history sync WhatsApp delivers at link time is imported
-inertly (ADR 0035): `bot pair` and `fleet run` share one importer, only 1:1
-text is kept, and every row is `sync` with `unknown` origin and routing and no
-session run. The import never runs the engine and ignores the bot filter,
-because it is not a conversation turn; `settings.history_sync: false` turns it
-off. `provider_message_id` (the channel's own id) is the dedup key, both for a
+inertly (ADR 0035): `bot pair` and `fleet run` share one importer, every 1:1
+content message is kept under its kind (ADR 0036), and every row is `sync`
+with `unknown` origin and routing and no session run. The import never runs the
+engine and ignores the bot filter, because it is not a conversation turn;
+`settings.history_sync: false` turns it off. `provider_message_id` (the
+channel's own id) is the dedup key, both for a
 redelivered sync chunk and for a live reply the sync echoes afterwards. The
 `PUSH_NAME` chunk names the senders the import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`

@@ -1,0 +1,10 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - media:
+              kind: "image"
+              url: "https://example.com/a.png"
+              path: "/tmp/a.png"

@@ -1,0 +1,8 @@
+version: 1
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - media:
+              kind: "image"

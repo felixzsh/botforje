@@ -6,12 +6,14 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -467,8 +469,159 @@ func TestBuildContent(t *testing.T) {
 		t.Fatalf("name = %q", got.GetName())
 	}
 
+	contact, err := buildContent(botflota.OutgoingMessage{
+		Kind:    botflota.KindContact,
+		Contact: &botflota.Contact{Name: "Ana", Phone: "5215500000000"},
+	})
+	if err != nil {
+		t.Fatalf("contact: %v", err)
+	}
+	card := contact.GetContactMessage()
+	if card.GetDisplayName() != "Ana" || !strings.Contains(card.GetVcard(), "waid=5215500000000") {
+		t.Fatalf("contact = %+v", card)
+	}
+
+	poll, err := buildContent(botflota.OutgoingMessage{
+		Kind: botflota.KindPoll,
+		Poll: &botflota.Poll{Question: "Lunch?", Options: []string{"yes", "no"}},
+	})
+	if err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	created := poll.GetPollCreationMessage()
+	if created.GetName() != "Lunch?" || len(created.GetOptions()) != 2 ||
+		created.GetSelectableOptionsCount() != 1 {
+		t.Fatalf("poll = %+v", created)
+	}
+	if poll.GetMessageContextInfo().GetMessageSecret() == nil {
+		t.Fatal("a poll needs its message secret for vote decryption")
+	}
+
 	if _, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindLocation}); err == nil {
 		t.Fatal("a location message without a location must fail")
+	}
+	if _, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindImage}); err == nil {
+		t.Fatal("a media kind must not be built without the connection")
+	}
+	if _, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindEvent}); !errors.Is(
+		err, botflota.ErrUnsupportedKind,
+	) {
+		t.Fatalf("event kind = %v, want unsupported", err)
+	}
+}
+
+// TestContentForMedia covers the upload path of an attachment: the adapter
+// reads the bytes and hands them to the uploader, then builds the wire message.
+func TestContentForMedia(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "photo.png")
+	if err := os.WriteFile(path, []byte("png-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uploads := 0
+	a := &Adapter{
+		upload: func(
+			_ context.Context, data []byte, mediaType whatsmeow.MediaType,
+		) (whatsmeow.UploadResponse, error) {
+			uploads++
+			if mediaType != whatsmeow.MediaImage {
+				t.Fatalf("media type = %q, want image", mediaType)
+			}
+			if string(data) != "png-bytes" {
+				t.Fatalf("uploaded %q", data)
+			}
+			return whatsmeow.UploadResponse{
+				URL: "https://media", DirectPath: "/direct", FileLength: 9,
+			}, nil
+		},
+	}
+	content, err := a.contentFor(context.Background(), botflota.OutgoingMessage{
+		Kind:  botflota.KindImage,
+		Media: &botflota.Media{Path: path, Caption: "look"},
+	})
+	if err != nil {
+		t.Fatalf("image: %v", err)
+	}
+	image := content.GetImageMessage()
+	if image == nil || image.GetCaption() != "look" || image.GetURL() != "https://media" {
+		t.Fatalf("image = %+v", image)
+	}
+	if uploads != 1 {
+		t.Fatalf("uploads = %d, want 1", uploads)
+	}
+}
+
+func TestContentType(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  *waE2E.Message
+		kind botflota.MessageKind
+		body string
+		ok   bool
+	}{
+		{"text", &waE2E.Message{Conversation: proto.String("hi")},
+			botflota.KindText, "hi", true},
+		{"extended text", &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: proto.String("link")}}, botflota.KindText, "link", true},
+		{"image caption", &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+			Caption: proto.String("look")}}, botflota.KindImage, "look", true},
+		{"image without caption", &waE2E.Message{ImageMessage: &waE2E.ImageMessage{}},
+			botflota.KindImage, "", true},
+		{"video", &waE2E.Message{VideoMessage: &waE2E.VideoMessage{}},
+			botflota.KindVideo, "", true},
+		{"audio", &waE2E.Message{AudioMessage: &waE2E.AudioMessage{}},
+			botflota.KindAudio, "", true},
+		{"document file name", &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+			FileName: proto.String("a.pdf")}}, botflota.KindDocument, "a.pdf", true},
+		{"sticker", &waE2E.Message{StickerMessage: &waE2E.StickerMessage{}},
+			botflota.KindSticker, "", true},
+		{"location", &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+			Name: proto.String("Office")}}, botflota.KindLocation, "Office", true},
+		{"live location", &waE2E.Message{LiveLocationMessage: &waE2E.LiveLocationMessage{}},
+			botflota.KindLocation, "", true},
+		{"contact", &waE2E.Message{ContactMessage: &waE2E.ContactMessage{
+			DisplayName: proto.String("Ana")}}, botflota.KindContact, "Ana", true},
+		{"poll", &waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{
+			Name: proto.String("Lunch?")}}, botflota.KindPoll, "Lunch?", true},
+		{"event", &waE2E.Message{EventMessage: &waE2E.EventMessage{
+			Name: proto.String("meeting")}}, botflota.KindEvent, "meeting", true},
+		{"missed call", &waE2E.Message{CallLogMesssage: &waE2E.CallLogMessage{
+			CallOutcome: waE2E.CallLogMessage_MISSED.Enum()}},
+			botflota.KindCall, "Missed call", true},
+		{"interactive list reply", &waE2E.Message{
+			ListResponseMessage: &waE2E.ListResponseMessage{
+				Title: proto.String("Yes"),
+			}}, botflota.KindInteractive, "Yes", true},
+		{"commerce order", &waE2E.Message{OrderMessage: &waE2E.OrderMessage{
+			OrderTitle: proto.String("Order 1")}}, botflota.KindCommerce, "Order 1", true},
+		{"reaction is control", &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{}},
+			"", "", false},
+		{"protocol is control", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{}},
+			"", "", false},
+		{"edit is control", &waE2E.Message{EditedMessage: &waE2E.FutureProofMessage{}},
+			"", "", false},
+		{"unknown content", &waE2E.Message{PlaceholderMessage: &waE2E.PlaceholderMessage{}},
+			botflota.KindUnknown, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, body, ok := contentType(tc.msg)
+			if kind != tc.kind || body != tc.body || ok != tc.ok {
+				t.Fatalf("contentType = (%q, %q, %v), want (%q, %q, %v)",
+					kind, body, ok, tc.kind, tc.body, tc.ok)
+			}
+		})
+	}
+}
+
+func TestUnwrapMessage(t *testing.T) {
+	wrapped := &waE2E.Message{EphemeralMessage: &waE2E.FutureProofMessage{
+		Message: &waE2E.Message{Conversation: proto.String("secret")},
+	}}
+	if inner := unwrapMessage(wrapped); inner.GetConversation() != "secret" {
+		t.Fatalf("unwrap = %+v", inner)
+	}
+	if unwrapMessage(&waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{}}) != nil {
+		t.Fatal("a protocol message must not unwrap to content")
 	}
 }
 
@@ -615,8 +768,9 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	b := historyConversation("5215500000001@s.whatsapp.net", "", "Beto",
 		historyText("N1", false, "hi bot", base+30, 1),
 	)
-	// The group leaves no trace; the media-only conversation still registers
-	// its chat, because it carries a message even without text (ADR 0035).
+	// The group leaves no trace; the media-only conversation registers its
+	// chat and keeps the entry as an anchor even without text (ADR 0035,
+	// ADR 0036).
 	group := historyConversation("1203630@g.us", "", "Team", historyText("G1", false, "hey", base, 1))
 	media := historyConversation("5215500000002@s.whatsapp.net", "", "Cora",
 		historyMedia("P1", base))
@@ -648,8 +802,12 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("media-only history: %v", err)
 	}
-	if len(coraMessages) != 0 {
-		t.Fatalf("media-only messages = %d, want 0", len(coraMessages))
+	if len(coraMessages) != 1 {
+		t.Fatalf("media-only messages = %d, want 1 anchor", len(coraMessages))
+	}
+	if coraMessages[0].Kind != botflota.KindImage ||
+		coraMessages[0].ProviderMessageID != "P1" {
+		t.Fatalf("media anchor = %+v", coraMessages[0])
 	}
 	if !coraChat.StartedAt.Equal(time.Unix(int64(base), 0).UTC()) {
 		t.Fatalf("media-only chat started = %v", coraChat.StartedAt)

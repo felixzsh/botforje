@@ -221,8 +221,8 @@ Deliverables:
   every reply under the chat and the session run that handled them (ADR 0026);
   the pairing history sync is imported separately and inertly (ADR 0035).
 - [x] WhatsApp history import (ADR 0035): capture the account-wide sync that
-  arrives when an account links, in `bot pair` and in `fleet run`, storing only
-  1:1 text as `sync`/`unknown` with no session run; deduplicate by
+  arrives when an account links, in `bot pair` and in `fleet run`, storing 1:1
+  content under its kind as `sync`/`unknown` with no session run; deduplicate by
   `provider_message_id`, write the channel's id back onto live replies, import
   the `PUSH_NAME` contact names, widen each chat's activity to the imported
   range, and expose `chat sync` to page older messages on demand.
@@ -280,11 +280,18 @@ Deliverables:
 - [x] Tests: API handlers and auth.
 - [ ] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).
-- [ ] History anchors for every message kind (ADR 0035): a chat whose synced
-  entries carry no text still needs an anchor for `chat sync`. Store a row for
-  each non-text entry with a channel id (media, location, call, and an unknown
-  fallback) under explicit message kinds, so the chat has a provider id to page
-  back from; reactions, edits, and deletions stay control-only.
+- [x] History anchors for every message kind (ADR 0035, ADR 0036): a chat whose
+  synced entries carry no text still needs an anchor for `chat sync`. Every 1:1
+  content entry is stored under its channel-neutral kind (text, image, video,
+  audio, document, sticker, location, contact, poll, event, interactive,
+  commerce, call, and an `unknown` fallback), so the chat has a provider id to
+  page back from; reactions, edits, and deletions stay control-only. The same
+  classifier covers live traffic, and an action may emit the sendable kinds.
+- [x] Message kinds and outbound steps (ADR 0036): one channel-neutral kind
+  vocabulary shared by import, live traffic, and actions; the sendable steps
+  (`message`, `location`, `media`, `contact`, `poll`) are defined in the config
+  schema, and a channel rejects a kind it cannot deliver with
+  `ErrUnsupportedKind`.
 - [ ] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over a single stopped-fleet connection, in
   sequence and never in parallel, skipping chats without an anchor and

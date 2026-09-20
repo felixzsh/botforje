@@ -126,6 +126,7 @@ func printMessages(
 		Messages []struct {
 			ID         int64     `json:"id"`
 			Direction  string    `json:"direction"`
+			Kind       string    `json:"kind"`
 			IngestKind string    `json:"ingest_kind"`
 			Origin     string    `json:"origin"`
 			Routing    string    `json:"routing"`
@@ -138,10 +139,10 @@ func printMessages(
 	}
 	last := afterID
 	for _, message := range body.Messages {
-		fmt.Fprintf(w, "%-19s  %-3s  %-7s  %-8s  %-16s  %s\n",
+		fmt.Fprintf(w, "%-19s  %-3s  %-10s  %-7s  %-8s  %-16s  %s\n",
 			message.At.Local().Format("2006-01-02 15:04:05"),
-			message.Direction, dash(message.IngestKind), dash(message.Origin),
-			dash(message.Routing), dash(message.Body))
+			message.Direction, dash(message.Kind), dash(message.IngestKind),
+			dash(message.Origin), dash(message.Routing), dash(message.Body))
 		if message.ID > last {
 			last = message.ID
 		}

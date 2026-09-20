@@ -40,6 +40,12 @@ func (r *run) steps(steps []spec.Step, where string) error {
 			err = r.request(*step.Request)
 		case step.Location != nil:
 			err = r.location(*step.Location)
+		case step.Media != nil:
+			err = r.media(*step.Media)
+		case step.Contact != nil:
+			err = r.contact(*step.Contact)
+		case step.Poll != nil:
+			err = r.poll(*step.Poll)
 		default:
 			err = fmt.Errorf("empty step")
 		}
@@ -56,22 +62,15 @@ func (r *run) steps(steps []spec.Step, where string) error {
 // optional To overrides the recipient; a To that resolves empty is an error,
 // never a silent reply to the sender.
 func (r *run) message(m spec.Message) error {
-	recipient := r.msg.Sender
-	if m.To != "" {
-		rendered, err := botflota.RenderTemplate(m.To, r.tctx.Get)
-		if err != nil {
-			return err
-		}
-		if rendered == "" {
-			return fmt.Errorf("message recipient %q resolved empty", m.To)
-		}
-		recipient = rendered
+	recipient, err := r.recipient(m.To)
+	if err != nil {
+		return err
 	}
 	body := r.pickVariant(m.Body)
 	if body != "" {
-		rendered, err := botflota.RenderTemplate(body, r.tctx.Get)
-		if err != nil {
-			return err
+		rendered, renderErr := botflota.RenderTemplate(body, r.tctx.Get)
+		if renderErr != nil {
+			return renderErr
 		}
 		body = rendered
 	}
@@ -119,6 +118,167 @@ func (r *run) pickVariant(body spec.Text) string {
 	default:
 		return body[r.engine.rand.Intn(len(body))]
 	}
+}
+
+// recipient resolves a step's recipient: the sender by default, or the
+// rendered `to` override. A `to` that resolves empty is an error, never a
+// silent reply to the sender.
+func (r *run) recipient(to string) (string, error) {
+	if to == "" {
+		return r.msg.Sender, nil
+	}
+	rendered, err := botflota.RenderTemplate(to, r.tctx.Get)
+	if err != nil {
+		return "", err
+	}
+	if rendered == "" {
+		return "", fmt.Errorf("message recipient %q resolved empty", to)
+	}
+	return rendered, nil
+}
+
+// media renders an attachment and queues it (ADR 0036). The channel reads the
+// bytes from url or path; the engine never fetches the file, so a large
+// attachment or a secret stays out of the runtime context. Exactly one source
+// is required, since which one wins would otherwise be ambiguous.
+func (r *run) media(m spec.Media) error {
+	kind, ok := mediaKind(m.Kind)
+	if !ok {
+		return fmt.Errorf("unknown media kind %q", m.Kind)
+	}
+	url, err := botflota.RenderTemplate(m.URL, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	path, err := botflota.RenderTemplate(m.Path, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	name, err := botflota.RenderTemplate(m.Name, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	caption, err := botflota.RenderTemplate(m.Caption, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	recipient, err := r.recipient(m.To)
+	if err != nil {
+		return err
+	}
+	switch {
+	case url == "" && path == "":
+		return errors.New("media step has neither url nor path")
+	case url != "" && path != "":
+		return errors.New("media step has both url and path")
+	}
+	for _, field := range []string{url, path, name, caption} {
+		if err := checkNoSecret(field); err != nil {
+			return err
+		}
+	}
+	r.out = append(r.out, botflota.OutgoingMessage{
+		Bot:       r.engine.bot,
+		Recipient: recipient,
+		Kind:      kind,
+		Body:      caption,
+		Media: &botflota.Media{
+			URL: url, Path: path, Name: name, Caption: caption, MIME: m.MIME,
+		},
+		Origin:  botflota.OriginPreset,
+		Routing: r.routing,
+	})
+	return nil
+}
+
+// mediaKind maps a configured media kind to its core constant. Only the media
+// kinds are accepted; anything else is a config error the channel must not
+// guess at.
+func mediaKind(name string) (botflota.MessageKind, bool) {
+	switch kind := botflota.MessageKind(name); kind {
+	case botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
+		botflota.KindDocument, botflota.KindSticker:
+		return kind, true
+	default:
+		return "", false
+	}
+}
+
+// contact renders a shared contact card and queues it (ADR 0036).
+func (r *run) contact(c spec.Contact) error {
+	name, err := botflota.RenderTemplate(c.Name, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	phone, err := botflota.RenderTemplate(c.Phone, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	recipient, err := r.recipient(c.To)
+	if err != nil {
+		return err
+	}
+	if name == "" || phone == "" {
+		return errors.New("contact step needs a name and a phone")
+	}
+	for _, field := range []string{name, phone} {
+		if err := checkNoSecret(field); err != nil {
+			return err
+		}
+	}
+	r.out = append(r.out, botflota.OutgoingMessage{
+		Bot:       r.engine.bot,
+		Recipient: recipient,
+		Kind:      botflota.KindContact,
+		Body:      name,
+		Contact:   &botflota.Contact{Name: name, Phone: phone},
+		Origin:    botflota.OriginPreset,
+		Routing:   r.routing,
+	})
+	return nil
+}
+
+// poll renders a poll and queues it (ADR 0036).
+func (r *run) poll(p spec.Poll) error {
+	question, err := botflota.RenderTemplate(p.Question, r.tctx.Get)
+	if err != nil {
+		return err
+	}
+	options := make([]string, 0, len(p.Options))
+	for _, option := range p.Options {
+		rendered, err := botflota.RenderTemplate(option, r.tctx.Get)
+		if err != nil {
+			return err
+		}
+		options = append(options, rendered)
+	}
+	recipient, err := r.recipient(p.To)
+	if err != nil {
+		return err
+	}
+	if question == "" {
+		return errors.New("poll step needs a question")
+	}
+	if len(options) < 2 {
+		return errors.New("poll step needs at least two options")
+	}
+	for _, field := range append([]string{question}, options...) {
+		if err := checkNoSecret(field); err != nil {
+			return err
+		}
+	}
+	r.out = append(r.out, botflota.OutgoingMessage{
+		Bot:       r.engine.bot,
+		Recipient: recipient,
+		Kind:      botflota.KindPoll,
+		Body:      question,
+		Poll: &botflota.Poll{
+			Question: question, Options: options, Selectable: p.Selectable,
+		},
+		Origin:  botflota.OriginPreset,
+		Routing: r.routing,
+	})
+	return nil
 }
 
 // request renders and performs an HTTP call, retrying on failure, and stores

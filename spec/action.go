@@ -37,11 +37,14 @@ type RateLimit struct {
 	OnBlocked []Step `yaml:"on_blocked" json:"on_blocked,omitempty"`
 }
 
-// Step is exactly one of message, request, or location.
+// Step is exactly one of message, request, location, media, contact, or poll.
 type Step struct {
 	Message  *Message  `yaml:"message" json:"message,omitempty"`
 	Request  *Request  `yaml:"request" json:"request,omitempty"`
 	Location *Location `yaml:"location" json:"location,omitempty"`
+	Media    *Media    `yaml:"media" json:"media,omitempty"`
+	Contact  *Contact  `yaml:"contact" json:"contact,omitempty"`
+	Poll     *Poll     `yaml:"poll" json:"poll,omitempty"`
 }
 
 // Message is a reply: a fixed body, an LLM-realized reply, or both. To is an
@@ -74,4 +77,35 @@ type Location struct {
 	Address     string  `yaml:"address" json:"address,omitempty"`
 	URL         string  `yaml:"url" json:"url,omitempty"`
 	Description string  `yaml:"description" json:"description,omitempty"`
+}
+
+// Media declares an outbound attachment. Kind is image, video, audio,
+// document, or sticker. Source it from a templated url or a local path; the
+// channel reads the bytes. Name is the file name (documents), Caption the text
+// shown with it, and MIME overrides the content type.
+type Media struct {
+	Kind    string `yaml:"kind" json:"kind"`
+	URL     string `yaml:"url" json:"url,omitempty"`
+	Path    string `yaml:"path" json:"path,omitempty"`
+	Name    string `yaml:"name" json:"name,omitempty"`
+	Caption string `yaml:"caption" json:"caption,omitempty"`
+	MIME    string `yaml:"mime" json:"mime,omitempty"`
+	To      string `yaml:"to" json:"to,omitempty"`
+}
+
+// Contact shares one contact card. Name and Phone are required and may be
+// templates.
+type Contact struct {
+	Name  string `yaml:"name" json:"name"`
+	Phone string `yaml:"phone" json:"phone"`
+	To    string `yaml:"to" json:"to,omitempty"`
+}
+
+// Poll creates a poll. Question and at least two distinct Options are
+// required; Selectable is how many a voter may pick, zero meaning one.
+type Poll struct {
+	Question   string   `yaml:"question" json:"question"`
+	Options    []string `yaml:"options" json:"options"`
+	Selectable int      `yaml:"selectable" json:"selectable,omitempty"`
+	To         string   `yaml:"to" json:"to,omitempty"`
 }

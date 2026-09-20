@@ -25,11 +25,14 @@ Import the history sync, inertly and honestly:
   the pairing session (`bot pair`) and the running fleet (`fleet run`). Both
   use the same importer, because the server may deliver different chunks to
   each connection.
-- Only 1:1 chats are imported. Text is stored, and a call attempt is stored as
-  a `call` row. Groups, broadcasts, status, channels, media, reactions, polls,
-  edits, and deletions store no row; a conversation with any message still
-  registers its sender and chat, so a chat whose only history is a call or
-  media appears in the read API.
+- Only 1:1 chats are imported. Every content message is stored under its
+  channel-neutral kind (ADR 0036): text, image, video, audio, document,
+  sticker, location, contact, poll, event, interactive, commerce, call, and an
+  `unknown` fallback, so the chat has an anchor for `chat sync` even when the
+  entry carries no text. A control message — an edit, reaction, deletion, poll
+  vote, pin, keep, or key-distribution traffic — stores no row. Groups,
+  broadcasts, status, and channels are skipped; a conversation with any
+  message still registers its sender and chat.
 - The account-wide `PUSH_NAME` chunk names the senders Botflota already knows,
   without creating a profile for a contact that never wrote and without moving
   first or last seen. A name learned this way is remembered for a sender a
@@ -69,8 +72,8 @@ Import the history sync, inertly and honestly:
 - A pairing can populate the database with many senders and chats at once,
   each with the messages WhatsApp delivered. Listing a chat starts from real
   history, and `message_count` still counts live inbound only (ADR 0029). A
-  chat can hold no stored row when every entry was a type the import does not
-  keep; it still appears, with zero messages.
+  chat can hold no stored row only when every entry was a control message or
+  carried no channel id; it still appears, with zero messages.
 - The import owns only what WhatsApp sends. It cannot promise completeness;
   `chat sync` pages back one bounded request at a time, and `RequireFullSync`
   stays out of scope because the phone, not Botflota, decides what to send.

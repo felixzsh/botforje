@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -209,11 +208,11 @@ func (h *historyImporter) importConversation(
 	return imported, duplicate, skipped, nil
 }
 
-// historyRecord maps one synced message to a stored message. Text and call
-// attempts are kept; anything else (media, reactions, edits, deletions) reports
-// false, though the conversation itself still registers the chat. A row without
-// a text body and without a call, or without a channel id, reports false too: a
-// row with no provider id cannot anchor an on-demand request (ADR 0035).
+// historyRecord maps one synced message to a stored message. Every content
+// kind is kept, so the chat has an anchor for `chat sync` even when the entry
+// is media with no text; a control or internal entry, or one without a channel
+// id, reports false, because a row with no provider id cannot anchor an
+// on-demand request (ADR 0035, ADR 0036).
 func historyRecord(
 	conversation *waHistorySync.Conversation, entry *waHistorySync.HistorySyncMsg,
 ) (botflota.Message, string, bool) {
@@ -225,14 +224,9 @@ func historyRecord(
 	if providerID == "" {
 		return botflota.Message{}, "", false
 	}
-	kind := botflota.KindText
-	body := messageText(web.GetMessage())
-	if body == "" {
-		label, ok := callLogLabel(web.GetMessage())
-		if !ok {
-			return botflota.Message{}, "", false
-		}
-		kind, body = botflota.KindCall, label
+	kind, body, ok := contentType(unwrapMessage(web.GetMessage()))
+	if !ok {
+		return botflota.Message{}, "", false
 	}
 	direction := botflota.Inbound
 	origin := botflota.MessageOrigin("")
@@ -268,32 +262,6 @@ func historyEntryAt(
 		return time.Unix(int64(conversation.GetLastMsgTimestamp()), 0).UTC()
 	}
 	return time.Time{}
-}
-
-// callLogLabel describes a call attempt so a conversation whose only history is
-// calls keeps a visible, non-text row (ADR 0035).
-func callLogLabel(web *waE2E.Message) (string, bool) {
-	call := web.GetCallLogMesssage()
-	if call == nil {
-		return "", false
-	}
-	missed := false
-	switch call.GetCallOutcome() {
-	case waE2E.CallLogMessage_MISSED,
-		waE2E.CallLogMessage_REJECTED,
-		waE2E.CallLogMessage_FAILED:
-		missed = true
-	}
-	switch {
-	case missed && call.GetIsVideo():
-		return "Missed video call", true
-	case missed:
-		return "Missed call", true
-	case call.GetIsVideo():
-		return "Video call", true
-	default:
-		return "Call", true
-	}
 }
 
 // historyChatPhone resolves the phone number of a conversation's chat. It uses

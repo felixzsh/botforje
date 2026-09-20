@@ -158,6 +158,26 @@
       ],
       "description": "Config is the root document: instance settings plus the scopes it runs."
     },
+    "Contact": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "phone"
+      ],
+      "description": "Contact shares one contact card."
+    },
     "Cooldown": {
       "properties": {
         "duration": {
@@ -325,6 +345,37 @@
       ],
       "description": "Location is a map pin."
     },
+    "Media": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "caption": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "description": "Media declares an outbound attachment."
+    },
     "Message": {
       "properties": {
         "body": {
@@ -383,6 +434,32 @@
       "additionalProperties": false,
       "type": "object",
       "description": "Node is one state of a graph."
+    },
+    "Poll": {
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "selectable": {
+          "type": "integer"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "question",
+        "options"
+      ],
+      "description": "Poll creates a poll."
     },
     "RateLimit": {
       "properties": {
@@ -486,11 +563,20 @@
         },
         "location": {
           "$ref": "#/$defs/Location"
+        },
+        "media": {
+          "$ref": "#/$defs/Media"
+        },
+        "contact": {
+          "$ref": "#/$defs/Contact"
+        },
+        "poll": {
+          "$ref": "#/$defs/Poll"
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Step is exactly one of message, request, or location."
+      "description": "Step is exactly one of message, request, location, media, contact, or poll."
     },
     "Text": {
       "oneOf": [

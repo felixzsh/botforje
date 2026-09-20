@@ -179,7 +179,7 @@ func (e *Engine) recordMessages(
 		ChatID:            chatID,
 		SessionID:         sessionID,
 		Direction:         botflota.Inbound,
-		Kind:              botflota.KindText,
+		Kind:              messageKind(msg.Kind),
 		Body:              msg.Body,
 		At:                msg.At,
 		ProviderMessageID: msg.ID,
@@ -410,4 +410,13 @@ func formatAt(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// messageKind normalizes an unset kind to text: a channel that predates the
+// kind vocabulary, or a plain text event, leaves it empty (ADR 0036).
+func messageKind(kind botflota.MessageKind) botflota.MessageKind {
+	if kind == "" {
+		return botflota.KindText
+	}
+	return kind
 }

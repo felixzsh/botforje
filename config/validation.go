@@ -194,9 +194,64 @@ func validateSteps(file, entity string, steps []spec.Step, add addError, where s
 		if step.Location != nil {
 			count++
 		}
-		if count != 1 {
-			add(file, entity, "%sstep %d must be exactly one of message, request, or location", prefix, i)
+		if step.Media != nil {
+			count++
+			validateMedia(file, entity, prefix, i, *step.Media, add)
 		}
+		if step.Contact != nil {
+			count++
+			validateContact(file, entity, prefix, i, *step.Contact, add)
+		}
+		if step.Poll != nil {
+			count++
+			validatePoll(file, entity, prefix, i, *step.Poll, add)
+		}
+		if count != 1 {
+			add(file, entity,
+				"%sstep %d must be exactly one of message, request, location, media, contact, or poll",
+				prefix, i)
+		}
+	}
+}
+
+// mediaKinds is the sendable media vocabulary (ADR 0036).
+var mediaKinds = map[string]bool{
+	"image": true, "video": true, "audio": true, "document": true, "sticker": true,
+}
+
+func validateMedia(file, entity, prefix string, i int, m spec.Media, add addError) {
+	if !mediaKinds[m.Kind] {
+		add(file, entity,
+			"%sstep %d: media kind %q must be image, video, audio, document, or sticker",
+			prefix, i, m.Kind)
+	}
+	switch {
+	case m.URL == "" && m.Path == "":
+		add(file, entity, "%sstep %d: media needs a url or a path", prefix, i)
+	case m.URL != "" && m.Path != "":
+		add(file, entity, "%sstep %d: media cannot set both url and path", prefix, i)
+	}
+}
+
+func validateContact(file, entity, prefix string, i int, c spec.Contact, add addError) {
+	if c.Name == "" {
+		add(file, entity, "%sstep %d: contact needs a name", prefix, i)
+	}
+	if c.Phone == "" {
+		add(file, entity, "%sstep %d: contact needs a phone", prefix, i)
+	}
+}
+
+func validatePoll(file, entity, prefix string, i int, p spec.Poll, add addError) {
+	if p.Question == "" {
+		add(file, entity, "%sstep %d: poll needs a question", prefix, i)
+	}
+	if len(p.Options) < 2 {
+		add(file, entity, "%sstep %d: poll needs at least two options", prefix, i)
+	}
+	if p.Selectable < 0 || p.Selectable > len(p.Options) {
+		add(file, entity,
+			"%sstep %d: poll selectable must be between 0 and the option count", prefix, i)
 	}
 }
 

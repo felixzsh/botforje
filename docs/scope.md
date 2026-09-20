@@ -9,7 +9,8 @@ hosting platform:
 - Bots, graphs, and actions defined in YAML; YAML is the behavior source of
   truth.
 - Graph conversations with sessions persisted in SQLite.
-- Actions with `message`, `request`, and `location` steps; cooldown guards.
+- Actions with `message`, `request`, `location`, `media`, `contact`, and `poll`
+  steps; cooldown guards.
 - Filters (groups, allow/ignore senders) and a per-bot outbox with
   configurable delay and jitter, plus human-like presence.
 - CLI: `config` and `bot` groups, plus `fleet`.

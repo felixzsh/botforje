@@ -723,6 +723,86 @@ func TestLocationStep(t *testing.T) {
 	}
 }
 
+func TestMediaContactPollSteps(t *testing.T) {
+	actions := map[string]spec.Action{
+		"photo": {Steps: []spec.Step{{Media: &spec.Media{
+			Kind: "image", URL: "https://cdn.example.com/a.png", Caption: "Look",
+		}}}},
+		"card": {Steps: []spec.Step{{Contact: &spec.Contact{
+			Name: "Ana", Phone: "5215500000000",
+		}}}},
+		"vote": {Steps: []spec.Step{{Poll: &spec.Poll{
+			Question: "Lunch?", Options: []string{"yes", "no"},
+		}}}},
+	}
+	graph := spec.Graph{
+		Root: "start",
+		Nodes: map[string]spec.Node{
+			"start": {OnEnter: []string{"photo", "card", "vote"}},
+		},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, engine.Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Senders: store, Messages: store,
+	})
+	messages, err := eng.Handle(context.Background(),
+		botflota.IncomingMessage{Sender: "s", Body: "hi"})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3", len(messages))
+	}
+	if messages[0].Kind != botflota.KindImage || messages[0].Media == nil ||
+		messages[0].Media.URL == "" || messages[0].Media.Caption != "Look" {
+		t.Fatalf("image = %#v", messages[0])
+	}
+	if messages[1].Kind != botflota.KindContact || messages[1].Contact == nil ||
+		messages[1].Contact.Phone != "5215500000000" {
+		t.Fatalf("contact = %#v", messages[1])
+	}
+	if messages[2].Kind != botflota.KindPoll || messages[2].Poll == nil ||
+		len(messages[2].Poll.Options) != 2 {
+		t.Fatalf("poll = %#v", messages[2])
+	}
+}
+
+// TestInboundKindRecorded covers a non-text inbound message: its kind reaches
+// the stored row instead of being flattened to text (ADR 0036).
+func TestInboundKindRecorded(t *testing.T) {
+	graph := spec.Graph{
+		Root:  "start",
+		Nodes: map[string]spec.Node{"start": {}},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, engine.Options{
+		Bot: "b", Scope: "s", Graph: graph,
+		Store: store, Chats: store, Senders: store, Messages: store,
+	})
+	ctx := context.Background()
+	if _, err := eng.Handle(ctx, botflota.IncomingMessage{
+		Sender: "s", Kind: botflota.KindImage, At: t0,
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	profile, err := store.Get(ctx, "s", "s")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	chat, err := store.Ensure(ctx, "s", "b", profile.ID, t0)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := store.History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(messages) != 1 || messages[0].Kind != botflota.KindImage {
+		t.Fatalf("recorded = %#v, want one image row", messages)
+	}
+}
+
 func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)

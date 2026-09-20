@@ -170,6 +170,25 @@ func templateSites(a spec.Action) []templateSite {
 				add(where+" location url", step.Location.URL)
 				add(where+" location description", step.Location.Description)
 			}
+			if step.Media != nil {
+				add(where+" media url", step.Media.URL)
+				add(where+" media path", step.Media.Path)
+				add(where+" media name", step.Media.Name)
+				add(where+" media caption", step.Media.Caption)
+				add(where+" media to", step.Media.To)
+			}
+			if step.Contact != nil {
+				add(where+" contact name", step.Contact.Name)
+				add(where+" contact phone", step.Contact.Phone)
+				add(where+" contact to", step.Contact.To)
+			}
+			if step.Poll != nil {
+				add(where+" poll question", step.Poll.Question)
+				for j, option := range step.Poll.Options {
+					add(fmt.Sprintf("%s poll option %d", where, j), option)
+				}
+				add(where+" poll to", step.Poll.To)
+			}
 		}
 	}
 	collect("action", a.Steps)
