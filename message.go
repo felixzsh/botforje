@@ -1,8 +1,8 @@
 // Package botflota holds the core contracts shared by the engine and its
 // adapters: messages, persisted records, ports, errors, the structured logger,
 // and the template language (ports.go, records.go, logging.go, template.go,
-// content.go). It never imports YAML, SQL, whatsmeow, or LLM SDK types
-// (ADR 0004, ADR 0034).
+// message.go, message_content.go). It never imports YAML, SQL, whatsmeow, or
+// LLM SDK types (ADR 0004, ADR 0034).
 package botflota
 
 import (
