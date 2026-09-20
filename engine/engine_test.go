@@ -208,6 +208,23 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
+func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
+	var oldest *botflota.Message
+	for _, message := range s.messages {
+		if message.ChatID != chatID || message.ProviderMessageID == "" {
+			continue
+		}
+		if oldest == nil || message.At.Before(oldest.At) ||
+			(message.At.Equal(oldest.At) && message.ID < oldest.ID) {
+			oldest = message
+		}
+	}
+	if oldest == nil {
+		return nil, botflota.ErrNotFound
+	}
+	return oldest, nil
+}
+
 func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
 	for _, message := range s.messages {
 		if message.ID == id {

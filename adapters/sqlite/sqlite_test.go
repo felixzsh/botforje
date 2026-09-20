@@ -480,6 +480,42 @@ func TestMessageSetProviderID(t *testing.T) {
 	}
 }
 
+// TestMessageOldest picks the oldest anchored message: a row without a channel
+// id cannot anchor an on-demand request.
+func TestMessageOldest(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	if _, err := db.Messages().Oldest(ctx, chat.ID); !errors.Is(err, botflota.ErrNotFound) {
+		t.Fatalf("Oldest on an empty chat = %v, want ErrNotFound", err)
+	}
+	for _, spec := range []struct {
+		body string
+		at   time.Time
+		id   string
+	}{
+		{"newest", t2, "C"},
+		{"oldest", t0, "A"},
+		{"no anchor", t1, ""},
+	} {
+		message := &botflota.Message{
+			ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
+			Body: spec.body, At: spec.at, ProviderMessageID: spec.id,
+			Ingest: botflota.IngestSync,
+		}
+		if err := db.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("Append(%s): %v", spec.body, err)
+		}
+	}
+	oldest, err := db.Messages().Oldest(ctx, chat.ID)
+	if err != nil {
+		t.Fatalf("Oldest: %v", err)
+	}
+	if oldest.Body != "oldest" || oldest.ProviderMessageID != "A" {
+		t.Fatalf("oldest = %#v, want the oldest anchored message", oldest)
+	}
+}
+
 // TestSessionCountActive covers the status metric: only unexpired runs of the
 // bot count, and a run without expiry never expires.
 func TestSessionCountActive(t *testing.T) {

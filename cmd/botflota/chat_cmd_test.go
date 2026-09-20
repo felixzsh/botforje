@@ -86,6 +86,15 @@ func TestRunChatListNeedsABot(t *testing.T) {
 	}
 }
 
+func TestRunChatSyncNeedsABotAndSender(t *testing.T) {
+	if code := runChatSync(nil); code != 2 {
+		t.Fatalf("exit code = %d, want 2 for a missing bot and sender", code)
+	}
+	if code := runChatSync([]string{"demo"}); code != 2 {
+		t.Fatalf("exit code = %d, want 2 for a missing sender", code)
+	}
+}
+
 // The routes are scope-addressed; make sure the query encodes them like the
 // messages command does.
 func TestChatsQueryPath(t *testing.T) {

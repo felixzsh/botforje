@@ -112,13 +112,15 @@ type SessionStore interface {
 // MessageStore records message history (ADR 0026). Append reports
 // ErrDuplicate when the chat already holds a row with the same provider id.
 // SetProviderID fills the channel id of a stored outbound message once the
-// channel reports it. History returns up to limit messages of a chat, oldest
-// first: the last ones when afterID is zero, or the messages newer than
-// afterID otherwise. A reader shows the conversation in order and a follower
-// resumes from the last id it saw.
+// channel reports it. Oldest returns the oldest stored message that carries a
+// channel id, the anchor of an on-demand history request (ADR 0035). History
+// returns up to limit messages of a chat, oldest first: the last ones when
+// afterID is zero, or the messages newer than afterID otherwise. A reader shows
+// the conversation in order and a follower resumes from the last id it saw.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
 	SetProviderID(ctx context.Context, id int64, providerID string) error
+	Oldest(ctx context.Context, chatID int64) (*Message, error)
 	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
 }
 

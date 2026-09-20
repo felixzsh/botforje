@@ -231,6 +231,24 @@ func (f fakeMessages) Append(context.Context, *botflota.Message) error { return 
 
 func (f fakeMessages) SetProviderID(context.Context, int64, string) error { return nil }
 
+func (f fakeMessages) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
+	var oldest *botflota.Message
+	for i := range f.messages[chatID] {
+		message := f.messages[chatID][i]
+		if message.ProviderMessageID == "" {
+			continue
+		}
+		if oldest == nil || message.At.Before(oldest.At) {
+			copied := message
+			oldest = &copied
+		}
+	}
+	if oldest == nil {
+		return nil, botflota.ErrNotFound
+	}
+	return oldest, nil
+}
+
 func (f fakeMessages) History(
 	_ context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {

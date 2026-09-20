@@ -242,11 +242,12 @@ func cliTree() *commandHelp {
 			},
 			{
 				name:    "chat",
-				summary: "list a bot's chats",
-				long:    "List the stored chats of one bot through the REST API.",
+				summary: "list a bot's chats and sync older history",
+				long:    "List the stored chats of one bot and ask the phone for older history.",
 				usage:   "botflota chat <command> [options]",
 				examples: []string{
 					"botflota chat list support-bot",
+					"botflota chat sync support-bot 5215500000000",
 				},
 				moreHelp: "for more help: botflota chat <command> --help",
 				sub: []commandHelp{
@@ -265,6 +266,21 @@ func cliTree() *commandHelp {
 						},
 						flags: func() *flag.FlagSet { return newChatListCmd().fs },
 						run:   runChatList,
+					},
+					{
+						name:    "sync",
+						summary: "ask the phone for older messages of one chat",
+						long: "Ask the primary device for messages older than the chat's\n" +
+							"oldest stored message and import the reply. WhatsApp may not\n" +
+							"answer; it waits up to --timeout. It opens the device directly,\n" +
+							"so stop the fleet first.",
+						usage: "botflota chat sync [options] <bot> <sender>",
+						examples: []string{
+							"botflota chat sync support-bot 5215500000000",
+							"botflota chat sync --count 50 support-bot 5215500000000",
+						},
+						flags: func() *flag.FlagSet { return newChatSyncCmd().fs },
+						run:   runChatSync,
 					},
 				},
 			},
