@@ -221,6 +221,8 @@ type fakeMessages struct{ messages map[int64][]botflota.Message }
 
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
 
+func (f fakeMessages) SetProviderID(context.Context, int64, string) error { return nil }
+
 func (f fakeMessages) History(
 	_ context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {

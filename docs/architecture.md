@@ -246,6 +246,14 @@ says whether an outbound body is `preset`, `llm`, or `operator`. An imported
 message reports `sync` with `unknown` origin, because the past cannot say who
 wrote an outbound message outside Botflota.
 
+The account-wide history sync WhatsApp delivers at link time is imported
+inertly (ADR 0035): `bot pair` and `fleet run` share one importer, only 1:1
+text is kept, and every row is `sync` with `unknown` origin and routing and no
+session run. The import never runs the engine and ignores the bot filter,
+because it is not a conversation turn; `settings.history_sync: false` turns it
+off. `provider_message_id` (the channel's own id) is the dedup key, both for a
+redelivered sync chunk and for a live reply the sync echoes afterwards.
+
 The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
@@ -298,6 +306,10 @@ it (ADR 0028).
 When the server requires a passkey, the phone performs the ceremony and the
 companion receives the handoff; if the server asks the companion instead, the
 pending step is reported and the bot stays stopped (ADR 0028).
+
+Right after linking, WhatsApp pushes the account-wide history sync. The same
+inert importer captures it in `bot pair` and in `fleet run`, whichever
+connection sees a chunk (ADR 0035).
 
 ## Concurrency
 

@@ -83,11 +83,15 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "history_sync": {
+          "type": "boolean",
+          "description": "HistorySync imports the messages WhatsApp delivers when the account is\nlinked. It defaults to true; false stores none of that backlog."
         }
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "BotSettings controls pacing, presence, and filtering (ADR 0011)."
+      "description": "BotSettings controls pacing, presence, filtering, and history import (ADR 0011, ADR 0035)."
     },
     "Bounds": {
       "properties": {

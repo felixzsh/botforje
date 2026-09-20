@@ -34,6 +34,25 @@ while keeping sessions and message history, run
 from WhatsApp; remove it from WhatsApp's Linked devices screen if it remains
 listed.
 
+## History import
+
+When an account links, WhatsApp pushes the account-wide history sync: the
+conversations it chooses, with the recent messages it chooses. Botflota stores
+what arrives, inertly (ADR 0035):
+
+- Only 1:1 chats and text are imported. Groups, broadcasts, status, channels,
+  media, reactions, polls, edits, and deletions are skipped.
+- Every imported message is marked `sync`, with `unknown` origin and routing.
+  It is never treated as if a person or the bot just wrote it.
+- The import does not run the bot and does not reply. The bot filter does not
+  apply: a chat outside `allowed_senders` is still stored.
+- The sync arrives in chunks. `bot pair` captures what it sees before it
+  exits; `fleet run` captures the rest when it connects, so start the fleet
+  after pairing if the backlog does not appear at once.
+- Set `settings.history_sync: false` on a bot to store none of it.
+
+Inspect it per sender with `./bin/botflota message list <bot> <phone>`.
+
 ## List bots
 
 `./bin/botflota bot list` prints a compact table with the `BOT`, `SCOPE`,
@@ -87,6 +106,8 @@ Deterministic flow (a bot with no `llm`):
   column.
 - [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
+- [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
+  senders in the sync, and none of it generated a reply (ADR 0035).
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still

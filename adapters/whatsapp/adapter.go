@@ -50,6 +50,13 @@ type Options struct {
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	// Senders, Chats, and Messages receive the account-wide history sync that
+	// WhatsApp delivers after linking; all three are required to import it.
+	Senders  botflota.SenderStore
+	Chats    botflota.ChatStore
+	Messages botflota.MessageStore
+	// History enables the inert import of that sync (ADR 0035).
+	History  bool
 	Settings Settings
 	Log      *slog.Logger
 	// DepsLogLevel is the minimum level for logs forwarded from dependencies
@@ -84,6 +91,10 @@ type Adapter struct {
 	onState  func(State)
 
 	incoming chan botflota.IncomingMessage
+
+	importer    *historyImporter
+	history     chan *events.HistorySync
+	historyDone chan struct{}
 
 	mu     sync.Mutex
 	client *whatsmeow.Client
@@ -149,6 +160,15 @@ func New(opts Options) (*Adapter, error) {
 		stop:      make(chan struct{}),
 		stopped:   make(chan struct{}),
 	}
+	if opts.History {
+		a.importer = newHistoryImporter(a.scope, a.bot, opts.Senders, opts.Chats,
+			opts.Messages, a.lookupPN, log)
+		if a.importer != nil {
+			a.history = make(chan *events.HistorySync, 16)
+			a.historyDone = make(chan struct{})
+			go a.importHistory()
+		}
+	}
 	go a.loop()
 	return a, nil
 }
@@ -196,6 +216,9 @@ func (a *Adapter) Disconnect(context.Context) error {
 	}
 	a.stopOnce.Do(func() { close(a.stop) })
 	<-a.stopped
+	if a.historyDone != nil {
+		<-a.historyDone
+	}
 	a.setState(StateStopped)
 	return nil
 }
@@ -204,17 +227,18 @@ func (a *Adapter) Disconnect(context.Context) error {
 // read_receipt_delay before marking the inbound read, waits reply_delay while
 // showing composing presence, then sends. Jitter is drawn once per delay. The
 // recipient is a plain phone number; the adapter maps it to the JID the message
-// arrived from, or to the phone-number JID when that is unknown (ADR 0020).
-func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) error {
+// arrived from, or to the phone-number JID when that is unknown (ADR 0020). It
+// returns WhatsApp's message id so the stored reply can be deduplicated.
+func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (string, error) {
 	a.mu.Lock()
 	client := a.client
 	last := a.last[msg.Recipient]
 	a.mu.Unlock()
 	if client == nil || !client.IsConnected() {
-		return errors.New("whatsapp: not connected")
+		return "", errors.New("whatsapp: not connected")
 	}
 	if msg.Recipient == "" {
-		return errors.New("whatsapp: message has no recipient")
+		return "", errors.New("whatsapp: message has no recipient")
 	}
 	to := last.chat
 	if to.IsEmpty() {
@@ -224,7 +248,7 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) error 
 	replyDelay := a.jittered(a.settings.ReplyDelay)
 	if a.settings.ReadReceipts && !last.chat.IsEmpty() {
 		if err := a.sleepFor(ctx, readDelay); err != nil {
-			return err
+			return "", err
 		}
 		if err := client.MarkRead(ctx, []types.MessageID{last.id}, a.now(),
 			last.chat, last.sender); err != nil {
@@ -233,7 +257,7 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) error 
 	}
 	content, err := buildContent(msg)
 	if err != nil {
-		return err
+		return "", err
 	}
 	a.log.Debug("reply pacing", "read_receipt_delay", readDelay,
 		"reply_delay", replyDelay, "jitter", a.settings.Jitter)
@@ -247,14 +271,17 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) error 
 		}
 	}
 	if err := a.sleepFor(ctx, replyDelay); err != nil {
-		return err
+		return "", err
 	}
-	_, err = client.SendMessage(ctx, to, content)
+	response, err := client.SendMessage(ctx, to, content)
 	if composing {
 		_ = client.SendChatPresence(ctx, to, types.ChatPresencePaused,
 			types.ChatPresenceMediaText)
 	}
-	return err
+	if err != nil {
+		return "", err
+	}
+	return string(response.ID), nil
 }
 
 // Incoming is the stream of mapped inbound messages.
@@ -344,6 +371,8 @@ func (a *Adapter) handleEvent(raw any) {
 	switch event := raw.(type) {
 	case *events.Message:
 		a.onMessage(event)
+	case *events.HistorySync:
+		a.onHistory(event)
 	case *events.Connected:
 		a.backoff.Reset()
 		a.setState(StateConnected)
@@ -401,6 +430,32 @@ func (a *Adapter) onMessage(event *events.Message) {
 	case a.incoming <- message:
 	default:
 		a.log.Warn("incoming queue full, dropping message", "sender", sender)
+	}
+}
+
+// onHistory queues one account-wide history-sync chunk for the import worker,
+// so a large bootstrap never blocks the event loop (ADR 0035).
+func (a *Adapter) onHistory(event *events.HistorySync) {
+	if a.importer == nil {
+		return
+	}
+	select {
+	case a.history <- event:
+	default:
+		a.log.Warn("history queue full, dropping sync chunk")
+	}
+}
+
+// importHistory drains the queued sync chunks until the adapter stops.
+func (a *Adapter) importHistory() {
+	defer close(a.historyDone)
+	for {
+		select {
+		case <-a.stop:
+			return
+		case event := <-a.history:
+			a.importer.Handle(context.Background(), event)
+		}
 	}
 }
 

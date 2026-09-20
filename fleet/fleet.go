@@ -139,6 +139,16 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 						opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
 					}
 				},
+				OnSent: func(msg botflota.OutgoingMessage, providerID string) {
+					if msg.RecordID == 0 {
+						return
+					}
+					if err := opts.Messages.SetProviderID(
+						context.Background(), msg.RecordID, providerID,
+					); err != nil {
+						botLog.Warn("record outbound provider id", "error", err)
+					}
+				},
 			})
 			fleet.bots = append(fleet.bots, &Bot{
 				scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,

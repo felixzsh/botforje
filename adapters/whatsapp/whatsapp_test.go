@@ -13,7 +13,10 @@ import (
 	"unicode/utf8"
 
 	"go.mau.fi/whatsmeow/proto/waAdv"
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -556,4 +559,199 @@ func TestOnMessageIgnoresOwnAndNonText(t *testing.T) {
 		t.Fatalf("unexpected message: %#v", message)
 	default:
 	}
+}
+
+func TestHistoryChatPhone(t *testing.T) {
+	pn := types.NewJID("5215500000000", types.DefaultUserServer)
+	found := func(types.JID) (types.JID, bool) { return pn, true }
+	missing := func(types.JID) (types.JID, bool) { return types.JID{}, false }
+
+	cases := []struct {
+		name         string
+		conversation *waHistorySync.Conversation
+		lookup       pnLookup
+		want         string
+		ok           bool
+	}{
+		{"phone jid in pn",
+			historyConversation("212150010273830@lid", "5215500000000@s.whatsapp.net", "", nil),
+			nil, "5215500000000", true},
+		{"phone number chat",
+			historyConversation("5215500000001@s.whatsapp.net", "", "", nil),
+			nil, "5215500000001", true},
+		{"hidden user resolved through the lid store",
+			historyConversation("212150010273830@lid", "", "", nil),
+			found, "5215500000000", true},
+		{"hidden user without a mapping",
+			historyConversation("212150010273830@lid", "", "", nil),
+			missing, "", false},
+		{"group", historyConversation("1203630@g.us", "", "", nil), nil, "", false},
+		{"status broadcast", historyConversation("status@broadcast", "", "", nil), nil, "", false},
+		{"empty id", historyConversation("", "", "", nil), nil, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := historyChatPhone(tc.conversation, tc.lookup)
+			if got != tc.want || ok != tc.ok {
+				t.Fatalf("historyChatPhone = (%q, %v), want (%q, %v)",
+					got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+func TestHistoryImporterStoresSyncMessages(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+
+	base := uint64(t0.Unix())
+	a := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
+		historyText("M2", true, "reply", base+60, 2),
+		historyText("M3", false, "bye", base+120, 3),
+		historyText("M1", false, "hello", base, 1),
+	)
+	b := historyConversation("5215500000001@s.whatsapp.net", "", "Beto",
+		historyText("N1", false, "hi bot", base+30, 1),
+	)
+	// A group and a chat with only a media message must leave no trace.
+	group := historyConversation("1203630@g.us", "", "Team", historyText("G1", false, "hey", base, 1))
+	media := historyConversation("5215500000002@s.whatsapp.net", "", "Cora",
+		historyMedia("P1", base))
+	importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{a, b, group, media},
+	}})
+
+	ana, err := db.Senders().Get(ctx, "dev", "5215500000000")
+	if err != nil {
+		t.Fatalf("sender Ana: %v", err)
+	}
+	if ana.DisplayName != "Ana" {
+		t.Fatalf("Ana display name = %q", ana.DisplayName)
+	}
+	if _, err := db.Senders().Get(ctx, "dev", "5215500000002"); !errors.Is(
+		err, botflota.ErrNotFound,
+	) {
+		t.Fatalf("media-only sender = %v, want not found", err)
+	}
+
+	chat, err := db.Chats().ForSender(ctx, "dev", "bot", ana.ID)
+	if err != nil {
+		t.Fatalf("chat Ana: %v", err)
+	}
+	if chat.MessageCount != 0 {
+		t.Fatalf("message_count = %d, want 0: an import is not live traffic",
+			chat.MessageCount)
+	}
+	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history Ana: %v", err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("messages = %d, want 3", len(messages))
+	}
+	if messages[0].Body != "hello" || messages[1].Body != "reply" ||
+		messages[2].Body != "bye" {
+		t.Fatalf("messages out of order: %#v", bodies(messages))
+	}
+	if messages[0].Direction != botflota.Inbound || messages[0].Origin != "" ||
+		messages[0].Ingest != botflota.IngestSync ||
+		messages[0].Routing != botflota.RoutingUnknown || messages[0].SessionID != 0 {
+		t.Fatalf("inbound provenance = %+v", messages[0])
+	}
+	if messages[1].Direction != botflota.Outbound ||
+		messages[1].Origin != botflota.OriginUnknown {
+		t.Fatalf("outbound provenance = %+v", messages[1])
+	}
+	if messages[0].ProviderMessageID != "M1" {
+		t.Fatalf("provider id = %q", messages[0].ProviderMessageID)
+	}
+}
+
+func TestHistoryImporterDeduplicates(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
+		historyText("M1", false, "hello", uint64(t0.Unix()), 1),
+	)
+	data := &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{conversation},
+	}
+	importer.Handle(ctx, &events.HistorySync{Data: data})
+	importer.Handle(ctx, &events.HistorySync{Data: data})
+
+	sender, err := db.Senders().Get(ctx, "dev", "5215500000000")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	chat, err := db.Chats().ForSender(ctx, "dev", "bot", sender.ID)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1 after a redelivered chunk", len(messages))
+	}
+}
+
+func TestOnHistoryWithoutImporterIsInert(t *testing.T) {
+	a := newTestAdapter()
+	a.onHistory(&events.HistorySync{Data: &waHistorySync.HistorySync{}})
+}
+
+func historyConversation(
+	id, pnJID, name string, messages ...*waHistorySync.HistorySyncMsg,
+) *waHistorySync.Conversation {
+	conversation := &waHistorySync.Conversation{
+		ID:       proto.String(id),
+		Messages: messages,
+	}
+	if pnJID != "" {
+		conversation.PnJID = proto.String(pnJID)
+	}
+	if name != "" {
+		conversation.Name = proto.String(name)
+	}
+	return conversation
+}
+
+func historyText(
+	id string, fromMe bool, body string, timestamp uint64, order uint64,
+) *waHistorySync.HistorySyncMsg {
+	return &waHistorySync.HistorySyncMsg{
+		MsgOrderID: proto.Uint64(order),
+		Message: &waWeb.WebMessageInfo{
+			Key: &waCommon.MessageKey{
+				FromMe: proto.Bool(fromMe),
+				ID:     proto.String(id),
+			},
+			Message:          &waE2E.Message{Conversation: proto.String(body)},
+			MessageTimestamp: proto.Uint64(timestamp),
+		},
+	}
+}
+
+func historyMedia(id string, timestamp uint64) *waHistorySync.HistorySyncMsg {
+	return &waHistorySync.HistorySyncMsg{
+		MsgOrderID: proto.Uint64(1),
+		Message: &waWeb.WebMessageInfo{
+			Key:              &waCommon.MessageKey{ID: proto.String(id)},
+			Message:          &waE2E.Message{ImageMessage: &waE2E.ImageMessage{}},
+			MessageTimestamp: proto.Uint64(timestamp),
+		},
+	}
+}
+
+func bodies(messages []botflota.Message) []string {
+	out := make([]string, 0, len(messages))
+	for _, message := range messages {
+		out = append(out, message.Body)
+	}
+	return out
 }

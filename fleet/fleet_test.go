@@ -50,7 +50,7 @@ func (c *fakeChannel) Disconnect(context.Context) error {
 	return nil
 }
 
-func (c *fakeChannel) Send(_ context.Context, msg botflota.OutgoingMessage) error {
+func (c *fakeChannel) Send(_ context.Context, msg botflota.OutgoingMessage) (string, error) {
 	if c.entered != nil {
 		c.once.Do(func() { close(c.entered) })
 	}
@@ -58,7 +58,7 @@ func (c *fakeChannel) Send(_ context.Context, msg botflota.OutgoingMessage) erro
 		<-c.release
 	}
 	c.sent <- msg
-	return nil
+	return "wamid." + msg.Body, nil
 }
 
 func (c *fakeChannel) Incoming() <-chan botflota.IncomingMessage { return c.incoming }
@@ -260,6 +260,18 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
+func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, message := range s.messages {
+		if message.ID == id {
+			message.ProviderMessageID = providerID
+			return nil
+		}
+	}
+	return botflota.ErrNotFound
+}
+
 func (s *memStore) History(
 	_ context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {
@@ -400,6 +412,39 @@ func TestTwoBotsAreIndependent(t *testing.T) {
 	case other := <-channels["beta"].sent:
 		t.Fatalf("beta answered on alpha's message: %q", other.Body)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// TestOutboundProviderIDIsStored covers the dedup loop with a live reply: the
+// channel reports its message id and the fleet writes it onto the stored row.
+func TestOutboundProviderIDIsStored(t *testing.T) {
+	runner, channels, store := buildFleetWithStore(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+
+	channels["alpha"].incoming <- botflota.IncomingMessage{Bot: "alpha", Sender: "s", Body: "hi"}
+	reply := receive(t, channels["alpha"].sent)
+	want := "wamid." + reply.Body
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		store.mu.Lock()
+		got := ""
+		for _, message := range store.messages {
+			if message.Direction == botflota.Outbound && message.ProviderMessageID != "" {
+				got = message.ProviderMessageID
+			}
+		}
+		store.mu.Unlock()
+		if got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("stored provider id = %q, want %q", got, want)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

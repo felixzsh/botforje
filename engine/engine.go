@@ -189,21 +189,25 @@ func (e *Engine) recordMessages(
 	if err := e.messages.Append(ctx, inbound); err != nil {
 		return fmt.Errorf("engine: record inbound: %w", err)
 	}
-	for _, reply := range out {
+	for i := range out {
 		sent := &botflota.Message{
 			ChatID:    chatID,
 			SessionID: sessionID,
 			Direction: botflota.Outbound,
-			Kind:      reply.Kind,
-			Body:      reply.Body,
+			Kind:      out[i].Kind,
+			Body:      out[i].Body,
 			At:        now,
 			Ingest:    botflota.IngestLive,
-			Origin:    reply.Origin,
-			Routing:   reply.Routing,
+			Origin:    out[i].Origin,
+			Routing:   out[i].Routing,
 		}
 		if err := e.messages.Append(ctx, sent); err != nil {
 			return fmt.Errorf("engine: record outbound: %w", err)
 		}
+		// The channel reports its message id after delivery; the fleet fills
+		// the stored row with it so a later history sync deduplicates the
+		// reply (ADR 0026, ADR 0035).
+		out[i].RecordID = sent.ID
 	}
 	return nil
 }

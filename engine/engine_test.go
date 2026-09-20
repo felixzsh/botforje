@@ -180,6 +180,16 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
+func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
+	for _, message := range s.messages {
+		if message.ID == id {
+			message.ProviderMessageID = providerID
+			return nil
+		}
+	}
+	return botflota.ErrNotFound
+}
+
 func (s *memStore) History(
 	_ context.Context, chatID, afterID int64, limit int,
 ) ([]botflota.Message, error) {

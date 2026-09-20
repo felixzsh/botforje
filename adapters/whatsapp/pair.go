@@ -11,6 +11,8 @@ import (
 	"github.com/mdp/qrterminal"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
 
 	"github.com/felixzsh/botflota"
@@ -37,6 +39,13 @@ type PairOptions struct {
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	// Senders, Chats, and Messages receive the account-wide history sync that
+	// WhatsApp delivers right after linking; all three are required to import
+	// it. The fleet connection imports the rest (ADR 0035).
+	Senders  botflota.SenderStore
+	Chats    botflota.ChatStore
+	Messages botflota.MessageStore
+	History  bool
 	Logger   walog.Logger
 	Force    bool // discard the existing local pairing before starting QR login
 	// DeviceName is the companion name shown in the phone's Linked devices;
@@ -112,6 +121,7 @@ func pairOnce(
 ) (string, bool, error) {
 	client := whatsmeow.NewClient(opts.Devices.newDevice(), logger)
 	defer client.Disconnect()
+	attachHistory(ctx, client, opts)
 
 	qrChannel, err := client.GetQRChannel(ctx)
 	if err != nil {
@@ -158,6 +168,36 @@ func pairOnce(
 			}
 		}
 	}
+}
+
+// attachHistory imports the account-wide history sync that WhatsApp delivers
+// right after linking. Whichever connection is alive captures it: this pairing
+// session imports the chunks it sees before it exits, and the fleet connection
+// imports the rest with the same importer (ADR 0035).
+func attachHistory(ctx context.Context, client *whatsmeow.Client, opts PairOptions) {
+	if !opts.History {
+		return
+	}
+	lookup := func(lid types.JID) (types.JID, bool) {
+		if client.Store == nil || client.Store.LIDs == nil {
+			return types.JID{}, false
+		}
+		pn, err := client.Store.LIDs.GetPNForLID(ctx, lid)
+		if err != nil || pn.IsEmpty() {
+			return types.JID{}, false
+		}
+		return pn, true
+	}
+	importer := newHistoryImporter(opts.Scope, opts.Bot, opts.Senders, opts.Chats,
+		opts.Messages, lookup, nil)
+	if importer == nil {
+		return
+	}
+	client.AddEventHandler(func(raw any) {
+		if event, ok := raw.(*events.HistorySync); ok {
+			importer.Handle(ctx, event)
+		}
+	})
 }
 
 func waitForPairingRetry(ctx context.Context) error {

@@ -14,8 +14,9 @@ import (
 // errOutboxClosed is returned by push after close.
 var errOutboxClosed = errors.New("outbox: closed")
 
-// outboxSender delivers one message; a channel adapter implements it.
-type outboxSender func(ctx context.Context, msg botflota.OutgoingMessage) error
+// outboxSender delivers one message and returns the channel's message id; a
+// channel adapter implements it.
+type outboxSender func(ctx context.Context, msg botflota.OutgoingMessage) (string, error)
 
 // outboxConfig configures an outbox. Only Sender is required.
 type outboxConfig struct {
@@ -29,7 +30,10 @@ type outboxConfig struct {
 	Rand         *rand.Rand
 	Sleep        func(ctx context.Context, d time.Duration) error
 	OnError      func(msg botflota.OutgoingMessage, err error)
-	Log          *slog.Logger
+	// OnSent receives the channel message id of a delivered message, for
+	// deduplication of the stored reply (ADR 0026).
+	OnSent func(msg botflota.OutgoingMessage, providerID string)
+	Log    *slog.Logger
 }
 
 // outbox paces one bot's outbound messages (ADR 0011): a per-bot FIFO with
@@ -155,7 +159,7 @@ func (q *outbox) send(msg botflota.OutgoingMessage, pacing time.Duration) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), q.cfg.SendTimeout)
 	defer cancel()
-	err := q.cfg.Sender(ctx, msg)
+	providerID, err := q.cfg.Sender(ctx, msg)
 	if err != nil {
 		q.cfg.Log.Error("send failed",
 			"recipient", recipient(msg), "kind", string(msg.Kind), "queue_delay", pacing, "error", err)
@@ -163,6 +167,9 @@ func (q *outbox) send(msg botflota.OutgoingMessage, pacing time.Duration) {
 			q.cfg.OnError(msg, err)
 		}
 		return
+	}
+	if providerID != "" && q.cfg.OnSent != nil {
+		q.cfg.OnSent(msg, providerID)
 	}
 	q.cfg.Log.Info("sent",
 		"recipient", recipient(msg), "kind", string(msg.Kind), "queue_delay", pacing)

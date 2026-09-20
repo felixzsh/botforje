@@ -122,6 +122,12 @@ func openDevices(
 	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
 }
 
+// historyEnabled interprets the per-bot history_sync switch; absent means on
+// (ADR 0035).
+func historyEnabled(settings *spec.BotSettings) bool {
+	return settings == nil || settings.HistorySync == nil || *settings.HistorySync
+}
+
 func findBot(cfg *config.Config, name, scope string) (string, spec.Bot, error) {
 	if scope != "" {
 		s, ok := cfg.Scopes[scope]

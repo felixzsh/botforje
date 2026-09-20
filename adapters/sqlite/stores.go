@@ -329,7 +329,9 @@ type MessageStore struct{ db *sql.DB }
 const messageColumns = `id, chat_id, session_id, direction, kind, body, sent_at,
 	provider_message_id, ingest_kind, origin, routing`
 
-// Append inserts the message and sets its ID.
+// Append inserts the message and sets its ID. A message whose provider id is
+// already present in its chat is a duplicate and reports botflota.ErrDuplicate
+// instead of inserting (ADR 0026).
 func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) error {
 	var sessionID any
 	if message.SessionID != 0 {
@@ -338,18 +340,41 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO messages (chat_id, session_id, direction, kind, body, sent_at,
 		 provider_message_id, ingest_kind, origin, routing)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT DO NOTHING`,
 		message.ChatID, sessionID, string(message.Direction), string(message.Kind),
 		message.Body, formatTime(message.At), message.ProviderMessageID,
 		string(message.Ingest), string(message.Origin), string(message.Routing))
 	if err != nil {
 		return fmt.Errorf("sqlite: append message: %w", err)
 	}
+	inserted, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("sqlite: append message: %w", err)
+	}
+	if inserted == 0 {
+		return botflota.ErrDuplicate
+	}
 	id, err := result.LastInsertId()
 	if err != nil {
 		return fmt.Errorf("sqlite: message id: %w", err)
 	}
 	message.ID = id
+	return nil
+}
+
+// SetProviderID fills the channel id of an already stored outbound message
+// once the channel reports it, so a later history sync can deduplicate it. An
+// empty id is ignored.
+func (s *MessageStore) SetProviderID(ctx context.Context, id int64, providerID string) error {
+	if providerID == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE messages SET provider_message_id = ? WHERE id = ?", providerID, id)
+	if err != nil {
+		return fmt.Errorf("sqlite: set provider id: %w", err)
+	}
 	return nil
 }
 

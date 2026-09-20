@@ -218,8 +218,12 @@ Deliverables:
 - [x] `fleet status` is an API client and reports uptime, per-bot connection
   state, outbox depth, and active sessions; a `--json` mode serves scripts.
 - [x] Message history persistence: the engine appends the inbound message and
-  every reply under the chat and the session run that handled them (ADR 0026).
-  Only live traffic is recorded; the history-sync backlog stays out of scope.
+  every reply under the chat and the session run that handled them (ADR 0026);
+  the pairing history sync is imported separately and inertly (ADR 0035).
+- [x] WhatsApp history import (ADR 0035): capture the account-wide sync that
+  arrives when an account links, in `bot pair` and in `fleet run`, storing only
+  1:1 text as `sync`/`unknown` with no session run; deduplicate by
+  `provider_message_id`, and write the channel's id back onto live replies.
 - [x] Message history commands: list or tail one chat with
   `message list|tail <bot> <sender> [--limit n] [--follow]`, served through the
   API when it exists.

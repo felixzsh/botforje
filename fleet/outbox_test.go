@@ -13,11 +13,11 @@ import (
 func TestOrderAndDrain(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
-	sender := func(_ context.Context, msg botflota.OutgoingMessage) error {
+	sender := func(_ context.Context, msg botflota.OutgoingMessage) (string, error) {
 		mu.Lock()
 		got = append(got, msg.Body)
 		mu.Unlock()
-		return nil
+		return "", nil
 	}
 	queue := newOutbox(outboxConfig{Sender: sender})
 	for _, body := range []string{"a", "b", "c"} {
@@ -63,7 +63,7 @@ func (c *clock) slept() []time.Duration {
 	return append([]time.Duration(nil), c.sleeps...)
 }
 
-func noSender(context.Context, botflota.OutgoingMessage) error { return nil }
+func noSender(context.Context, botflota.OutgoingMessage) (string, error) { return "", nil }
 
 func TestPacing(t *testing.T) {
 	clk := &clock{now: time.Unix(0, 0)}
@@ -96,10 +96,10 @@ func TestBackpressure(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	var once sync.Once
-	sender := func(context.Context, botflota.OutgoingMessage) error {
+	sender := func(context.Context, botflota.OutgoingMessage) (string, error) {
 		once.Do(func() { close(entered) })
 		<-release
-		return nil
+		return "", nil
 	}
 	queue := newOutbox(outboxConfig{Sender: sender, Capacity: 1})
 	ctx := context.Background()

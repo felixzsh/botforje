@@ -7,7 +7,8 @@ type Bot struct {
 	Settings *BotSettings `yaml:"settings" json:"settings,omitempty"`
 }
 
-// BotSettings controls pacing, presence, and filtering (ADR 0011).
+// BotSettings controls pacing, presence, filtering, and history import
+// (ADR 0011, ADR 0035).
 type BotSettings struct {
 	ReadReceipts     *bool    `yaml:"read_receipts" json:"read_receipts,omitempty"`
 	ReadReceiptDelay int      `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
@@ -19,4 +20,7 @@ type BotSettings struct {
 	IgnoreGroups     *bool    `yaml:"ignore_groups" json:"ignore_groups,omitempty"`
 	AllowedSenders   []string `yaml:"allowed_senders" json:"allowed_senders,omitempty"`
 	IgnoredSenders   []string `yaml:"ignored_senders" json:"ignored_senders,omitempty"`
+	// HistorySync imports the messages WhatsApp delivers when the account is
+	// linked. It defaults to true; false stores none of that backlog.
+	HistorySync *bool `yaml:"history_sync" json:"history_sync,omitempty"`
 }

@@ -99,15 +99,19 @@ func runFleet(args []string) int {
 		},
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,
-		NewChannel: func(spec fleet.BotSpec) (botflota.MessageChannel, error) {
+		NewChannel: func(botSpec fleet.BotSpec) (botflota.MessageChannel, error) {
 			return whatsapp.New(whatsapp.Options{
-				Scope:        spec.Scope,
-				Bot:          spec.Name,
+				Scope:        botSpec.Scope,
+				Bot:          botSpec.Name,
 				Devices:      devices,
 				Accounts:     db.LinkedAccounts(),
 				Pairings:     db.Pairings(),
-				Settings:     whatsappSettings(spec.Settings),
-				Log:          logger.With("scope", spec.Scope, "bot", spec.Name),
+				Senders:      db.Senders(),
+				Chats:        db.Chats(),
+				Messages:     db.Messages(),
+				History:      historyEnabled(&botSpec.Settings),
+				Settings:     whatsappSettings(botSpec.Settings),
+				Log:          logger.With("scope", botSpec.Scope, "bot", botSpec.Name),
 				DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
 			})
 		},

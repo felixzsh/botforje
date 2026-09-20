@@ -9,7 +9,11 @@ import (
 type MessageChannel interface {
 	Connect(ctx context.Context) error
 	Disconnect(ctx context.Context) error
-	Send(ctx context.Context, msg OutgoingMessage) error
+	// Send delivers one message and returns the channel's own message id, or
+	// an empty string when the channel cannot report one. The engine records
+	// the reply before it is sent and the id closes the dedup loop with a
+	// later history sync (ADR 0026).
+	Send(ctx context.Context, msg OutgoingMessage) (string, error)
 	Incoming() <-chan IncomingMessage
 }
 
@@ -96,12 +100,16 @@ type SessionStore interface {
 	CountActive(ctx context.Context, scope, bot string, at time.Time) (int, error)
 }
 
-// MessageStore records message history (ADR 0026). History returns up to
-// limit messages of a chat, oldest first: the last ones when afterID is zero,
-// or the messages newer than afterID otherwise. A reader shows the
-// conversation in order and a follower resumes from the last id it saw.
+// MessageStore records message history (ADR 0026). Append reports
+// ErrDuplicate when the chat already holds a row with the same provider id.
+// SetProviderID fills the channel id of a stored outbound message once the
+// channel reports it. History returns up to limit messages of a chat, oldest
+// first: the last ones when afterID is zero, or the messages newer than
+// afterID otherwise. A reader shows the conversation in order and a follower
+// resumes from the last id it saw.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
+	SetProviderID(ctx context.Context, id int64, providerID string) error
 	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
 }
 

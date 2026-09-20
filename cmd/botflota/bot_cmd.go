@@ -88,7 +88,7 @@ func runPair(args []string) int {
 	if code != 0 {
 		return code
 	}
-	scopeName, _, err := findBot(cfg, name, *cmd.scope)
+	scopeName, botSpec, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		printHelp(os.Stderr, "bot", "pair")
@@ -112,6 +112,10 @@ func runPair(args []string) int {
 		Devices:    devices,
 		Accounts:   db.LinkedAccounts(),
 		Pairings:   db.Pairings(),
+		Senders:    db.Senders(),
+		Chats:      db.Chats(),
+		Messages:   db.Messages(),
+		History:    historyEnabled(botSpec.Settings),
 		Force:      *cmd.force,
 		DeviceName: cfg.DeviceName,
 	})

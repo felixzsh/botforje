@@ -406,14 +406,48 @@ func TestMessageProviderIDIsUnique(t *testing.T) {
 	if err := db.Messages().Append(ctx, message("A1")); err != nil {
 		t.Fatalf("first append: %v", err)
 	}
-	if err := db.Messages().Append(ctx, message("A1")); err == nil {
-		t.Fatal("want a unique violation for a repeated provider id")
+	if err := db.Messages().Append(ctx, message("A1")); !errors.Is(err, botflota.ErrDuplicate) {
+		t.Fatalf("repeated provider id error = %v, want ErrDuplicate", err)
 	}
 	if err := db.Messages().Append(ctx, message("")); err != nil {
 		t.Fatalf("append without provider id: %v", err)
 	}
 	if err := db.Messages().Append(ctx, message("")); err != nil {
 		t.Fatalf("second append without provider id: %v", err)
+	}
+}
+
+// TestMessageSetProviderID covers the live-reply dedup loop: the channel id is
+// filled in after the reply was already stored, and the next echo of that
+// message is then a duplicate.
+func TestMessageSetProviderID(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	message := &botflota.Message{
+		ChatID: chat.ID, Direction: botflota.Outbound, Kind: botflota.KindText,
+		Body: "reply", At: t1, Ingest: botflota.IngestLive,
+	}
+	if err := db.Messages().Append(ctx, message); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if err := db.Messages().SetProviderID(ctx, message.ID, "OUT-1"); err != nil {
+		t.Fatalf("SetProviderID: %v", err)
+	}
+	got, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(got) != 1 || got[0].ProviderMessageID != "OUT-1" {
+		t.Fatalf("History = %#v", got)
+	}
+	echo := &botflota.Message{
+		ChatID: chat.ID, Direction: botflota.Outbound, Kind: botflota.KindText,
+		Body: "reply", At: t1, ProviderMessageID: "OUT-1",
+		Ingest: botflota.IngestSync, Origin: botflota.OriginUnknown,
+	}
+	if err := db.Messages().Append(ctx, echo); !errors.Is(err, botflota.ErrDuplicate) {
+		t.Fatalf("echo error = %v, want ErrDuplicate", err)
 	}
 }
 

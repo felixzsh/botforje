@@ -16,6 +16,11 @@ var ErrNotFound = errors.New("not found")
 // ErrNoLLM reports an LLM-only operation with no provider configured.
 var ErrNoLLM = errors.New("no LLM configured")
 
+// ErrDuplicate reports a message whose provider id already exists in its chat.
+// The history import treats it as an already-imported message, not a failure
+// (ADR 0026, ADR 0035).
+var ErrDuplicate = errors.New("duplicate")
+
 // MessageKind classifies a message's payload, inbound or outbound.
 type MessageKind string
 
@@ -51,7 +56,9 @@ type Location struct {
 // OutgoingMessage is one message the engine asks the channel to deliver.
 // Recipient is the plain phone number the reply is for; the adapter maps it to
 // the transport address (ADR 0020). Origin and Routing carry the provenance
-// the engine records with the reply (ADR 0026).
+// the engine records with the reply (ADR 0026). RecordID is the stored history
+// row the engine created for the reply; the channel reports its own message id
+// after delivery so the row can be deduplicated against a later history sync.
 type OutgoingMessage struct {
 	Bot       string
 	Recipient string
@@ -60,4 +67,5 @@ type OutgoingMessage struct {
 	Location  *Location
 	Origin    MessageOrigin
 	Routing   RoutingMethod
+	RecordID  int64
 }

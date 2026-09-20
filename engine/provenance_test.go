@@ -212,3 +212,23 @@ func TestProviderMessageIDIsRecorded(t *testing.T) {
 		t.Fatalf("provider id = %q, want ABC123", in.ProviderMessageID)
 	}
 }
+
+// TestOutboundRecordIDLinksTheStoredReply keeps the stored row id on the reply
+// the engine returns, so the channel can fill its provider id after delivery.
+func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
+	store := newMemStore()
+	eng := provenanceEngine(t, store, provenanceGraph(), nil)
+	replies, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+		Bot: "support-bot", Sender: "s", Body: "hi", ID: "ABC123", At: t0,
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(replies) == 0 {
+		t.Fatal("Handle returned no replies")
+	}
+	reply := lastRecord(t, store, botflota.Outbound)
+	if replies[0].RecordID == 0 || replies[0].RecordID != reply.ID {
+		t.Fatalf("RecordID = %d, want the stored reply id %d", replies[0].RecordID, reply.ID)
+	}
+}
