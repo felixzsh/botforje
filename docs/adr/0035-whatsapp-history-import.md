@@ -25,8 +25,11 @@ Import the history sync, inertly and honestly:
   the pairing session (`bot pair`) and the running fleet (`fleet run`). Both
   use the same importer, because the server may deliver different chunks to
   each connection.
-- Only 1:1 chats and text messages are imported. Groups, broadcasts, status,
-  channels, media, reactions, polls, edits, and deletions are skipped.
+- Only 1:1 chats are imported. Text is stored, and a call attempt is stored as
+  a `call` row. Groups, broadcasts, status, channels, media, reactions, polls,
+  edits, and deletions store no row; a conversation with any message still
+  registers its sender and chat, so a chat whose only history is a call or
+  media appears in the read API.
 - The account-wide `PUSH_NAME` chunk names the senders Botflota already knows,
   without creating a profile for a contact that never wrote and without moving
   first or last seen. A name learned this way is remembered for a sender a
@@ -65,7 +68,9 @@ Import the history sync, inertly and honestly:
 
 - A pairing can populate the database with many senders and chats at once,
   each with the messages WhatsApp delivered. Listing a chat starts from real
-  history, and `message_count` still counts live inbound only (ADR 0029).
+  history, and `message_count` still counts live inbound only (ADR 0029). A
+  chat can hold no stored row when every entry was a type the import does not
+  keep; it still appears, with zero messages.
 - The import owns only what WhatsApp sends. It cannot promise completeness;
   `chat sync` pages back one bounded request at a time, and `RequireFullSync`
   stays out of scope because the phone, not Botflota, decides what to send.

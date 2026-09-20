@@ -40,8 +40,11 @@ When an account links, WhatsApp pushes the account-wide history sync: the
 conversations it chooses, with the recent messages it chooses. Botflota stores
 what arrives, inertly (ADR 0035):
 
-- Only 1:1 chats and text are imported. Groups, broadcasts, status, channels,
-  media, reactions, polls, edits, and deletions are skipped.
+- Only 1:1 chats are imported. Text is stored, and a call attempt is stored as
+  a `call` row (a missed call reads "Missed call"); groups, broadcasts, status,
+  channels, media, reactions, polls, edits, and deletions store no row. A
+  conversation with any message still registers its sender and chat, so a chat
+  whose only history is a call or media appears in `chat list`.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
 - The account's contact names arrive in their own `PUSH_NAME` chunk and name
