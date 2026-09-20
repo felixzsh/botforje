@@ -280,6 +280,15 @@ Deliverables:
 - [x] Tests: API handlers and auth.
 - [ ] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).
+- [ ] History anchors for every message kind (ADR 0035): a chat whose synced
+  entries carry no text still needs an anchor for `chat sync`. Store a row for
+  each non-text entry with a channel id (media, location, call, and an unknown
+  fallback) under explicit message kinds, so the chat has a provider id to page
+  back from; reactions, edits, and deletions stay control-only.
+- [ ] `chat sync --all` (ADR 0035): after those anchors exist, request one
+  bounded page per known chat over a single stopped-fleet connection, in
+  sequence and never in parallel, skipping chats without an anchor and
+  reporting answered, timed-out, and skipped counts in the summary.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured by editing its files, through CLI and API only.
