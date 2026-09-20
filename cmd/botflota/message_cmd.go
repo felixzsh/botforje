@@ -141,7 +141,7 @@ func printMessages(
 		fmt.Fprintf(w, "%-19s  %-3s  %-7s  %-8s  %-16s  %s\n",
 			message.At.Local().Format("2006-01-02 15:04:05"),
 			message.Direction, dash(message.IngestKind), dash(message.Origin),
-			dash(message.Routing), message.Body)
+			dash(message.Routing), dash(message.Body))
 		if message.ID > last {
 			last = message.ID
 		}

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -23,9 +24,11 @@ import (
 // WhatsApp delivers the sync in chunks right after a companion links, and the
 // chunks carry conversations for many senders at once, not for one. The
 // importer resolves the chat's phone number, creates the sender and chat, and
-// appends the text messages; a repeated chunk is deduplicated through the
-// channel message id. A PUSH_NAME chunk carries the account's contact names,
-// which the importer applies to the senders it already has.
+// appends the text messages and call attempts; a repeated chunk is
+// deduplicated through the channel message id. A conversation with any message
+// registers the chat even when every entry is a type the importer does not
+// store. A PUSH_NAME chunk carries the account's contact names, which the
+// importer applies to the senders it already has.
 type historyImporter struct {
 	scope     string
 	bot       string
@@ -125,8 +128,11 @@ func (h *historyImporter) importPushNames(
 	}
 }
 
-// importConversation stores the text messages of one conversation, oldest
-// first, and widens the chat's activity to cover them. It returns how many
+// importConversation stores the text messages and call attempts of one
+// conversation, oldest first, and widens the chat's activity to cover them. A
+// conversation with any message registers the sender and chat even when every
+// entry is a type the importer does not store, so a chat that only ever saw a
+// call or media still appears in the read API (ADR 0035). It returns how many
 // messages were imported, how many were duplicates, and how many entries were
 // skipped.
 func (h *historyImporter) importConversation(
@@ -146,6 +152,14 @@ func (h *historyImporter) importConversation(
 	skipped := 0
 	var from, to time.Time
 	for _, entry := range ordered {
+		if at := historyEntryAt(conversation, entry); !at.IsZero() {
+			if from.IsZero() || at.Before(from) {
+				from = at
+			}
+			if at.After(to) {
+				to = at
+			}
+		}
 		record, pushName, ok := historyRecord(conversation, entry)
 		if !ok {
 			skipped++
@@ -154,17 +168,9 @@ func (h *historyImporter) importConversation(
 		if record.Direction == botflota.Inbound && pushName != "" {
 			name = pushName
 		}
-		if !record.At.IsZero() {
-			if from.IsZero() || record.At.Before(from) {
-				from = record.At
-			}
-			if record.At.After(to) {
-				to = record.At
-			}
-		}
 		records = append(records, record)
 	}
-	if len(records) == 0 {
+	if len(ordered) == 0 {
 		return 0, 0, skipped, nil
 	}
 	if name == "" {
@@ -173,6 +179,9 @@ func (h *historyImporter) importConversation(
 	ensureAt := to
 	if ensureAt.IsZero() {
 		ensureAt = from
+	}
+	if ensureAt.IsZero() {
+		ensureAt = h.now().UTC()
 	}
 	sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, ensureAt)
 	if err != nil {
@@ -200,9 +209,11 @@ func (h *historyImporter) importConversation(
 	return imported, duplicate, skipped, nil
 }
 
-// historyRecord maps one synced message to a stored message. It reports false
-// for anything the import does not keep: media, reactions, edits, deletions,
-// and rows without a text body or a channel id.
+// historyRecord maps one synced message to a stored message. Text and call
+// attempts are kept; anything else (media, reactions, edits, deletions) reports
+// false, though the conversation itself still registers the chat. A row without
+// a text body and without a call, or without a channel id, reports false too: a
+// row with no provider id cannot anchor an on-demand request (ADR 0035).
 func historyRecord(
 	conversation *waHistorySync.Conversation, entry *waHistorySync.HistorySyncMsg,
 ) (botflota.Message, string, bool) {
@@ -210,13 +221,18 @@ func historyRecord(
 	if web == nil || web.GetKey() == nil {
 		return botflota.Message{}, "", false
 	}
-	body := messageText(web.GetMessage())
-	if body == "" {
-		return botflota.Message{}, "", false
-	}
 	providerID := web.GetKey().GetID()
 	if providerID == "" {
 		return botflota.Message{}, "", false
+	}
+	kind := botflota.KindText
+	body := messageText(web.GetMessage())
+	if body == "" {
+		label, ok := callLogLabel(web.GetMessage())
+		if !ok {
+			return botflota.Message{}, "", false
+		}
+		kind, body = botflota.KindCall, label
 	}
 	direction := botflota.Inbound
 	origin := botflota.MessageOrigin("")
@@ -224,23 +240,60 @@ func historyRecord(
 		direction = botflota.Outbound
 		origin = botflota.OriginUnknown
 	}
-	var at time.Time
-	switch {
-	case web.GetMessageTimestamp() != 0:
-		at = time.Unix(int64(web.GetMessageTimestamp()), 0).UTC()
-	case conversation.GetLastMsgTimestamp() != 0:
-		at = time.Unix(int64(conversation.GetLastMsgTimestamp()), 0).UTC()
-	}
 	return botflota.Message{
 		Direction:         direction,
-		Kind:              botflota.KindText,
+		Kind:              kind,
 		Body:              body,
-		At:                at,
+		At:                historyEntryAt(conversation, entry),
 		ProviderMessageID: providerID,
 		Ingest:            botflota.IngestSync,
 		Origin:            origin,
 		Routing:           botflota.RoutingUnknown,
 	}, web.GetPushName(), true
+}
+
+// historyEntryAt is the timestamp of one synced entry: the message's own time,
+// or the conversation's last timestamp when the message carries none.
+func historyEntryAt(
+	conversation *waHistorySync.Conversation, entry *waHistorySync.HistorySyncMsg,
+) time.Time {
+	web := entry.GetMessage()
+	if web == nil {
+		return time.Time{}
+	}
+	if web.GetMessageTimestamp() != 0 {
+		return time.Unix(int64(web.GetMessageTimestamp()), 0).UTC()
+	}
+	if conversation.GetLastMsgTimestamp() != 0 {
+		return time.Unix(int64(conversation.GetLastMsgTimestamp()), 0).UTC()
+	}
+	return time.Time{}
+}
+
+// callLogLabel describes a call attempt so a conversation whose only history is
+// calls keeps a visible, non-text row (ADR 0035).
+func callLogLabel(web *waE2E.Message) (string, bool) {
+	call := web.GetCallLogMesssage()
+	if call == nil {
+		return "", false
+	}
+	missed := false
+	switch call.GetCallOutcome() {
+	case waE2E.CallLogMessage_MISSED,
+		waE2E.CallLogMessage_REJECTED,
+		waE2E.CallLogMessage_FAILED:
+		missed = true
+	}
+	switch {
+	case missed && call.GetIsVideo():
+		return "Missed video call", true
+	case missed:
+		return "Missed call", true
+	case call.GetIsVideo():
+		return "Video call", true
+	default:
+		return "Call", true
+	}
 }
 
 // historyChatPhone resolves the phone number of a conversation's chat. It uses

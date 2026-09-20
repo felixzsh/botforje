@@ -615,7 +615,8 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	b := historyConversation("5215500000001@s.whatsapp.net", "", "Beto",
 		historyText("N1", false, "hi bot", base+30, 1),
 	)
-	// A group and a chat with only a media message must leave no trace.
+	// The group leaves no trace; the media-only conversation still registers
+	// its chat, because it carries a message even without text (ADR 0035).
 	group := historyConversation("1203630@g.us", "", "Team", historyText("G1", false, "hey", base, 1))
 	media := historyConversation("5215500000002@s.whatsapp.net", "", "Cora",
 		historyMedia("P1", base))
@@ -630,10 +631,28 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	if ana.DisplayName != "Ana" {
 		t.Fatalf("Ana display name = %q", ana.DisplayName)
 	}
-	if _, err := db.Senders().Get(ctx, "dev", "5215500000002"); !errors.Is(
+	if _, err := db.Senders().Get(ctx, "dev", "1203630"); !errors.Is(
 		err, botflota.ErrNotFound,
 	) {
-		t.Fatalf("media-only sender = %v, want not found", err)
+		t.Fatalf("group sender = %v, want not found", err)
+	}
+	cora, err := db.Senders().Get(ctx, "dev", "5215500000002")
+	if err != nil {
+		t.Fatalf("media-only sender: %v", err)
+	}
+	coraChat, err := db.Chats().ForSender(ctx, "dev", "bot", cora.ID)
+	if err != nil {
+		t.Fatalf("media-only chat: %v", err)
+	}
+	coraMessages, err := db.Messages().History(ctx, coraChat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("media-only history: %v", err)
+	}
+	if len(coraMessages) != 0 {
+		t.Fatalf("media-only messages = %d, want 0", len(coraMessages))
+	}
+	if !coraChat.StartedAt.Equal(time.Unix(int64(base), 0).UTC()) {
+		t.Fatalf("media-only chat started = %v", coraChat.StartedAt)
 	}
 
 	chat, err := db.Chats().ForSender(ctx, "dev", "bot", ana.ID)
@@ -673,6 +692,48 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	}
 	if messages[0].ProviderMessageID != "M1" {
 		t.Fatalf("provider id = %q", messages[0].ProviderMessageID)
+	}
+}
+
+func TestHistoryImporterStoresCallAttempts(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+
+	base := uint64(t0.Unix())
+	// A chat whose only history is a missed call: no text at all.
+	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
+		historyCall("C1", false, base+30, 1),
+	)
+	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{conversation},
+	}})
+	if stats.imported != 1 || stats.skipped != 0 {
+		t.Fatalf("stats = %#v, want 1 imported, 0 skipped", stats)
+	}
+	sender, err := db.Senders().Get(ctx, "dev", "5215500000000")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	chat, err := db.Chats().ForSender(ctx, "dev", "bot", sender.ID)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(messages))
+	}
+	if messages[0].Kind != botflota.KindCall || messages[0].Body != "Missed call" {
+		t.Fatalf("call row = %+v, want a missed call", messages[0])
+	}
+	if messages[0].ProviderMessageID != "C1" ||
+		messages[0].Ingest != botflota.IngestSync ||
+		messages[0].Direction != botflota.Inbound {
+		t.Fatalf("call provenance = %+v", messages[0])
 	}
 }
 
@@ -800,6 +861,24 @@ func historyMedia(id string, timestamp uint64) *waHistorySync.HistorySyncMsg {
 		Message: &waWeb.WebMessageInfo{
 			Key:              &waCommon.MessageKey{ID: proto.String(id)},
 			Message:          &waE2E.Message{ImageMessage: &waE2E.ImageMessage{}},
+			MessageTimestamp: proto.Uint64(timestamp),
+		},
+	}
+}
+
+func historyCall(
+	id string, fromMe bool, timestamp uint64, order uint64,
+) *waHistorySync.HistorySyncMsg {
+	return &waHistorySync.HistorySyncMsg{
+		MsgOrderID: proto.Uint64(order),
+		Message: &waWeb.WebMessageInfo{
+			Key: &waCommon.MessageKey{
+				FromMe: proto.Bool(fromMe),
+				ID:     proto.String(id),
+			},
+			Message: &waE2E.Message{CallLogMesssage: &waE2E.CallLogMessage{
+				CallOutcome: waE2E.CallLogMessage_MISSED.Enum(),
+			}},
 			MessageTimestamp: proto.Uint64(timestamp),
 		},
 	}

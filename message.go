@@ -27,6 +27,10 @@ type MessageKind string
 const (
 	KindText     MessageKind = "text"
 	KindLocation MessageKind = "location"
+	// KindCall is a call attempt imported from a WhatsApp chat, kept so a
+	// conversation whose only history is calls still has a visible row
+	// (ADR 0035). The engine never creates it; it is not a live message.
+	KindCall MessageKind = "call"
 )
 
 // IncomingMessage is one inbound message. Sender is the resolved phone number
