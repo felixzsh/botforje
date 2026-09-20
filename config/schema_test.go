@@ -7,11 +7,9 @@ import (
 )
 
 func TestSchema(t *testing.T) {
-	// The comments come from the Go sources, and AddGoComments only resolves
-	// them when the process runs from the module root, which is how the
-	// Makefile target runs. Regenerating from anywhere else silently drops
-	// every description.
-	t.Chdir("..")
+	// Regeneration ignores the working directory: the doc comments must
+	// resolve from anywhere, not only from the module root.
+	t.Chdir(t.TempDir())
 	data, err := JSONSchema()
 	if err != nil {
 		t.Fatalf("schema: %v", err)
@@ -26,9 +24,14 @@ func TestSchema(t *testing.T) {
 			t.Errorf("schema is missing %q", want)
 		}
 	}
-	// Descriptions come from the Go doc comments through AddGoComments; assert
-	// one so a silent failure to resolve the package or module path is caught.
-	if !strings.Contains(text, "reusable pipeline of steps") {
-		t.Error("schema has no Go doc comments; check AddGoComments wiring")
+	// Descriptions come from the Go doc comments of both packages; assert one
+	// of each so a silent failure to resolve them is caught.
+	for _, want := range []string{
+		"Config is the root document",
+		"reusable pipeline of steps",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("schema has no description %q; check addGoComments wiring", want)
+		}
 	}
 }

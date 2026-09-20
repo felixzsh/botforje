@@ -200,7 +200,7 @@ Deliverables:
   capability, `adapters/`, and `internal` as a last resort (ADR 0034).
 - [x] Declarative objects moved to `spec`; the template language moved to the
   core and the runtime context into `engine` (ADR 0034).
-- [ ] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
+- [x] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
   `fleet run|status`, `message list|tail`. Operational queries use the API;
   process lifecycle belongs to the supervisor (ADR 0025).
 - [x] CLI help: `usage`, description, commands, options, and examples for every
@@ -208,7 +208,7 @@ Deliverables:
 - [x] CLI `--version` and a decision on global versus per-subcommand flags.
 - [x] `--json` for `bot list` and `fleet status`.
 - [ ] Optional: `completion` for bash, zsh, and fish.
-- [ ] `config init`: create `config_dir` with a minimal `config.yml` and a
+- [x] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`. Generation must not depend on the working directory: the Go doc
   comments only resolve from the module root today, so a schema generated
@@ -389,16 +389,14 @@ and additional channels, each with its own phase, order, and open decisions.
 - How export and import inline a scope's reference to `shared` (Phase 18).
 - LLM bounds defaults: max tools per message and timeout (Phase 8).
 - Which LLM providers ship first for realization (close in Phase 8).
-- Whether the CLI acts as a client of the REST API for fleet operations
-  (Phase 7).
-- API shape and auth details (close in Phase 7).
-- `config init` behavior: non-interactive minimum (recommended) or prompting for
-  provider and model (Phase 7).
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
 conventions are in `AGENTS.md`. The config v1 baseline settles in Phase 1 and
 keeps evolving until the MVP release.
+The operational CLI is a client of the REST API, authenticated with the owner
+token or a scoped access token, and `config init` is non-interactive (Phase 7,
+ADR 0025).
 Trigger matching and its threshold are in ADR 0019. AI routing is
 decision-only via System One (ADR 0030), model catalogs are scoped with a
 shared host catalog (ADR 0031), prescribed replies are the default (ADR

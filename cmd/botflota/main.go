@@ -31,6 +31,12 @@ func configFlag(fs *flag.FlagSet) *string {
 	return fs.String("config", "", "`FILE` path to the config file (default: XDG discovery)")
 }
 
+// systemConfigDir is the last place discovery looks.
+const systemConfigDir = "/etc"
+
+// discoverConfig returns the first config file that exists: BOTFLOTA_CONFIG,
+// the user config directory, then the system one. An explicit --config wins
+// over all of them and the caller uses it directly.
 func discoverConfig() (string, error) {
 	if path := os.Getenv("BOTFLOTA_CONFIG"); path != "" {
 		if _, err := os.Stat(path); err != nil {
@@ -38,18 +44,37 @@ func discoverConfig() (string, error) {
 		}
 		return path, nil
 	}
-	var candidates []string
-	if home, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(home, ".config", "botflota", "config.yml"))
+	return firstExisting(configSearchPaths())
+}
+
+// configSearchPaths lists where discovery looks, most specific first.
+func configSearchPaths() []string {
+	var paths []string
+	if dir, err := os.UserConfigDir(); err == nil {
+		paths = append(paths, filepath.Join(dir, "botflota", "config.yml"))
 	}
-	candidates = append(candidates, "/etc/botflota/config.yml")
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c, nil
+	return append(paths, filepath.Join(systemConfigDir, "botflota", "config.yml"))
+}
+
+// defaultConfigPath is where `config init` writes without --config: the user
+// config directory, the first place discovery checks.
+func defaultConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "botflota", "config.yml"), nil
+}
+
+// firstExisting returns the first path that exists, or an error naming every
+// candidate.
+func firstExisting(paths []string) (string, error) {
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
 		}
 	}
-	return "", fmt.Errorf("no config found; tried %s",
-		strings.Join(candidates, ", "))
+	return "", fmt.Errorf("no config found; tried %s", strings.Join(paths, ", "))
 }
 
 // loadConfig discovers and validates the config, returning an exit code on

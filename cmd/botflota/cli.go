@@ -96,14 +96,28 @@ func cliTree() *commandHelp {
 			{
 				name:    "config",
 				summary: "manage configuration",
-				long:    "Validate the configuration and render its JSON Schema.",
+				long:    "Create a configuration, validate it, and render its JSON Schema.",
 				usage:   "botflota config <command> [options]",
 				examples: []string{
+					"botflota config init",
 					"botflota config validate",
-					"botflota config schema",
 				},
 				moreHelp: "for more help: botflota config <command> --help",
 				sub: []commandHelp{
+					{
+						name:    "init",
+						summary: "create a config file and its schema",
+						long: "Write a minimal config file and the generated JSON Schema\n" +
+							"beside it, defaulting to the user config directory. It never\n" +
+							"touches an existing file without --force.",
+						usage: "botflota config init [options]",
+						examples: []string{
+							"botflota config init",
+							"botflota config init --config etc/config.yml",
+						},
+						flags: func() *flag.FlagSet { return newInitCmd().fs },
+						run:   runInit,
+					},
 					{
 						name:    "validate",
 						summary: "validate a config file",
