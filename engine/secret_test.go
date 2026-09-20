@@ -56,7 +56,7 @@ func testRun() *run {
 		engine: New(Options{}),
 		tctx:   newtemplateContext(),
 		msg: botflota.IncomingMessage{
-			Sender: "5215500000000", Content: botflota.TextContent{Body: "hi"},
+			SenderPhone: "5215500000000", Content: botflota.TextContent{Body: "hi"},
 		},
 	}
 }

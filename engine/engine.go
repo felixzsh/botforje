@@ -99,7 +99,7 @@ func New(opts Options) *Engine {
 func (e *Engine) Handle(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) ([]botflota.OutgoingMessage, error) {
-	if msg.Sender == "" {
+	if msg.SenderPhone == "" {
 		return nil, errors.New("engine: incoming message has no sender")
 	}
 	if msg.Content == nil {
@@ -186,7 +186,7 @@ func (e *Engine) recordMessages(
 		Direction:         botflota.Inbound,
 		Content:           msg.Content,
 		At:                msg.At,
-		ProviderMessageID: msg.ID,
+		ProviderMessageID: msg.ProviderMessageID,
 		Ingest:            botflota.IngestLive,
 		Routing:           routing,
 	}
@@ -210,7 +210,7 @@ func (e *Engine) recordMessages(
 		// The channel reports its message id after delivery; the fleet fills
 		// the stored row with it so a later history sync deduplicates the
 		// reply (ADR 0026, ADR 0035).
-		out[i].RecordID = sent.ID
+		out[i].StoredMessageID = sent.ID
 	}
 	return nil
 }
@@ -221,7 +221,8 @@ func (e *Engine) load(
 	if e.senders == nil {
 		return nil, nil, nil, false, errors.New("engine: no sender store")
 	}
-	sender, _, err := e.senders.Upsert(ctx, e.scope, msg.Sender, msg.SenderName, now)
+	sender, _, err := e.senders.Upsert(ctx, e.scope, msg.SenderPhone,
+		msg.SenderDisplayName, now)
 	if err != nil {
 		return nil, nil, nil, false, fmt.Errorf("engine: sender: %w", err)
 	}
@@ -277,12 +278,12 @@ func (e *Engine) contextOf(
 	_ = tctx.Reset(botflota.RootGraph, session.GraphContext)
 	_ = tctx.Reset(botflota.RootNode, session.NodeContext)
 	_ = tctx.Reset(botflota.RootSender, map[string]any{
-		"phone": msg.Sender,
+		"phone": msg.SenderPhone,
 		"name":  sender.DisplayName,
 	})
 	_ = tctx.Reset(botflota.RootMessage, map[string]any{
 		"body": msg.Content.VisibleText(),
-		"id":   msg.ID,
+		"id":   msg.ProviderMessageID,
 		"at":   formatAt(msg.At),
 	})
 	_ = tctx.Reset(botflota.RootBot, map[string]any{

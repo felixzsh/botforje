@@ -204,7 +204,7 @@ func TestProviderMessageIDIsRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: "s", ID: "ABC123", At: t0,
+		Bot: "support-bot", SenderPhone: "s", ProviderMessageID: "ABC123", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	})
 	if err != nil {
@@ -222,7 +222,7 @@ func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
 	replies, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: "s", ID: "ABC123", At: t0,
+		Bot: "support-bot", SenderPhone: "s", ProviderMessageID: "ABC123", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	})
 	if err != nil {
@@ -232,7 +232,8 @@ func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
 		t.Fatal("Handle returned no replies")
 	}
 	reply := lastRecord(t, store, botflota.Outbound)
-	if replies[0].RecordID == 0 || replies[0].RecordID != reply.ID {
-		t.Fatalf("RecordID = %d, want the stored reply id %d", replies[0].RecordID, reply.ID)
+	if replies[0].StoredMessageID == 0 || replies[0].StoredMessageID != reply.ID {
+		t.Fatalf("StoredMessageID = %d, want the stored reply id %d",
+			replies[0].StoredMessageID, reply.ID)
 	}
 }

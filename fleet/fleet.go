@@ -140,11 +140,11 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 					}
 				},
 				OnSent: func(msg botflota.OutgoingMessage, providerID string) {
-					if msg.RecordID == 0 {
+					if msg.StoredMessageID == 0 {
 						return
 					}
 					if err := opts.Messages.SetProviderID(
-						context.Background(), msg.RecordID, providerID,
+						context.Background(), msg.StoredMessageID, providerID,
 					); err != nil {
 						botLog.Warn("record outbound provider id", "error", err)
 					}
@@ -237,16 +237,17 @@ func (b *Bot) run(ctx context.Context) error {
 				return nil
 			}
 			b.log.Debug("message received",
-				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup,
+				"sender", msg.SenderPhone, "id", msg.ProviderMessageID,
+				"group", msg.IsGroup,
 				"kind", string(botflota.ContentKind(msg.Content)),
 				"body", botflota.ContentText(msg.Content))
 			if !b.filter.Allow(msg) {
-				b.log.Debug("message filtered", "sender", msg.Sender)
+				b.log.Debug("message filtered", "sender", msg.SenderPhone)
 				continue
 			}
 			replies, err := b.engine.Handle(ctx, msg)
 			if err != nil {
-				b.log.Error("engine failed", "sender", msg.Sender, "error", err)
+				b.log.Error("engine failed", "sender", msg.SenderPhone, "error", err)
 				b.onError(err)
 				continue
 			}

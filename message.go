@@ -27,35 +27,36 @@ var ErrDuplicate = errors.New("duplicate")
 // (ADR 0036).
 var ErrUnsupportedKind = errors.New("unsupported message content")
 
-// IncomingMessage is one inbound message. Sender is the resolved phone number
-// in plain digits (e.g. "5215500000000"); the JID and any LID stay inside the
-// channel adapter (ADR 0020). SenderName is the WhatsApp push name: best
-// effort, possibly empty, and never an identifier (ADR 0029). Content is the
-// classified payload, whose visible text may be empty for a binary message
-// (ADR 0036).
+// IncomingMessage is one inbound message. SenderPhone is the resolved phone
+// number in plain digits (e.g. "5215500000000"); the JID and any LID stay
+// inside the channel adapter (ADR 0020). SenderDisplayName is the WhatsApp push
+// name: best effort, possibly empty, and never an identifier (ADR 0029).
+// Content is the classified payload, whose visible text may be empty for a
+// binary message (ADR 0036). ProviderMessageID is the channel's own id, which
+// the engine stores for dedup against a later history sync (ADR 0026).
 type IncomingMessage struct {
-	Bot        string
-	Sender     string
-	SenderName string
-	Content    MessageContent
-	ID         string
-	IsGroup    bool
-	At         time.Time
+	Bot               string
+	SenderPhone       string
+	SenderDisplayName string
+	Content           MessageContent
+	ProviderMessageID string
+	IsGroup           bool
+	At                time.Time
 }
 
 // OutgoingMessage is one message the engine asks the channel to deliver.
-// Recipient is the plain phone number the reply is for; the adapter maps it to
-// the transport address (ADR 0020). Content is exactly one sendable payload,
-// so a kind the engine only reads can never be sent (ADR 0036). Origin and
-// Routing carry the provenance the engine records with the reply (ADR 0026).
-// RecordID is the stored history row the engine created for the reply; the
-// channel reports its own message id after delivery so the row can be
-// deduplicated against a later history sync.
+// RecipientPhone is the plain phone number the reply is for; the adapter maps
+// it to the transport address (ADR 0020). Content is exactly one sendable
+// payload, so a kind the engine only reads can never be sent (ADR 0036).
+// Origin and Routing carry the provenance the engine records with the reply
+// (ADR 0026). StoredMessageID is the stored history row the engine created for
+// the reply; the channel reports its own message id after delivery so the row
+// can be deduplicated against a later history sync.
 type OutgoingMessage struct {
-	Bot       string
-	Recipient string
-	Content   SendableContent
-	Origin    MessageOrigin
-	Routing   RoutingMethod
-	RecordID  int64
+	Bot             string
+	RecipientPhone  string
+	Content         SendableContent
+	Origin          MessageOrigin
+	Routing         RoutingMethod
+	StoredMessageID int64
 }

@@ -179,8 +179,8 @@ func (q *outbox) send(msg botflota.OutgoingMessage, pacing time.Duration) {
 
 // recipient is the phone number for logs; it never logs a LID.
 func recipient(msg botflota.OutgoingMessage) string {
-	if msg.Recipient != "" {
-		return msg.Recipient
+	if msg.RecipientPhone != "" {
+		return msg.RecipientPhone
 	}
 	return "unresolved"
 }

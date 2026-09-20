@@ -456,7 +456,7 @@ func TestTwoBotsAreIndependent(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", Sender: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	reply := receive(t, channels["alpha"].sent)
 	if got := botflota.ContentText(reply.Content); got != "hello from alpha" {
@@ -480,7 +480,7 @@ func TestOutboundProviderIDIsStored(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", Sender: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	reply := receive(t, channels["alpha"].sent)
 	want := "wamid." + botflota.ContentText(reply.Content)
@@ -513,7 +513,7 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["beta"].incoming <- botflota.IncomingMessage{
-		Bot: "beta", Sender: "999", Content: botflota.TextContent{Body: "hi"},
+		Bot: "beta", SenderPhone: "999", Content: botflota.TextContent{Body: "hi"},
 	}
 	select {
 	case reply := <-channels["beta"].sent:
@@ -522,7 +522,7 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	}
 
 	channels["beta"].incoming <- botflota.IncomingMessage{
-		Bot: "beta", Sender: "1", Content: botflota.TextContent{Body: "hi"},
+		Bot: "beta", SenderPhone: "1", Content: botflota.TextContent{Body: "hi"},
 	}
 	reply := receive(t, channels["beta"].sent)
 	if got := botflota.ContentText(reply.Content); got != "hello from beta" {
@@ -545,7 +545,7 @@ func TestShutdownDrainsBeforeDisconnect(t *testing.T) {
 	waitConnected(t, runner)
 
 	alpha.incoming <- botflota.IncomingMessage{
-		Bot: "alpha", Sender: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	<-alpha.entered
 	cancel()

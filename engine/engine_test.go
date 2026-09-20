@@ -293,7 +293,7 @@ func newTestEngine(t *testing.T, opts engine.Options) *engine.Engine {
 func outbound(t *testing.T, eng *engine.Engine, sender, text string) []string {
 	t.Helper()
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: sender, At: t0,
+		Bot: "support-bot", SenderPhone: sender, At: t0,
 		Content: botflota.TextContent{Body: text},
 	})
 	if err != nil {
@@ -585,7 +585,7 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Sender: "s", Content: botflota.TextContent{Body: "hi"},
+		SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	})
 	if !errors.Is(err, botflota.ErrNoLLM) {
 		t.Fatalf("error = %v, want ErrNoLLM", err)
@@ -631,7 +631,7 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", Sender: "5215500000000", At: t0,
+		Bot: "b", SenderPhone: "5215500000000", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
@@ -640,8 +640,8 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 	if len(messages) != 1 {
 		t.Fatalf("messages = %#v, want one", messages)
 	}
-	if messages[0].Recipient != "5215500099999" {
-		t.Fatalf("recipient = %q, want the override", messages[0].Recipient)
+	if messages[0].RecipientPhone != "5215500099999" {
+		t.Fatalf("recipient = %q, want the override", messages[0].RecipientPhone)
 	}
 	if got := botflota.ContentText(messages[0].Content); got != "lead from 5215500000000" {
 		t.Fatalf("body = %q", got)
@@ -664,13 +664,13 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", Sender: "5215500000000", At: t0,
+		Bot: "b", SenderPhone: "5215500000000", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(messages) != 1 || messages[0].Recipient != "5215500000000" {
+	if len(messages) != 1 || messages[0].RecipientPhone != "5215500000000" {
 		t.Fatalf("messages = %#v, want the sender as recipient", messages)
 	}
 }
@@ -693,7 +693,7 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", Sender: "52155", At: t0,
+		Bot: "b", SenderPhone: "52155", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "resolved empty") {
@@ -717,7 +717,7 @@ func TestLocationStep(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(),
-		botflota.IncomingMessage{Sender: "s", Content: botflota.TextContent{Body: "hi"}})
+		botflota.IncomingMessage{SenderPhone: "s", Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -754,7 +754,7 @@ func TestMediaContactPollSteps(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(),
-		botflota.IncomingMessage{Sender: "s", Content: botflota.TextContent{Body: "hi"}})
+		botflota.IncomingMessage{SenderPhone: "s", Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -789,7 +789,7 @@ func TestInboundKindRecorded(t *testing.T) {
 	})
 	ctx := context.Background()
 	if _, err := eng.Handle(ctx, botflota.IncomingMessage{
-		Sender: "s", At: t0,
+		SenderPhone: "s", At: t0,
 		Content: botflota.MediaContent{Type: botflota.MediaImage},
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -815,7 +815,7 @@ func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
 	if _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: "52155", SenderName: "Ana", At: t0,
+		Bot: "support-bot", SenderPhone: "52155", SenderDisplayName: "Ana", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -892,7 +892,7 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
-		Bot: "b", Sender: "52155", At: t0,
+		Bot: "b", SenderPhone: "52155", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
@@ -957,7 +957,7 @@ func TestRequestRetriesThenSucceeds(t *testing.T) {
 func TestRequestFailureStopsTheRun(t *testing.T) {
 	eng := retryEngine(t, 1, &flakyTransport{fail: 5})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Sender: "s", Content: botflota.TextContent{Body: "hi"},
+		SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	})
 	if err == nil {
 		t.Fatal("want an error when every attempt fails")

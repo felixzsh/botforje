@@ -99,11 +99,11 @@ func (r *run) message(m spec.Message) error {
 		return err
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:       r.engine.bot,
-		Recipient: recipient,
-		Content:   botflota.TextContent{Body: body},
-		Origin:    origin,
-		Routing:   r.routing,
+		Bot:            r.engine.bot,
+		RecipientPhone: recipient,
+		Content:        botflota.TextContent{Body: body},
+		Origin:         origin,
+		Routing:        r.routing,
 	})
 	return nil
 }
@@ -124,7 +124,7 @@ func (r *run) pickVariant(body spec.Text) string {
 // silent reply to the sender.
 func (r *run) recipient(to string) (string, error) {
 	if to == "" {
-		return r.msg.Sender, nil
+		return r.msg.SenderPhone, nil
 	}
 	rendered, err := botflota.RenderTemplate(to, r.tctx.Get)
 	if err != nil {
@@ -177,8 +177,8 @@ func (r *run) media(m spec.Media) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:       r.engine.bot,
-		Recipient: recipient,
+		Bot:            r.engine.bot,
+		RecipientPhone: recipient,
 		Content: botflota.MediaContent{
 			Type: mediaType, URL: url, Path: path, Name: name,
 			Caption: caption, MIME: m.MIME,
@@ -223,11 +223,11 @@ func (r *run) contact(c spec.Contact) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:       r.engine.bot,
-		Recipient: recipient,
-		Content:   botflota.ContactContent{Name: name, Phone: phone},
-		Origin:    botflota.OriginPreset,
-		Routing:   r.routing,
+		Bot:            r.engine.bot,
+		RecipientPhone: recipient,
+		Content:        botflota.ContactContent{Name: name, Phone: phone},
+		Origin:         botflota.OriginPreset,
+		Routing:        r.routing,
 	})
 	return nil
 }
@@ -262,8 +262,8 @@ func (r *run) poll(p spec.Poll) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:       r.engine.bot,
-		Recipient: recipient,
+		Bot:            r.engine.bot,
+		RecipientPhone: recipient,
 		Content: botflota.PollContent{
 			Question: question, Options: options, Selectable: p.Selectable,
 		},
@@ -376,8 +376,8 @@ func (r *run) location(loc spec.Location) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:       r.engine.bot,
-		Recipient: r.msg.Sender,
+		Bot:            r.engine.bot,
+		RecipientPhone: r.msg.SenderPhone,
 		Content: botflota.LocationContent{
 			Latitude:    loc.Latitude,
 			Longitude:   loc.Longitude,

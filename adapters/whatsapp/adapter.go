@@ -242,17 +242,17 @@ func (a *Adapter) Disconnect(context.Context) error {
 func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (string, error) {
 	a.mu.Lock()
 	client := a.client
-	last := a.last[msg.Recipient]
+	last := a.last[msg.RecipientPhone]
 	a.mu.Unlock()
 	if client == nil || !client.IsConnected() {
 		return "", errors.New("whatsapp: not connected")
 	}
-	if msg.Recipient == "" {
+	if msg.RecipientPhone == "" {
 		return "", errors.New("whatsapp: message has no recipient")
 	}
 	to := last.chat
 	if to.IsEmpty() {
-		to = types.NewJID(msg.Recipient, types.DefaultUserServer)
+		to = types.NewJID(msg.RecipientPhone, types.DefaultUserServer)
 	}
 	readDelay := a.jittered(a.settings.ReadReceiptDelay)
 	replyDelay := a.jittered(a.settings.ReplyDelay)
@@ -430,13 +430,13 @@ func (a *Adapter) onMessage(event *events.Message) {
 	a.mu.Unlock()
 
 	message := botflota.IncomingMessage{
-		Bot:        a.bot,
-		Sender:     sender,
-		SenderName: event.Info.PushName,
-		Content:    content,
-		ID:         id,
-		IsGroup:    event.Info.IsGroup,
-		At:         event.Info.Timestamp,
+		Bot:               a.bot,
+		SenderPhone:       sender,
+		SenderDisplayName: event.Info.PushName,
+		Content:           content,
+		ProviderMessageID: id,
+		IsGroup:           event.Info.IsGroup,
+		At:                event.Info.Timestamp,
 	}
 	select {
 	case a.incoming <- message:
