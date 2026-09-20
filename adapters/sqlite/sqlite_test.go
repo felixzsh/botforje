@@ -191,6 +191,35 @@ func TestChatGetAndList(t *testing.T) {
 	}
 }
 
+// TestChatRecentCounts covers the stored message counts the read API shows:
+// the total split by ingest kind, independent of the live inbound count.
+func TestChatRecentCounts(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	ingests := []botflota.Ingest{
+		botflota.IngestSync, botflota.IngestSync, botflota.IngestLive,
+	}
+	for i, ingest := range ingests {
+		message := &botflota.Message{
+			ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
+			Body: "m", At: t0, ProviderMessageID: "M" + string(rune('A'+i)),
+			Ingest: ingest,
+		}
+		if err := db.Messages().Append(ctx, message); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+	}
+	chats, err := db.Chats().Recent(ctx, "support", "support-bot", 10)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(chats) != 1 || chats[0].Messages != 3 || chats[0].Sync != 2 ||
+		chats[0].Live != 1 {
+		t.Fatalf("counts = %#v, want 3 stored (2 sync, 1 live)", chats)
+	}
+}
+
 func TestSessionRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))

@@ -36,7 +36,8 @@ type senderView struct {
 	Name  string `json:"name,omitempty"`
 }
 
-// chatView is one chat with its sender profile.
+// chatView is one chat with its sender profile. Messages is the total stored
+// history, split by ingest kind into Sync and Live (ADR 0035).
 type chatView struct {
 	ID        int64      `json:"id"`
 	Scope     string     `json:"scope"`
@@ -45,6 +46,8 @@ type chatView struct {
 	StartedAt time.Time  `json:"started_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	Messages  int64      `json:"messages"`
+	Sync      int64      `json:"sync"`
+	Live      int64      `json:"live"`
 }
 
 // messageView is one stored message. IngestKind, Origin, and Routing carry
@@ -208,7 +211,9 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 			},
 			StartedAt: chat.StartedAt,
 			UpdatedAt: chat.UpdatedAt,
-			Messages:  chat.MessageCount,
+			Messages:  chat.Messages,
+			Sync:      chat.Sync,
+			Live:      chat.Live,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": views})

@@ -130,13 +130,21 @@ func (s *ChatStore) ForSender(
 }
 
 // Recent returns up to limit chats of a scope, newest first, each with its
-// sender profile. An empty bot means every bot in the scope.
+// sender profile and the stored message counts by ingest kind. An empty bot
+// means every bot in the scope.
 func (s *ChatStore) Recent(
 	ctx context.Context, scope, bot string, limit int,
 ) ([]botflota.ChatSummary, error) {
 	const query = `SELECT c.id, c.scope, c.bot, c.sender_id, c.started_at,
-			c.updated_at, c.message_count, c.guards, s.phone, s.display_name
+			c.updated_at, c.message_count, c.guards, s.phone, s.display_name,
+			COALESCE(m.total, 0), COALESCE(m.sync, 0), COALESCE(m.live, 0)
 		FROM chats c JOIN senders s ON s.id = c.sender_id
+		LEFT JOIN (
+			SELECT chat_id, COUNT(*) AS total,
+			       SUM(ingest_kind = 'sync') AS sync,
+			       SUM(ingest_kind = 'live') AS live
+			FROM messages GROUP BY chat_id
+		) m ON m.chat_id = c.id
 		WHERE c.scope = ? AND (? = '' OR c.bot = ?)
 		ORDER BY c.updated_at DESC, c.id DESC LIMIT ?`
 	rows, err := s.db.QueryContext(ctx, query, scope, bot, bot, limit)
@@ -153,7 +161,8 @@ func (s *ChatStore) Recent(
 		)
 		if err := rows.Scan(&summary.ID, &summary.Scope, &summary.Bot,
 			&summary.SenderID, &startedAt, &updatedAt, &summary.MessageCount,
-			&guards, &summary.Phone, &summary.DisplayName); err != nil {
+			&guards, &summary.Phone, &summary.DisplayName,
+			&summary.Messages, &summary.Sync, &summary.Live); err != nil {
 			return nil, err
 		}
 		summary.StartedAt = parseTime(startedAt)

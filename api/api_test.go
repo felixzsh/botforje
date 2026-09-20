@@ -293,6 +293,7 @@ func testServer(t *testing.T) *Server {
 			StartedAt: testTime, UpdatedAt: testTime, MessageCount: 2,
 		},
 		Phone: sender.Phone, DisplayName: sender.DisplayName,
+		Messages: 5, Sync: 3, Live: 2,
 	}
 	quiet := botflota.Sender{
 		ID: 8, Scope: "support", Phone: "5215599999999", DisplayName: "Luis",
@@ -502,6 +503,8 @@ func TestChatsEndpoint(t *testing.T) {
 				Name  string `json:"name"`
 			} `json:"sender"`
 			Messages int64 `json:"messages"`
+			Sync     int64 `json:"sync"`
+			Live     int64 `json:"live"`
 		} `json:"chats"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -513,7 +516,7 @@ func TestChatsEndpoint(t *testing.T) {
 	chat := body.Chats[0]
 	if chat.ID != 3 || chat.Scope != "support" || chat.Bot != "demo" ||
 		chat.Sender.Phone != "5215500000000" || chat.Sender.Name != "Ana" ||
-		chat.Messages != 2 {
+		chat.Messages != 5 || chat.Sync != 3 || chat.Live != 2 {
 		t.Fatalf("chat = %#v", chat)
 	}
 }

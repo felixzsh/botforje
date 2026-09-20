@@ -254,9 +254,10 @@ func cliTree() *commandHelp {
 						name:    "list",
 						summary: "list one bot's chats and their senders",
 						long: "Print one row per chat with its sender's phone and name, the\n" +
-							"inbound message count, and the first and last activity,\n" +
-							"newest activity first. The bot is named as in bot list; add\n" +
-							"--scope when the name exists in more than one scope.",
+							"stored message total split into sync and live, and the first\n" +
+							"and last activity, newest activity first. The bot is named as\n" +
+							"in bot list; add --scope when the name exists in more than one\n" +
+							"scope.",
 						usage: "botflota chat list [options] <bot>",
 						examples: []string{
 							"botflota chat list support-bot",

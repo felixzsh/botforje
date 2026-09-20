@@ -80,8 +80,8 @@ func (q chatsQuery) path() string {
 }
 
 // printChats writes one row per chat, newest activity first, as the API
-// returns them: the sender's phone and name, the inbound message count, and
-// the first and last activity.
+// returns them: the sender's phone and name, the stored message total split by
+// ingest kind, and the first and last activity.
 func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuery) error {
 	var body struct {
 		Chats []struct {
@@ -90,6 +90,8 @@ func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuer
 				Name  string `json:"name"`
 			} `json:"sender"`
 			Messages  int64     `json:"messages"`
+			Sync      int64     `json:"sync"`
+			Live      int64     `json:"live"`
 			StartedAt time.Time `json:"started_at"`
 			UpdatedAt time.Time `json:"updated_at"`
 		} `json:"chats"`
@@ -97,11 +99,12 @@ func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuer
 	if err := client.get(ctx, q.path(), &body); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "%-16s %-24s %8s  %-19s  %s\n",
-		"PHONE", "NAME", "MESSAGES", "STARTED", "UPDATED")
+	fmt.Fprintf(w, "%-15s %-20s %8s %6s %6s  %-19s  %s\n",
+		"PHONE", "NAME", "MESSAGES", "SYNC", "LIVE", "STARTED", "UPDATED")
 	for _, chat := range body.Chats {
-		fmt.Fprintf(w, "%-16s %-24s %8d  %-19s  %s\n",
+		fmt.Fprintf(w, "%-15s %-20s %8d %6d %6d  %-19s  %s\n",
 			chat.Sender.Phone, dash(chat.Sender.Name), chat.Messages,
+			chat.Sync, chat.Live,
 			chat.StartedAt.Local().Format("2006-01-02 15:04:05"),
 			chat.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
 	}

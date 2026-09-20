@@ -116,11 +116,16 @@ type Message struct {
 }
 
 // ChatSummary is a chat joined with its sender profile, for the read API
-// (ADR 0026, ADR 0029).
+// (ADR 0026, ADR 0029). Messages, Sync, and Live count the stored rows by
+// ingest kind, so a reader sees the imported backlog too (ADR 0035); the
+// embedded MessageCount stays the live inbound count of ADR 0029.
 type ChatSummary struct {
 	Chat
 	Phone       string
 	DisplayName string
+	Messages    int64
+	Sync        int64
+	Live        int64
 }
 
 // Session is one bounded run of the graph for a chat; a chat has many over

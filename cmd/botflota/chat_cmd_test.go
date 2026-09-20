@@ -45,11 +45,11 @@ const twoChats = `{"chats":[
 	{"id":3,"scope":"support","bot":"demo",
 	 "sender":{"phone":"5215500000000","name":"Ana"},
 	 "started_at":"2026-09-13T10:00:00Z","updated_at":"2026-09-13T10:05:00Z",
-	 "messages":4},
+	 "messages":5,"sync":3,"live":2},
 	{"id":1,"scope":"support","bot":"demo",
 	 "sender":{"phone":"5215500000001","name":""},
 	 "started_at":"2026-09-12T09:00:00Z","updated_at":"2026-09-12T09:00:00Z",
-	 "messages":0}
+	 "messages":0,"sync":0,"live":0}
 ]}`
 
 func TestPrintChatsListsSenders(t *testing.T) {
@@ -65,8 +65,8 @@ func TestPrintChatsListsSenders(t *testing.T) {
 	}
 	text := out.String()
 	for _, want := range []string{
-		"PHONE", "NAME", "MESSAGES", "STARTED", "UPDATED",
-		"5215500000000", "Ana", "5215500000001", "-", "4",
+		"PHONE", "NAME", "MESSAGES", "SYNC", "LIVE", "STARTED", "UPDATED",
+		"5215500000000", "Ana", "5215500000001", "-", "5", "3", "2",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("output %q is missing %q", text, want)
