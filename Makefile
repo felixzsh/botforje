@@ -2,7 +2,7 @@ GO ?= go
 BIN := bin/botflota
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 CONFIG ?= config/examples/reference.yml
-DEV_CONFIG ?= config/dev.yml
+DEV_CONFIG ?= .dev-data/config.yml
 DEV_DATA ?= .dev-data
 ARGS ?=
 LINE_MAX := 100
@@ -25,9 +25,9 @@ run: build ## Run the CLI against the real config: make run ARGS="config validat
 dev: build ## Run the CLI in development: make dev ARGS="bot list"
 	BOTFLOTA_CONFIG=$(DEV_CONFIG) exec $(BIN) $(ARGS)
 
-dev-reset: ## Delete the development database (.dev-data), never the real one
+dev-reset: ## Delete the development database, never the local config or real one
 	@test -n "$(DEV_DATA)" || { echo "refusing: DEV_DATA is empty"; exit 1; }
-	rm -rf $(DEV_DATA)
+	rm -f $(DEV_DATA)/botflota.db* $(DEV_DATA)/owner.token
 
 test: ## Run all tests
 	$(GO) test ./...
