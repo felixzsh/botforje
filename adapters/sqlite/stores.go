@@ -62,6 +62,25 @@ func (s *SenderStore) Upsert(
 	return sender, created, nil
 }
 
+// SetDisplayName records a name learned from the channel's contact data
+// (ADR 0035) without touching first or last seen. It is a no-op when the
+// sender has no profile or the name is unchanged.
+func (s *SenderStore) SetDisplayName(
+	ctx context.Context, scope, phone, name string, at time.Time,
+) error {
+	if name == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE senders SET display_name = ?, name_updated_at = ?
+		 WHERE scope = ? AND phone = ? AND display_name <> ?`,
+		name, formatTime(at), scope, phone, name)
+	if err != nil {
+		return fmt.Errorf("sqlite: set sender display name: %w", err)
+	}
+	return nil
+}
+
 // Get loads the profile for (scope, phone) or returns botflota.ErrNotFound.
 func (s *SenderStore) Get(
 	ctx context.Context, scope, phone string,
@@ -201,6 +220,35 @@ func (s *ChatStore) RecordMessage(ctx context.Context, id int64, at time.Time) e
 		formatTime(at), id)
 	if err != nil {
 		return fmt.Errorf("sqlite: record message: %w", err)
+	}
+	return nil
+}
+
+// NoteHistory widens a chat's activity to cover imported history without
+// touching the live inbound count (ADR 0035). Comparisons are on the stored
+// RFC 3339 text, which orders correctly across the day boundaries that matter
+// here.
+func (s *ChatStore) NoteHistory(
+	ctx context.Context, chatID int64, from, to time.Time,
+) error {
+	if from.IsZero() {
+		from = to
+	}
+	if to.IsZero() {
+		to = from
+	}
+	if from.IsZero() {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE chats SET
+		   started_at = CASE
+		     WHEN started_at = '' OR started_at > ? THEN ? ELSE started_at END,
+		   updated_at = CASE WHEN updated_at < ? THEN ? ELSE updated_at END
+		 WHERE id = ?`,
+		formatTime(from), formatTime(from), formatTime(to), formatTime(to), chatID)
+	if err != nil {
+		return fmt.Errorf("sqlite: note chat history: %w", err)
 	}
 	return nil
 }

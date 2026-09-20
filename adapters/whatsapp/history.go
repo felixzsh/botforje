@@ -24,15 +24,18 @@ import (
 // chunks carry conversations for many senders at once, not for one. The
 // importer resolves the chat's phone number, creates the sender and chat, and
 // appends the text messages; a repeated chunk is deduplicated through the
-// channel message id.
+// channel message id. A PUSH_NAME chunk carries the account's contact names,
+// which the importer applies to the senders it already has.
 type historyImporter struct {
-	scope    string
-	bot      string
-	senders  botflota.SenderStore
-	chats    botflota.ChatStore
-	messages botflota.MessageStore
-	lookup   pnLookup
-	log      *slog.Logger
+	scope     string
+	bot       string
+	senders   botflota.SenderStore
+	chats     botflota.ChatStore
+	messages  botflota.MessageStore
+	lookup    pnLookup
+	log       *slog.Logger
+	now       func() time.Time
+	pushNames map[string]string
 }
 
 // newHistoryImporter builds an importer. It returns nil when a store is
@@ -50,41 +53,82 @@ func newHistoryImporter(
 	}
 	return &historyImporter{
 		scope: scope, bot: bot, senders: senders, chats: chats,
-		messages: messages, lookup: lookup, log: log,
+		messages: messages, lookup: lookup, log: log, now: time.Now,
+		pushNames: map[string]string{},
 	}
 }
 
-// Handle imports one history-sync chunk and logs its progress. Conversation
-// and message errors are logged and skipped; one bad row never aborts a sync.
-func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync) {
+// historyStats summarizes what one sync chunk produced.
+type historyStats struct {
+	conversations int
+	imported      int
+	duplicate     int
+	skipped       int
+	pushNames     int
+}
+
+// Handle imports one history-sync chunk, logs its progress, and reports what
+// it stored. Conversation and message errors are logged and skipped; one bad
+// row never aborts a sync.
+func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync) historyStats {
 	if event == nil || event.Data == nil {
-		return
+		return historyStats{}
 	}
 	data := event.Data
-	var conversations, imported, duplicate, skipped int
+	stats := historyStats{}
+	// Names first, so a conversation in the same chunk can use them.
+	h.importPushNames(ctx, data.GetPushnames(), &stats)
 	for _, conversation := range data.GetConversations() {
-		conversations++
+		stats.conversations++
 		got, dup, skip, err := h.importConversation(ctx, conversation)
 		if err != nil {
 			h.log.Warn("import history conversation", "error", err)
 		}
-		imported += got
-		duplicate += dup
-		skipped += skip
+		stats.imported += got
+		stats.duplicate += dup
+		stats.skipped += skip
 	}
 	h.log.Info("history sync imported",
 		"sync_type", data.GetSyncType().String(),
 		"chunk", data.GetChunkOrder(),
 		"progress", data.GetProgress(),
-		"conversations", conversations,
-		"imported", imported,
-		"duplicate", duplicate,
-		"skipped", skipped)
+		"conversations", stats.conversations,
+		"imported", stats.imported,
+		"duplicate", stats.duplicate,
+		"skipped", stats.skipped,
+		"push_names", stats.pushNames)
+	return stats
+}
+
+// importPushNames applies the contact names WhatsApp sends in its own chunk.
+// It only names senders Botflota already knows; a contact that never wrote is
+// remembered for a sender created by a later chunk, not created here.
+func (h *historyImporter) importPushNames(
+	ctx context.Context, names []*waHistorySync.Pushname, stats *historyStats,
+) {
+	at := h.now().UTC()
+	for _, entry := range names {
+		name := entry.GetPushname()
+		// "-" is WhatsApp's placeholder for a removed name.
+		if name == "" || name == "-" {
+			continue
+		}
+		phone, ok := historyPushNamePhone(entry, h.lookup)
+		if !ok {
+			continue
+		}
+		h.pushNames[phone] = name
+		stats.pushNames++
+		if err := h.senders.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
+			h.log.Warn("import history push name", "error", err)
+		}
+	}
 }
 
 // importConversation stores the text messages of one conversation, oldest
-// first. It returns how many messages were imported, how many were duplicates,
-// and how many entries were skipped.
+// first, and widens the chat's activity to cover them. It returns how many
+// messages were imported, how many were duplicates, and how many entries were
+// skipped.
 func (h *historyImporter) importConversation(
 	ctx context.Context, conversation *waHistorySync.Conversation,
 ) (int, int, int, error) {
@@ -100,7 +144,7 @@ func (h *historyImporter) importConversation(
 	records := make([]botflota.Message, 0, len(ordered))
 	name := conversation.GetName()
 	skipped := 0
-	var activityAt time.Time
+	var from, to time.Time
 	for _, entry := range ordered {
 		record, pushName, ok := historyRecord(conversation, entry)
 		if !ok {
@@ -110,24 +154,36 @@ func (h *historyImporter) importConversation(
 		if record.Direction == botflota.Inbound && pushName != "" {
 			name = pushName
 		}
-		if record.At.After(activityAt) {
-			activityAt = record.At
+		if !record.At.IsZero() {
+			if from.IsZero() || record.At.Before(from) {
+				from = record.At
+			}
+			if record.At.After(to) {
+				to = record.At
+			}
 		}
 		records = append(records, record)
 	}
 	if len(records) == 0 {
 		return 0, 0, skipped, nil
 	}
-	if activityAt.IsZero() {
-		activityAt = time.Unix(int64(conversation.GetLastMsgTimestamp()), 0).UTC()
+	if name == "" {
+		name = h.pushNames[phone]
 	}
-	sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, activityAt)
+	ensureAt := to
+	if ensureAt.IsZero() {
+		ensureAt = from
+	}
+	sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, ensureAt)
 	if err != nil {
 		return 0, 0, skipped, fmt.Errorf("sender %s: %w", phone, err)
 	}
-	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, sender.ID, activityAt)
+	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, sender.ID, ensureAt)
 	if err != nil {
 		return 0, 0, skipped, fmt.Errorf("chat %s: %w", phone, err)
+	}
+	if err := h.chats.NoteHistory(ctx, chat.ID, from, to); err != nil {
+		return 0, 0, skipped, fmt.Errorf("chat activity %s: %w", phone, err)
 	}
 	imported, duplicate := 0, 0
 	for i := range records {
@@ -168,8 +224,11 @@ func historyRecord(
 		direction = botflota.Outbound
 		origin = botflota.OriginUnknown
 	}
-	at := time.Unix(int64(web.GetMessageTimestamp()), 0).UTC()
-	if web.GetMessageTimestamp() == 0 {
+	var at time.Time
+	switch {
+	case web.GetMessageTimestamp() != 0:
+		at = time.Unix(int64(web.GetMessageTimestamp()), 0).UTC()
+	case conversation.GetLastMsgTimestamp() != 0:
 		at = time.Unix(int64(conversation.GetLastMsgTimestamp()), 0).UTC()
 	}
 	return botflota.Message{
@@ -198,6 +257,28 @@ func historyChatPhone(
 		}
 	}
 	id := conversation.GetID()
+	if id == "" {
+		return "", false
+	}
+	jid, err := types.ParseJID(id)
+	if err != nil {
+		return "", false
+	}
+	if jid.Server == types.DefaultUserServer {
+		return jid.User, true
+	}
+	if jid.Server == types.HiddenUserServer && lookup != nil {
+		if pn, ok := lookup(jid); ok && !pn.IsEmpty() {
+			return pn.User, true
+		}
+	}
+	return "", false
+}
+
+// historyPushNamePhone resolves the phone number of one PUSH_NAME entry, which
+// may address the contact by phone number or by hidden user id.
+func historyPushNamePhone(entry *waHistorySync.Pushname, lookup pnLookup) (string, bool) {
+	id := entry.GetID()
 	if id == "" {
 		return "", false
 	}

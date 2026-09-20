@@ -72,22 +72,31 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 // ChatStore records the durable chat with each person. Ensure is a
 // get-or-create keyed by the sender's profile; ForSender and Recent are the
 // read side of the API; RecordMessage updates last activity and the inbound
-// count; SaveGuards persists the chat's per-action guard state (ADR 0026,
-// ADR 0027, ADR 0029).
+// count; NoteHistory widens the activity range with imported history;
+// SaveGuards persists the chat's per-action guard state (ADR 0026, ADR 0027,
+// ADR 0029, ADR 0035).
 type ChatStore interface {
 	Ensure(ctx context.Context, scope, bot string, senderID int64, at time.Time) (*Chat, error)
 	ForSender(ctx context.Context, scope, bot string, senderID int64) (*Chat, error)
 	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
 	RecordMessage(ctx context.Context, id int64, at time.Time) error
+	// NoteHistory widens a chat's activity to cover imported history:
+	// started_at moves back to from and updated_at moves forward to to, never
+	// the other way, so newer live activity is left alone. A zero bound is
+	// ignored.
+	NoteHistory(ctx context.Context, chatID int64, from, to time.Time) error
 	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
 }
 
 // SenderStore records the profile of each person who writes to a bot. Upsert
 // creates it on first contact and updates it afterwards; it reports whether the
-// profile is new, which is the first-contact hook (ADR 0029).
+// profile is new, which is the first-contact hook (ADR 0029). SetDisplayName
+// records a name learned from channel contact data without touching first or
+// last seen, and is a no-op when there is no profile (ADR 0035).
 type SenderStore interface {
 	Upsert(ctx context.Context, scope, phone, name string, at time.Time) (*Sender, bool, error)
 	Get(ctx context.Context, scope, phone string) (*Sender, error)
+	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
 }
 
 // SessionStore records a chat's session runs. Latest returns the most recent

@@ -149,6 +149,10 @@ func (f fakeSenders) Upsert(
 	return nil, false, nil
 }
 
+func (f fakeSenders) SetDisplayName(context.Context, string, string, string, time.Time) error {
+	return nil
+}
+
 type fakeChats struct {
 	chats map[string]botflota.ChatSummary
 }
@@ -187,6 +191,10 @@ func (f fakeChats) Recent(
 }
 
 func (f fakeChats) RecordMessage(context.Context, int64, time.Time) error { return nil }
+
+func (f fakeChats) NoteHistory(context.Context, int64, time.Time, time.Time) error {
+	return nil
+}
 
 func (f fakeChats) SaveGuards(
 	context.Context, int64, map[string]botflota.GuardState,

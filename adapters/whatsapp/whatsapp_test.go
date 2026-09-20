@@ -644,6 +644,13 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 		t.Fatalf("message_count = %d, want 0: an import is not live traffic",
 			chat.MessageCount)
 	}
+	// The chat's activity covers the imported range, not just the anchor.
+	wantStart := time.Unix(int64(base), 0).UTC()
+	wantEnd := time.Unix(int64(base+120), 0).UTC()
+	if !chat.StartedAt.Equal(wantStart) || !chat.UpdatedAt.Equal(wantEnd) {
+		t.Fatalf("chat activity = %v..%v, want %v..%v",
+			chat.StartedAt, chat.UpdatedAt, wantStart, wantEnd)
+	}
 	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
 	if err != nil {
 		t.Fatalf("history Ana: %v", err)
@@ -680,8 +687,14 @@ func TestHistoryImporterDeduplicates(t *testing.T) {
 	data := &waHistorySync.HistorySync{
 		Conversations: []*waHistorySync.Conversation{conversation},
 	}
-	importer.Handle(ctx, &events.HistorySync{Data: data})
-	importer.Handle(ctx, &events.HistorySync{Data: data})
+	first := importer.Handle(ctx, &events.HistorySync{Data: data})
+	if first.imported != 1 || first.duplicate != 0 {
+		t.Fatalf("first import = %#v, want 1 imported", first)
+	}
+	second := importer.Handle(ctx, &events.HistorySync{Data: data})
+	if second.imported != 0 || second.duplicate != 1 {
+		t.Fatalf("redelivered import = %#v, want 1 duplicate", second)
+	}
 
 	sender, err := db.Senders().Get(ctx, "dev", "5215500000000")
 	if err != nil {
@@ -697,6 +710,50 @@ func TestHistoryImporterDeduplicates(t *testing.T) {
 	}
 	if len(messages) != 1 {
 		t.Fatalf("messages = %d, want 1 after a redelivered chunk", len(messages))
+	}
+}
+
+func TestHistoryImporterAppliesPushNames(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+	// A conversation creates the sender with no name of its own.
+	importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{
+			historyConversation("5215500000000@s.whatsapp.net", "", "",
+				historyText("M1", false, "hello", uint64(t0.Unix()), 1)),
+		},
+	}})
+	before, err := db.Senders().Get(ctx, "dev", "5215500000000")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if before.DisplayName != "" {
+		t.Fatalf("display name before push names = %q, want empty", before.DisplayName)
+	}
+
+	// The account-wide PUSH_NAME chunk names it.
+	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		SyncType: waHistorySync.HistorySync_PUSH_NAME.Enum(),
+		Pushnames: []*waHistorySync.Pushname{{
+			ID:       proto.String("5215500000000@s.whatsapp.net"),
+			Pushname: proto.String("Ana"),
+		}},
+	}})
+	if stats.pushNames != 1 {
+		t.Fatalf("push names = %d, want 1", stats.pushNames)
+	}
+	after, err := db.Senders().Get(ctx, "dev", "5215500000000")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if after.DisplayName != "Ana" {
+		t.Fatalf("display name = %q, want Ana", after.DisplayName)
+	}
+	if !after.LastSeen.Equal(before.LastSeen) || !after.FirstSeen.Equal(before.FirstSeen) {
+		t.Fatalf("contact times moved: %v..%v, want %v..%v",
+			after.FirstSeen, after.LastSeen, before.FirstSeen, before.LastSeen)
 	}
 }
 

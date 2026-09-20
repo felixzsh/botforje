@@ -206,6 +206,38 @@ func (s *memStore) SaveGuards(
 	return botflota.ErrNotFound
 }
 
+func (s *memStore) SetDisplayName(
+	_ context.Context, scope, phone, name string, at time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sender, ok := s.senders[senderKey(scope, phone)]; ok && name != "" {
+		sender.DisplayName = name
+		sender.NameUpdatedAt = at
+	}
+	return nil
+}
+
+func (s *memStore) NoteHistory(
+	_ context.Context, chatID int64, from, to time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, chat := range s.chats {
+		if chat.ID != chatID {
+			continue
+		}
+		if !from.IsZero() && (chat.StartedAt.IsZero() || from.Before(chat.StartedAt)) {
+			chat.StartedAt = from
+		}
+		if to.After(chat.UpdatedAt) {
+			chat.UpdatedAt = to
+		}
+		return nil
+	}
+	return botflota.ErrNotFound
+}
+
 func (s *memStore) Latest(_ context.Context, chatID int64) (*botflota.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

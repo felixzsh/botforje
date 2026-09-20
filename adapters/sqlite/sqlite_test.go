@@ -574,6 +574,66 @@ func TestSenderUpsertUpdatesProfile(t *testing.T) {
 	}
 }
 
+// TestSenderSetDisplayName covers names learned from channel contact data: the
+// name changes without touching first or last seen, and a missing profile is a
+// no-op.
+func TestSenderSetDisplayName(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	sender, _, err := db.Senders().Upsert(ctx, "support", "52155", "", t0)
+	if err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if err := db.Senders().SetDisplayName(ctx, "support", "52155", "Ana", t2); err != nil {
+		t.Fatalf("SetDisplayName: %v", err)
+	}
+	got, err := db.Senders().Get(ctx, "support", "52155")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ID != sender.ID || got.DisplayName != "Ana" || !got.NameUpdatedAt.Equal(t2) {
+		t.Fatalf("profile = %#v, want id %d named Ana at %v", got, sender.ID, t2)
+	}
+	if !got.FirstSeen.Equal(t0) || !got.LastSeen.Equal(t0) {
+		t.Fatalf("contact times moved: %v..%v, want %v", got.FirstSeen, got.LastSeen, t0)
+	}
+	if err := db.Senders().SetDisplayName(ctx, "support", "nobody", "X", t2); err != nil {
+		t.Fatalf("SetDisplayName on a missing profile: %v", err)
+	}
+}
+
+// TestChatNoteHistoryWidensActivity covers the imported range: started_at moves
+// back and updated_at forward, and neither moves the other way.
+func TestChatNoteHistoryWidensActivity(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	from := t0.Add(-48 * time.Hour)
+	to := t1
+	if err := db.Chats().NoteHistory(ctx, chat.ID, from, to); err != nil {
+		t.Fatalf("NoteHistory: %v", err)
+	}
+	senderID := ensureSender(t, db).ID
+	got, err := db.Chats().ForSender(ctx, "support", "support-bot", senderID)
+	if err != nil {
+		t.Fatalf("ForSender: %v", err)
+	}
+	if !got.StartedAt.Equal(from) || !got.UpdatedAt.Equal(to) {
+		t.Fatalf("activity = %v..%v, want %v..%v", got.StartedAt, got.UpdatedAt, from, to)
+	}
+	if err := db.Chats().NoteHistory(ctx, chat.ID, t0.Add(-24*time.Hour),
+		t0.Add(-12*time.Hour)); err != nil {
+		t.Fatalf("NoteHistory narrower: %v", err)
+	}
+	got, err = db.Chats().ForSender(ctx, "support", "support-bot", senderID)
+	if err != nil {
+		t.Fatalf("ForSender: %v", err)
+	}
+	if !got.StartedAt.Equal(from) || !got.UpdatedAt.Equal(to) {
+		t.Fatalf("activity moved the wrong way: %v..%v", got.StartedAt, got.UpdatedAt)
+	}
+}
+
 func TestSenderIsScoped(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
