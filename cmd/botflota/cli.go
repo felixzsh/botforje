@@ -84,6 +84,7 @@ func cliTree() *commandHelp {
 			"botflota bot pair support-bot",
 			"botflota fleet run",
 			"botflota fleet status",
+			"botflota chat list support-bot",
 			"botflota message tail support-bot 5215500000000 --follow",
 		},
 		flags: func() *flag.FlagSet {
@@ -236,6 +237,33 @@ func cliTree() *commandHelp {
 						},
 						flags: func() *flag.FlagSet { return newFleetStatusCmd().fs },
 						run:   runFleetStatus,
+					},
+				},
+			},
+			{
+				name:    "chat",
+				summary: "list a bot's chats",
+				long:    "List the stored chats of one bot through the REST API.",
+				usage:   "botflota chat <command> [options]",
+				examples: []string{
+					"botflota chat list support-bot",
+				},
+				moreHelp: "for more help: botflota chat <command> --help",
+				sub: []commandHelp{
+					{
+						name:    "list",
+						summary: "list one bot's chats and their senders",
+						long: "Print one row per chat with its sender's phone and name, the\n" +
+							"inbound message count, and the first and last activity,\n" +
+							"newest activity first. The bot is named as in bot list; add\n" +
+							"--scope when the name exists in more than one scope.",
+						usage: "botflota chat list [options] <bot>",
+						examples: []string{
+							"botflota chat list support-bot",
+							"botflota chat list --limit 100 support-bot",
+						},
+						flags: func() *flag.FlagSet { return newChatListCmd().fs },
+						run:   runChatList,
 					},
 				},
 			},

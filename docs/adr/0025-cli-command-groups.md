@@ -17,13 +17,14 @@ Commands are grouped by resource, mirroring the API:
 - `bot list | pair | unpair`
 - `fleet run | status`
 - `message list | tail`
-- future: `session`, `chat`
+- `chat list`
+- future: `session`
 
 A group invoked without a subcommand prints its help. `--version` is the only
 global flag; every other flag, such as `--config` and `--json`, stays on the
 subcommand that uses it. `fleet run` hosts the fleet and the REST API;
-operational queries such as `fleet status` and `message list|tail` are API
-clients.
+operational queries such as `fleet status`, `chat list`, and `message list|tail`
+are API clients.
 
 Process lifecycle belongs to the supervisor, not to Botflota. The CLI has no
 `stop` or `restart`: systemd, Docker, or another supervisor starts, stops, and

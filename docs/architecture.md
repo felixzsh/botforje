@@ -268,8 +268,9 @@ scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
 pair plus the sender's phone number. `messages` returns the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
-polls; `status` and `bots` report each bot's active sessions. Errors use one
-shape, `{"error":{"code","message"}}`.
+polls; `chats` lists a bot's chats with their sender profiles, which is how
+`chat list` reads them; `status` and `bots` report each bot's active sessions.
+Errors use one shape, `{"error":{"code","message"}}`.
 
 One middleware resolves the credential to a `Principal` through a small
 `PrincipalResolver` port (`Auth` is the built-in implementation), and handlers

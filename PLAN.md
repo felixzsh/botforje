@@ -201,8 +201,8 @@ Deliverables:
 - [x] Declarative objects moved to `spec`; the template language moved to the
   core and the runtime context into `engine` (ADR 0034).
 - [x] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
-  `fleet run|status`, `message list|tail`. Operational queries use the API;
-  process lifecycle belongs to the supervisor (ADR 0025).
+  `fleet run|status`, `chat list`, `message list|tail`. Operational queries use
+  the API; process lifecycle belongs to the supervisor (ADR 0025).
 - [x] CLI help: `usage`, description, commands, options, and examples for every
   group and subcommand; `--help` exits 0 and usage errors exit 2.
 - [x] CLI `--version` and a decision on global versus per-subcommand flags.

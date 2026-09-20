@@ -51,7 +51,8 @@ what arrives, inertly (ADR 0035):
   after pairing if the backlog does not appear at once.
 - Set `settings.history_sync: false` on a bot to store none of it.
 
-Inspect it per sender with `./bin/botflota message list <bot> <phone>`.
+See which senders arrived with `./bin/botflota chat list <bot>`, then read one
+thread with `./bin/botflota message list <bot> <phone>`.
 
 ## List bots
 
@@ -108,6 +109,8 @@ Deterministic flow (a bot with no `llm`):
   messages.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
   senders in the sync, and none of it generated a reply (ADR 0035).
+- [ ] `chat list <bot>` lists those senders with their phone, name, message
+  count, and first and last activity.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still
