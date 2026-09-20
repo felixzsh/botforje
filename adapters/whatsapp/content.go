@@ -28,66 +28,56 @@ type uploader func(
 ) (whatsmeow.UploadResponse, error)
 
 // contentFor maps an outbound message to the WhatsApp wire message. Media
-// kinds upload their bytes first, so they need the live connection; every
-// other kind is built locally (ADR 0036).
+// uploads its bytes first, so it needs the live connection; every other kind
+// is built locally (ADR 0036).
 func (a *Adapter) contentFor(
 	ctx context.Context, msg botflota.OutgoingMessage,
 ) (*waE2E.Message, error) {
-	switch msg.Kind {
-	case botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
-		botflota.KindDocument, botflota.KindSticker:
-		return a.buildMedia(ctx, msg)
-	default:
-		return buildContent(msg)
+	if content, ok := msg.Content.(botflota.MediaContent); ok {
+		return a.buildMedia(ctx, content)
 	}
+	return buildContent(msg.Content)
 }
 
-// buildContent maps a message that needs neither network nor device: text,
+// buildContent maps content that needs neither network nor device: text,
 // location, contact, and poll.
-func buildContent(msg botflota.OutgoingMessage) (*waE2E.Message, error) {
-	switch msg.Kind {
-	case botflota.KindText, "":
-		return &waE2E.Message{Conversation: proto.String(msg.Body)}, nil
-	case botflota.KindLocation:
-		return buildLocation(msg)
-	case botflota.KindContact:
-		return buildContact(msg)
-	case botflota.KindPoll:
-		return buildPoll(msg)
-	case botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
-		botflota.KindDocument, botflota.KindSticker:
-		return nil, errors.New("whatsapp: media needs the connection to upload")
+func buildContent(content botflota.SendableContent) (*waE2E.Message, error) {
+	switch c := content.(type) {
+	case nil:
+		return nil, errors.New("whatsapp: message has no content")
+	case botflota.TextContent:
+		return &waE2E.Message{Conversation: proto.String(c.Body)}, nil
+	case botflota.LocationContent:
+		return buildLocation(c), nil
+	case botflota.ContactContent:
+		return buildContact(c), nil
+	case botflota.PollContent:
+		return buildPoll(c)
 	default:
-		return nil, fmt.Errorf("%w: %s", botflota.ErrUnsupportedKind, msg.Kind)
+		return nil, fmt.Errorf("%w: %T", botflota.ErrUnsupportedKind, content)
 	}
 }
 
-func buildLocation(msg botflota.OutgoingMessage) (*waE2E.Message, error) {
-	if msg.Location == nil {
-		return nil, errors.New("whatsapp: location message without a location")
-	}
+func buildLocation(c botflota.LocationContent) *waE2E.Message {
 	return &waE2E.Message{LocationMessage: &waE2E.LocationMessage{
-		DegreesLatitude:  proto.Float64(msg.Location.Latitude),
-		DegreesLongitude: proto.Float64(msg.Location.Longitude),
-		Name:             optional(msg.Location.Name),
-		Address:          optional(msg.Location.Address),
-		URL:              optional(msg.Location.URL),
-		Comment:          optional(msg.Location.Description),
-	}}, nil
+		DegreesLatitude:  proto.Float64(c.Latitude),
+		DegreesLongitude: proto.Float64(c.Longitude),
+		Name:             optional(c.Name),
+		Address:          optional(c.Address),
+		URL:              optional(c.URL),
+		Comment:          optional(c.Description),
+	}}
 }
 
-func buildContact(msg botflota.OutgoingMessage) (*waE2E.Message, error) {
-	if msg.Contact == nil {
-		return nil, errors.New("whatsapp: contact message without a contact")
-	}
+func buildContact(c botflota.ContactContent) *waE2E.Message {
 	return &waE2E.Message{ContactMessage: &waE2E.ContactMessage{
-		DisplayName: proto.String(msg.Contact.Name),
-		Vcard:       proto.String(vcard(msg.Contact)),
-	}}, nil
+		DisplayName: proto.String(c.Name),
+		Vcard:       proto.String(vcard(c)),
+	}}
 }
 
 // vcard renders one contact as the vCard 3.0 text WhatsApp expects.
-func vcard(contact *botflota.Contact) string {
+func vcard(contact botflota.ContactContent) string {
 	return "BEGIN:VCARD\r\n" +
 		"VERSION:3.0\r\n" +
 		"FN:" + contact.Name + "\r\n" +
@@ -96,11 +86,8 @@ func vcard(contact *botflota.Contact) string {
 		"END:VCARD"
 }
 
-func buildPoll(msg botflota.OutgoingMessage) (*waE2E.Message, error) {
-	if msg.Poll == nil {
-		return nil, errors.New("whatsapp: poll message without a poll")
-	}
-	if len(msg.Poll.Options) < 2 {
+func buildPoll(content botflota.PollContent) (*waE2E.Message, error) {
+	if len(content.Options) < 2 {
 		return nil, errors.New("whatsapp: poll needs at least two options")
 	}
 	// The poll secret lets a voter's encrypted vote be read back; it travels
@@ -109,15 +96,15 @@ func buildPoll(msg botflota.OutgoingMessage) (*waE2E.Message, error) {
 	if _, err := rand.Read(secret); err != nil {
 		return nil, fmt.Errorf("whatsapp: poll secret: %w", err)
 	}
-	options := make([]*waE2E.PollCreationMessage_Option, len(msg.Poll.Options))
-	for i, name := range msg.Poll.Options {
+	options := make([]*waE2E.PollCreationMessage_Option, len(content.Options))
+	for i, name := range content.Options {
 		options[i] = &waE2E.PollCreationMessage_Option{OptionName: proto.String(name)}
 	}
 	return &waE2E.Message{
 		PollCreationMessage: &waE2E.PollCreationMessage{
-			Name:                   proto.String(msg.Poll.Question),
+			Name:                   proto.String(content.Question),
 			Options:                options,
-			SelectableOptionsCount: proto.Uint32(selectableCount(msg.Poll)),
+			SelectableOptionsCount: proto.Uint32(selectableCount(content)),
 		},
 		MessageContextInfo: &waE2E.MessageContextInfo{MessageSecret: secret},
 	}, nil
@@ -125,13 +112,13 @@ func buildPoll(msg botflota.OutgoingMessage) (*waE2E.Message, error) {
 
 // selectableCount clamps how many options a voter may pick: one by default,
 // never more than the poll offers.
-func selectableCount(poll *botflota.Poll) uint32 {
-	count := poll.Selectable
+func selectableCount(content botflota.PollContent) uint32 {
+	count := content.Selectable
 	if count <= 0 {
 		count = 1
 	}
-	if count > len(poll.Options) {
-		count = len(poll.Options)
+	if count > len(content.Options) {
+		count = len(content.Options)
 	}
 	return uint32(count)
 }
@@ -139,17 +126,16 @@ func selectableCount(poll *botflota.Poll) uint32 {
 // buildMedia reads an attachment from its url or path, uploads it, and builds
 // the matching wire message (ADR 0036).
 func (a *Adapter) buildMedia(
-	ctx context.Context, msg botflota.OutgoingMessage,
+	ctx context.Context, content botflota.MediaContent,
 ) (*waE2E.Message, error) {
-	media := msg.Media
-	if media == nil {
-		return nil, errors.New("whatsapp: media message without media")
+	if !content.Type.Valid() {
+		return nil, fmt.Errorf("%w: media type %q", botflota.ErrUnsupportedKind, content.Type)
 	}
-	data, err := a.readMedia(ctx, media)
+	data, err := a.readMedia(ctx, content)
 	if err != nil {
 		return nil, err
 	}
-	mime := media.MIME
+	mime := content.MIME
 	if mime == "" {
 		mime = http.DetectContentType(data)
 	}
@@ -161,67 +147,66 @@ func (a *Adapter) buildMedia(
 		}
 		upload = client.Upload
 	}
-	resp, err := upload(ctx, data, mediaTypeFor(msg.Kind))
+	resp, err := upload(ctx, data, mediaTypeFor(content.Type))
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: upload media: %w", err)
 	}
-	return mediaMessage(msg, mime, resp)
+	return mediaMessage(content, mime, resp)
 }
 
-// mediaMessage fills the wire message of one media kind from an upload.
+// mediaMessage fills the wire message of one media type from an upload.
 func mediaMessage(
-	msg botflota.OutgoingMessage, mime string, resp whatsmeow.UploadResponse,
+	content botflota.MediaContent, mime string, resp whatsmeow.UploadResponse,
 ) (*waE2E.Message, error) {
-	media := msg.Media
-	switch msg.Kind {
-	case botflota.KindImage:
+	switch content.Type {
+	case botflota.MediaImage:
 		return &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
 			URL: &resp.URL, DirectPath: &resp.DirectPath, Mimetype: proto.String(mime),
-			Caption: optional(media.Caption), FileLength: proto.Uint64(resp.FileLength),
+			Caption: optional(content.Caption), FileLength: proto.Uint64(resp.FileLength),
 			MediaKey: resp.MediaKey, FileSHA256: resp.FileSHA256,
 			FileEncSHA256: resp.FileEncSHA256,
 		}}, nil
-	case botflota.KindVideo:
+	case botflota.MediaVideo:
 		return &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
 			URL: &resp.URL, DirectPath: &resp.DirectPath, Mimetype: proto.String(mime),
-			Caption: optional(media.Caption), FileLength: proto.Uint64(resp.FileLength),
+			Caption: optional(content.Caption), FileLength: proto.Uint64(resp.FileLength),
 			MediaKey: resp.MediaKey, FileSHA256: resp.FileSHA256,
 			FileEncSHA256: resp.FileEncSHA256,
 		}}, nil
-	case botflota.KindAudio:
+	case botflota.MediaAudio:
 		return &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
 			URL: &resp.URL, DirectPath: &resp.DirectPath, Mimetype: proto.String(mime),
 			FileLength: proto.Uint64(resp.FileLength), MediaKey: resp.MediaKey,
 			FileSHA256: resp.FileSHA256, FileEncSHA256: resp.FileEncSHA256,
 		}}, nil
-	case botflota.KindDocument:
+	case botflota.MediaDocument:
 		return &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
 			URL: &resp.URL, DirectPath: &resp.DirectPath, Mimetype: proto.String(mime),
-			FileName: optional(media.Name), Title: optional(media.Name),
-			Caption: optional(media.Caption), FileLength: proto.Uint64(resp.FileLength),
+			FileName: optional(content.Name), Title: optional(content.Name),
+			Caption: optional(content.Caption), FileLength: proto.Uint64(resp.FileLength),
 			MediaKey: resp.MediaKey, FileSHA256: resp.FileSHA256,
 			FileEncSHA256: resp.FileEncSHA256,
 		}}, nil
-	case botflota.KindSticker:
+	case botflota.MediaSticker:
 		return &waE2E.Message{StickerMessage: &waE2E.StickerMessage{
 			URL: &resp.URL, DirectPath: &resp.DirectPath, Mimetype: proto.String(mime),
 			FileLength: proto.Uint64(resp.FileLength), MediaKey: resp.MediaKey,
 			FileSHA256: resp.FileSHA256, FileEncSHA256: resp.FileEncSHA256,
 		}}, nil
 	default:
-		return nil, fmt.Errorf("%w: %s", botflota.ErrUnsupportedKind, msg.Kind)
+		return nil, fmt.Errorf("%w: media type %q", botflota.ErrUnsupportedKind, content.Type)
 	}
 }
 
-// mediaTypeFor picks the upload key system of a media kind. Images and
+// mediaTypeFor picks the upload key system of a media type. Images and
 // stickers share the image keys.
-func mediaTypeFor(kind botflota.MessageKind) whatsmeow.MediaType {
-	switch kind {
-	case botflota.KindVideo:
+func mediaTypeFor(t botflota.MediaType) whatsmeow.MediaType {
+	switch t {
+	case botflota.MediaVideo:
 		return whatsmeow.MediaVideo
-	case botflota.KindAudio:
+	case botflota.MediaAudio:
 		return whatsmeow.MediaAudio
-	case botflota.KindDocument:
+	case botflota.MediaDocument:
 		return whatsmeow.MediaDocument
 	default:
 		return whatsmeow.MediaImage
@@ -229,10 +214,12 @@ func mediaTypeFor(kind botflota.MessageKind) whatsmeow.MediaType {
 }
 
 // readMedia reads the attachment bytes from a url or a local path.
-func (a *Adapter) readMedia(ctx context.Context, media *botflota.Media) ([]byte, error) {
+func (a *Adapter) readMedia(
+	ctx context.Context, content botflota.MediaContent,
+) ([]byte, error) {
 	switch {
-	case media.URL != "":
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, media.URL, nil)
+	case content.URL != "":
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, content.URL, nil)
 		if err != nil {
 			return nil, fmt.Errorf("whatsapp: media url: %w", err)
 		}
@@ -249,8 +236,8 @@ func (a *Adapter) readMedia(ctx context.Context, media *botflota.Media) ([]byte,
 			return nil, fmt.Errorf("whatsapp: fetch media: %s", response.Status)
 		}
 		return readLimited(response.Body)
-	case media.Path != "":
-		file, err := os.Open(media.Path)
+	case content.Path != "":
+		file, err := os.Open(content.Path)
 		if err != nil {
 			return nil, fmt.Errorf("whatsapp: open media: %w", err)
 		}

@@ -50,20 +50,22 @@ type chatView struct {
 	Live      int64      `json:"live"`
 }
 
-// messageView is one stored message. IngestKind, Origin, and Routing carry
-// the provenance the engine recorded (ADR 0026); Origin is empty for an
-// inbound message.
+// messageView is one stored message. Kind and Body are the derived summary of
+// Content, which carries the structured payload (ADR 0036). IngestKind,
+// Origin, and Routing carry the provenance the engine recorded (ADR 0026);
+// Origin is empty for an inbound message.
 type messageView struct {
-	ID         int64                  `json:"id"`
-	ChatID     int64                  `json:"chat_id"`
-	SessionID  int64                  `json:"session_id,omitempty"`
-	Direction  botflota.Direction     `json:"direction"`
-	Kind       botflota.MessageKind   `json:"kind"`
-	IngestKind botflota.Ingest        `json:"ingest_kind"`
-	Origin     botflota.MessageOrigin `json:"origin,omitempty"`
-	Routing    botflota.RoutingMethod `json:"routing"`
-	Body       string                 `json:"body"`
-	At         time.Time              `json:"at"`
+	ID         int64                    `json:"id"`
+	ChatID     int64                    `json:"chat_id"`
+	SessionID  int64                    `json:"session_id,omitempty"`
+	Direction  botflota.Direction       `json:"direction"`
+	Kind       botflota.MessageKind     `json:"kind"`
+	IngestKind botflota.Ingest          `json:"ingest_kind"`
+	Origin     botflota.MessageOrigin   `json:"origin,omitempty"`
+	Routing    botflota.RoutingMethod   `json:"routing"`
+	Body       string                   `json:"body"`
+	Content    botflota.MessageContent  `json:"content"`
+	At         time.Time                `json:"at"`
 }
 
 // sessionView is the latest graph run of a chat.
@@ -282,11 +284,12 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 			ChatID:     message.ChatID,
 			SessionID:  message.SessionID,
 			Direction:  message.Direction,
-			Kind:       message.Kind,
+			Kind:       botflota.ContentKind(message.Content),
+			Body:       botflota.ContentText(message.Content),
+			Content:    message.Content,
 			IngestKind: message.Ingest,
 			Origin:     message.Origin,
 			Routing:    message.Routing,
-			Body:       message.Body,
 			At:         message.At,
 		})
 	}

@@ -10,18 +10,24 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
+// textMessage is an outbound text message for the queue tests.
+func textMessage(body string) botflota.OutgoingMessage {
+	return botflota.OutgoingMessage{Content: botflota.TextContent{Body: body}}
+}
+
 func TestOrderAndDrain(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
 	sender := func(_ context.Context, msg botflota.OutgoingMessage) (string, error) {
 		mu.Lock()
-		got = append(got, msg.Body)
+		got = append(got, botflota.ContentText(msg.Content))
 		mu.Unlock()
 		return "", nil
 	}
 	queue := newOutbox(outboxConfig{Sender: sender})
 	for _, body := range []string{"a", "b", "c"} {
-		if err := queue.Push(context.Background(), botflota.OutgoingMessage{Body: body}); err != nil {
+		msg := botflota.OutgoingMessage{Content: botflota.TextContent{Body: body}}
+		if err := queue.Push(context.Background(), msg); err != nil {
 			t.Fatalf("Push(%s): %v", body, err)
 		}
 	}
@@ -70,8 +76,8 @@ func TestPacing(t *testing.T) {
 	queue := newOutbox(outboxConfig{
 		Sender: noSender, Delay: 10 * time.Millisecond, Now: clk.Now, Sleep: clk.Sleep,
 	})
-	_ = queue.Push(context.Background(), botflota.OutgoingMessage{Body: "a"})
-	_ = queue.Push(context.Background(), botflota.OutgoingMessage{Body: "b"})
+	_ = queue.Push(context.Background(), textMessage("a"))
+	_ = queue.Push(context.Background(), textMessage("b"))
 	queue.Close()
 	queue.Wait()
 	if !contains(clk.slept(), 10*time.Millisecond) {
@@ -83,7 +89,7 @@ func TestRateLimit(t *testing.T) {
 	clk := &clock{now: time.Unix(0, 0)}
 	queue := newOutbox(outboxConfig{Sender: noSender, MaxPerMinute: 2, Now: clk.Now, Sleep: clk.Sleep})
 	for i := 0; i < 3; i++ {
-		_ = queue.Push(context.Background(), botflota.OutgoingMessage{Body: "x"})
+		_ = queue.Push(context.Background(), textMessage("x"))
 	}
 	queue.Close()
 	queue.Wait()
@@ -103,16 +109,16 @@ func TestBackpressure(t *testing.T) {
 	}
 	queue := newOutbox(outboxConfig{Sender: sender, Capacity: 1})
 	ctx := context.Background()
-	if err := queue.Push(ctx, botflota.OutgoingMessage{Body: "1"}); err != nil {
+	if err := queue.Push(ctx, textMessage("1")); err != nil {
 		t.Fatalf("first Push: %v", err)
 	}
 	<-entered
-	if err := queue.Push(ctx, botflota.OutgoingMessage{Body: "2"}); err != nil {
+	if err := queue.Push(ctx, textMessage("2")); err != nil {
 		t.Fatalf("second Push: %v", err)
 	}
 	blocked, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer cancel()
-	if err := queue.Push(blocked, botflota.OutgoingMessage{Body: "3"}); !errors.Is(
+	if err := queue.Push(blocked, textMessage("3")); !errors.Is(
 		err, context.DeadlineExceeded,
 	) {
 		t.Fatalf("Push on a full queue = %v, want a deadline", err)

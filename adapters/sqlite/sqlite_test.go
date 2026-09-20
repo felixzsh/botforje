@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -202,8 +203,9 @@ func TestChatRecentCounts(t *testing.T) {
 	}
 	for i, ingest := range ingests {
 		message := &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
-			Body: "m", At: t0, ProviderMessageID: "M" + string(rune('A'+i)),
+			ChatID: chat.ID, Direction: botflota.Inbound,
+			Content: botflota.TextContent{Body: "m"},
+			At:      t0, ProviderMessageID: "M" + string(rune('A'+i)),
 			Ingest: ingest,
 		}
 		if err := db.Messages().Append(ctx, message); err != nil {
@@ -340,7 +342,7 @@ func TestChatAndMessages(t *testing.T) {
 
 	first := &botflota.Message{
 		ChatID: chat.ID, SessionID: session.ID, Direction: botflota.Inbound,
-		Kind: botflota.KindText, Body: "hello", At: t1,
+		Content: botflota.TextContent{Body: "hello"}, At: t1,
 		ProviderMessageID: "MSG-1", Ingest: botflota.IngestLive,
 		Routing: botflota.RoutingTriggerExact,
 	}
@@ -348,16 +350,16 @@ func TestChatAndMessages(t *testing.T) {
 	// routing, and no session run.
 	second := &botflota.Message{
 		ChatID: chat.ID, Direction: botflota.Inbound,
-		Kind: botflota.KindText, Body: "hi there", At: t1,
+		Content: botflota.TextContent{Body: "hi there"}, At: t1,
 		ProviderMessageID: "MSG-2", Ingest: botflota.IngestSync,
 		Origin: botflota.OriginUnknown, Routing: botflota.RoutingUnknown,
 	}
 	for _, message := range []*botflota.Message{first, second} {
 		if err := db.Messages().Append(ctx, message); err != nil {
-			t.Fatalf("Append(%q): %v", message.Body, err)
+			t.Fatalf("Append(%q): %v", botflota.ContentText(message.Content), err)
 		}
 		if message.ID == 0 {
-			t.Fatalf("Append(%q) did not set an id", message.Body)
+			t.Fatalf("Append(%q) did not set an id", botflota.ContentText(message.Content))
 		}
 	}
 
@@ -365,7 +367,8 @@ func TestChatAndMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("History: %v", err)
 	}
-	if len(got) != 2 || got[0].Body != "hello" || got[1].Body != "hi there" {
+	if len(got) != 2 || botflota.ContentText(got[0].Content) != "hello" ||
+		botflota.ContentText(got[1].Content) != "hi there" {
 		t.Fatalf("History = %#v", got)
 	}
 	if got[0].SessionID != session.ID {
@@ -388,7 +391,7 @@ func TestChatAndMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("History(1): %v", err)
 	}
-	if len(last) != 1 || last[0].Body != "hi there" {
+	if len(last) != 1 || botflota.ContentText(last[0].Content) != "hi there" {
 		t.Fatalf("History(1) = %#v, want the newest", last)
 	}
 	newer, err := db.Messages().History(ctx, chat.ID, got[0].ID, 10)
@@ -405,8 +408,8 @@ func TestMessageWithoutSession(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	message := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
-		Body: "no session", At: t1,
+		ChatID: chat.ID, Direction: botflota.Inbound,
+		Content: botflota.TextContent{Body: "no session"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, message); err != nil {
 		t.Fatalf("Append: %v", err)
@@ -420,6 +423,90 @@ func TestMessageWithoutSession(t *testing.T) {
 	}
 }
 
+// TestOpenAddsContentColumn covers the pre-release convergence: a database
+// created before the content column existed gains it on open, so an existing
+// pairing keeps working without the versioned runner of ADR 0006.
+func TestOpenAddsContentColumn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	legacy, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open legacy: %v", err)
+	}
+	_, err = legacy.Exec(`CREATE TABLE messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		chat_id INTEGER NOT NULL,
+		session_id INTEGER,
+		direction TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		body TEXT NOT NULL,
+		sent_at TEXT NOT NULL,
+		provider_message_id TEXT NOT NULL DEFAULT '',
+		ingest_kind TEXT NOT NULL DEFAULT 'unknown',
+		origin TEXT NOT NULL DEFAULT '',
+		routing TEXT NOT NULL DEFAULT 'unknown'
+	)`)
+	if err != nil {
+		t.Fatalf("create legacy messages: %v", err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatalf("close legacy: %v", err)
+	}
+
+	db := open(t, path)
+	var columns int
+	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages')
+		WHERE name = 'content'`).Scan(&columns)
+	if err != nil {
+		t.Fatalf("inspect columns: %v", err)
+	}
+	if columns != 1 {
+		t.Fatalf("content column count = %d, want 1", columns)
+	}
+	// A legacy row decodes from its kind and visible text.
+	chat := ensureChat(t, db)
+	if _, err := db.Exec(`INSERT INTO messages
+		(chat_id, direction, kind, body, sent_at) VALUES (?, 'in', 'text', 'old', ?)`,
+		chat.ID, formatTime(t1)); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+	got, err := db.Messages().History(context.Background(), chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(got) != 1 || botflota.ContentText(got[0].Content) != "old" {
+		t.Fatalf("legacy row = %#v, want the stored text", got)
+	}
+}
+
+// TestMessageContentRoundTrip keeps a structured payload: a poll's options
+// survive the store, not only its visible text (ADR 0036).
+func TestMessageContentRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	message := &botflota.Message{
+		ChatID: chat.ID, Direction: botflota.Inbound,
+		Content: botflota.PollContent{
+			Question: "Lunch?", Options: []string{"yes", "no"}, Selectable: 1,
+		},
+		At: t1, ProviderMessageID: "POLL-1", Ingest: botflota.IngestSync,
+	}
+	if err := db.Messages().Append(ctx, message); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	got, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("History = %#v, want one message", got)
+	}
+	poll, ok := got[0].Content.(botflota.PollContent)
+	if !ok || len(poll.Options) != 2 || poll.Selectable != 1 {
+		t.Fatalf("content = %#v, want the structured poll", got[0].Content)
+	}
+}
+
 // TestMessageProviderIDIsUnique covers the dedup key of a history import: a
 // reported channel id cannot repeat in a chat, while rows without one may.
 func TestMessageProviderIDIsUnique(t *testing.T) {
@@ -428,8 +515,9 @@ func TestMessageProviderIDIsUnique(t *testing.T) {
 	chat := ensureChat(t, db)
 	message := func(id string) *botflota.Message {
 		return &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
-			Body: "hola", At: t1, ProviderMessageID: id, Ingest: botflota.IngestLive,
+			ChatID: chat.ID, Direction: botflota.Inbound,
+			Content: botflota.TextContent{Body: "hola"}, At: t1,
+			ProviderMessageID: id, Ingest: botflota.IngestLive,
 		}
 	}
 	if err := db.Messages().Append(ctx, message("A1")); err != nil {
@@ -454,8 +542,9 @@ func TestMessageSetProviderID(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	message := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Outbound, Kind: botflota.KindText,
-		Body: "reply", At: t1, Ingest: botflota.IngestLive,
+		ChatID: chat.ID, Direction: botflota.Outbound,
+		Content: botflota.TextContent{Body: "reply"}, At: t1,
+		Ingest: botflota.IngestLive,
 	}
 	if err := db.Messages().Append(ctx, message); err != nil {
 		t.Fatalf("Append: %v", err)
@@ -471,9 +560,10 @@ func TestMessageSetProviderID(t *testing.T) {
 		t.Fatalf("History = %#v", got)
 	}
 	echo := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Outbound, Kind: botflota.KindText,
-		Body: "reply", At: t1, ProviderMessageID: "OUT-1",
-		Ingest: botflota.IngestSync, Origin: botflota.OriginUnknown,
+		ChatID: chat.ID, Direction: botflota.Outbound,
+		Content: botflota.TextContent{Body: "reply"}, At: t1,
+		ProviderMessageID: "OUT-1", Ingest: botflota.IngestSync,
+		Origin: botflota.OriginUnknown,
 	}
 	if err := db.Messages().Append(ctx, echo); !errors.Is(err, botflota.ErrDuplicate) {
 		t.Fatalf("echo error = %v, want ErrDuplicate", err)
@@ -499,8 +589,9 @@ func TestMessageOldest(t *testing.T) {
 		{"no anchor", t1, ""},
 	} {
 		message := &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound, Kind: botflota.KindText,
-			Body: spec.body, At: spec.at, ProviderMessageID: spec.id,
+			ChatID: chat.ID, Direction: botflota.Inbound,
+			Content: botflota.TextContent{Body: spec.body},
+			At:      spec.at, ProviderMessageID: spec.id,
 			Ingest: botflota.IngestSync,
 		}
 		if err := db.Messages().Append(ctx, message); err != nil {
@@ -511,7 +602,7 @@ func TestMessageOldest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Oldest: %v", err)
 	}
-	if oldest.Body != "oldest" || oldest.ProviderMessageID != "A" {
+	if botflota.ContentText(oldest.Content) != "oldest" || oldest.ProviderMessageID != "A" {
 		t.Fatalf("oldest = %#v, want the oldest anchored message", oldest)
 	}
 }
@@ -884,8 +975,8 @@ func TestForeignKeysEnforced(t *testing.T) {
 	}
 
 	orphanChat := &botflota.Message{
-		ChatID: 999, Direction: botflota.Inbound, Kind: botflota.KindText,
-		Body: "orphan", At: t1,
+		ChatID: 999, Direction: botflota.Inbound,
+		Content: botflota.TextContent{Body: "orphan"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, orphanChat); err == nil {
 		t.Fatal("Append with unknown chat succeeded, want a foreign key error")
@@ -894,7 +985,7 @@ func TestForeignKeysEnforced(t *testing.T) {
 	chat := ensureChat(t, db)
 	orphanSession := &botflota.Message{
 		ChatID: chat.ID, SessionID: 999, Direction: botflota.Inbound,
-		Kind: botflota.KindText, Body: "orphan", At: t1,
+		Content: botflota.TextContent{Body: "orphan"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, orphanSession); err == nil {
 		t.Fatal("Append with unknown session succeeded, want a foreign key error")

@@ -162,7 +162,8 @@ func (q *outbox) send(msg botflota.OutgoingMessage, pacing time.Duration) {
 	providerID, err := q.cfg.Sender(ctx, msg)
 	if err != nil {
 		q.cfg.Log.Error("send failed",
-			"recipient", recipient(msg), "kind", string(msg.Kind), "queue_delay", pacing, "error", err)
+			"recipient", recipient(msg), "kind", string(botflota.ContentKind(msg.Content)),
+			"queue_delay", pacing, "error", err)
 		if q.cfg.OnError != nil {
 			q.cfg.OnError(msg, err)
 		}
@@ -172,7 +173,8 @@ func (q *outbox) send(msg botflota.OutgoingMessage, pacing time.Duration) {
 		q.cfg.OnSent(msg, providerID)
 	}
 	q.cfg.Log.Info("sent",
-		"recipient", recipient(msg), "kind", string(msg.Kind), "queue_delay", pacing)
+		"recipient", recipient(msg), "kind", string(botflota.ContentKind(msg.Content)),
+		"queue_delay", pacing)
 }
 
 // recipient is the phone number for logs; it never logs a LID.

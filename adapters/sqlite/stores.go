@@ -383,24 +383,32 @@ func (s *SessionStore) CountActive(
 // MessageStore persists message history (ADR 0026).
 type MessageStore struct{ db *sql.DB }
 
-const messageColumns = `id, chat_id, session_id, direction, kind, body, sent_at,
-	provider_message_id, ingest_kind, origin, routing`
+const messageColumns = `id, chat_id, session_id, direction, kind, body, content,
+	sent_at, provider_message_id, ingest_kind, origin, routing`
 
 // Append inserts the message and sets its ID. A message whose provider id is
 // already present in its chat is a duplicate and reports botflota.ErrDuplicate
 // instead of inserting (ADR 0026).
 func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) error {
+	if message.Content == nil {
+		return errors.New("sqlite: message has no content")
+	}
+	content, err := botflota.ContentJSON(message.Content)
+	if err != nil {
+		return fmt.Errorf("sqlite: encode message content: %w", err)
+	}
 	var sessionID any
 	if message.SessionID != 0 {
 		sessionID = message.SessionID
 	}
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (chat_id, session_id, direction, kind, body, sent_at,
-		 provider_message_id, ingest_kind, origin, routing)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO messages (chat_id, session_id, direction, kind, body, content,
+		 sent_at, provider_message_id, ingest_kind, origin, routing)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT DO NOTHING`,
-		message.ChatID, sessionID, string(message.Direction), string(message.Kind),
-		message.Body, formatTime(message.At), message.ProviderMessageID,
+		message.ChatID, sessionID, string(message.Direction),
+		string(message.Content.MessageKind()), message.Content.VisibleText(),
+		string(content), formatTime(message.At), message.ProviderMessageID,
 		string(message.Ingest), string(message.Origin), string(message.Routing))
 	if err != nil {
 		return fmt.Errorf("sqlite: append message: %w", err)
@@ -489,14 +497,14 @@ func scanMessages(rows *sql.Rows) ([]botflota.Message, error) {
 	var messages []botflota.Message
 	for rows.Next() {
 		var (
-			message                 botflota.Message
-			sessionID               sql.NullInt64
-			direction, kind, ingest string
-			origin, routing         string
-			sentAt                  string
+			message                       botflota.Message
+			sessionID                     sql.NullInt64
+			direction, kind, body, ingest string
+			content, origin, routing      string
+			sentAt                        string
 		)
 		if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
-			&direction, &kind, &message.Body, &sentAt,
+			&direction, &kind, &body, &content, &sentAt,
 			&message.ProviderMessageID, &ingest, &origin, &routing); err != nil {
 			return nil, err
 		}
@@ -504,11 +512,16 @@ func scanMessages(rows *sql.Rows) ([]botflota.Message, error) {
 			message.SessionID = sessionID.Int64
 		}
 		message.Direction = botflota.Direction(direction)
-		message.Kind = botflota.MessageKind(kind)
 		message.Ingest = botflota.Ingest(ingest)
 		message.Origin = botflota.MessageOrigin(origin)
 		message.Routing = botflota.RoutingMethod(routing)
 		message.At = parseTime(sentAt)
+		decoded, err := botflota.ContentFromJSON(
+			botflota.MessageKind(kind), body, []byte(content))
+		if err != nil {
+			return nil, fmt.Errorf("sqlite: decode message content: %w", err)
+		}
+		message.Content = decoded
 		messages = append(messages, message)
 	}
 	return messages, rows.Err()

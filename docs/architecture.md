@@ -121,17 +121,26 @@ generic `control` facade.
 Every message carries a channel-neutral kind: `text`, `image`, `video`,
 `audio`, `document`, `sticker`, `location`, `contact`, `poll`, `event`,
 `interactive`, `commerce`, `call`, or `unknown` (ADR 0036). The kind names the
-payload; the visible text (caption, file name, question, name) travels beside
-it, and the attachment bytes never do. A channel implements the subset it can
-produce and send: the import keeps every recognized kind as an anchor, live
-traffic delivers every recognized kind to the engine, and an outbound step may
-emit the sendable ones. A channel that cannot deliver a kind answers
-`ErrUnsupportedKind` instead of dropping the message.
+payload, and the payload is typed content: a sealed `MessageContent` with one
+concrete type per kind, `VisibleText()` for the text a reader shows and the
+engine routes on, and `SendableContent` for the subset an action may emit.
+`IncomingMessage` and `OutgoingMessage` carry `Content`, so a kind and its
+payload cannot disagree. The attachment bytes never enter the runtime context.
+
+A channel implements the subset it can produce and send: the import keeps every
+recognized kind as an anchor, live traffic delivers every recognized kind to the
+engine, and an outbound step may emit the sendable ones. A channel that cannot
+deliver a content type answers `ErrUnsupportedKind` instead of dropping the
+message.
 
 An action sends `message` (text), `location`, `media` (image, video, audio,
 document, sticker from a templated `url` or a local `path`), `contact`, or
 `poll`. The channel reads media bytes, so a large file or a secret stays out of
 the runtime context.
+
+A stored message keeps its kind and visible text as derived columns and its
+structured payload as `content` JSON, so a poll's options or a pin's
+coordinates survive the store and the read API can serve them.
 
 ## Message lifecycle
 
@@ -292,7 +301,8 @@ scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
 pair plus the sender's phone number. `messages` returns the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
-polls; `chats` lists a bot's chats with their sender profiles, which is how
+polls, and each message carries its kind, its visible text, and the structured
+`content`; `chats` lists a bot's chats with their sender profiles, which is how
 `chat list` reads them; `status` and `bots` report each bot's active sessions.
 Errors use one shape, `{"error":{"code","message"}}`.
 

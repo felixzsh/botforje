@@ -378,13 +378,13 @@ func testServer(t *testing.T) *Server {
 			chat.ID: {
 				{
 					ID: 1, ChatID: chat.ID, Direction: botflota.Inbound,
-					Kind: botflota.KindText, Body: "hola", At: testTime,
+					Content: botflota.TextContent{Body: "hola"}, At: testTime,
 					Ingest: botflota.IngestLive, Routing: botflota.RoutingTriggerExact,
 				},
 				{
 					ID: 2, ChatID: chat.ID, SessionID: 9,
-					Direction: botflota.Outbound, Kind: botflota.KindText,
-					Body: "hi", At: testTime,
+					Direction: botflota.Outbound,
+					Content:   botflota.TextContent{Body: "hi"}, At: testTime,
 					Ingest: botflota.IngestLive, Origin: botflota.OriginPreset,
 					Routing: botflota.RoutingTriggerExact,
 				},
@@ -562,10 +562,14 @@ func TestMessagesEndpoint(t *testing.T) {
 		Messages []struct {
 			ID         int64  `json:"id"`
 			Direction  string `json:"direction"`
+			Kind       string `json:"kind"`
 			IngestKind string `json:"ingest_kind"`
 			Origin     string `json:"origin"`
 			Routing    string `json:"routing"`
 			Body       string `json:"body"`
+			Content    struct {
+				Body string `json:"body"`
+			} `json:"content"`
 		} `json:"messages"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -579,6 +583,9 @@ func TestMessagesEndpoint(t *testing.T) {
 		t.Fatalf("messages = %#v, want the newest one", body.Messages)
 	}
 	got := body.Messages[0]
+	if got.Kind != string(botflota.KindText) || got.Content.Body != "hi" {
+		t.Fatalf("kind/content = %#v, want the structured text payload", got)
+	}
 	if got.IngestKind != string(botflota.IngestLive) ||
 		got.Origin != string(botflota.OriginPreset) ||
 		got.Routing != string(botflota.RoutingTriggerExact) {

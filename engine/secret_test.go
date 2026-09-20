@@ -55,7 +55,9 @@ func testRun() *run {
 		ctx:    context.Background(),
 		engine: New(Options{}),
 		tctx:   newtemplateContext(),
-		msg:    botflota.IncomingMessage{Sender: "5215500000000"},
+		msg: botflota.IncomingMessage{
+			Sender: "5215500000000", Content: botflota.TextContent{Body: "hi"},
+		},
 	}
 }
 
@@ -162,7 +164,7 @@ func TestGeneratedBodyQueuesPlainText(t *testing.T) {
 	if err := r.message(spec.Message{Intent: "greet"}); err != nil {
 		t.Fatalf("message: %v", err)
 	}
-	if len(r.out) != 1 || r.out[0].Body != "hello there" {
+	if len(r.out) != 1 || botflota.ContentText(r.out[0].Content) != "hello there" {
 		t.Fatalf("out = %#v, want the generated body", r.out)
 	}
 }

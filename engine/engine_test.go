@@ -293,14 +293,15 @@ func newTestEngine(t *testing.T, opts engine.Options) *engine.Engine {
 func outbound(t *testing.T, eng *engine.Engine, sender, text string) []string {
 	t.Helper()
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: sender, Body: text, At: t0,
+		Bot: "support-bot", Sender: sender, At: t0,
+		Content: botflota.TextContent{Body: text},
 	})
 	if err != nil {
 		t.Fatalf("Handle(%q): %v", text, err)
 	}
 	bodies := make([]string, 0, len(messages))
 	for _, message := range messages {
-		bodies = append(bodies, message.Body)
+		bodies = append(bodies, botflota.ContentText(message.Content))
 	}
 	return bodies
 }
@@ -583,7 +584,9 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{Sender: "s", Body: "hi"})
+	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+		Sender: "s", Content: botflota.TextContent{Body: "hi"},
+	})
 	if !errors.Is(err, botflota.ErrNoLLM) {
 		t.Fatalf("error = %v, want ErrNoLLM", err)
 	}
@@ -628,7 +631,8 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", Sender: "5215500000000", Body: "hola", At: t0,
+		Bot: "b", Sender: "5215500000000", At: t0,
+		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -639,8 +643,8 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 	if messages[0].Recipient != "5215500099999" {
 		t.Fatalf("recipient = %q, want the override", messages[0].Recipient)
 	}
-	if messages[0].Body != "lead from 5215500000000" {
-		t.Fatalf("body = %q", messages[0].Body)
+	if got := botflota.ContentText(messages[0].Content); got != "lead from 5215500000000" {
+		t.Fatalf("body = %q", got)
 	}
 }
 
@@ -660,7 +664,8 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", Sender: "5215500000000", Body: "hola", At: t0,
+		Bot: "b", Sender: "5215500000000", At: t0,
+		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -688,7 +693,8 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", Sender: "52155", Body: "hola", At: t0,
+		Bot: "b", Sender: "52155", At: t0,
+		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "resolved empty") {
 		t.Fatalf("error = %v, want a resolved-empty recipient error", err)
@@ -711,15 +717,16 @@ func TestLocationStep(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(),
-		botflota.IncomingMessage{Sender: "s", Body: "hi"})
+		botflota.IncomingMessage{Sender: "s", Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(messages) != 1 || messages[0].Kind != botflota.KindLocation {
+	if len(messages) != 1 || messages[0].Content.MessageKind() != botflota.KindLocation {
 		t.Fatalf("messages = %#v", messages)
 	}
-	if messages[0].Location == nil || messages[0].Location.Name != "Office" {
-		t.Fatalf("location = %#v", messages[0].Location)
+	location, ok := messages[0].Content.(botflota.LocationContent)
+	if !ok || location.Name != "Office" {
+		t.Fatalf("location = %#v", messages[0].Content)
 	}
 }
 
@@ -747,24 +754,24 @@ func TestMediaContactPollSteps(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(context.Background(),
-		botflota.IncomingMessage{Sender: "s", Body: "hi"})
+		botflota.IncomingMessage{Sender: "s", Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	if len(messages) != 3 {
 		t.Fatalf("messages = %d, want 3", len(messages))
 	}
-	if messages[0].Kind != botflota.KindImage || messages[0].Media == nil ||
-		messages[0].Media.URL == "" || messages[0].Media.Caption != "Look" {
-		t.Fatalf("image = %#v", messages[0])
+	image, ok := messages[0].Content.(botflota.MediaContent)
+	if !ok || image.URL == "" || image.Caption != "Look" {
+		t.Fatalf("image = %#v", messages[0].Content)
 	}
-	if messages[1].Kind != botflota.KindContact || messages[1].Contact == nil ||
-		messages[1].Contact.Phone != "5215500000000" {
-		t.Fatalf("contact = %#v", messages[1])
+	contact, ok := messages[1].Content.(botflota.ContactContent)
+	if !ok || contact.Phone != "5215500000000" {
+		t.Fatalf("contact = %#v", messages[1].Content)
 	}
-	if messages[2].Kind != botflota.KindPoll || messages[2].Poll == nil ||
-		len(messages[2].Poll.Options) != 2 {
-		t.Fatalf("poll = %#v", messages[2])
+	poll, ok := messages[2].Content.(botflota.PollContent)
+	if !ok || len(poll.Options) != 2 {
+		t.Fatalf("poll = %#v", messages[2].Content)
 	}
 }
 
@@ -782,7 +789,8 @@ func TestInboundKindRecorded(t *testing.T) {
 	})
 	ctx := context.Background()
 	if _, err := eng.Handle(ctx, botflota.IncomingMessage{
-		Sender: "s", Kind: botflota.KindImage, At: t0,
+		Sender: "s", At: t0,
+		Content: botflota.MediaContent{Type: botflota.MediaImage},
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -798,7 +806,7 @@ func TestInboundKindRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("history: %v", err)
 	}
-	if len(messages) != 1 || messages[0].Kind != botflota.KindImage {
+	if len(messages) != 1 || messages[0].Content.MessageKind() != botflota.KindImage {
 		t.Fatalf("recorded = %#v, want one image row", messages)
 	}
 }
@@ -807,7 +815,8 @@ func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
 	if _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: "52155", SenderName: "Ana", Body: "hi", At: t0,
+		Bot: "support-bot", Sender: "52155", SenderName: "Ana", At: t0,
+		Content: botflota.TextContent{Body: "hi"},
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -851,10 +860,10 @@ func TestMessagesRecordedUnderChatAndSession(t *testing.T) {
 		t.Fatalf("recorded %d messages, want 2", len(messages))
 	}
 	inbound, reply := messages[0], messages[1]
-	if inbound.Direction != botflota.Inbound || inbound.Body != "1" {
+	if inbound.Direction != botflota.Inbound || botflota.ContentText(inbound.Content) != "1" {
 		t.Fatalf("inbound = %+v", inbound)
 	}
-	if reply.Direction != botflota.Outbound || reply.Body == "" {
+	if reply.Direction != botflota.Outbound || botflota.ContentText(reply.Content) == "" {
 		t.Fatalf("outbound = %+v", reply)
 	}
 	if inbound.SessionID == 0 || inbound.SessionID != reply.SessionID {
@@ -883,12 +892,13 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 		Store: store, Chats: store, Senders: store, Messages: store,
 	})
 	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
-		Bot: "b", Sender: "52155", Body: "hola", At: t0,
+		Bot: "b", Sender: "52155", At: t0,
+		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if len(messages) != 1 || messages[0].Body != "hi Ana" {
+	if len(messages) != 1 || botflota.ContentText(messages[0].Content) != "hi Ana" {
 		t.Fatalf("messages = %#v, want the stored name", messages)
 	}
 }
@@ -946,7 +956,9 @@ func TestRequestRetriesThenSucceeds(t *testing.T) {
 
 func TestRequestFailureStopsTheRun(t *testing.T) {
 	eng := retryEngine(t, 1, &flakyTransport{fail: 5})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{Sender: "s", Body: "hi"})
+	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+		Sender: "s", Content: botflota.TextContent{Body: "hi"},
+	})
 	if err == nil {
 		t.Fatal("want an error when every attempt fails")
 	}

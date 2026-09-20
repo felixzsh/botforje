@@ -224,7 +224,7 @@ func historyRecord(
 	if providerID == "" {
 		return botflota.Message{}, "", false
 	}
-	kind, body, ok := contentType(unwrapMessage(web.GetMessage()))
+	content, ok := contentType(unwrapMessage(web.GetMessage()))
 	if !ok {
 		return botflota.Message{}, "", false
 	}
@@ -236,8 +236,7 @@ func historyRecord(
 	}
 	return botflota.Message{
 		Direction:         direction,
-		Kind:              kind,
-		Body:              body,
+		Content:           content,
 		At:                historyEntryAt(conversation, entry),
 		ProviderMessageID: providerID,
 		Ingest:            botflota.IngestSync,

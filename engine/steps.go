@@ -82,7 +82,7 @@ func (r *run) message(m spec.Message) error {
 			Intent: m.Intent,
 			Policy: m.Policy,
 			Anchor: body,
-			Text:   r.msg.Body,
+			Text:   r.msg.Content.VisibleText(),
 		})
 		switch {
 		case err == nil && generated != "":
@@ -101,8 +101,7 @@ func (r *run) message(m spec.Message) error {
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
 		Recipient: recipient,
-		Body:      body,
-		Kind:      botflota.KindText,
+		Content:   botflota.TextContent{Body: body},
 		Origin:    origin,
 		Routing:   r.routing,
 	})
@@ -142,7 +141,7 @@ func (r *run) recipient(to string) (string, error) {
 // attachment or a secret stays out of the runtime context. Exactly one source
 // is required, since which one wins would otherwise be ambiguous.
 func (r *run) media(m spec.Media) error {
-	kind, ok := mediaKind(m.Kind)
+	mediaType, ok := mediaTypeOf(m.Kind)
 	if !ok {
 		return fmt.Errorf("unknown media kind %q", m.Kind)
 	}
@@ -180,10 +179,9 @@ func (r *run) media(m spec.Media) error {
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
 		Recipient: recipient,
-		Kind:      kind,
-		Body:      caption,
-		Media: &botflota.Media{
-			URL: url, Path: path, Name: name, Caption: caption, MIME: m.MIME,
+		Content: botflota.MediaContent{
+			Type: mediaType, URL: url, Path: path, Name: name,
+			Caption: caption, MIME: m.MIME,
 		},
 		Origin:  botflota.OriginPreset,
 		Routing: r.routing,
@@ -191,17 +189,15 @@ func (r *run) media(m spec.Media) error {
 	return nil
 }
 
-// mediaKind maps a configured media kind to its core constant. Only the media
+// mediaTypeOf maps a configured media kind to its core type. Only the media
 // kinds are accepted; anything else is a config error the channel must not
 // guess at.
-func mediaKind(name string) (botflota.MessageKind, bool) {
-	switch kind := botflota.MessageKind(name); kind {
-	case botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
-		botflota.KindDocument, botflota.KindSticker:
-		return kind, true
-	default:
+func mediaTypeOf(name string) (botflota.MediaType, bool) {
+	mediaType := botflota.MediaType(name)
+	if !mediaType.Valid() {
 		return "", false
 	}
+	return mediaType, true
 }
 
 // contact renders a shared contact card and queues it (ADR 0036).
@@ -229,9 +225,7 @@ func (r *run) contact(c spec.Contact) error {
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
 		Recipient: recipient,
-		Kind:      botflota.KindContact,
-		Body:      name,
-		Contact:   &botflota.Contact{Name: name, Phone: phone},
+		Content:   botflota.ContactContent{Name: name, Phone: phone},
 		Origin:    botflota.OriginPreset,
 		Routing:   r.routing,
 	})
@@ -270,9 +264,7 @@ func (r *run) poll(p spec.Poll) error {
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
 		Recipient: recipient,
-		Kind:      botflota.KindPoll,
-		Body:      question,
-		Poll: &botflota.Poll{
+		Content: botflota.PollContent{
 			Question: question, Options: options, Selectable: p.Selectable,
 		},
 		Origin:  botflota.OriginPreset,
@@ -386,10 +378,7 @@ func (r *run) location(loc spec.Location) error {
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:       r.engine.bot,
 		Recipient: r.msg.Sender,
-		Kind:      botflota.KindLocation,
-		Origin:    botflota.OriginPreset,
-		Routing:   r.routing,
-		Location: &botflota.Location{
+		Content: botflota.LocationContent{
 			Latitude:    loc.Latitude,
 			Longitude:   loc.Longitude,
 			Name:        name,
@@ -397,6 +386,8 @@ func (r *run) location(loc spec.Location) error {
 			URL:         url,
 			Description: description,
 		},
+		Origin:  botflota.OriginPreset,
+		Routing: r.routing,
 	})
 	return nil
 }

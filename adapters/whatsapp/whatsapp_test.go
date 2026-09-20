@@ -446,7 +446,7 @@ func TestWaLoGFiltersBelowMinimum(t *testing.T) {
 }
 
 func TestBuildContent(t *testing.T) {
-	text, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindText, Body: "hi"})
+	text, err := buildContent(botflota.TextContent{Body: "hi"})
 	if err != nil {
 		t.Fatalf("text: %v", err)
 	}
@@ -454,9 +454,8 @@ func TestBuildContent(t *testing.T) {
 		t.Fatalf("text = %q", text.GetConversation())
 	}
 
-	location, err := buildContent(botflota.OutgoingMessage{
-		Kind:     botflota.KindLocation,
-		Location: &botflota.Location{Latitude: 1.5, Longitude: -2.5, Name: "Office"},
+	location, err := buildContent(botflota.LocationContent{
+		Latitude: 1.5, Longitude: -2.5, Name: "Office",
 	})
 	if err != nil {
 		t.Fatalf("location: %v", err)
@@ -469,9 +468,8 @@ func TestBuildContent(t *testing.T) {
 		t.Fatalf("name = %q", got.GetName())
 	}
 
-	contact, err := buildContent(botflota.OutgoingMessage{
-		Kind:    botflota.KindContact,
-		Contact: &botflota.Contact{Name: "Ana", Phone: "5215500000000"},
+	contact, err := buildContent(botflota.ContactContent{
+		Name: "Ana", Phone: "5215500000000",
 	})
 	if err != nil {
 		t.Fatalf("contact: %v", err)
@@ -481,9 +479,8 @@ func TestBuildContent(t *testing.T) {
 		t.Fatalf("contact = %+v", card)
 	}
 
-	poll, err := buildContent(botflota.OutgoingMessage{
-		Kind: botflota.KindPoll,
-		Poll: &botflota.Poll{Question: "Lunch?", Options: []string{"yes", "no"}},
+	poll, err := buildContent(botflota.PollContent{
+		Question: "Lunch?", Options: []string{"yes", "no"},
 	})
 	if err != nil {
 		t.Fatalf("poll: %v", err)
@@ -497,16 +494,13 @@ func TestBuildContent(t *testing.T) {
 		t.Fatal("a poll needs its message secret for vote decryption")
 	}
 
-	if _, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindLocation}); err == nil {
-		t.Fatal("a location message without a location must fail")
+	if _, err := buildContent(nil); err == nil {
+		t.Fatal("nil content must fail")
 	}
-	if _, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindImage}); err == nil {
-		t.Fatal("a media kind must not be built without the connection")
-	}
-	if _, err := buildContent(botflota.OutgoingMessage{Kind: botflota.KindEvent}); !errors.Is(
-		err, botflota.ErrUnsupportedKind,
-	) {
-		t.Fatalf("event kind = %v, want unsupported", err)
+	if _, err := buildContent(botflota.PollContent{
+		Question: "Lunch?", Options: []string{"only"},
+	}); err == nil {
+		t.Fatal("a poll with one option must fail")
 	}
 }
 
@@ -535,8 +529,9 @@ func TestContentForMedia(t *testing.T) {
 		},
 	}
 	content, err := a.contentFor(context.Background(), botflota.OutgoingMessage{
-		Kind:  botflota.KindImage,
-		Media: &botflota.Media{Path: path, Caption: "look"},
+		Content: botflota.MediaContent{
+			Type: botflota.MediaImage, Path: path, Caption: "look",
+		},
 	})
 	if err != nil {
 		t.Fatalf("image: %v", err)
@@ -547,6 +542,13 @@ func TestContentForMedia(t *testing.T) {
 	}
 	if uploads != 1 {
 		t.Fatalf("uploads = %d, want 1", uploads)
+	}
+
+	// A media type the channel cannot build is rejected, not silently dropped.
+	if _, err := a.contentFor(context.Background(), botflota.OutgoingMessage{
+		Content: botflota.MediaContent{Type: "video_note", Path: path},
+	}); !errors.Is(err, botflota.ErrUnsupportedKind) {
+		t.Fatalf("unknown media type = %v, want unsupported", err)
 	}
 }
 
@@ -604,12 +606,50 @@ func TestContentType(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			kind, body, ok := contentType(tc.msg)
-			if kind != tc.kind || body != tc.body || ok != tc.ok {
-				t.Fatalf("contentType = (%q, %q, %v), want (%q, %q, %v)",
-					kind, body, ok, tc.kind, tc.body, tc.ok)
+			content, ok := contentType(tc.msg)
+			if ok != tc.ok {
+				t.Fatalf("contentType ok = %v, want %v", ok, tc.ok)
+			}
+			if !ok {
+				return
+			}
+			if content.MessageKind() != tc.kind || content.VisibleText() != tc.body {
+				t.Fatalf("contentType = (%q, %q), want (%q, %q)",
+					content.MessageKind(), content.VisibleText(), tc.kind, tc.body)
 			}
 		})
+	}
+}
+
+// TestContentTypeExtractsStructure covers the fields beyond the visible text,
+// which the persisted content keeps for a poll and a pin (ADR 0036).
+func TestContentTypeExtractsStructure(t *testing.T) {
+	poll, ok := contentType(&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{
+		Name: proto.String("Lunch?"),
+		Options: []*waE2E.PollCreationMessage_Option{
+			{OptionName: proto.String("yes")},
+			{OptionName: proto.String("no")},
+		},
+		SelectableOptionsCount: proto.Uint32(1),
+	}})
+	if !ok {
+		t.Fatal("a poll was not classified")
+	}
+	question, ok := poll.(botflota.PollContent)
+	if !ok || len(question.Options) != 2 || question.Selectable != 1 {
+		t.Fatalf("poll = %#v", poll)
+	}
+
+	location, ok := contentType(&waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+		DegreesLatitude:  proto.Float64(19.43),
+		DegreesLongitude: proto.Float64(-99.13),
+	}})
+	if !ok {
+		t.Fatal("a location was not classified")
+	}
+	place, ok := location.(botflota.LocationContent)
+	if !ok || place.Latitude != 19.43 || place.Longitude != -99.13 {
+		t.Fatalf("location = %#v", location)
 	}
 }
 
@@ -657,7 +697,8 @@ func TestOnMessageMapsAndDedups(t *testing.T) {
 
 	select {
 	case message := <-a.incoming:
-		if message.Bot != "support-bot" || message.Body != "hello" {
+		if message.Bot != "support-bot" ||
+			botflota.ContentText(message.Content) != "hello" {
 			t.Fatalf("message = %#v", message)
 		}
 		if message.Sender != "5215500000000" {
@@ -805,7 +846,7 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	if len(coraMessages) != 1 {
 		t.Fatalf("media-only messages = %d, want 1 anchor", len(coraMessages))
 	}
-	if coraMessages[0].Kind != botflota.KindImage ||
+	if botflota.ContentKind(coraMessages[0].Content) != botflota.KindImage ||
 		coraMessages[0].ProviderMessageID != "P1" {
 		t.Fatalf("media anchor = %+v", coraMessages[0])
 	}
@@ -835,8 +876,9 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	if len(messages) != 3 {
 		t.Fatalf("messages = %d, want 3", len(messages))
 	}
-	if messages[0].Body != "hello" || messages[1].Body != "reply" ||
-		messages[2].Body != "bye" {
+	if botflota.ContentText(messages[0].Content) != "hello" ||
+		botflota.ContentText(messages[1].Content) != "reply" ||
+		botflota.ContentText(messages[2].Content) != "bye" {
 		t.Fatalf("messages out of order: %#v", bodies(messages))
 	}
 	if messages[0].Direction != botflota.Inbound || messages[0].Origin != "" ||
@@ -885,7 +927,8 @@ func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 	if len(messages) != 1 {
 		t.Fatalf("messages = %d, want 1", len(messages))
 	}
-	if messages[0].Kind != botflota.KindCall || messages[0].Body != "Missed call" {
+	if botflota.ContentKind(messages[0].Content) != botflota.KindCall ||
+		botflota.ContentText(messages[0].Content) != "Missed call" {
 		t.Fatalf("call row = %+v, want a missed call", messages[0])
 	}
 	if messages[0].ProviderMessageID != "C1" ||
@@ -1045,7 +1088,7 @@ func historyCall(
 func bodies(messages []botflota.Message) []string {
 	out := make([]string, 0, len(messages))
 	for _, message := range messages {
-		out = append(out, message.Body)
+		out = append(out, botflota.ContentText(message.Content))
 	}
 	return out
 }

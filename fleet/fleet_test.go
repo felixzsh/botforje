@@ -58,7 +58,7 @@ func (c *fakeChannel) Send(_ context.Context, msg botflota.OutgoingMessage) (str
 		<-c.release
 	}
 	c.sent <- msg
-	return "wamid." + msg.Body, nil
+	return "wamid." + botflota.ContentText(msg.Content), nil
 }
 
 func (c *fakeChannel) Incoming() <-chan botflota.IncomingMessage { return c.incoming }
@@ -455,13 +455,17 @@ func TestTwoBotsAreIndependent(t *testing.T) {
 	go runner.Run(ctx)
 	waitConnected(t, runner)
 
-	channels["alpha"].incoming <- botflota.IncomingMessage{Bot: "alpha", Sender: "s", Body: "hi"}
-	if reply := receive(t, channels["alpha"].sent); reply.Body != "hello from alpha" {
-		t.Fatalf("alpha reply = %q", reply.Body)
+	channels["alpha"].incoming <- botflota.IncomingMessage{
+		Bot: "alpha", Sender: "s", Content: botflota.TextContent{Body: "hi"},
+	}
+	reply := receive(t, channels["alpha"].sent)
+	if got := botflota.ContentText(reply.Content); got != "hello from alpha" {
+		t.Fatalf("alpha reply = %q", got)
 	}
 	select {
 	case other := <-channels["beta"].sent:
-		t.Fatalf("beta answered on alpha's message: %q", other.Body)
+		t.Fatalf("beta answered on alpha's message: %q",
+			botflota.ContentText(other.Content))
 	case <-time.After(50 * time.Millisecond):
 	}
 }
@@ -475,9 +479,11 @@ func TestOutboundProviderIDIsStored(t *testing.T) {
 	go runner.Run(ctx)
 	waitConnected(t, runner)
 
-	channels["alpha"].incoming <- botflota.IncomingMessage{Bot: "alpha", Sender: "s", Body: "hi"}
+	channels["alpha"].incoming <- botflota.IncomingMessage{
+		Bot: "alpha", Sender: "s", Content: botflota.TextContent{Body: "hi"},
+	}
 	reply := receive(t, channels["alpha"].sent)
-	want := "wamid." + reply.Body
+	want := "wamid." + botflota.ContentText(reply.Content)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -507,19 +513,20 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["beta"].incoming <- botflota.IncomingMessage{
-		Bot: "beta", Sender: "999", Body: "hi",
+		Bot: "beta", Sender: "999", Content: botflota.TextContent{Body: "hi"},
 	}
 	select {
 	case reply := <-channels["beta"].sent:
-		t.Fatalf("beta answered an ignored sender: %q", reply.Body)
+		t.Fatalf("beta answered an ignored sender: %q", botflota.ContentText(reply.Content))
 	case <-time.After(50 * time.Millisecond):
 	}
 
 	channels["beta"].incoming <- botflota.IncomingMessage{
-		Bot: "beta", Sender: "1", Body: "hi",
+		Bot: "beta", Sender: "1", Content: botflota.TextContent{Body: "hi"},
 	}
-	if reply := receive(t, channels["beta"].sent); reply.Body != "hello from beta" {
-		t.Fatalf("beta reply = %q", reply.Body)
+	reply := receive(t, channels["beta"].sent)
+	if got := botflota.ContentText(reply.Content); got != "hello from beta" {
+		t.Fatalf("beta reply = %q", got)
 	}
 	if _, err := store.Get(ctx, "dev", "999"); !errors.Is(err, botflota.ErrNotFound) {
 		t.Fatalf("an ignored sender was persisted: %v", err)
@@ -537,7 +544,9 @@ func TestShutdownDrainsBeforeDisconnect(t *testing.T) {
 	go func() { _ = runner.Run(ctx); close(done) }()
 	waitConnected(t, runner)
 
-	alpha.incoming <- botflota.IncomingMessage{Bot: "alpha", Sender: "s", Body: "hi"}
+	alpha.incoming <- botflota.IncomingMessage{
+		Bot: "alpha", Sender: "s", Content: botflota.TextContent{Body: "hi"},
+	}
 	<-alpha.entered
 	cancel()
 
@@ -554,7 +563,7 @@ func TestShutdownDrainsBeforeDisconnect(t *testing.T) {
 	if !alpha.wasDisconnected() {
 		t.Fatal("the channel was not disconnected after draining")
 	}
-	if reply := receive(t, alpha.sent); reply.Body != "hello from alpha" {
-		t.Fatalf("drained reply = %q", reply.Body)
+	if reply := receive(t, alpha.sent); botflota.ContentText(reply.Content) != "hello from alpha" {
+		t.Fatalf("drained reply = %q", botflota.ContentText(reply.Content))
 	}
 }

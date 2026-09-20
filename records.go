@@ -96,18 +96,18 @@ const (
 	RoutingFallback        RoutingMethod = "fallback"
 )
 
-// Message is one message kept for history. Kind is the shared MessageKind,
-// declared with the runtime message types. SessionID is zero when no session
-// run handled it, like an imported message. ProviderMessageID is the channel's
-// own id and the dedup key of the history import; a channel that does not
-// report one leaves it empty (ADR 0026).
+// Message is one message kept for history. Content is the classified payload;
+// the store derives its kind and visible text for the columns it searches
+// (ADR 0026, ADR 0036). SessionID is zero when no session run handled it, like
+// an imported message. ProviderMessageID is the channel's own id and the dedup
+// key of the history import; a channel that does not report one leaves it
+// empty.
 type Message struct {
 	ID                int64
 	ChatID            int64
 	SessionID         int64
 	Direction         Direction
-	Kind              MessageKind
-	Body              string
+	Content           MessageContent
 	At                time.Time
 	ProviderMessageID string
 	Ingest            Ingest

@@ -6,73 +6,132 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// contentType classifies an unwrapped WhatsApp message into a Botflota kind
-// and its visible text (ADR 0036). ok is false for a control or internal
-// message that carries no content, which the store never keeps (ADR 0035).
-// Anything recognized as content but unknown falls back to KindUnknown, so the
-// chat still has an anchor for `chat sync`.
-func contentType(m *waE2E.Message) (botflota.MessageKind, string, bool) {
+// contentType classifies an unwrapped WhatsApp message into a Botflota
+// content (ADR 0036). ok is false for a control or internal message that
+// carries no content, which the store never keeps (ADR 0035). Anything
+// recognized as content but unknown falls back to UnknownContent, so the chat
+// still has an anchor for `chat sync`.
+func contentType(m *waE2E.Message) (botflota.MessageContent, bool) {
 	if m == nil || controlMessage(m) {
-		return "", "", false
+		return nil, false
 	}
 	switch {
 	case m.GetConversation() != "":
-		return botflota.KindText, m.GetConversation(), true
+		return botflota.TextContent{Body: m.GetConversation()}, true
 	case m.GetExtendedTextMessage() != nil:
-		return botflota.KindText, m.GetExtendedTextMessage().GetText(), true
+		return botflota.TextContent{
+			Body: m.GetExtendedTextMessage().GetText(),
+		}, true
 	case m.GetImageMessage() != nil:
-		return botflota.KindImage, m.GetImageMessage().GetCaption(), true
+		image := m.GetImageMessage()
+		return botflota.MediaContent{
+			Type: botflota.MediaImage, MIME: image.GetMimetype(),
+			Caption: image.GetCaption(),
+		}, true
 	case m.GetVideoMessage() != nil:
-		return botflota.KindVideo, m.GetVideoMessage().GetCaption(), true
+		video := m.GetVideoMessage()
+		return botflota.MediaContent{
+			Type: botflota.MediaVideo, MIME: video.GetMimetype(),
+			Caption: video.GetCaption(),
+		}, true
 	case m.GetPtvMessage() != nil:
-		return botflota.KindVideo, m.GetPtvMessage().GetCaption(), true
+		ptv := m.GetPtvMessage()
+		return botflota.MediaContent{
+			Type: botflota.MediaVideo, MIME: ptv.GetMimetype(),
+			Caption: ptv.GetCaption(),
+		}, true
 	case m.GetAudioMessage() != nil:
-		return botflota.KindAudio, "", true
+		return botflota.MediaContent{
+			Type: botflota.MediaAudio, MIME: m.GetAudioMessage().GetMimetype(),
+		}, true
 	case m.GetDocumentMessage() != nil:
-		return botflota.KindDocument, documentText(m.GetDocumentMessage()), true
+		document := m.GetDocumentMessage()
+		return botflota.MediaContent{
+			Type: botflota.MediaDocument, MIME: document.GetMimetype(),
+			Name: document.GetFileName(), Caption: documentText(document),
+		}, true
 	case m.GetStickerMessage() != nil:
-		return botflota.KindSticker, "", true
+		return botflota.MediaContent{
+			Type: botflota.MediaSticker, MIME: m.GetStickerMessage().GetMimetype(),
+		}, true
 	case m.GetLocationMessage() != nil:
-		return botflota.KindLocation, m.GetLocationMessage().GetName(), true
+		location := m.GetLocationMessage()
+		return botflota.LocationContent{
+			Latitude:    location.GetDegreesLatitude(),
+			Longitude:   location.GetDegreesLongitude(),
+			Name:        location.GetName(),
+			Address:     location.GetAddress(),
+			URL:         location.GetURL(),
+			Description: location.GetComment(),
+		}, true
 	case m.GetLiveLocationMessage() != nil:
-		return botflota.KindLocation, m.GetLiveLocationMessage().GetCaption(), true
+		location := m.GetLiveLocationMessage()
+		return botflota.LocationContent{
+			Latitude:    location.GetDegreesLatitude(),
+			Longitude:   location.GetDegreesLongitude(),
+			Description: location.GetCaption(),
+		}, true
 	case m.GetContactMessage() != nil:
-		return botflota.KindContact, m.GetContactMessage().GetDisplayName(), true
+		return botflota.ContactContent{
+			Name: m.GetContactMessage().GetDisplayName(),
+		}, true
 	case m.GetContactsArrayMessage() != nil:
-		return botflota.KindContact, m.GetContactsArrayMessage().GetDisplayName(), true
+		return botflota.ContactContent{
+			Name: m.GetContactsArrayMessage().GetDisplayName(),
+		}, true
 	case m.GetPollCreationMessage() != nil:
-		return botflota.KindPoll, m.GetPollCreationMessage().GetName(), true
+		return pollContent(m.GetPollCreationMessage()), true
 	case m.GetPollCreationMessageV2() != nil:
-		return botflota.KindPoll, m.GetPollCreationMessageV2().GetName(), true
+		return pollContent(m.GetPollCreationMessageV2()), true
 	case m.GetPollCreationMessageV3() != nil:
-		return botflota.KindPoll, m.GetPollCreationMessageV3().GetName(), true
+		return pollContent(m.GetPollCreationMessageV3()), true
 	case m.GetPollCreationMessageV5() != nil:
-		return botflota.KindPoll, m.GetPollCreationMessageV5().GetName(), true
+		return pollContent(m.GetPollCreationMessageV5()), true
 	case m.GetPollCreationMessageV6() != nil:
-		return botflota.KindPoll, m.GetPollCreationMessageV6().GetName(), true
+		return pollContent(m.GetPollCreationMessageV6()), true
 	case m.GetEventMessage() != nil:
-		return botflota.KindEvent, m.GetEventMessage().GetName(), true
+		return botflota.EventContent{Name: m.GetEventMessage().GetName()}, true
 	case m.GetButtonsResponseMessage() != nil:
-		return botflota.KindInteractive, m.GetButtonsResponseMessage().GetSelectedDisplayText(), true
+		return botflota.InteractiveContent{
+			Text: m.GetButtonsResponseMessage().GetSelectedDisplayText(),
+		}, true
 	case m.GetListResponseMessage() != nil:
-		return botflota.KindInteractive, m.GetListResponseMessage().GetTitle(), true
+		return botflota.InteractiveContent{
+			Text: m.GetListResponseMessage().GetTitle(),
+		}, true
 	case m.GetTemplateButtonReplyMessage() != nil:
-		return botflota.KindInteractive,
-			m.GetTemplateButtonReplyMessage().GetSelectedDisplayText(), true
+		return botflota.InteractiveContent{
+			Text: m.GetTemplateButtonReplyMessage().GetSelectedDisplayText(),
+		}, true
 	case m.GetInteractiveResponseMessage() != nil:
-		return botflota.KindInteractive,
-			m.GetInteractiveResponseMessage().GetBody().GetText(), true
+		return botflota.InteractiveContent{
+			Text: m.GetInteractiveResponseMessage().GetBody().GetText(),
+		}, true
 	case m.GetProductMessage() != nil:
-		return botflota.KindCommerce, m.GetProductMessage().GetProduct().GetTitle(), true
+		return botflota.CommerceContent{
+			Title: m.GetProductMessage().GetProduct().GetTitle(),
+		}, true
 	case m.GetOrderMessage() != nil:
-		return botflota.KindCommerce, m.GetOrderMessage().GetOrderTitle(), true
+		return botflota.CommerceContent{Title: m.GetOrderMessage().GetOrderTitle()}, true
 	case m.GetInvoiceMessage() != nil:
-		return botflota.KindCommerce, m.GetInvoiceMessage().GetNote(), true
+		return botflota.CommerceContent{Title: m.GetInvoiceMessage().GetNote()}, true
 	case isCallMessage(m):
-		return botflota.KindCall, callText(m), true
+		return botflota.CallContent{Label: callText(m)}, true
 	default:
-		return botflota.KindUnknown, "", true
+		return botflota.UnknownContent{}, true
 	}
+}
+
+// pollContent reads a poll's question, options, and selectable count.
+func pollContent(poll *waE2E.PollCreationMessage) botflota.PollContent {
+	content := botflota.PollContent{
+		Question:   poll.GetName(),
+		Selectable: int(poll.GetSelectableOptionsCount()),
+	}
+	for _, option := range poll.GetOptions() {
+		content.Options = append(content.Options, option.GetOptionName())
+	}
+	return content
 }
 
 // controlMessage reports a message that changes another message or steers the

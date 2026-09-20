@@ -237,7 +237,9 @@ func (b *Bot) run(ctx context.Context) error {
 				return nil
 			}
 			b.log.Debug("message received",
-				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup, "body", msg.Body)
+				"sender", msg.Sender, "id", msg.ID, "group", msg.IsGroup,
+				"kind", string(botflota.ContentKind(msg.Content)),
+				"body", botflota.ContentText(msg.Content))
 			if !b.filter.Allow(msg) {
 				b.log.Debug("message filtered", "sender", msg.Sender)
 				continue

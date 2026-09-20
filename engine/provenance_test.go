@@ -184,14 +184,16 @@ func TestGeneratedReplyOrigin(t *testing.T) {
 	store, eng := build(scriptedLLM{body: "generated reply"})
 	outbound(t, eng, "s", "hi")
 	reply := lastRecord(t, store, botflota.Outbound)
-	if reply.Origin != botflota.OriginLLM || reply.Body != "generated reply" {
+	if reply.Origin != botflota.OriginLLM ||
+		botflota.ContentText(reply.Content) != "generated reply" {
 		t.Fatalf("reply = %+v, want an llm body", reply)
 	}
 
 	store, eng = build(scriptedLLM{err: errors.New("provider down")})
 	outbound(t, eng, "s", "hi")
 	reply = lastRecord(t, store, botflota.Outbound)
-	if reply.Origin != botflota.OriginPreset || reply.Body != "anchor" {
+	if reply.Origin != botflota.OriginPreset ||
+		botflota.ContentText(reply.Content) != "anchor" {
 		t.Fatalf("reply = %+v, want the preset anchor", reply)
 	}
 }
@@ -202,7 +204,8 @@ func TestProviderMessageIDIsRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: "s", Body: "hi", ID: "ABC123", At: t0,
+		Bot: "support-bot", Sender: "s", ID: "ABC123", At: t0,
+		Content: botflota.TextContent{Body: "hi"},
 	})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -219,7 +222,8 @@ func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
 	replies, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", Sender: "s", Body: "hi", ID: "ABC123", At: t0,
+		Bot: "support-bot", Sender: "s", ID: "ABC123", At: t0,
+		Content: botflota.TextContent{Body: "hi"},
 	})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)

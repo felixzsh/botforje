@@ -71,7 +71,7 @@ func (e *Engine) matchTriggers(r *run) (string, botflota.RoutingMethod) {
 			if edge.Intent == "" || len(edge.Triggers) == 0 {
 				continue
 			}
-			score, method := bestTriggerMatch(r.msg.Body, edge.Triggers)
+			score, method := bestTriggerMatch(r.msg.Content.VisibleText(), edge.Triggers)
 			if score < matchThreshold {
 				continue
 			}
@@ -105,7 +105,7 @@ func (e *Engine) classify(r *run) (string, bool, error) {
 	result, err := e.llm.Classify(r.ctx, botflota.ClassifyRequest{
 		Goal:    e.graph.Nodes[r.session.Node].Goal,
 		Intents: ordered,
-		Text:    r.msg.Body,
+		Text:    r.msg.Content.VisibleText(),
 	})
 	if err != nil {
 		return "", false, err

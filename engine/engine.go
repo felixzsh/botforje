@@ -102,6 +102,11 @@ func (e *Engine) Handle(
 	if msg.Sender == "" {
 		return nil, errors.New("engine: incoming message has no sender")
 	}
+	if msg.Content == nil {
+		// A channel that predates the kind vocabulary, or a plain text event,
+		// leaves the payload empty (ADR 0036).
+		msg.Content = botflota.TextContent{}
+	}
 	if e.messages == nil {
 		return nil, errors.New("engine: no message store")
 	}
@@ -179,8 +184,7 @@ func (e *Engine) recordMessages(
 		ChatID:            chatID,
 		SessionID:         sessionID,
 		Direction:         botflota.Inbound,
-		Kind:              messageKind(msg.Kind),
-		Body:              msg.Body,
+		Content:           msg.Content,
 		At:                msg.At,
 		ProviderMessageID: msg.ID,
 		Ingest:            botflota.IngestLive,
@@ -194,8 +198,7 @@ func (e *Engine) recordMessages(
 			ChatID:    chatID,
 			SessionID: sessionID,
 			Direction: botflota.Outbound,
-			Kind:      out[i].Kind,
-			Body:      out[i].Body,
+			Content:   out[i].Content,
 			At:        now,
 			Ingest:    botflota.IngestLive,
 			Origin:    out[i].Origin,
@@ -278,7 +281,7 @@ func (e *Engine) contextOf(
 		"name":  sender.DisplayName,
 	})
 	_ = tctx.Reset(botflota.RootMessage, map[string]any{
-		"body": msg.Body,
+		"body": msg.Content.VisibleText(),
 		"id":   msg.ID,
 		"at":   formatAt(msg.At),
 	})
@@ -410,13 +413,4 @@ func formatAt(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
-}
-
-// messageKind normalizes an unset kind to text: a channel that predates the
-// kind vocabulary, or a plain text event, leaves it empty (ADR 0036).
-func messageKind(kind botflota.MessageKind) botflota.MessageKind {
-	if kind == "" {
-		return botflota.KindText
-	}
-	return kind
 }

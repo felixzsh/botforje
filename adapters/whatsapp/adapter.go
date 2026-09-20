@@ -407,8 +407,8 @@ func (a *Adapter) onMessage(event *events.Message) {
 	}
 	// An unclassifiable live payload is dropped rather than turned into a
 	// conversation turn; the import still keeps it as an anchor (ADR 0036).
-	kind, body, ok := contentType(event.Message)
-	if !ok || kind == botflota.KindUnknown {
+	content, ok := contentType(event.Message)
+	if !ok || content.MessageKind() == botflota.KindUnknown {
 		return
 	}
 	id := string(event.Info.ID)
@@ -433,8 +433,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 		Bot:        a.bot,
 		Sender:     sender,
 		SenderName: event.Info.PushName,
-		Kind:       kind,
-		Body:       body,
+		Content:    content,
 		ID:         id,
 		IsGroup:    event.Info.IsGroup,
 		At:         event.Info.Timestamp,

@@ -61,6 +61,7 @@ var schema = []string{
 		direction           TEXT NOT NULL,
 		kind                TEXT NOT NULL,
 		body                TEXT NOT NULL,
+		content             TEXT NOT NULL DEFAULT '{}',
 		sent_at             TEXT NOT NULL,
 		provider_message_id TEXT NOT NULL DEFAULT '',
 		ingest_kind         TEXT NOT NULL DEFAULT 'unknown',
@@ -165,6 +166,52 @@ func applySchema(db *sql.DB) error {
 		if _, err := db.Exec(statement); err != nil {
 			return fmt.Errorf("sqlite: schema: %w", err)
 		}
+	}
+	// CREATE TABLE IF NOT EXISTS leaves an existing table untouched, so a
+	// column a newer build added needs an explicit ALTER. This keeps a
+	// pre-release database working without the versioned runner of ADR 0006,
+	// which starts at the first release.
+	if err := addColumn(db, "messages", "content", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// addColumn adds a column a newer build introduced and does nothing when it is
+// already present.
+func addColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return fmt.Errorf("sqlite: inspect %s: %w", table, err)
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var (
+			position   int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			primaryKey int
+		)
+		if err := rows.Scan(&position, &name, &columnType, &notNull, &defaultVal,
+			&primaryKey); err != nil {
+			return fmt.Errorf("sqlite: inspect %s: %w", table, err)
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("sqlite: inspect %s: %w", table, err)
+	}
+	if found {
+		return nil
+	}
+	statement := "ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition
+	if _, err := db.Exec(statement); err != nil {
+		return fmt.Errorf("sqlite: add %s.%s: %w", table, column, err)
 	}
 	return nil
 }
