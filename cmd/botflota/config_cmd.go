@@ -17,7 +17,7 @@ const schemaFileName = "config.schema.json"
 // with nothing to delete.
 var minimalConfig = []byte(`# Botflota configuration. Validate it with botflota config validate.
 # Secrets stay out of this file: a model api_key or a request header may
-# reference an environment variable as ${ENV_VAR} (ADR 0014).
+# reference an environment variable as ${ENV_VAR}.
 $schema: "config.schema.json"
 version: 1
 

@@ -135,7 +135,7 @@ func cliTree() *commandHelp {
 					{
 						name:    "schema",
 						summary: "print the generated config JSON Schema",
-						long:    "Print the JSON Schema generated from the config types.",
+						long:    "Print the JSON Schema of the config format.",
 						usage:   "botflota config schema [options]",
 						examples: []string{
 							"botflota config schema",

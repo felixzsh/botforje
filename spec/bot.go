@@ -7,8 +7,7 @@ type Bot struct {
 	Settings *BotSettings `yaml:"settings" json:"settings,omitempty"`
 }
 
-// BotSettings controls pacing, presence, filtering, and history import
-// (ADR 0011, ADR 0035).
+// BotSettings controls pacing, presence, filtering, and history import.
 type BotSettings struct {
 	ReadReceipts     *bool    `yaml:"read_receipts" json:"read_receipts,omitempty"`
 	ReadReceiptDelay int      `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`

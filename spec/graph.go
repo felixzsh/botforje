@@ -1,6 +1,6 @@
 package spec
 
-// Graph is a conversation state machine (ADR 0010, ADR 0030).
+// Graph is a conversation state machine.
 type Graph struct {
 	Root           string          `yaml:"root" json:"root"`
 	Timeout        int             `yaml:"timeout" json:"timeout,omitempty"`
@@ -10,7 +10,7 @@ type Graph struct {
 	Nodes          map[string]Node `yaml:"nodes" json:"nodes"`
 }
 
-// Node is a state (ADR 0032, ADR 0033).
+// Node is one state of a graph.
 type Node struct {
 	Goal           string         `yaml:"goal" json:"goal,omitempty"`
 	Policy         string         `yaml:"policy" json:"policy,omitempty"`

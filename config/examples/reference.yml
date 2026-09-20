@@ -1,8 +1,7 @@
 # yaml-language-server: $schema=../../config.schema.json
 ---
-# Botflota Configuration Example (v1 draft)
-# Reference for every v1 field. Scope is the top-level namespace (ADR 0016);
-# exact matching and policy details are still open (Phase 1/4).
+# Botflota configuration example.
+# Reference for every field. A scope is the top-level namespace.
 # Copy this to ~/.config/botflota/config.yml and customize.
 
 $schema: "../../config.schema.json"
@@ -12,13 +11,13 @@ version: 1
 address: "127.0.0.1"              # REST API bind address
 port: 3000                        # REST API port (0 disables the API)
 log_level: "info"                 # debug, info, warn, error
-log_level_deps: "info"            # dependency logs (whatsmeow); also accepts off
+log_level_deps: "info"            # dependency logs; also accepts off
 default_timeout: 300              # Default graph session timeout in seconds
-data_dir: "~/.local/share/botflota"  # SQLite location (XDG default when omitted)
+data_dir: "~/.local/share/botflota"  # Database and credentials (XDG default when omitted)
 device_name: "Botflota"           # Name in the phone's Linked devices; brand it for a host
 
 
-# Multi-file organization (ADR 0016): every file uses the `scopes` shape, and
+# Multi-file organization: every file uses the `scopes` shape, and
 # several files may contribute to the same scope under the same rules as one.
 # Global settings are only valid in the main file.
 # Uncomment only with the companion files present: a lone config must not
@@ -28,7 +27,7 @@ device_name: "Botflota"           # Name in the phone's Linked devices; brand it
 #   - ./scopes/*.yml
 #   - ./extra/
 
-# A scope is an isolation namespace (ADR 0016). References and
+# A scope is an isolation namespace. References and
 # sessions never cross scopes. "support" is just a name, like any other.
 scopes:
   support:
@@ -37,12 +36,12 @@ scopes:
       primary:
         provider: "openai"        # openai, anthropic, ollama, ...
         model: "gpt-4o-mini"
-        api_key: "${OPENAI_API_KEY}"  # Secret reference (ADR 0014)
+        api_key: "${OPENAI_API_KEY}"  # Read the key from the environment
         routing: "fallback"       # off | fallback | always
         realization: "auto"       # off | auto
-        bounds:                   # Tool loop limits (ADR 0033)
+        bounds:                   # Tool call limits
           max_tools_per_message: 3
-          timeout: 30000          # Tool loop timeout in milliseconds
+          timeout: 30000          # Tool call timeout in milliseconds
 
       # Local / self-hosted profile: same shape, with base_url
       local:
@@ -74,7 +73,8 @@ scopes:
               intent: "explain the return policy"
               policy: "Friendly and clear. Maximum three sentences. Never promise refunds."
 
-      # LLM generates anchored on body; body is also the fallback (ADR 0032)
+      # The LLM generates from the intent, anchored on body; body is the
+      # fallback
       confirm-order:
         steps:
           - message:
@@ -388,11 +388,7 @@ scopes:
           ignore_groups: false
 
 # Notes
-# - This example exercises every v1 field; field shapes are in
+# - This example exercises every field; field shapes are in
 #   ../../config.schema.json.
 # - Secrets never go in config: a ${ENV_VAR} reference is allowed only in
-#   api_key and request header values (ADR 0014).
-# - Concepts and rules: docs/architecture.md.
-# - Why each decision: docs/adr/.
-# - Config v1 is a draft; matching thresholds and policy details are open
-#   until the engine exists (Phase 1/4).
+#   api_key and request header values.

@@ -91,7 +91,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "BotSettings controls pacing, presence, filtering, and history import (ADR 0011, ADR 0035)."
+      "description": "BotSettings controls pacing, presence, filtering, and history import."
     },
     "Bounds": {
       "properties": {
@@ -104,7 +104,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Bounds limits the tool loop inside a node (ADR 0033)."
+      "description": "Bounds limits how many tools a message may call and how long they may take."
     },
     "Config": {
       "properties": {
@@ -135,7 +135,7 @@
         },
         "device_name": {
           "type": "string",
-          "description": "DeviceName is the companion name WhatsApp shows in Linked devices, sent\nonly when a bot registers a new pairing; an existing link keeps the name\nit was registered with. Empty means the adapter default."
+          "description": "DeviceName is the companion name WhatsApp shows in Linked devices. It is\nsent only when a bot registers a new pairing; an existing link keeps the\nname it was registered with. Empty uses the built-in default."
         },
         "include": {
           "items": {
@@ -156,7 +156,7 @@
         "version",
         "scopes"
       ],
-      "description": "Config is the root document: global settings plus scopes (ADR 0016)."
+      "description": "Config is the root document: instance settings plus the scopes it runs."
     },
     "Cooldown": {
       "properties": {
@@ -175,7 +175,7 @@
       "required": [
         "duration"
       ],
-      "description": "Cooldown blocks the same sender for Duration seconds and runs OnBlocked."
+      "description": "Cooldown blocks the same sender for `duration` seconds, then runs the `on_blocked` steps."
     },
     "Edge": {
       "properties": {
@@ -229,7 +229,7 @@
         "root",
         "nodes"
       ],
-      "description": "Graph is a conversation state machine (ADR 0010, ADR 0030)."
+      "description": "Graph is a conversation state machine."
     },
     "Guards": {
       "properties": {
@@ -262,7 +262,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Input is a named, typed argument of a tool (ADR 0033)."
+      "description": "Input is a named, typed argument of a tool."
     },
     "LLM": {
       "properties": {
@@ -294,7 +294,7 @@
         "provider",
         "model"
       ],
-      "description": "LLM is a named, scoped model profile referenced by a bot (ADR 0031)."
+      "description": "LLM is a named, scoped model profile a bot can reference."
     },
     "Location": {
       "properties": {
@@ -342,7 +342,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Message is a reply: deterministic, LLM-realized, or anchored (ADR 0032)."
+      "description": "Message is a reply: a fixed body, an LLM-realized reply, or both."
     },
     "Node": {
       "properties": {
@@ -382,7 +382,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Node is a state (ADR 0032, ADR 0033)."
+      "description": "Node is one state of a graph."
     },
     "RateLimit": {
       "properties": {
@@ -405,7 +405,7 @@
         "limit",
         "window"
       ],
-      "description": "RateLimit allows at most Limit runs per sender in Window seconds and runs OnBlocked when the sender exceeds it."
+      "description": "RateLimit allows at most `limit` runs per sender in `window` seconds and runs the `on_blocked` steps when the sender exceeds it."
     },
     "Request": {
       "properties": {
@@ -440,7 +440,7 @@
         "name",
         "url"
       ],
-      "description": "Request is an HTTP call whose result is addressable by Name."
+      "description": "Request is an HTTP call whose result is addressable by its `name`."
     },
     "Scope": {
       "properties": {
@@ -471,7 +471,7 @@
       },
       "additionalProperties": false,
       "type": "object",
-      "description": "Scope is an isolation namespace holding its own entities (ADR 0016)."
+      "description": "Scope is an isolation namespace holding its own entities."
     },
     "Secret": {
       "type": "string"

@@ -8,7 +8,7 @@ import "github.com/felixzsh/botflota/spec"
 // SchemaVersion is the only config version this build understands.
 const SchemaVersion = 1
 
-// Config is the root document: global settings plus scopes (ADR 0016).
+// Config is the root document: instance settings plus the scopes it runs.
 type Config struct {
 	Schema         string `yaml:"$schema" json:"$schema,omitempty"`
 	Version        int    `yaml:"version" json:"version"` // must be 1
@@ -18,9 +18,9 @@ type Config struct {
 	LogLevelDeps   string `yaml:"log_level_deps" json:"log_level_deps,omitempty"`
 	DefaultTimeout int    `yaml:"default_timeout" json:"default_timeout,omitempty"`
 	DataDir        string `yaml:"data_dir" json:"data_dir,omitempty"`
-	// DeviceName is the companion name WhatsApp shows in Linked devices, sent
-	// only when a bot registers a new pairing; an existing link keeps the name
-	// it was registered with. Empty means the adapter default.
+	// DeviceName is the companion name WhatsApp shows in Linked devices. It is
+	// sent only when a bot registers a new pairing; an existing link keeps the
+	// name it was registered with. Empty uses the built-in default.
 	DeviceName string                `yaml:"device_name" json:"device_name,omitempty"`
 	Include    []string              `yaml:"include" json:"include,omitempty"`
 	Scopes     map[string]spec.Scope `yaml:"scopes" json:"scopes"`

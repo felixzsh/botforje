@@ -1,4 +1,4 @@
-# Pairing and manual test (whatsmeow)
+# Pairing and running bots
 
 How to pair one real WhatsApp account, run the bots, and prove the channel
 end to end.
@@ -38,17 +38,17 @@ listed.
 
 When an account links, WhatsApp pushes the account-wide history sync: the
 conversations it chooses, with the recent messages it chooses. Botflota stores
-what arrives, inertly (ADR 0035):
+what arrives, without replying:
 
 - Only 1:1 chats are imported. Text is stored, and a call attempt is stored as
-  a `call` row (a missed call reads "Missed call"); groups, broadcasts, status,
-  channels, media, reactions, polls, edits, and deletions store no row. A
+  a `call` (a missed call reads "Missed call"); groups, broadcasts, status,
+  channels, media, reactions, polls, edits, and deletions are not stored. A
   conversation with any message still registers its sender and chat, so a chat
   whose only history is a call or media appears in `chat list`.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
-- The account's contact names arrive in their own `PUSH_NAME` chunk and name
-  the senders Botflota already knows.
+- The account's contact names arrive with the sync and name the senders
+  Botflota already knows.
 - The import does not run the bot and does not reply. The bot filter does not
   apply: a chat outside `allowed_senders` is still stored.
 - The sync arrives in chunks. `bot pair` captures what it sees before it
@@ -71,7 +71,7 @@ message. `chat sync` asks the phone for older messages of one chat:
 ./bin/botflota chat sync --count 50 --timeout 120 support-bot 5215500000000
 ```
 
-It is a bounded experiment, not a guarantee:
+It is best effort, not a guarantee:
 
 - It opens the account's device directly, so **stop `fleet run` first**. The
   command refuses to run when it can see the API answering.
@@ -97,19 +97,18 @@ when Botflota detected the transition, not necessarily when the phone changed it
 
 ## Run the bots
 
-`./bin/botflota fleet run` (or `make dev ARGS="fleet run"`) starts every
+`./bin/botflota fleet run` starts every
 paired bot, answers inbound messages with the configured pacing, and stops on
 Ctrl-C after draining the outbox.
 
-Bots without a local pairing are not initialized (ADR 0022). The fleet logs a
-`WARN` naming only `bot pair` and continues with the paired bots (ADR 0025); the
+Bots without a local pairing are not initialized. The fleet logs a
+`WARN` naming only `bot pair` and continues with the paired bots; the
 command's own usage explains its flags and arguments. If none are paired, the
 fleet stays idle until Ctrl-C instead of failing.
 
 ## Human-like pacing
 
-Each bot paces replies through its `settings` (ADR 0011). For one inbound
-message:
+Each bot paces replies through its `settings`. For one inbound message:
 
 1. `read_receipt_delay` — wait, then mark the message read when `read_receipts`
    is on.
@@ -124,19 +123,19 @@ never leaves as one block. Every delay adds the shared random `jitter` in
 Delays are milliseconds and per bot; `0` means no added wait. `queue_delay` does
 not delay the first message; `reply_delay` does.
 
-## Manual checklist
+## Verification checklist
 
 Deterministic flow (a bot with no `llm`):
 
-- [ ] `bot pair` prints a QR, pairing succeeds, and the device store is written
-  under `data_dir`.
+- [ ] `bot pair` prints a QR, pairing succeeds, and the device credentials are
+  written under `data_dir`.
 - [ ] `bot list` reports the bot as `paired` with its phone in the `PHONE`
   column.
 - [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
-  senders in the sync, and none of it generated a reply (ADR 0035).
-- [ ] The `PUSH_NAME` chunk gives those senders their contact names.
+  senders in the sync, and none of it generated a reply.
+- [ ] The contact names arrive and name those senders.
 - [ ] `chat list <bot>` lists those senders with the stored total split into
   `SYNC` and `LIVE`, and the first and last activity.
 - [ ] With the fleet stopped, `chat sync <bot> <sender>` pages one request of
@@ -144,7 +143,7 @@ Deterministic flow (a bot with no `llm`):
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still
-  follows the visited nodes (ADR 0010).
+  follows the visited nodes.
 - [ ] Stop the process and start it again: it connects without a new QR.
 - [ ] With `read_receipts` and `simulate_typing` on, the inbound message is
   marked read and a composing indicator shows before the reply.

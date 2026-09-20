@@ -23,6 +23,10 @@ func TestInitWritesConfigAndSchema(t *testing.T) {
 	if errs := config.Validate(cfg); len(errs) != 0 {
 		t.Fatalf("the generated config does not validate: %v", errs)
 	}
+	configData, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read the generated config: %v", err)
+	}
 	data, err := os.ReadFile(filepath.Join(dir, schemaFileName))
 	if err != nil {
 		t.Fatalf("read the schema: %v", err)
@@ -30,6 +34,16 @@ func TestInitWritesConfigAndSchema(t *testing.T) {
 	var schema map[string]any
 	if err := json.Unmarshal(data, &schema); err != nil {
 		t.Fatalf("schema is not valid JSON: %v", err)
+	}
+	// Both files are user-facing: they must read as documentation, never as
+	// references to internal design notes.
+	for name, text := range map[string]string{
+		"config": string(configData),
+		"schema": string(data),
+	} {
+		if strings.Contains(text, "ADR") {
+			t.Errorf("%s mentions an ADR", name)
+		}
 	}
 	if !strings.Contains(string(data), "Config is the root document") {
 		t.Error("the generated schema lost its descriptions")

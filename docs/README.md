@@ -4,7 +4,7 @@ Map of the documentation.
 
 ## Project references
 
-- `scope.md` — what the MVP includes.
+- `scope.md` — what Botflota includes.
 - `glossary.md` — terms used across the docs.
 - `../PLAN.md` — phases to the MVP, progress checkboxes, and open decisions.
 - `../ROADMAP.md` — phases after the MVP and the order they arrive in.
@@ -18,8 +18,7 @@ For contributors and agents working on this repository:
 
 ## User guide
 
-For people running bots. It lives in `guide/` and is written once config v1
-reaches its v1 baseline (Phase 1), then finalized when the CLI and API exist.
+For people running bots. It lives in `guide/`.
 
 ## Where things live
 
@@ -34,8 +33,8 @@ reaches its v1 baseline (Phase 1), then finalized when the CLI and API exist.
 
 ## Rules
 
-- One owner per topic. User pages link to developer docs for rationale;
-  they never repeat them.
+- One owner per topic. User pages are self-contained: they explain behavior
+  without citing internal design notes.
 - Reference is generated from code, not written by hand: config schema,
   CLI help, and API reference.
 - Do not invent behavior. Pages are written against frozen shapes and
