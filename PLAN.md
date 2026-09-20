@@ -201,8 +201,8 @@ Deliverables:
 - [x] Declarative objects moved to `spec`; the template language moved to the
   core and the runtime context into `engine` (ADR 0034).
 - [x] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
-  `fleet run|status`, `chat list`, `message list|tail`. Operational queries use
-  the API; process lifecycle belongs to the supervisor (ADR 0025).
+  `fleet run|status`, `chat list|sync`, `message list|tail`. Operational queries
+  use the API; process lifecycle belongs to the supervisor (ADR 0025).
 - [x] CLI help: `usage`, description, commands, options, and examples for every
   group and subcommand; `--help` exits 0 and usage errors exit 2.
 - [x] CLI `--version` and a decision on global versus per-subcommand flags.
@@ -223,7 +223,9 @@ Deliverables:
 - [x] WhatsApp history import (ADR 0035): capture the account-wide sync that
   arrives when an account links, in `bot pair` and in `fleet run`, storing only
   1:1 text as `sync`/`unknown` with no session run; deduplicate by
-  `provider_message_id`, and write the channel's id back onto live replies.
+  `provider_message_id`, write the channel's id back onto live replies, import
+  the `PUSH_NAME` contact names, widen each chat's activity to the imported
+  range, and expose `chat sync` to page older messages on demand.
 - [x] Message history commands: list or tail one chat with
   `message list|tail <bot> <sender> [--limit n] [--follow]`, served through the
   API when it exists.

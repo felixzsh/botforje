@@ -44,6 +44,8 @@ what arrives, inertly (ADR 0035):
   media, reactions, polls, edits, and deletions are skipped.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
+- The account's contact names arrive in their own `PUSH_NAME` chunk and name
+  the senders Botflota already knows.
 - The import does not run the bot and does not reply. The bot filter does not
   apply: a chat outside `allowed_senders` is still stored.
 - The sync arrives in chunks. `bot pair` captures what it sees before it
@@ -52,7 +54,29 @@ what arrives, inertly (ADR 0035):
 - Set `settings.history_sync: false` on a bot to store none of it.
 
 See which senders arrived with `./bin/botflota chat list <bot>`, then read one
-thread with `./bin/botflota message list <bot> <phone>`.
+thread with `./bin/botflota message list <bot> <phone>`. `chat list` shows the
+stored message total split into `SYNC` and `LIVE`, and the first and last
+activity.
+
+## Older messages on demand
+
+WhatsApp only delivers a window of history, so many chats stop at one anchor
+message. `chat sync` asks the phone for older messages of one chat:
+
+```bash
+./bin/botflota chat sync support-bot 5215500000000
+./bin/botflota chat sync --count 50 --timeout 120 support-bot 5215500000000
+```
+
+It is a bounded experiment, not a guarantee:
+
+- It opens the account's device directly, so **stop `fleet run` first**. The
+  command refuses to run when it can see the API answering.
+- It requests up to `--count` messages older than the chat's oldest stored
+  message and waits up to `--timeout` seconds for the phone to answer.
+- A reply is imported like any other sync; a missing reply is reported, not
+  retried automatically. Repeat it to page further back.
+- WhatsApp, not Botflota, decides whether and how much to send.
 
 ## List bots
 
@@ -109,8 +133,11 @@ Deterministic flow (a bot with no `llm`):
   messages.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
   senders in the sync, and none of it generated a reply (ADR 0035).
-- [ ] `chat list <bot>` lists those senders with their phone, name, message
-  count, and first and last activity.
+- [ ] The `PUSH_NAME` chunk gives those senders their contact names.
+- [ ] `chat list <bot>` lists those senders with the stored total split into
+  `SYNC` and `LIVE`, and the first and last activity.
+- [ ] With the fleet stopped, `chat sync <bot> <sender>` pages one request of
+  older messages back from the phone, or reports that it did not answer.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still

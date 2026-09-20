@@ -252,7 +252,11 @@ text is kept, and every row is `sync` with `unknown` origin and routing and no
 session run. The import never runs the engine and ignores the bot filter,
 because it is not a conversation turn; `settings.history_sync: false` turns it
 off. `provider_message_id` (the channel's own id) is the dedup key, both for a
-redelivered sync chunk and for a live reply the sync echoes afterwards.
+redelivered sync chunk and for a live reply the sync echoes afterwards. The
+`PUSH_NAME` chunk names the senders the import knows, and importing a
+conversation widens the chat's activity to the imported range. `chat sync`
+pages older messages back from the phone one bounded request at a time; it
+opens the device directly and needs the fleet stopped.
 
 The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
