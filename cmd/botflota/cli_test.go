@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"flag"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -87,6 +90,101 @@ func TestHelpOutputSections(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOrderFlags covers interspersed flags. The standard flag package stops at
+// the first non-flag argument, so a flag written after the arguments used to be
+// dropped in silence.
+func TestOrderFlags(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "boolean after the arguments",
+			args: []string{"dev-bot", "--force"},
+			want: []string{"--force", "dev-bot"},
+		},
+		{
+			name: "value stays with its flag",
+			args: []string{"dev-bot", "5215", "--count", "25"},
+			want: []string{"--count", "25", "dev-bot", "5215"},
+		},
+		{
+			name: "boolean does not eat the next argument",
+			args: []string{"--force", "dev-bot"},
+			want: []string{"--force", "dev-bot"},
+		},
+		{
+			name: "inline value",
+			args: []string{"dev-bot", "--count=25"},
+			want: []string{"--count=25", "dev-bot"},
+		},
+		{
+			name: "terminator ends the flags",
+			args: []string{"dev-bot", "--", "--force"},
+			want: []string{"dev-bot", "--", "--force"},
+		},
+		{
+			name: "a lone dash is an argument",
+			args: []string{"dev-bot", "-"},
+			want: []string{"dev-bot", "-"},
+		},
+		{
+			name: "help is not a value flag",
+			args: []string{"dev-bot", "-h"},
+			want: []string{"-h", "dev-bot"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			fs.Bool("force", false, "")
+			fs.Int("count", 0, "")
+			got := orderFlags(fs, tc.args)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("orderFlags(%v) = %v, want %v", tc.args, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseArgsAcceptsAFlagAfterTheArguments(t *testing.T) {
+	pair := newPairCmd()
+	if code := parseArgs(pair.fs, []string{"dev-bot", "--import-history"}); code != -1 {
+		t.Fatalf("parseArgs = %d, want -1", code)
+	}
+	if !*pair.importHistory {
+		t.Fatal("a flag after the arguments was dropped")
+	}
+	if pair.fs.NArg() != 1 || pair.fs.Arg(0) != "dev-bot" {
+		t.Fatalf("arguments = %v, want just the bot", pair.fs.Args())
+	}
+}
+
+func TestParseArgsRejectsAnUnknownFlag(t *testing.T) {
+	silenceStderr(t)
+	pair := newPairCmd()
+	if code := parseArgs(pair.fs, []string{"dev-bot", "--import-histoy"}); code != 2 {
+		t.Fatalf("parseArgs = %d, want 2", code)
+	}
+}
+
+// silenceStderr keeps a command's help out of the test output; printHelp reads
+// os.Stderr when it runs, so replacing it is enough.
+func silenceStderr(t *testing.T) {
+	t.Helper()
+	file, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatalf("temp stderr: %v", err)
+	}
+	previous := os.Stderr
+	os.Stderr = file
+	t.Cleanup(func() {
+		os.Stderr = previous
+		_ = file.Close()
+	})
 }
 
 func TestHelpLinesWithinLimit(t *testing.T) {

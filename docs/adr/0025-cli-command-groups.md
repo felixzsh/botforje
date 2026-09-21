@@ -22,7 +22,10 @@ Commands are grouped by resource, mirroring the API:
 
 A group invoked without a subcommand prints its help. `--version` is the only
 global flag; every other flag, such as `--config` and `--json`, stays on the
-subcommand that uses it. `fleet run` hosts the fleet and the REST API;
+subcommand that uses it. A flag is accepted before or after a subcommand's
+arguments, because the standard library stops parsing at the first argument and
+a flag written after it would otherwise be dropped in silence; `--` ends the
+flags. `fleet run` hosts the fleet and the REST API;
 operational queries such as `fleet status`, `chat list`, and `message list|tail`
 are API clients.
 

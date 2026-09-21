@@ -478,7 +478,7 @@ func writeRows(b *strings.Builder, rows []helpRow) {
 // parseArgs parses args and reports an exit code when parsing stops: 0 after
 // an explicit help request, 2 on a usage error, and -1 to continue.
 func parseArgs(fs *flag.FlagSet, args []string) int {
-	err := fs.Parse(args)
+	err := fs.Parse(orderFlags(fs, args))
 	if err == nil {
 		return -1
 	}
@@ -489,4 +489,54 @@ func parseArgs(fs *flag.FlagSet, args []string) int {
 	}
 	printHelp(os.Stderr, path...)
 	return 2
+}
+
+// orderFlags moves every flag ahead of the arguments. The standard flag package
+// stops parsing at the first non-flag argument, so without this a flag written
+// after the arguments is dropped in silence: `bot pair dev-bot --force` would
+// pair as if --force were absent. Every widely used Go CLI, the go command
+// included, accepts a flag in either position. A "--" ends the flags, so
+// everything after it stays an argument.
+func orderFlags(fs *flag.FlagSet, args []string) []string {
+	flags := make([]string, 0, len(args))
+	arguments := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
+			arguments = append(arguments, args[i:]...)
+			return append(flags, arguments...)
+		case !isFlag(arg):
+			arguments = append(arguments, arg)
+		default:
+			flags = append(flags, arg)
+			if takesValue(fs, arg) && i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		}
+	}
+	return append(flags, arguments...)
+}
+
+// isFlag reports whether an argument is a flag rather than a value. A lone "-"
+// is an argument, by the same convention the flag package follows.
+func isFlag(arg string) bool {
+	return len(arg) > 1 && arg[0] == '-'
+}
+
+// takesValue reports whether a flag consumes the argument that follows it. A
+// flag written as --name=value carries its own, and a boolean flag never takes
+// one: IsBoolFlag is the same distinction the flag package makes.
+func takesValue(fs *flag.FlagSet, arg string) bool {
+	name, _, carriesValue := strings.Cut(arg, "=")
+	if carriesValue {
+		return false
+	}
+	defined := fs.Lookup(strings.TrimLeft(name, "-"))
+	if defined == nil {
+		return false
+	}
+	boolean, ok := defined.Value.(interface{ IsBoolFlag() bool })
+	return !ok || !boolean.IsBoolFlag()
 }
