@@ -1,4 +1,4 @@
-package whatsapp
+package channel
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
 func (a *Adapter) handleEvent(raw any) {
@@ -41,7 +42,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	}
 	// An unclassifiable live payload is dropped rather than turned into a
 	// conversation turn; the import still keeps it as an anchor (ADR 0036).
-	content, ok := contentType(event.Message)
+	content, ok := ingest.Decode(event.Message)
 	if !ok || content.MessageKind() == botflota.KindUnknown {
 		return
 	}

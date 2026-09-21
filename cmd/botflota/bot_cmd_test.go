@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -28,7 +29,7 @@ func TestPrintPairImport(t *testing.T) {
 			name:     "history and contacts",
 			settings: settings(&on, &on),
 			result: whatsapp.PairResult{
-				History: whatsapp.ImportTotals{
+				History: ingest.ImportTotals{
 					Chunks: 706, Conversations: 184, Imported: 2727,
 					Duplicate: 31, Skipped: 58,
 				},

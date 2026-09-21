@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"context"
@@ -12,30 +12,30 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// contactImporter copies the linked account's address book into ContactStore
+// ContactImporter copies the linked account's address book into ContactStore
 // (ADR 0037).
-type contactImporter struct {
+type ContactImporter struct {
 	scope    string
 	bot      string
 	contacts botflota.ContactStore
-	lookup   pnLookup
+	lookup   PNLookup
 	log      *slog.Logger
 	now      func() time.Time
 }
 
-// newContactImporter returns nil when the store is missing, so a caller can
+// NewContacts returns nil when the store is missing, so a caller can
 // treat contact import as disabled.
-func newContactImporter(
+func NewContacts(
 	scope, bot string, contacts botflota.ContactStore,
-	lookup pnLookup, log *slog.Logger,
-) *contactImporter {
+	lookup PNLookup, log *slog.Logger,
+) *ContactImporter {
 	if contacts == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
-	return &contactImporter{
+	return &ContactImporter{
 		scope: scope, bot: bot, contacts: contacts,
 		lookup: lookup, log: log, now: time.Now,
 	}
@@ -44,7 +44,7 @@ func newContactImporter(
 // Handle stores one contact-related event. The address-book name, the push
 // name, and the business name stay in separate fields, so a later push name
 // never erases the name the phone's address book holds.
-func (h *contactImporter) Handle(ctx context.Context, raw any) {
+func (h *ContactImporter) Handle(ctx context.Context, raw any) {
 	switch event := raw.(type) {
 	case *events.Contact:
 		if event.Action == nil {
@@ -65,7 +65,7 @@ func (h *contactImporter) Handle(ctx context.Context, raw any) {
 
 // ImportCached covers a session that ended before every contact event
 // arrived, and a reconnect whose address-book snapshot was applied silently.
-func (h *contactImporter) ImportCached(
+func (h *ContactImporter) ImportCached(
 	ctx context.Context, known store.ContactStore,
 ) int {
 	if known == nil {
@@ -79,7 +79,7 @@ func (h *contactImporter) ImportCached(
 	return h.ImportAll(ctx, contacts)
 }
 
-func (h *contactImporter) ImportAll(
+func (h *ContactImporter) ImportAll(
 	ctx context.Context, known map[types.JID]types.ContactInfo,
 ) int {
 	stored := 0
@@ -100,7 +100,7 @@ func (h *contactImporter) ImportAll(
 
 // put stores one entry and reports whether it did; a group, broadcast, or
 // unresolved hidden-user contact is skipped.
-func (h *contactImporter) put(
+func (h *ContactImporter) put(
 	ctx context.Context, jid types.JID, pnJID string, at time.Time,
 	contact botflota.Contact,
 ) bool {
@@ -123,7 +123,7 @@ func (h *contactImporter) put(
 }
 
 // contactPhone prefers the phone JID the action carries over the entry's own.
-func contactPhone(jid types.JID, pnJID string, lookup pnLookup) (string, bool) {
+func contactPhone(jid types.JID, pnJID string, lookup PNLookup) (string, bool) {
 	if pnJID != "" {
 		if phone, ok := historyJIDPhone(pnJID, lookup); ok {
 			return phone, true

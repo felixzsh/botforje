@@ -20,7 +20,7 @@ type waLog struct {
 	level  slog.Level
 }
 
-func newWaLog(logger *slog.Logger, level slog.Level) walog.Logger {
+func NewWaLog(logger *slog.Logger, level slog.Level) walog.Logger {
 	return waLog{logger: logger, module: "whatsmeow", level: level}
 }
 

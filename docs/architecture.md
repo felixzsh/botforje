@@ -35,7 +35,8 @@ documents against them, including their template references
 context (`context.go`). The fleet, with its per-bot filter, lives in `fleet`;
 the outbox is an unexported part of that package. Concrete integrations are
 separate: `adapters/sqlite` opens the database and `adapters/sqlite/stores`
-implements the store ports; `adapters/whatsapp` implements `MessageChannel`.
+implements the store ports; `adapters/whatsapp/channel` implements
+`MessageChannel`.
 
 Behavior types (`Graph`, `Action`, `Node`) live in `spec`; a store may build
 them directly when the database becomes their source (ROADMAP Phase 15).
@@ -59,7 +60,10 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
 - `adapters/<technology>` — concrete implementations of the core ports; an
   adapter may import the core, never the reverse. `adapters/sqlite` opens the
   database and holds the DDL; `adapters/sqlite/stores` implements the store
-  ports, one file per repository.
+  ports, one file per repository. `adapters/whatsapp` pairs a companion and
+  owns its device store; `adapters/whatsapp/channel` holds the live connection
+  and the `Adapter`, and `adapters/whatsapp/ingest` stores what WhatsApp
+  reports about the past (ADR 0035, ADR 0037).
 - `cmd/botflota` — argument parsing and assembly.
 - `internal/` — only a shared implementation detail that is not a capability
   and has no owner; nothing lives there today.

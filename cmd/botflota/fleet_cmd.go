@@ -14,6 +14,7 @@ import (
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/api"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
@@ -100,7 +101,7 @@ func runFleet(args []string) int {
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,
 		NewChannel: func(botSpec fleet.BotSpec) (botflota.MessageChannel, error) {
-			return whatsapp.New(whatsapp.Options{
+			return channel.New(channel.Options{
 				Scope:          botSpec.Scope,
 				Bot:            botSpec.Name,
 				Devices:        devices,
@@ -281,8 +282,8 @@ func serveAPI(
 	return nil
 }
 
-func whatsappSettings(settings spec.BotSettings) whatsapp.Settings {
-	return whatsapp.Settings{
+func whatsappSettings(settings spec.BotSettings) channel.Settings {
+	return channel.Settings{
 		ReadReceipts:     settings.ReadReceipts != nil && *settings.ReadReceipts,
 		ReadReceiptDelay: time.Duration(settings.ReadReceiptDelay) * time.Millisecond,
 		ReplyDelay:       time.Duration(settings.ReplyDelay) * time.Millisecond,

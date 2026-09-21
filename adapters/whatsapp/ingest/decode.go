@@ -1,4 +1,7 @@
-package whatsapp
+// Package ingest stores what WhatsApp reports about the past: history syncs,
+// call logs, and the address book, decoded into Botflota records (ADR 0035,
+// ADR 0036, ADR 0037).
+package ingest
 
 import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -6,11 +9,11 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// contentType classifies an unwrapped WhatsApp message (ADR 0036). ok is
+// Decode classifies an unwrapped WhatsApp message (ADR 0036). ok is
 // false for a control or internal message, which the store never keeps (ADR
 // 0035). Anything else falls back to UnknownContent, so the chat still has an
 // anchor for `chat sync`.
-func contentType(m *waE2E.Message) (botflota.MessageContent, bool) {
+func Decode(m *waE2E.Message) (botflota.MessageContent, bool) {
 	if m == nil || controlMessage(m) {
 		return nil, false
 	}

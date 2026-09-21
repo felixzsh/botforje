@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"testing"
@@ -63,15 +63,15 @@ func TestContentType(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			content, ok := contentType(tc.msg)
+			content, ok := Decode(tc.msg)
 			if ok != tc.ok {
-				t.Fatalf("contentType ok = %v, want %v", ok, tc.ok)
+				t.Fatalf("Decode ok = %v, want %v", ok, tc.ok)
 			}
 			if !ok {
 				return
 			}
 			if content.MessageKind() != tc.kind || content.VisibleText() != tc.body {
-				t.Fatalf("contentType = (%q, %q), want (%q, %q)",
+				t.Fatalf("Decode = (%q, %q), want (%q, %q)",
 					content.MessageKind(), content.VisibleText(), tc.kind, tc.body)
 			}
 		})
@@ -79,7 +79,7 @@ func TestContentType(t *testing.T) {
 }
 
 func TestContentTypeExtractsStructure(t *testing.T) {
-	poll, ok := contentType(&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{
+	poll, ok := Decode(&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{
 		Name: proto.String("Lunch?"),
 		Options: []*waE2E.PollCreationMessage_Option{
 			{OptionName: proto.String("yes")},
@@ -95,7 +95,7 @@ func TestContentTypeExtractsStructure(t *testing.T) {
 		t.Fatalf("poll = %#v", poll)
 	}
 
-	location, ok := contentType(&waE2E.Message{LocationMessage: &waE2E.LocationMessage{
+	location, ok := Decode(&waE2E.Message{LocationMessage: &waE2E.LocationMessage{
 		DegreesLatitude:  proto.Float64(19.43),
 		DegreesLongitude: proto.Float64(-99.13),
 	}})

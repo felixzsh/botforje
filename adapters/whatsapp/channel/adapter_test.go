@@ -1,4 +1,4 @@
-package whatsapp
+package channel
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
 )
 
 func TestJitteredBounds(t *testing.T) {
@@ -37,7 +38,7 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
-	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
+	devices, err := whatsapp.OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
 	if err != nil {
 		t.Fatal(err)
 	}

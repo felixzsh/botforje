@@ -1,4 +1,4 @@
-package whatsapp
+package channel
 
 import (
 	"context"

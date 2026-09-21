@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ import (
 func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, nil)
 
 	base := uint64(t0.Unix())
@@ -122,7 +122,7 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, nil)
 	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
 		&waHistorySync.HistorySyncMsg{
@@ -150,7 +150,7 @@ func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 func TestHistoryImporterDeduplicates(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, nil)
 	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
 		historyText("M1", false, "hello", uint64(t0.Unix()), 1),
@@ -191,7 +191,7 @@ func TestHistoryImporterSummarizesPerTransfer(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	var buffer bytes.Buffer
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, botflota.NewLogger("debug", &buffer))
 
 	chunk := func(progress uint32, conversations ...*waHistorySync.Conversation) {
@@ -230,7 +230,7 @@ func TestHistoryImporterIsSilentUntilATransferEnds(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	var buffer bytes.Buffer
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, botflota.NewLogger("info", &buffer))
 
 	data := &waHistorySync.HistorySync{
@@ -251,7 +251,7 @@ func TestHistoryImporterIsSilentUntilATransferEnds(t *testing.T) {
 func TestHistoryImporterAppliesPushNames(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, nil)
 	// A conversation creates the sender with no name of its own.
 	importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{

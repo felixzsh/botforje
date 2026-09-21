@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"context"
@@ -15,17 +15,17 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// historyImporter stores the messages of an account-wide WhatsApp history
+// HistoryImporter stores the messages of an account-wide WhatsApp history
 // sync. It is inert: it never runs the engine or the outbox, and every row it
 // writes says sync/unknown, because the past cannot say who wrote an outbound
 // message outside Botflota (ADR 0026, ADR 0035).
-type historyImporter struct {
+type HistoryImporter struct {
 	scope     string
 	bot       string
 	senders   botflota.SenderStore
 	chats     botflota.ChatStore
 	messages  botflota.MessageStore
-	lookup    pnLookup
+	lookup    PNLookup
 	log       *slog.Logger
 	now       func() time.Time
 	pushNames map[string]string
@@ -39,20 +39,20 @@ type historyImporter struct {
 	transferClosed bool
 }
 
-// newHistoryImporter returns nil when a store is missing, so a caller can
+// NewHistory returns nil when a store is missing, so a caller can
 // treat the import as disabled.
-func newHistoryImporter(
+func NewHistory(
 	scope, bot string,
 	senders botflota.SenderStore, chats botflota.ChatStore,
-	messages botflota.MessageStore, lookup pnLookup, log *slog.Logger,
-) *historyImporter {
+	messages botflota.MessageStore, lookup PNLookup, log *slog.Logger,
+) *HistoryImporter {
 	if senders == nil || chats == nil || messages == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
-	return &historyImporter{
+	return &HistoryImporter{
 		scope: scope, bot: bot, senders: senders, chats: chats,
 		messages: messages, lookup: lookup, log: log, now: time.Now,
 		pushNames: map[string]string{},
@@ -74,7 +74,7 @@ type ImportTotals struct {
 // Handle imports one history-sync chunk and reports what it stored.
 // Conversation and message errors are logged and skipped; one bad row never
 // aborts a sync.
-func (h *historyImporter) Handle(
+func (h *HistoryImporter) Handle(
 	ctx context.Context, event *events.HistorySync,
 ) ImportTotals {
 	if event == nil || event.Data == nil {
@@ -100,7 +100,7 @@ func (h *historyImporter) Handle(
 		// The per-chunk log is how a chat the phone omitted is told from one
 		// it delivered empty.
 		if h.log.Enabled(ctx, slog.LevelDebug) {
-			phone, _ := historyChatPhone(conversation, h.lookup)
+			phone, _ := HistoryChatPhone(conversation, h.lookup)
 			h.log.Debug("history conversation",
 				"chat", conversation.GetID(),
 				"phone", phone,
@@ -119,7 +119,7 @@ func (h *historyImporter) Handle(
 // record folds one chunk into the running totals and closes a transfer that
 // just ended. A full sync arrives in hundreds of chunks, so the per-chunk line
 // is debug and only the per-transfer summary is info (ADR 0038).
-func (h *historyImporter) record(data *waHistorySync.HistorySync, stats ImportTotals) {
+func (h *HistoryImporter) record(data *waHistorySync.HistorySync, stats ImportTotals) {
 	syncType := data.GetSyncType().String()
 	if syncType != h.transferType {
 		h.summarize()
@@ -146,7 +146,7 @@ func (h *historyImporter) record(data *waHistorySync.HistorySync, stats ImportTo
 	}
 }
 
-func (h *historyImporter) summarize() {
+func (h *HistoryImporter) summarize() {
 	if h.transfer.Chunks == 0 {
 		return
 	}
@@ -162,11 +162,15 @@ func (h *historyImporter) summarize() {
 	h.transfer = ImportTotals{}
 }
 
-func (h *historyImporter) Totals() ImportTotals {
+func (h *HistoryImporter) Totals() ImportTotals {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.totals
 }
+
+// SetOwnPhone tells the importer the paired account's own number, which is
+// known only once the device is loaded.
+func (h *HistoryImporter) SetOwnPhone(phone string) { h.ownPhone = phone }
 
 func addTotals(a, b ImportTotals) ImportTotals {
 	a.Chunks += b.Chunks
@@ -182,7 +186,7 @@ func addTotals(a, b ImportTotals) ImportTotals {
 // importPushNames applies the contact names WhatsApp sends in its own chunk.
 // It only names senders Botflota already knows; a name for a contact that
 // never wrote is remembered for a sender created by a later chunk.
-func (h *historyImporter) importPushNames(
+func (h *HistoryImporter) importPushNames(
 	ctx context.Context, names []*waHistorySync.Pushname, stats *ImportTotals,
 ) {
 	at := h.now().UTC()
@@ -209,10 +213,10 @@ func (h *historyImporter) importPushNames(
 // registers its sender and chat only when it stored at least one message or
 // call: WhatsApp sends a control-only shell for every number the account's
 // address book knows (ADR 0035).
-func (h *historyImporter) importConversation(
+func (h *HistoryImporter) importConversation(
 	ctx context.Context, conversation *waHistorySync.Conversation,
 ) (int, int, int, int, error) {
-	phone, ok := historyChatPhone(conversation, h.lookup)
+	phone, ok := HistoryChatPhone(conversation, h.lookup)
 	if !ok {
 		// Groups, broadcasts, status, and unresolved hidden-user chats.
 		return 0, 0, 1, 0, nil
@@ -227,7 +231,7 @@ func (h *historyImporter) importConversation(
 	received := 0
 	var from, to time.Time
 	for _, entry := range ordered {
-		if at := historyEntryAt(conversation, entry); !at.IsZero() {
+		if at := HistoryEntryAt(conversation, entry); !at.IsZero() {
 			if from.IsZero() || at.Before(from) {
 				from = at
 			}
@@ -306,7 +310,7 @@ func historyRecord(
 	if providerID == "" {
 		return botflota.Message{}, "", false
 	}
-	content, ok := contentType(unwrapMessage(web.GetMessage()))
+	content, ok := Decode(unwrapMessage(web.GetMessage()))
 	if !ok {
 		return botflota.Message{}, "", false
 	}
@@ -319,7 +323,7 @@ func historyRecord(
 	return botflota.Message{
 		Direction:         direction,
 		Content:           content,
-		At:                historyEntryAt(conversation, entry),
+		At:                HistoryEntryAt(conversation, entry),
 		ProviderMessageID: providerID,
 		Ingest:            botflota.IngestSync,
 		Origin:            origin,
@@ -327,9 +331,9 @@ func historyRecord(
 	}, web.GetPushName(), true
 }
 
-// historyEntryAt falls back to the conversation's last timestamp when a
+// HistoryEntryAt falls back to the conversation's last timestamp when a
 // message carries none of its own.
-func historyEntryAt(
+func HistoryEntryAt(
 	conversation *waHistorySync.Conversation, entry *waHistorySync.HistorySyncMsg,
 ) time.Time {
 	web := entry.GetMessage()

@@ -1,4 +1,4 @@
-package whatsapp
+package channel
 
 // dedup remembers recent message IDs so a redelivery is ignored. It is not
 // safe for concurrent use; the event handler serializes access.

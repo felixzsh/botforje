@@ -1,4 +1,4 @@
-package whatsapp
+package channel
 
 import (
 	"context"
@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
 const historyBatchSize = 50
@@ -242,7 +242,7 @@ func (a *Adapter) clearPending(request *syncRequest) {
 
 // observeSync feeds one imported chunk to the sync waiting for it, if any.
 // The import worker is the only caller, so the importer stays single-threaded.
-func (a *Adapter) observeSync(event *events.HistorySync, stats ImportTotals) {
+func (a *Adapter) observeSync(event *events.HistorySync, stats ingest.ImportTotals) {
 	a.syncMu.Lock()
 	pending := a.pending
 	a.syncMu.Unlock()
@@ -260,7 +260,7 @@ func (a *Adapter) logOnDemandChunk(event *events.HistorySync) {
 		return
 	}
 	for _, conversation := range event.Data.GetConversations() {
-		phone, _ := historyChatPhone(conversation, a.lookupPN)
+		phone, _ := ingest.HistoryChatPhone(conversation, a.lookupPN)
 		a.log.Debug("on-demand conversation",
 			"chat", conversation.GetID(),
 			"phone", phone,
@@ -274,7 +274,7 @@ func (a *Adapter) logOnDemandChunk(event *events.HistorySync) {
 type syncRequest struct {
 	id     string
 	phone  string
-	lookup pnLookup
+	lookup ingest.PNLookup
 
 	mu        sync.Mutex
 	page      historyPage
@@ -282,7 +282,7 @@ type syncRequest struct {
 	done      chan struct{}
 }
 
-func newSyncRequest(id, phone string, lookup pnLookup) *syncRequest {
+func newSyncRequest(id, phone string, lookup ingest.PNLookup) *syncRequest {
 	return &syncRequest{
 		id: id, phone: phone, lookup: lookup, done: make(chan struct{}),
 	}
@@ -290,7 +290,7 @@ func newSyncRequest(id, phone string, lookup pnLookup) *syncRequest {
 
 // observe accumulates one matching chunk and closes done exactly once, when
 // the response is complete.
-func (r *syncRequest) observe(event *events.HistorySync, stats ImportTotals) {
+func (r *syncRequest) observe(event *events.HistorySync, stats ingest.ImportTotals) {
 	if historySyncRequestID(event) != r.id {
 		return
 	}
@@ -318,102 +318,6 @@ func (r *syncRequest) snapshot() historyPage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.page
-}
-
-// historySyncRequestID returns the request session id copied into a response.
-func historySyncRequestID(event *events.HistorySync) string {
-	if event == nil || event.Notification == nil {
-		return ""
-	}
-	return event.Notification.GetPeerDataRequestSessionID()
-}
-
-func historySyncCompleteFor(
-	event *events.HistorySync, phone string, lookup pnLookup,
-) bool {
-	if event == nil || event.Data == nil {
-		return false
-	}
-	if event.Data.GetProgress() >= 100 ||
-		(event.Notification != nil && event.Notification.GetProgress() >= 100) {
-		return true
-	}
-	for _, conversation := range event.Data.GetConversations() {
-		resolved, ok := historyChatPhone(conversation, lookup)
-		if !ok || resolved != phone {
-			continue
-		}
-		switch conversation.GetEndOfHistoryTransferType() {
-		case waHistorySync.Conversation_COMPLETE_AND_NO_MORE_MESSAGE_REMAIN_ON_PRIMARY,
-			waHistorySync.Conversation_COMPLETE_ON_DEMAND_SYNC_BUT_MORE_MSG_REMAIN_ON_PRIMARY,
-			waHistorySync.Conversation_COMPLETE_ON_DEMAND_SYNC_WITH_MORE_MSG_ON_PRIMARY_BUT_NO_ACCESS:
-			return true
-		}
-	}
-	return false
-}
-
-// historySyncExhausted reports the phone's nothing-more-to-give marker, so
-// paging would only repeat itself.
-func historySyncExhausted(
-	event *events.HistorySync, phone string, lookup pnLookup,
-) bool {
-	if event == nil || event.Data == nil {
-		return false
-	}
-	for _, conversation := range event.Data.GetConversations() {
-		resolved, ok := historyChatPhone(conversation, lookup)
-		if !ok || resolved != phone {
-			continue
-		}
-		switch conversation.GetEndOfHistoryTransferType() {
-		case waHistorySync.Conversation_COMPLETE_AND_NO_MORE_MESSAGE_REMAIN_ON_PRIMARY,
-			waHistorySync.Conversation_COMPLETE_ON_DEMAND_SYNC_WITH_MORE_MSG_ON_PRIMARY_BUT_NO_ACCESS:
-			return true
-		}
-	}
-	return false
-}
-
-// historyEventPage reads the requested chat out of one response chunk: how
-// many entries it carried and the oldest among them. Entries for other
-// conversations are metadata, not this chat's page.
-func historyEventPage(
-	event *events.HistorySync, phone string, lookup pnLookup,
-) (int, *historyCursor) {
-	if event == nil || event.Data == nil {
-		return 0, nil
-	}
-	count := 0
-	var next *historyCursor
-	for _, conversation := range event.Data.GetConversations() {
-		resolved, ok := historyChatPhone(conversation, lookup)
-		if !ok || resolved != phone {
-			continue
-		}
-		for _, entry := range conversation.GetMessages() {
-			id := entry.GetMessage().GetKey().GetID()
-			if id == "" {
-				continue
-			}
-			count++
-			at := historyEntryAt(conversation, entry)
-			if at.IsZero() {
-				continue
-			}
-			cursor := &historyCursor{
-				ID:     id,
-				FromMe: entry.GetMessage().GetKey().GetFromMe(),
-				At:     at,
-			}
-			if next == nil || cursor.At.Before(next.At) {
-				next = cursor
-			}
-		}
-	}
-	// A top-level call record is not a position in the chat's message list, so
-	// it never counts towards a page's usable entries.
-	return count, next
 }
 
 // historyAnchorInfo addresses the anchor to the chat's LID when the device

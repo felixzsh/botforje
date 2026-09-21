@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, nil)
 
 	base := uint64(t0.Unix())
@@ -61,7 +61,7 @@ func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Senders(), db.Chats(),
 		db.Messages(), nil, nil)
 	importer.ownPhone = "5215500000000"
 	call := &waSyncAction.CallLogRecord{

@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := newContactImporter("dev", "bot", db.Contacts(), nil, nil)
+	importer := NewContacts("dev", "bot", db.Contacts(), nil, nil)
 	importer.Handle(ctx, &events.Contact{
 		JID: types.NewJID("5215500000000", types.DefaultUserServer),
 		Action: &waSyncAction.ContactAction{
@@ -55,7 +55,7 @@ func TestContactImporterResolvesALID(t *testing.T) {
 		}
 		return types.NewJID("5215500000000", types.DefaultUserServer), true
 	}
-	importer := newContactImporter("dev", "bot", db.Contacts(), lookup, nil)
+	importer := NewContacts("dev", "bot", db.Contacts(), lookup, nil)
 	importer.Handle(ctx, &events.PushName{JID: lid, NewPushName: "Ana"})
 	contacts, err := db.Contacts().List(ctx, "dev", "bot", 0)
 	if err != nil {

@@ -123,7 +123,7 @@ func TestClearPairing(t *testing.T) {
 		account, t0); err != nil {
 		t.Fatal(err)
 	}
-	got, err := devices.device(ctx, account)
+	got, err := devices.Load(ctx, account)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,3 +1,6 @@
+// Package whatsapp links a WhatsApp companion to a Botflota bot and keeps the
+// link: the whatsmeow device store, linked-account ownership, pairing, and the
+// helpers the channel and the history import share (ADR 0006, ADR 0011).
 package whatsapp
 
 import (
@@ -34,7 +37,7 @@ func OpenDevices(
 		log = botflota.DiscardLogger()
 	}
 	devices := &Devices{
-		container: sqlstore.NewWithDB(db, "sqlite", newWaLog(log, depsLevel)),
+		container: sqlstore.NewWithDB(db, "sqlite", NewWaLog(log, depsLevel)),
 	}
 	if err := devices.container.Upgrade(ctx); err != nil {
 		return nil, fmt.Errorf("whatsapp: device store: %w", err)
@@ -43,7 +46,7 @@ func OpenDevices(
 }
 
 // device reports a missing device as a nil result, not an error.
-func (d *Devices) device(
+func (d *Devices) Load(
 	ctx context.Context, account *botflota.LinkedAccount,
 ) (*store.Device, error) {
 	jid, err := types.ParseJID(account.JID)
@@ -65,7 +68,7 @@ func (d *Devices) device(
 
 // delete removes the account's local credentials; a missing device is fine.
 func (d *Devices) delete(ctx context.Context, account *botflota.LinkedAccount) error {
-	device, err := d.device(ctx, account)
+	device, err := d.Load(ctx, account)
 	if err != nil {
 		return err
 	}
@@ -124,13 +127,13 @@ func ValidateAccounts(
 		return fmt.Errorf("whatsapp: list linked accounts: %w", err)
 	}
 	for i := range all {
-		device, err := devices.device(ctx, &all[i])
+		device, err := devices.Load(ctx, &all[i])
 		if err != nil {
 			return err
 		}
 		if device == nil {
-			if err := updatePairingStatus(ctx, pairings, all[i].Scope, all[i].Bot,
-				botflota.PairingUnpaired, pairingNow(nil)); err != nil {
+			if err := UpdatePairingStatus(ctx, pairings, all[i].Scope, all[i].Bot,
+				botflota.PairingUnpaired, PairingNow(nil)); err != nil {
 				return err
 			}
 		}
@@ -153,8 +156,8 @@ func CheckPairing(
 	account, err := accounts.Get(ctx, scope, bot)
 	switch {
 	case errors.Is(err, botflota.ErrNotFound):
-		if err := updatePairingStatus(ctx, pairings, scope, bot,
-			botflota.PairingNotPaired, pairingNow(nil)); err != nil {
+		if err := UpdatePairingStatus(ctx, pairings, scope, bot,
+			botflota.PairingNotPaired, PairingNow(nil)); err != nil {
 			return "", err
 		}
 		return botflota.PairingNotPaired, nil
@@ -166,8 +169,8 @@ func CheckPairing(
 		return "", err
 	}
 	if !ready {
-		if err := updatePairingStatus(ctx, pairings, scope, bot,
-			botflota.PairingUnpaired, pairingNow(nil)); err != nil {
+		if err := UpdatePairingStatus(ctx, pairings, scope, bot,
+			botflota.PairingUnpaired, PairingNow(nil)); err != nil {
 			return "", err
 		}
 		return botflota.PairingUnpaired, nil
@@ -181,7 +184,7 @@ func HasLocalDevice(
 	if devices == nil {
 		return false, errors.New("whatsapp: no device store")
 	}
-	device, err := devices.device(ctx, account)
+	device, err := devices.Load(ctx, account)
 	if err != nil {
 		return false, err
 	}
@@ -202,7 +205,7 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 		return err
 	}
 	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
-		pairingNow(nil))
+		PairingNow(nil))
 }
 
 func ensurePhoneAvailable(
@@ -236,7 +239,7 @@ func duplicateAccountError(
 	)
 }
 
-func updatePairingStatus(
+func UpdatePairingStatus(
 	ctx context.Context,
 	pairings botflota.PairingStore,
 	scope, bot string,
@@ -251,7 +254,7 @@ func updatePairingStatus(
 		return fmt.Errorf("whatsapp: get pairing status: %w", err)
 	}
 	if changedAt.IsZero() {
-		changedAt = pairingNow(nil)
+		changedAt = PairingNow(nil)
 	}
 	if err := pairings.Set(ctx, &botflota.PairingStatus{
 		Scope: scope, Bot: bot, State: state, LastChange: changedAt,
@@ -261,17 +264,9 @@ func updatePairingStatus(
 	return nil
 }
 
-func pairingNow(now func() time.Time) time.Time {
+func PairingNow(now func() time.Time) time.Time {
 	if now == nil {
 		return time.Now().UTC()
 	}
 	return now().UTC()
-}
-
-func missingDeviceError(account *botflota.LinkedAccount) error {
-	return fmt.Errorf(
-		"whatsapp: bot %q (scope %q) has no local device credentials; "+
-			"use bot pair",
-		account.Bot, account.Scope,
-	)
 }

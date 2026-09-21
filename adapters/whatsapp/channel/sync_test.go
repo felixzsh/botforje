@@ -1,4 +1,4 @@
-package whatsapp
+package channel
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
+
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -101,7 +103,7 @@ func TestSyncRequestIgnoresChunksForOtherRequests(t *testing.T) {
 			PeerDataRequestSessionID: proto.String("OTHER"),
 		},
 	}
-	request.observe(other, ImportTotals{Imported: 3})
+	request.observe(other, ingest.ImportTotals{Imported: 3})
 	select {
 	case <-request.done:
 		t.Fatal("a chunk for another request must not complete this one")
@@ -125,7 +127,7 @@ func TestSyncRequestCompletesWithMatchingChunk(t *testing.T) {
 			PeerDataRequestSessionID: proto.String("REQ"),
 		},
 	}
-	request.observe(event, ImportTotals{Imported: 1})
+	request.observe(event, ingest.ImportTotals{Imported: 1})
 	select {
 	case <-request.done:
 	case <-time.After(time.Second):

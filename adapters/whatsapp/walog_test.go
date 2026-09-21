@@ -11,7 +11,7 @@ import (
 
 func TestWaLoGFiltersBelowMinimum(t *testing.T) {
 	var buffer bytes.Buffer
-	wa := newWaLog(botflota.NewLogger("debug", &buffer), slog.LevelWarn)
+	wa := NewWaLog(botflota.NewLogger("debug", &buffer), slog.LevelWarn)
 	wa.Debugf("dropped-debug")
 	wa.Infof("dropped-info")
 	wa.Warnf("kept-warn")

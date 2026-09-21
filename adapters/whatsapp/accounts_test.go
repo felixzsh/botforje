@@ -121,11 +121,11 @@ func TestPairingStatusChangesOnlyOnStateChange(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	pairings := db.Pairings()
-	if err := updatePairingStatus(ctx, pairings, "dev", "bot",
+	if err := UpdatePairingStatus(ctx, pairings, "dev", "bot",
 		botflota.PairingUnpaired, t0); err != nil {
 		t.Fatal(err)
 	}
-	if err := updatePairingStatus(ctx, pairings, "dev", "bot",
+	if err := UpdatePairingStatus(ctx, pairings, "dev", "bot",
 		botflota.PairingUnpaired, t1); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestPairingStatusChangesOnlyOnStateChange(t *testing.T) {
 	if !status.LastChange.Equal(t0) {
 		t.Fatalf("same state changed timestamp to %s, want %s", status.LastChange, t0)
 	}
-	if err := updatePairingStatus(ctx, pairings, "dev", "bot",
+	if err := UpdatePairingStatus(ctx, pairings, "dev", "bot",
 		botflota.PairingPaired, t1); err != nil {
 		t.Fatal(err)
 	}

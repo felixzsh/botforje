@@ -1,7 +1,8 @@
-// Package whatsapp implements the MessageChannel port with whatsmeow
-// (ADR 0001, ADR 0004). It owns the device store, reconnection, dedup, sender
-// resolution, and presence (ADR 0011).
-package whatsapp
+// Package channel is the live WhatsApp connection: the whatsmeow
+// implementation of botflota.MessageChannel for one bot (ADR 0001, ADR 0004).
+// It owns reconnection, dedup, sender resolution, presence, and on-demand
+// history sync (ADR 0011, ADR 0035).
+package channel
 
 import (
 	"context"
@@ -19,6 +20,8 @@ import (
 	walog "go.mau.fi/whatsmeow/util/log"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
 // State is the channel lifecycle reported to the fleet (ADR 0011).
@@ -46,7 +49,7 @@ type Settings struct {
 type Options struct {
 	Scope    string
 	Bot      string
-	Devices  *Devices
+	Devices  *whatsapp.Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
 	// Senders, Chats, and Messages are all required to import the account-wide
@@ -84,7 +87,7 @@ type Adapter struct {
 	bot      string
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
-	devices  *Devices
+	devices  *whatsapp.Devices
 	settings Settings
 	http     *http.Client
 	upload   uploader
@@ -101,8 +104,8 @@ type Adapter struct {
 	senders      botflota.SenderStore
 	chats        botflota.ChatStore
 	messages     botflota.MessageStore
-	importer     *historyImporter
-	contacts     *contactImporter
+	importer     *ingest.HistoryImporter
+	contacts     *ingest.ContactImporter
 	contactsOnce sync.Once
 	history      chan *events.HistorySync
 	// historyDone closes when the import worker has drained and stopped.
@@ -157,7 +160,7 @@ func New(opts Options) (*Adapter, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	waLogger := newWaLog(log, opts.DepsLogLevel)
+	waLogger := whatsapp.NewWaLog(log, opts.DepsLogLevel)
 	a := &Adapter{
 		scope:     opts.Scope,
 		bot:       opts.Bot,
@@ -185,10 +188,10 @@ func New(opts Options) (*Adapter, error) {
 		stopped:   make(chan struct{}),
 	}
 	if opts.ImportContacts {
-		a.contacts = newContactImporter(a.scope, a.bot, opts.Contacts, a.lookupPN, log)
+		a.contacts = ingest.NewContacts(a.scope, a.bot, opts.Contacts, a.lookupPN, log)
 	}
 	if opts.History {
-		a.importer = newHistoryImporter(a.scope, a.bot, opts.Senders, opts.Chats,
+		a.importer = ingest.NewHistory(a.scope, a.bot, opts.Senders, opts.Chats,
 			opts.Messages, a.lookupPN, log)
 		if a.importer != nil {
 			a.history = make(chan *events.HistorySync, 16)
@@ -205,7 +208,7 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("whatsapp: bot %q is not paired (use bot pair): %w", a.bot, err)
 	}
-	device, err := a.devices.device(ctx, account)
+	device, err := a.devices.Load(ctx, account)
 	if err != nil {
 		return err
 	}
@@ -223,7 +226,7 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	client.EmitAppStateEventsOnFullSync = a.contacts != nil
 	client.AddEventHandler(a.handleEvent)
 	if a.importer != nil {
-		a.importer.ownPhone = devicePhone(device)
+		a.importer.SetOwnPhone(whatsapp.DevicePhone(device))
 	}
 
 	a.mu.Lock()
@@ -296,12 +299,20 @@ func (a *Adapter) updatePairingStatus(state botflota.PairingState) error {
 	if a.pairings == nil {
 		return nil
 	}
-	return updatePairingStatus(context.Background(), a.pairings, a.scope, a.bot,
-		state, pairingNow(a.now))
+	return whatsapp.UpdatePairingStatus(context.Background(), a.pairings,
+		a.scope, a.bot, state, whatsapp.PairingNow(a.now))
 }
 
 func (a *Adapter) logPairingStatusError(err error) {
 	if a.log != nil {
 		a.log.Error("persist pairing status", "error", err)
 	}
+}
+
+func missingDeviceError(account *botflota.LinkedAccount) error {
+	return fmt.Errorf(
+		"whatsapp: bot %q (scope %q) has no local device credentials; "+
+			"use bot pair",
+		account.Bot, account.Scope,
+	)
 }

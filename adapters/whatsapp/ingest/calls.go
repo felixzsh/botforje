@@ -1,4 +1,4 @@
-package whatsapp
+package ingest
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // conversation message list, so a chat whose only trace is a call still shows
 // one. The call id is not a key in the chat's message list, so it never
 // anchors a history request.
-func (h *historyImporter) importCallLogs(
+func (h *HistoryImporter) importCallLogs(
 	ctx context.Context, records []*waSyncAction.CallLogRecord, stats *ImportTotals,
 ) {
 	for _, record := range records {
@@ -75,7 +75,7 @@ func (h *historyImporter) importCallLogs(
 
 // historyCallPhone finds the non-local participant of a 1:1 call record.
 func historyCallPhone(
-	record *waSyncAction.CallLogRecord, lookup pnLookup, ownPhone string,
+	record *waSyncAction.CallLogRecord, lookup PNLookup, ownPhone string,
 ) (string, bool) {
 	if record == nil {
 		return "", false
