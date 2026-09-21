@@ -16,9 +16,17 @@ Botflota instance. The `bot pair` command rejects a number already owned by
 another bot, and fleet startup rejects duplicate legacy records. A bot may
 replace its own pairing with `bot pair --force`.
 
-The `unpair` command removes local credentials and account metadata without
-deleting sessions or message history. Remote linked-device removal remains an
-explicit operation in WhatsApp.
+`unpair` and `bot pair --force` run the same removal: the linked-account row,
+the pairing status, and the channel's device row with everything that hangs off
+it — its keys, sessions, app-state cache, hidden-user map, contact cache, and
+message secrets. Botflota's own senders, chats, sessions, messages, and imported
+contacts are never touched.
+
+The phone keeps listing the removed companion until it is unlinked there, so a
+re-pair adds a linked device instead of replacing one. A fresh registration is
+also the only way to change what the registration carries, such as the requested
+history window (ADR 0035), because WhatsApp reads it once, at linking time.
+Remote linked-device removal remains an explicit operation in WhatsApp.
 
 ## Consequences
 

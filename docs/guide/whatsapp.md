@@ -23,8 +23,20 @@ For new pairings, WhatsApp should show the companion as `Botflota`. Existing
 links keep their old name until they are unlinked and paired again.
 
 To replace a local pairing, stop the fleet and run
-`./bin/botflota bot pair --force support-bot`. This removes the old local device
-credentials but keeps sessions and message history.
+`./bin/botflota bot pair --force support-bot`. It removes the same things as
+`bot unpair`: the linked-account row, the pairing status, and the channel's
+device row with its keys, sessions, app-state cache, hidden-user map, contact
+cache, and message secrets. Botflota's own senders, chats, sessions, messages,
+and imported contacts are never touched.
+
+Two things to expect. The phone keeps listing the old companion until you remove
+it in WhatsApp > Linked devices, so a re-pair adds a device rather than
+replacing one. And a fresh registration is the only way to change what the
+registration carries — the requested history window above all — because WhatsApp
+reads it once, at linking time.
+
+Both `bot pair` and `bot unpair` refuse to run while the API answers, so stop
+the fleet first: one phone number keeps one companion connection at a time.
 
 Botflota allows one bot per WhatsApp phone number. WhatsApp may list several
 linked devices, but assigning the same number to two bots can duplicate replies.
