@@ -18,6 +18,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -892,6 +893,42 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	}
 	if messages[0].ProviderMessageID != "M1" {
 		t.Fatalf("provider id = %q", messages[0].ProviderMessageID)
+	}
+}
+
+func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+	importer.ownPhone = "5215500000000"
+	call := &waSyncAction.CallLogRecord{
+		CallID:         proto.String("CALL-1"),
+		CallCreatorJID: proto.String("5215500000001@s.whatsapp.net"),
+		IsIncoming:     proto.Bool(true),
+		StartTime:      proto.Int64(t0.Unix()),
+		CallResult:     waSyncAction.CallLogRecord_MISSED.Enum(),
+	}
+	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		CallLogRecords: []*waSyncAction.CallLogRecord{call},
+	}})
+	if stats.imported != 1 || stats.received != 1 || stats.skipped != 0 {
+		t.Fatalf("stats = %#v, want one imported call", stats)
+	}
+	sender, err := db.Senders().Get(ctx, "dev", "5215500000001")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	chat, err := db.Chats().ForSender(ctx, "dev", "bot", sender.ID)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(messages) != 1 || messages[0].ProviderMessageID != "CALL-1" {
+		t.Fatalf("call log messages = %+v", messages)
 	}
 }
 

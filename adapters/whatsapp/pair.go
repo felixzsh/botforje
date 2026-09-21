@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 
@@ -47,7 +48,10 @@ type PairOptions struct {
 	Messages botflota.MessageStore
 	History  bool
 	Logger   walog.Logger
-	Force    bool // discard the existing local pairing before starting QR login
+	// Log receives the history-sync progress of the pairing session. Nil
+	// discards it.
+	Log   *slog.Logger
+	Force bool // discard the existing local pairing before starting QR login
 	// DeviceName is the companion name shown in the phone's Linked devices;
 	// empty uses the default.
 	DeviceName string
@@ -189,10 +193,11 @@ func attachHistory(ctx context.Context, client *whatsmeow.Client, opts PairOptio
 		return pn, true
 	}
 	importer := newHistoryImporter(opts.Scope, opts.Bot, opts.Senders, opts.Chats,
-		opts.Messages, lookup, nil)
+		opts.Messages, lookup, opts.Log)
 	if importer == nil {
 		return
 	}
+	importer.ownPhone = devicePhone(client.Store)
 	client.AddEventHandler(func(raw any) {
 		if event, ok := raw.(*events.HistorySync); ok {
 			importer.Handle(ctx, event)

@@ -106,6 +106,7 @@ func runPair(args []string) int {
 		return 1
 	}
 
+	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
 	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
 		Scope:      scopeName,
 		Bot:        name,
@@ -116,6 +117,7 @@ func runPair(args []string) int {
 		Chats:      db.Chats(),
 		Messages:   db.Messages(),
 		History:    historyEnabled(botSpec.Settings),
+		Log:        logger,
 		Force:      *cmd.force,
 		DeviceName: cfg.DeviceName,
 	})

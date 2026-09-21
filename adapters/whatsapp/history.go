@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -38,6 +39,7 @@ type historyImporter struct {
 	log       *slog.Logger
 	now       func() time.Time
 	pushNames map[string]string
+	ownPhone  string
 }
 
 // newHistoryImporter builds an importer. It returns nil when a store is
@@ -66,6 +68,7 @@ type historyStats struct {
 	imported      int
 	duplicate     int
 	skipped       int
+	received      int
 	pushNames     int
 }
 
@@ -80,6 +83,7 @@ func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync)
 	stats := historyStats{}
 	// Names first, so a conversation in the same chunk can use them.
 	h.importPushNames(ctx, data.GetPushnames(), &stats)
+	h.importCallLogs(ctx, data.GetCallLogRecords(), &stats)
 	for _, conversation := range data.GetConversations() {
 		stats.conversations++
 		got, dup, skip, err := h.importConversation(ctx, conversation)
@@ -98,8 +102,71 @@ func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync)
 		"imported", stats.imported,
 		"duplicate", stats.duplicate,
 		"skipped", stats.skipped,
+		"received", stats.received,
 		"push_names", stats.pushNames)
 	return stats
+}
+
+// importCallLogs keeps call records that WhatsApp delivers outside the normal
+// conversation message list, so a chat whose only trace is a call still shows
+// one. The call id is not a key in the chat's message list, so it never anchors
+// a history request.
+func (h *historyImporter) importCallLogs(
+	ctx context.Context, records []*waSyncAction.CallLogRecord, stats *historyStats,
+) {
+	for _, record := range records {
+		phone, ok := historyCallPhone(record, h.lookup, h.ownPhone)
+		if !ok || record.GetCallID() == "" {
+			stats.skipped++
+			continue
+		}
+		at := callLogAt(record)
+		if at.IsZero() {
+			stats.skipped++
+			continue
+		}
+		name := h.pushNames[phone]
+		sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, at)
+		if err != nil {
+			h.log.Warn("import history call sender", "phone", phone, "error", err)
+			continue
+		}
+		chat, err := h.chats.Ensure(ctx, h.scope, h.bot, sender.ID, at)
+		if err != nil {
+			h.log.Warn("import history call chat", "phone", phone, "error", err)
+			continue
+		}
+		if err := h.chats.NoteHistory(ctx, chat.ID, at, at); err != nil {
+			h.log.Warn("import history call activity", "phone", phone, "error", err)
+			continue
+		}
+		direction := botflota.Inbound
+		origin := botflota.MessageOrigin("")
+		if !record.GetIsIncoming() {
+			direction = botflota.Outbound
+			origin = botflota.OriginUnknown
+		}
+		message := botflota.Message{
+			ChatID:            chat.ID,
+			Direction:         direction,
+			Content:           botflota.CallContent{Label: historyCallLogLabel(record)},
+			At:                at,
+			ProviderMessageID: record.GetCallID(),
+			Ingest:            botflota.IngestSync,
+			Origin:            origin,
+			Routing:           botflota.RoutingUnknown,
+		}
+		stats.received++
+		if err := h.messages.Append(ctx, &message); err != nil {
+			if errors.Is(err, botflota.ErrDuplicate) {
+				stats.duplicate++
+			} else {
+				h.log.Warn("import history call", "phone", phone, "error", err)
+			}
+			continue
+		}
+		stats.imported++
+	}
 }
 
 // importPushNames applies the contact names WhatsApp sends in its own chunk.
@@ -127,7 +194,7 @@ func (h *historyImporter) importPushNames(
 	}
 }
 
-// importConversation stores the text messages and call attempts of one
+// importConversation stores the content messages and call attempts of one
 // conversation, oldest first, and widens the chat's activity to cover them. A
 // conversation with any message registers the sender and chat even when every
 // entry is a type the importer does not store, so a chat that only ever saw a
@@ -209,10 +276,9 @@ func (h *historyImporter) importConversation(
 }
 
 // historyRecord maps one synced message to a stored message. Every content
-// kind is kept, so the chat has an anchor for `chat sync` even when the entry
-// is media with no text; a control or internal entry, or one without a channel
-// id, reports false, because a row with no provider id cannot anchor an
-// on-demand request (ADR 0035, ADR 0036).
+// kind is kept, so a chat whose history is all media still gets a row; a
+// control or internal entry, and one without a channel id, reports false and is
+// skipped (ADR 0035, ADR 0036).
 func historyRecord(
 	conversation *waHistorySync.Conversation, entry *waHistorySync.HistorySyncMsg,
 ) (botflota.Message, string, bool) {
@@ -271,16 +337,20 @@ func historyChatPhone(
 	conversation *waHistorySync.Conversation, lookup pnLookup,
 ) (string, bool) {
 	if pn := conversation.GetPnJID(); pn != "" {
-		if jid, err := types.ParseJID(pn); err == nil &&
-			jid.Server == types.DefaultUserServer {
-			return jid.User, true
+		if phone, ok := historyJIDPhone(pn, lookup); ok {
+			return phone, true
 		}
 	}
 	id := conversation.GetID()
 	if id == "" {
 		return "", false
 	}
-	jid, err := types.ParseJID(id)
+	return historyJIDPhone(id, lookup)
+}
+
+// historyJIDPhone resolves a PN or LID string to the domain phone number.
+func historyJIDPhone(raw string, lookup pnLookup) (string, bool) {
+	jid, err := types.ParseJID(raw)
 	if err != nil {
 		return "", false
 	}
@@ -302,17 +372,69 @@ func historyPushNamePhone(entry *waHistorySync.Pushname, lookup pnLookup) (strin
 	if id == "" {
 		return "", false
 	}
-	jid, err := types.ParseJID(id)
-	if err != nil {
+	return historyJIDPhone(id, lookup)
+}
+
+// historyCallPhone finds the non-local participant of a 1:1 call record.
+func historyCallPhone(
+	record *waSyncAction.CallLogRecord, lookup pnLookup, ownPhone string,
+) (string, bool) {
+	if record == nil {
 		return "", false
 	}
-	if jid.Server == types.DefaultUserServer {
-		return jid.User, true
+	if group := record.GetGroupJID(); group != "" {
+		if jid, err := types.ParseJID(group); err == nil &&
+			jid.Server == types.GroupServer {
+			return "", false
+		}
 	}
-	if jid.Server == types.HiddenUserServer && lookup != nil {
-		if pn, ok := lookup(jid); ok && !pn.IsEmpty() {
-			return pn.User, true
+	candidates := make([]string, 0, len(record.GetParticipants())+1)
+	if record.GetIsIncoming() {
+		candidates = append(candidates, record.GetCallCreatorJID())
+	}
+	for _, participant := range record.GetParticipants() {
+		candidates = append(candidates, participant.GetUserJID())
+	}
+	if !record.GetIsIncoming() {
+		candidates = append(candidates, record.GetCallCreatorJID())
+	}
+	for _, candidate := range candidates {
+		phone, ok := historyJIDPhone(candidate, lookup)
+		if ok && phone != ownPhone && phone != "0" {
+			return phone, true
 		}
 	}
 	return "", false
+}
+
+// callLogAt handles both epoch-seconds and epoch-milliseconds in sync records.
+func callLogAt(record *waSyncAction.CallLogRecord) time.Time {
+	value := record.GetStartTime()
+	if value <= 0 {
+		return time.Time{}
+	}
+	if value >= 1_000_000_000_000 {
+		return time.UnixMilli(value).UTC()
+	}
+	return time.Unix(value, 0).UTC()
+}
+
+func historyCallLogLabel(record *waSyncAction.CallLogRecord) string {
+	missed := false
+	switch record.GetCallResult() {
+	case waSyncAction.CallLogRecord_MISSED,
+		waSyncAction.CallLogRecord_REJECTED,
+		waSyncAction.CallLogRecord_FAILED:
+		missed = true
+	}
+	switch {
+	case missed && record.GetIsVideo():
+		return "Missed video call"
+	case missed:
+		return "Missed call"
+	case record.GetIsVideo():
+		return "Video call"
+	default:
+		return "Call"
+	}
 }

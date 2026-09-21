@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
@@ -203,6 +204,9 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	// Reconnection is ours so it uses the capped backoff with jitter (ADR 0011).
 	client.DisableLoginAutoReconnect = true
 	client.AddEventHandler(a.handleEvent)
+	if a.importer != nil {
+		a.importer.ownPhone = devicePhone(device)
+	}
 
 	a.mu.Lock()
 	a.client = client
@@ -469,6 +473,14 @@ func (a *Adapter) importHistory() {
 			a.importer.Handle(context.Background(), event)
 		}
 	}
+}
+
+// devicePhone returns the paired account's phone number for call-log routing.
+func devicePhone(device *store.Device) string {
+	if device == nil || device.GetJID().Server != types.DefaultUserServer {
+		return ""
+	}
+	return device.GetJID().User
 }
 
 // lookupPN resolves a LID through the WhatsApp LID store (ADR 0020).
