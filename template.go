@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// Root is the first segment of a {{path}} reference: graph, node, sender,
-// message, bot, or input.
 type Root string
 
 const (
@@ -23,11 +21,9 @@ const (
 var (
 	// ErrInvalidPath reports a reference that is not root.name[.name...].
 	ErrInvalidPath = errors.New("invalid path")
-	// ErrUnknownRoot reports a reference whose root is not defined.
 	ErrUnknownRoot = errors.New("unknown root")
 )
 
-// Known reports whether r is a defined root.
 func (r Root) Known() bool {
 	switch r {
 	case RootGraph, RootNode, RootSender, RootMessage, RootBot, RootInput:
@@ -37,9 +33,8 @@ func (r Root) Known() bool {
 	}
 }
 
-// ParseTemplatePath splits a reference into its root and segments. The root
-// must be known; every segment is a non-empty name of letters, digits, `_`,
-// or `-`. Numeric segments index slices when the path is resolved.
+// ParseTemplatePath splits a reference into its root and segments of letters,
+// digits, `_`, or `-`; a numeric segment indexes slices at resolution.
 func ParseTemplatePath(path string) (Root, []string, error) {
 	segments := strings.Split(path, ".")
 	if len(segments) < 2 {
@@ -57,8 +52,6 @@ func ParseTemplatePath(path string) (Root, []string, error) {
 	return root, segments[1:], nil
 }
 
-// ValidSegment reports whether segment is one path segment: non-empty and made
-// of letters, digits, `_`, or `-`.
 func ValidSegment(segment string) bool {
 	if segment == "" {
 		return false
@@ -74,9 +67,8 @@ func ValidSegment(segment string) bool {
 	return true
 }
 
-// Template is a parsed string of literal text and references to the runtime
-// context (ADR 0018). It performs no I/O and holds no state beyond the parsed
-// template.
+// Template is a parsed string of literal text and runtime-context references
+// (ADR 0018); it performs no I/O.
 type Template struct {
 	parts []part
 }
@@ -128,9 +120,8 @@ func ParseTemplate(s string) (Template, error) {
 	return Template{parts: parts}, nil
 }
 
-// Render resolves every reference through resolve. A missing path is an error;
-// text is never silently dropped. The resolver is the caller's runtime context:
-// the engine owns the values, the template owns the language.
+// Render resolves every reference through resolve; a missing path is an
+// error, never silently dropped text.
 func (t Template) Render(resolve func(string) (any, error)) (string, error) {
 	var out strings.Builder
 	for _, p := range t.parts {
@@ -151,7 +142,6 @@ func (t Template) Render(resolve func(string) (any, error)) (string, error) {
 	return out.String(), nil
 }
 
-// References returns the reference paths this template resolves, in order.
 func (t Template) References() []string {
 	refs := make([]string, 0, len(t.parts))
 	for _, p := range t.parts {
@@ -162,7 +152,6 @@ func (t Template) References() []string {
 	return refs
 }
 
-// RenderTemplate parses and renders s in one step.
 func RenderTemplate(s string, resolve func(string) (any, error)) (string, error) {
 	t, err := ParseTemplate(s)
 	if err != nil {
@@ -171,8 +160,8 @@ func RenderTemplate(s string, resolve func(string) (any, error)) (string, error)
 	return t.Render(resolve)
 }
 
-// format renders a scalar as text. A whole map or slice has no text form and
-// is an error; slice elements are addressed by numeric segment instead.
+// format renders a scalar as text; a whole map or slice has no text form and
+// is an error.
 func format(value any) (string, error) {
 	switch v := value.(type) {
 	case string:

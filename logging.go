@@ -14,22 +14,19 @@ import (
 
 const timeFormat = "2006-01-02 15:04:05"
 
-// NewLogger returns the one structured logger used across Botflota, at the
-// given level writing to w. It writes one plain, column-aligned line per
-// record with no ANSI escapes, so journalctl and `docker logs` show it
-// verbatim (docs/architecture.md). The level accepts debug, info, warn,
-// error, or off (anything else is info, and off drops everything).
+// NewLogger returns the one structured logger used across Botflota: one
+// plain, column-aligned line per record with no ANSI escapes, so journalctl
+// and `docker logs` show it verbatim (docs/architecture.md).
 func NewLogger(level string, w io.Writer) *slog.Logger {
 	return slog.New(&handler{w: w, level: ParseLogLevel(level), mu: &sync.Mutex{}})
 }
 
-// DiscardLogger returns a logger that drops every record.
 func DiscardLogger() *slog.Logger {
 	return slog.New(&handler{w: io.Discard, level: slog.LevelError + 1, mu: &sync.Mutex{}})
 }
 
-// ParseLogLevel maps a config level to a slog level: debug, info, warn,
-// error, or off (above error, so it disables the logger).
+// ParseLogLevel maps a config level to a slog level; off sits above error,
+// which disables the logger.
 func ParseLogLevel(level string) slog.Level {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":
@@ -49,8 +46,7 @@ func ParseLogLevel(level string) slog.Level {
 //
 //	[2006-01-02 15:04:05] LEVEL [pkg/file.go:line] message key=value
 //
-// The time, level, and file columns are aligned; the message starts one space
-// after pkg/file.go:line, so its column varies with the source name length.
+// The time, level, and file columns are aligned.
 type handler struct {
 	w     io.Writer
 	level slog.Level
@@ -109,9 +105,8 @@ func (h *handler) WithGroup(name string) slog.Handler {
 	return &clone
 }
 
-// source is the package directory, file name, and line of the caller, never
-// the full path: [sqlite/stores.go:42]. The package is part of the name so two
-// files that share a base name can never be confused in a log.
+// source is the caller as [pkg/file.go:line], never the full path; the
+// package name disambiguates files that share a base name.
 func source(record slog.Record) string {
 	if record.PC == 0 {
 		return "?:0"

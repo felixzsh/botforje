@@ -9,10 +9,9 @@ import (
 type MessageChannel interface {
 	Connect(ctx context.Context) error
 	Disconnect(ctx context.Context) error
-	// Send delivers one message and returns the channel's own message id, or
-	// an empty string when the channel cannot report one. The engine records
-	// the reply before it is sent and the id closes the dedup loop with a
-	// later history sync (ADR 0026).
+	// Send delivers one message and returns the channel's message id, or empty
+	// when the channel cannot report one. The reply is stored before sending,
+	// so the id closes the dedup loop with a later history sync (ADR 0026).
 	Send(ctx context.Context, msg OutgoingMessage) (string, error)
 	Incoming() <-chan IncomingMessage
 }
@@ -23,21 +22,17 @@ type StateReporter interface {
 	ChannelState() string
 }
 
-// HistorySyncer is an optional MessageChannel capability: a channel that can
-// ask the primary device for older messages of one chat over the live
-// connection. The fleet and the REST API reach it through this port, so a
-// future UI asks for a sync without opening the device itself (ADR 0035).
+// HistorySyncer is an optional MessageChannel capability: asking the primary
+// device for older messages of one chat over the live connection (ADR 0035).
 type HistorySyncer interface {
 	SyncHistory(
 		ctx context.Context, phone string, count int, timeout time.Duration,
 	) (HistoryResult, error)
 }
 
-// HistoryResult reports one chat's on-demand history backfill. Received counts
-// the provider entries of the chat the phone answered with; Rounds counts the
-// requests; Imported, Duplicate, and Skipped describe what the store kept;
-// Stable means a page carried nothing older and Exhausted means the phone
-// reported no further access (ADR 0035).
+// HistoryResult reports one chat's on-demand history backfill (ADR 0035).
+// Received counts the provider entries the phone answered with, Imported what
+// the store kept, and Stable and Exhausted whether older pages remain.
 type HistoryResult struct {
 	Received  int
 	Rounds    int
@@ -49,14 +44,11 @@ type HistoryResult struct {
 }
 
 // LLMProvider classifies unmatched input and realizes replies (ADR 0032).
-// Phase 4 defines the port with a null implementation; Phase 8 adds real
-// providers and may refine the request shapes.
 type LLMProvider interface {
 	Classify(ctx context.Context, req ClassifyRequest) (ClassifyResult, error)
 	Realize(ctx context.Context, req RealizeRequest) (string, error)
 }
 
-// ClassifyRequest asks which edge intent, if any, fits the text.
 type ClassifyRequest struct {
 	Goal    string
 	Intents []string
@@ -69,7 +61,6 @@ type ClassifyResult struct {
 	OK     bool
 }
 
-// RealizeRequest asks for reply text anchored on what is already known.
 type RealizeRequest struct {
 	Intent string
 	Policy string
@@ -81,12 +72,10 @@ type RealizeRequest struct {
 // it never classifies and refuses to realize.
 type NullLLM struct{}
 
-// Classify always reports no match.
 func (NullLLM) Classify(context.Context, ClassifyRequest) (ClassifyResult, error) {
 	return ClassifyResult{}, nil
 }
 
-// Realize always fails; an intent-only message needs a real provider.
 func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 	return "", ErrNoLLM
 }
@@ -94,12 +83,9 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 // Store ports: the core package owns the interfaces and an adapter
 // implements them (ADR 0006). The persisted shapes live in records.go.
 
-// ChatStore records the durable chat with each person. Ensure is a
-// get-or-create keyed by the sender's profile; ForSender and Recent are the
-// read side of the API; RecordMessage updates last activity and the inbound
-// count; NoteHistory widens the activity range with imported history;
-// SaveGuards persists the chat's per-action guard state (ADR 0026, ADR 0027,
-// ADR 0029, ADR 0035).
+// ChatStore records the durable chat with each person (ADR 0026, ADR 0027,
+// ADR 0029, ADR 0035). Ensure is a get-or-create keyed by the sender's
+// profile.
 type ChatStore interface {
 	Ensure(ctx context.Context, scope, bot string, senderID int64, at time.Time) (*Chat, error)
 	ForSender(ctx context.Context, scope, bot string, senderID int64) (*Chat, error)
@@ -108,18 +94,16 @@ type ChatStore interface {
 	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
 	RecordMessage(ctx context.Context, id int64, at time.Time) error
 	// NoteHistory widens a chat's activity to cover imported history:
-	// started_at moves back to from and updated_at moves forward to to, never
-	// the other way, so newer live activity is left alone. A zero bound is
-	// ignored.
+	// started_at moves back to from and updated_at forward to to, never the
+	// other way. A zero bound is ignored.
 	NoteHistory(ctx context.Context, chatID int64, from, to time.Time) error
 	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
 }
 
 // SenderStore records the profile of each person who writes to a bot. Upsert
-// creates it on first contact and updates it afterwards; it reports whether the
-// profile is new, which is the first-contact hook (ADR 0029). SetDisplayName
-// records a name learned from channel contact data without touching first or
-// last seen, and is a no-op when there is no profile (ADR 0035).
+// reports whether the profile is new, the first-contact hook (ADR 0029).
+// SetDisplayName records a name from channel contact data without touching
+// first or last seen (ADR 0035).
 type SenderStore interface {
 	Upsert(ctx context.Context, scope, phone, name string, at time.Time) (*Sender, bool, error)
 	Get(ctx context.Context, scope, phone string) (*Sender, error)
@@ -127,21 +111,19 @@ type SenderStore interface {
 }
 
 // ContactStore records the address-book entries of each bot's linked account
-// when contact import is on. It is separate from SenderStore: a contact is an
-// identity the account knows, whether or not it ever wrote, and it never
-// creates a chat. Put merges the non-empty name fields and never clears one,
-// so a push name learned from a message does not erase the address-book name.
-// List returns the most recently updated entries first; a zero limit means
-// every one of them. It is optional for a channel that has no address book
-// (ADR 0029, ADR 0037).
+// when contact import is on (ADR 0037). Put merges the non-empty name fields
+// and never clears one; List returns the most recently updated entries first,
+// and a zero limit means every one. It is optional for a channel with no
+// address book (ADR 0029).
 type ContactStore interface {
 	Put(ctx context.Context, contact *Contact) error
 	List(ctx context.Context, scope, bot string, limit int) ([]Contact, error)
 }
 
-// SessionStore records a chat's session runs. Latest returns the most recent
-// one, or ErrNotFound when the chat never had a session; CountActive counts
-// the unexpired runs of one bot at a time, for status (ADR 0026).
+// SessionStore records a chat's session runs (ADR 0026). Save inserts a run
+// when Session.ID is zero and updates it otherwise. Delete drops every run of
+// a chat and keeps its message history. CountActive counts the unexpired runs
+// of one bot at a time; a run without expiry never expires.
 type SessionStore interface {
 	Latest(ctx context.Context, chatID int64) (*Session, error)
 	Save(ctx context.Context, session *Session) error
@@ -150,15 +132,12 @@ type SessionStore interface {
 }
 
 // MessageStore records message history (ADR 0026). Append reports
-// ErrDuplicate when the chat already holds a row with the same provider id.
-// SetProviderID fills the channel id of a stored outbound message once the
-// channel reports it. Oldest returns the oldest stored message that carries a
-// channel id and can anchor a history request, the point `chat sync` pages
-// back from; a call row is never one, because it is not a position in the
-// chat's own message list (ADR 0035). History
-// returns up to limit messages of a chat, oldest first: the last ones when
-// afterID is zero, or the messages newer than afterID otherwise. A reader shows
-// the conversation in order and a follower resumes from the last id it saw.
+// ErrDuplicate when the chat already holds the same provider id, and
+// SetProviderID fills the channel id of a stored reply once reported. Oldest
+// returns the oldest message that can anchor a history request — one with a
+// channel id, never a call row (ADR 0035). History returns up to limit
+// messages oldest first: the last ones when afterID is zero, or those newer
+// than afterID.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
 	SetProviderID(ctx context.Context, id int64, providerID string) error
@@ -189,9 +168,10 @@ type OwnerTokenStore interface {
 	Put(ctx context.Context, token *OwnerToken) error
 }
 
-// AccessTokenStore stores the scoped access tokens (ROADMAP Phase 13).
-// FindByHash reports ErrNotFound for an unknown hash; Revoke reports
-// ErrNotFound for an unknown id.
+// AccessTokenStore stores the scoped access tokens, hash only (ROADMAP Phase
+// 13). FindByHash returns a revoked or expired token too; the caller checks
+// Active, and List omits hashes. Revoke is idempotent and reports ErrNotFound
+// for an unknown id.
 type AccessTokenStore interface {
 	Create(ctx context.Context, token *AccessToken) error
 	FindByHash(ctx context.Context, hash []byte) (*AccessToken, error)

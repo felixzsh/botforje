@@ -4,24 +4,21 @@ import (
 	"time"
 )
 
-// Persisted shapes: one struct per table. Their fields mirror the columns the
-// SQLite adapter reads and writes; keys, constraints, and encoding (JSON,
-// RFC 3339 times) live with the DDL in adapters/sqlite (ADR 0006, ADR 0026).
-// The store ports that read and write them live in ports.go.
+// Persisted shapes: one struct per table, mirroring the columns the SQLite
+// adapter reads and writes. Keys, constraints, and encoding live with the DDL
+// in adapters/sqlite (ADR 0006, ADR 0026); the ports that read and write them
+// live in ports.go.
 
-// LinkedAccount is a bot's linked channel identity, the whatsmeow device JID.
-// It is keyed by (scope, bot) like every entity (ADR 0016). Pairing is the
-// lifecycle of that link and lives in PairingStatus.
+// LinkedAccount is a bot's linked channel identity: the WhatsApp device JID
+// (ADR 0006, ADR 0016). Its lifecycle is PairingStatus.
 type LinkedAccount struct {
 	Scope string
 	Bot   string
 	JID   string
 }
 
-// Sender is the durable profile of one person who writes to bots in a scope,
-// keyed by (scope, phone). A person may write to several bots of the same
-// scope; the bot-person relationship is a Chat (ADR 0029). DisplayName is the
-// WhatsApp push name: best effort, possibly empty, and never an identifier.
+// Sender is one person's durable profile in a scope (ADR 0029). DisplayName
+// is a best-effort push name: possibly empty, never an identifier.
 type Sender struct {
 	ID            int64
 	Scope         string
@@ -32,12 +29,9 @@ type Sender struct {
 	LastSeen      time.Time
 }
 
-// Contact is an address-book entry of one bot's linked account, copied from
-// the channel's contact data when the bot imports contacts. It is keyed by
-// (scope, bot, phone), because the address book belongs to the linked account,
-// not to the scope: two bots of one scope may link accounts with different
-// books. It is not a Sender: a contact is an identity the account knows,
-// whether or not it ever wrote (ADR 0029, ADR 0037).
+// Contact is an address-book entry of a bot's linked account (ADR 0037),
+// keyed by (scope, bot, phone) because the book belongs to the account, not
+// the scope. It is an identity the account knows, never a Sender or a Chat.
 type Contact struct {
 	Scope        string
 	Bot          string
@@ -48,9 +42,7 @@ type Contact struct {
 	UpdatedAt    time.Time
 }
 
-// DisplayName is the name a reader shows: the address-book name first, then
-// the verified business name, then the push name. It is best effort and never
-// an identifier; the phone number is the key.
+// DisplayName is the name a reader shows; best effort, never an identifier.
 func (c Contact) DisplayName() string {
 	switch {
 	case c.Name != "":
@@ -62,10 +54,9 @@ func (c Contact) DisplayName() string {
 	}
 }
 
-// Chat is the durable thread between one bot and one sender, one per
-// (scope, bot, sender). It never ends and gathers every message (ADR 0026).
-// MessageCount is the inbound count for this bot until message history is
-// recorded; Guards is the per-action guard state (ADR 0027, ADR 0029).
+// Chat is the durable thread between one bot and one sender; it never ends
+// (ADR 0026). MessageCount is the live inbound count, not the stored history;
+// Guards is the per-action guard state (ADR 0027).
 type Chat struct {
 	ID           int64
 	Scope        string
@@ -77,7 +68,6 @@ type Chat struct {
 	Guards       map[string]GuardState
 }
 
-// Direction is the side of a stored message.
 type Direction string
 
 const (
@@ -85,9 +75,8 @@ const (
 	Outbound Direction = "out"
 )
 
-// Ingest is how a stored message entered Botflota: live traffic, a WhatsApp
-// history sync, or an API operation. Unknown covers rows from before the
-// distinction existed.
+// Ingest is how a stored message entered Botflota. Unknown covers rows from
+// before the distinction existed.
 type Ingest string
 
 const (
@@ -97,9 +86,8 @@ const (
 	IngestUnknown Ingest = "unknown"
 )
 
-// MessageOrigin is who produced an outbound message. An inbound message leaves
-// it empty: its direction already says it came from the sender. An imported
-// outbound message is unknown, never guessed (ADR 0026).
+// MessageOrigin is who produced an outbound message: empty for an inbound
+// one, unknown and never guessed for an imported one (ADR 0026).
 type MessageOrigin string
 
 const (
@@ -126,12 +114,10 @@ const (
 	RoutingFallback        RoutingMethod = "fallback"
 )
 
-// Message is one message kept for history. Content is the classified payload;
-// the store derives its kind and visible text for the columns it searches
-// (ADR 0026, ADR 0036). SessionID is zero when no session run handled it, like
-// an imported message. ProviderMessageID is the channel's own id and the dedup
-// key of the history import; a channel that does not report one leaves it
-// empty.
+// Message is one message kept for history (ADR 0026). The store derives the
+// kind and visible text columns from Content (ADR 0036). SessionID is zero
+// when no session run handled it, and ProviderMessageID is the dedup key of
+// the history import.
 type Message struct {
 	ID                int64
 	ChatID            int64
@@ -145,10 +131,9 @@ type Message struct {
 	Routing           RoutingMethod
 }
 
-// ChatSummary is a chat joined with its sender profile, for the read API
-// (ADR 0026, ADR 0029). Messages, Sync, and Live count the stored rows by
-// ingest kind, so a reader sees the imported backlog too (ADR 0035); the
-// embedded MessageCount stays the live inbound count of ADR 0029.
+// ChatSummary is a chat joined with its sender profile, for the read API.
+// Messages, Sync, and Live count the stored rows by ingest kind; the embedded
+// MessageCount stays the live inbound count (ADR 0035).
 type ChatSummary struct {
 	Chat
 	Phone       string
@@ -159,7 +144,7 @@ type ChatSummary struct {
 }
 
 // Session is one bounded run of the graph for a chat; a chat has many over
-// time (ADR 0026). It is the persisted state the engine resumes.
+// time (ADR 0026).
 type Session struct {
 	ID           int64
 	ChatID       int64
@@ -172,30 +157,28 @@ type Session struct {
 	ExpiresAt    time.Time
 }
 
-// Expired reports whether the session is over at t.
+// Expired reports whether the session is over at t; a zero expiry never
+// expires.
 func (s *Session) Expired(t time.Time) bool {
 	return !s.ExpiresAt.IsZero() && !t.Before(s.ExpiresAt)
 }
 
-// GuardState is one action's accumulated guard state, one field per guard type
-// (ADR 0027). It is stored in the chat, keyed by action name.
+// GuardState is one action's guard state, stored in the chat keyed by action
+// name (ADR 0027).
 type GuardState struct {
 	Cooldown  *CooldownState  `json:"cooldown,omitempty"`
 	RateLimit *RateLimitState `json:"rate_limit,omitempty"`
 }
 
-// CooldownState is when a cooldown-guarded action last ran.
 type CooldownState struct {
 	LastRun time.Time `json:"last_run"`
 }
 
-// RateLimitState is the fixed-window counter of one rate-limited action.
 type RateLimitState struct {
 	Count       int       `json:"count"`
 	WindowStart time.Time `json:"window_start"`
 }
 
-// PairingState is the persisted local state of one bot's channel pairing.
 type PairingState string
 
 const (
@@ -220,9 +203,8 @@ type OwnerToken struct {
 	CreatedAt time.Time
 }
 
-// AccessToken is a scoped bearer credential for the API (ROADMAP Phase 13).
-// Only the hash is stored; the clear token is shown once when it is minted. An
-// empty ExpiresAt never expires, an empty RevokedAt is active.
+// AccessToken is a scoped bearer credential for the API (ROADMAP Phase 13),
+// hash only. An empty ExpiresAt never expires; an empty RevokedAt is active.
 type AccessToken struct {
 	ID        int64
 	Name      string
@@ -233,7 +215,6 @@ type AccessToken struct {
 	RevokedAt time.Time
 }
 
-// Active reports whether the token may still authenticate at at.
 func (t *AccessToken) Active(at time.Time) bool {
 	if !t.RevokedAt.IsZero() {
 		return false
