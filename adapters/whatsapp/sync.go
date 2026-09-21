@@ -247,7 +247,7 @@ func (a *Adapter) clearPending(request *syncRequest) {
 
 // observeSync feeds one imported chunk to the sync waiting for it, if any. The
 // import worker is the only caller, so the importer stays single-threaded.
-func (a *Adapter) observeSync(event *events.HistorySync, stats historyStats) {
+func (a *Adapter) observeSync(event *events.HistorySync, stats ImportTotals) {
 	a.syncMu.Lock()
 	pending := a.pending
 	a.syncMu.Unlock()
@@ -295,7 +295,7 @@ func newSyncRequest(id, phone string, lookup pnLookup) *syncRequest {
 
 // observe accumulates one matching chunk and closes done once the response is
 // complete.
-func (r *syncRequest) observe(event *events.HistorySync, stats historyStats) {
+func (r *syncRequest) observe(event *events.HistorySync, stats ImportTotals) {
 	if historySyncRequestID(event) != r.id {
 		return
 	}
@@ -306,9 +306,9 @@ func (r *syncRequest) observe(event *events.HistorySync, stats historyStats) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.page.Received += received
-	r.page.Imported += stats.imported
-	r.page.Duplicate += stats.duplicate
-	r.page.Skipped += stats.skipped
+	r.page.Imported += stats.Imported
+	r.page.Duplicate += stats.Duplicate
+	r.page.Skipped += stats.Skipped
 	if next != nil && (r.page.Next == nil || next.At.Before(r.page.Next.At)) {
 		r.page.Next = next
 	}

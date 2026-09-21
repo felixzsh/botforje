@@ -6,12 +6,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/spec"
 )
 
 type pairCmd struct {
@@ -20,6 +23,7 @@ type pairCmd struct {
 	scope         *string
 	force         *bool
 	importHistory *bool
+	verbose       *bool
 }
 
 func newPairCmd() *pairCmd {
@@ -32,6 +36,8 @@ func newPairCmd() *pairCmd {
 		force:  fs.Bool("force", false, "discard the local pairing and register again"),
 		importHistory: fs.Bool("import-history", false,
 			"ask the phone for the full history window and wait for it"),
+		verbose: fs.Bool("verbose", false,
+			"print the structured log at the configured log_level"),
 	}
 }
 
@@ -118,14 +124,20 @@ func runPair(args []string) int {
 			name, scopeName, whatsapp.Number(account.JID))
 		return 0
 	}
-	devices, err := openDevices(ctx, db, nil, cfg.LogLevelDeps)
+	// A one-shot command answers with a result, not a log stream: the summary
+	// goes to stdout and the logger stays quiet unless --verbose (ADR 0038).
+	logger := pairLogger(cfg, *cmd.verbose)
+	var deps *slog.Logger
+	if *cmd.verbose {
+		deps = logger
+	}
+	devices, err := openDevices(ctx, db, deps, cfg.LogLevelDeps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 
-	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
-	jid, err := whatsapp.Pair(ctx, whatsapp.PairOptions{
+	result, err := whatsapp.Pair(ctx, whatsapp.PairOptions{
 		Scope:          scopeName,
 		Bot:            name,
 		Devices:        devices,
@@ -139,6 +151,7 @@ func runPair(args []string) int {
 		Contacts:       db.Contacts(),
 		ImportContacts: contactsEnabled(botSpec.Settings),
 		Log:            logger,
+		DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
 		Force:          *cmd.force,
 		DeviceName:     cfg.DeviceName,
 	})
@@ -146,8 +159,39 @@ func runPair(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName, whatsapp.Number(jid))
+	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName,
+		whatsapp.Number(result.JID))
+	printPairImport(os.Stdout, botSpec.Settings, result)
 	return 0
+}
+
+// pairLogger is the logger of a one-shot command. Without --verbose only
+// warnings and errors surface, so a pairing that went well prints its result
+// and nothing else; --verbose raises it to the configured level (ADR 0038).
+func pairLogger(cfg *config.Config, verbose bool) *slog.Logger {
+	if !verbose {
+		return botflota.NewLogger("warn", os.Stderr)
+	}
+	return botflota.NewLogger(cfg.LogLevel, os.Stderr)
+}
+
+// printPairImport reports what the pairing stored: the chats and messages the
+// history sync brought, and the contacts the address book added. This is the
+// command's result, so it never depends on the log level (ADR 0038).
+func printPairImport(w io.Writer, settings *spec.BotSettings, result whatsapp.PairResult) {
+	if historyEnabled(settings) {
+		if result.History.Chunks == 0 {
+			fmt.Fprintln(w, "history: nothing arrived")
+		} else {
+			fmt.Fprintf(w, "history: %d chats, %d messages (%d duplicate, %d skipped) in %s\n",
+				result.History.Conversations, result.History.Imported,
+				result.History.Duplicate, result.History.Skipped,
+				result.Elapsed.Round(time.Second))
+		}
+	}
+	if contactsEnabled(settings) {
+		fmt.Fprintf(w, "contacts: %d imported\n", result.Contacts)
+	}
 }
 
 func runUnpair(args []string) int {

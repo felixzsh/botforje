@@ -402,14 +402,20 @@ reload is automatic (ADR 0009, ADR 0025).
 
 One structured logger (`log/slog`) writes plain, column-aligned lines with no
 ANSI escapes, so `journalctl` and `docker logs` show them verbatim:
-`[time] LEVEL [pkg/file.go:line] message key=value`. `log_level` sets the level
-for the application and `log_level_deps` for logs forwarded from dependencies
-such as the channel and the device store; `off` silences a category. Levels follow one rule: debug
-for
-per-message detail, info for lifecycle and state, warn for recoverable
-conditions, and error for failures. Message bodies are debug-only, and secrets
-stay masked by type (ADR 0014). A System One decision logs its profile, question,
-answer, and confidence; the LLM logs realization and tool calls.
+`[time] LEVEL [pkg/file.go:line] message key=value`. The daemon writes it to
+stderr and owns nothing else: the supervisor captures, rotates, and ships it.
+Botflota keeps no log file and stores no logs in the database (ADR 0038).
+
+A one-shot command answers with a result on stdout and diagnostics on stderr,
+and stays at `warn` unless `--verbose` raises it, because `log_level` and
+`log_level_deps` describe the service rather than a command a human runs once.
+`log_level` sets the level for the application and `log_level_deps` for logs
+forwarded from dependencies such as the channel and the device store; `off`
+silences a category. Levels follow one rule: debug for per-message detail, info
+for lifecycle and state, warn for recoverable conditions, and error for
+failures. Message bodies are debug-only, and secrets stay masked by type
+(ADR 0014). A System One decision logs its profile, question, answer, and
+confidence; the LLM logs realization and tool calls.
 
 ## Config layout
 

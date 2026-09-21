@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"sync"
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
@@ -40,6 +41,13 @@ type historyImporter struct {
 	now       func() time.Time
 	pushNames map[string]string
 	ownPhone  string
+	// mu guards the counters and the name cache: the pairing session imports
+	// from the whatsmeow event handler while the command reads the totals.
+	mu             sync.Mutex
+	totals         ImportTotals
+	transfer       ImportTotals
+	transferType   string
+	transferClosed bool
 }
 
 // newHistoryImporter builds an importer. It returns nil when a store is
@@ -62,38 +70,46 @@ func newHistoryImporter(
 	}
 }
 
-// historyStats summarizes what one sync chunk produced.
-type historyStats struct {
-	conversations int
-	imported      int
-	duplicate     int
-	skipped       int
-	received      int
-	pushNames     int
+// ImportTotals summarizes what a history importer produced. Handle returns the
+// totals of one chunk; the importer keeps the running totals of the session,
+// which `bot pair` prints as the result of a registration that carried history
+// (ADR 0038).
+type ImportTotals struct {
+	Chunks        int
+	Conversations int
+	Imported      int
+	Duplicate     int
+	Skipped       int
+	Received      int
+	PushNames     int
 }
 
-// Handle imports one history-sync chunk, logs its progress, and reports what
+// Handle imports one history-sync chunk, records its progress, and reports what
 // it stored. Conversation and message errors are logged and skipped; one bad
 // row never aborts a sync.
-func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync) historyStats {
+func (h *historyImporter) Handle(
+	ctx context.Context, event *events.HistorySync,
+) ImportTotals {
 	if event == nil || event.Data == nil {
-		return historyStats{}
+		return ImportTotals{}
 	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	data := event.Data
-	stats := historyStats{}
+	stats := ImportTotals{}
 	// Names first, so a conversation in the same chunk can use them.
 	h.importPushNames(ctx, data.GetPushnames(), &stats)
 	h.importCallLogs(ctx, data.GetCallLogRecords(), &stats)
 	for _, conversation := range data.GetConversations() {
-		stats.conversations++
+		stats.Conversations++
 		got, dup, skip, received, err := h.importConversation(ctx, conversation)
 		if err != nil {
 			h.log.Warn("import history conversation", "error", err)
 		}
-		stats.imported += got
-		stats.duplicate += dup
-		stats.skipped += skip
-		stats.received += received
+		stats.Imported += got
+		stats.Duplicate += dup
+		stats.Skipped += skip
+		stats.Received += received
 		// Which chat arrived, with how many entries and how many survived, is
 		// how a chat the phone omitted is told from one it delivered empty.
 		if h.log.Enabled(ctx, slog.LevelDebug) {
@@ -108,17 +124,76 @@ func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync)
 				"end_of_history", conversation.GetEndOfHistoryTransferType().String())
 		}
 	}
-	h.log.Info("history sync imported",
-		"sync_type", data.GetSyncType().String(),
+	stats.Chunks = 1
+	h.record(data, stats)
+	return stats
+}
+
+// record folds one chunk into the running totals and closes a transfer that
+// just ended. A full sync arrives in hundreds of chunks, so the per-chunk line
+// is debug and only the per-transfer summary is info (ADR 0038).
+func (h *historyImporter) record(data *waHistorySync.HistorySync, stats ImportTotals) {
+	syncType := data.GetSyncType().String()
+	if syncType != h.transferType {
+		h.summarize()
+		h.transferType = syncType
+		h.transferClosed = false
+	}
+	h.log.Debug("history chunk imported",
+		"sync_type", syncType,
 		"chunk", data.GetChunkOrder(),
 		"progress", data.GetProgress(),
-		"conversations", stats.conversations,
-		"imported", stats.imported,
-		"duplicate", stats.duplicate,
-		"skipped", stats.skipped,
-		"received", stats.received,
-		"push_names", stats.pushNames)
-	return stats
+		"conversations", stats.Conversations,
+		"imported", stats.Imported,
+		"duplicate", stats.Duplicate,
+		"skipped", stats.Skipped,
+		"received", stats.Received,
+		"push_names", stats.PushNames)
+	h.transfer = addTotals(h.transfer, stats)
+	h.totals = addTotals(h.totals, stats)
+	// Progress 100 ends the transfer, and the chunks that follow it belong to
+	// the next type. A second chunk still at 100 is not a new transfer.
+	if data.GetProgress() >= 100 && !h.transferClosed {
+		h.summarize()
+		h.transferClosed = true
+	}
+}
+
+// summarize logs one line for the transfer that just ended and starts a new
+// one. A transfer with no chunk is nothing to report.
+func (h *historyImporter) summarize() {
+	if h.transfer.Chunks == 0 {
+		return
+	}
+	h.log.Info("history sync imported",
+		"sync_type", h.transferType,
+		"chunks", h.transfer.Chunks,
+		"conversations", h.transfer.Conversations,
+		"imported", h.transfer.Imported,
+		"duplicate", h.transfer.Duplicate,
+		"skipped", h.transfer.Skipped,
+		"received", h.transfer.Received,
+		"push_names", h.transfer.PushNames)
+	h.transfer = ImportTotals{}
+}
+
+// Totals reports everything the importer has stored. The pairing command prints
+// it instead of the per-chunk stream (ADR 0038).
+func (h *historyImporter) Totals() ImportTotals {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.totals
+}
+
+func addTotals(a, b ImportTotals) ImportTotals {
+	a.Chunks += b.Chunks
+	a.Conversations += b.Conversations
+	a.Imported += b.Imported
+	a.Duplicate += b.Duplicate
+	a.Skipped += b.Skipped
+	a.Received += b.Received
+	a.PushNames += b.PushNames
+	return a
 }
 
 // importCallLogs keeps call records that WhatsApp delivers outside the normal
@@ -126,17 +201,17 @@ func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync)
 // one. The call id is not a key in the chat's message list, so it never anchors
 // a history request.
 func (h *historyImporter) importCallLogs(
-	ctx context.Context, records []*waSyncAction.CallLogRecord, stats *historyStats,
+	ctx context.Context, records []*waSyncAction.CallLogRecord, stats *ImportTotals,
 ) {
 	for _, record := range records {
 		phone, ok := historyCallPhone(record, h.lookup, h.ownPhone)
 		if !ok || record.GetCallID() == "" {
-			stats.skipped++
+			stats.Skipped++
 			continue
 		}
 		at := callLogAt(record)
 		if at.IsZero() {
-			stats.skipped++
+			stats.Skipped++
 			continue
 		}
 		name := h.pushNames[phone]
@@ -170,16 +245,16 @@ func (h *historyImporter) importCallLogs(
 			Origin:            origin,
 			Routing:           botflota.RoutingUnknown,
 		}
-		stats.received++
+		stats.Received++
 		if err := h.messages.Append(ctx, &message); err != nil {
 			if errors.Is(err, botflota.ErrDuplicate) {
-				stats.duplicate++
+				stats.Duplicate++
 			} else {
 				h.log.Warn("import history call", "phone", phone, "error", err)
 			}
 			continue
 		}
-		stats.imported++
+		stats.Imported++
 	}
 }
 
@@ -187,7 +262,7 @@ func (h *historyImporter) importCallLogs(
 // It only names senders Botflota already knows; a contact that never wrote is
 // remembered for a sender created by a later chunk, not created here.
 func (h *historyImporter) importPushNames(
-	ctx context.Context, names []*waHistorySync.Pushname, stats *historyStats,
+	ctx context.Context, names []*waHistorySync.Pushname, stats *ImportTotals,
 ) {
 	at := h.now().UTC()
 	for _, entry := range names {
@@ -201,7 +276,7 @@ func (h *historyImporter) importPushNames(
 			continue
 		}
 		h.pushNames[phone] = name
-		stats.pushNames++
+		stats.PushNames++
 		if err := h.senders.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
 			h.log.Warn("import history push name", "error", err)
 		}

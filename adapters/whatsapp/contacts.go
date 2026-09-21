@@ -68,47 +68,56 @@ func (h *contactImporter) Handle(ctx context.Context, raw any) {
 
 // ImportCached copies the address book the device store already holds. It
 // covers a session that ended before every contact event arrived, and a
-// reconnect whose address-book snapshot was applied silently.
-func (h *contactImporter) ImportCached(ctx context.Context, known store.ContactStore) {
+// reconnect whose address-book snapshot was applied silently. It returns how
+// many entries it stored.
+func (h *contactImporter) ImportCached(
+	ctx context.Context, known store.ContactStore,
+) int {
 	if known == nil {
-		return
+		return 0
 	}
 	contacts, err := known.GetAllContacts(ctx)
 	if err != nil {
 		h.log.Warn("read contacts", "error", err)
-		return
+		return 0
 	}
-	h.ImportAll(ctx, contacts)
+	return h.ImportAll(ctx, contacts)
 }
 
-// ImportAll stores every entry of one address book.
+// ImportAll stores every entry of one address book and reports how many it
+// stored.
 func (h *contactImporter) ImportAll(
 	ctx context.Context, known map[types.JID]types.ContactInfo,
-) {
+) int {
+	stored := 0
 	for jid, info := range known {
 		if !info.Found {
 			continue
 		}
-		h.put(ctx, jid, "", h.now().UTC(), botflota.Contact{
+		if h.put(ctx, jid, "", h.now().UTC(), botflota.Contact{
 			Name:         contactName(info.FullName, info.FirstName),
 			PushName:     info.PushName,
 			BusinessName: info.BusinessName,
-		})
+		}) {
+			stored++
+		}
 	}
+	return stored
 }
 
-// put resolves the phone number and stores the entry. A group, broadcast, or
-// unresolved hidden-user contact is skipped.
+// put resolves the phone number and stores the entry, reporting whether it
+// stored one. A group, broadcast, or unresolved hidden-user contact is
+// skipped.
 func (h *contactImporter) put(
 	ctx context.Context, jid types.JID, pnJID string, at time.Time,
 	contact botflota.Contact,
-) {
+) bool {
 	if contact.Name == "" && contact.PushName == "" && contact.BusinessName == "" {
-		return
+		return false
 	}
 	phone, ok := contactPhone(jid, pnJID, h.lookup)
 	if !ok {
-		return
+		return false
 	}
 	contact.Scope = h.scope
 	contact.Bot = h.bot
@@ -116,7 +125,9 @@ func (h *contactImporter) put(
 	contact.UpdatedAt = at
 	if err := h.contacts.Put(ctx, &contact); err != nil {
 		h.log.Warn("import contact", "phone", phone, "error", err)
+		return false
 	}
+	return true
 }
 
 // contactPhone resolves one contact entry to the domain phone number: the

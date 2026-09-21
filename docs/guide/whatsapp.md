@@ -17,7 +17,9 @@ end to end.
    confirm the companion is online before it exits. If WhatsApp resets a scan,
    `bot pair` automatically starts a fresh QR; keep the command running.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
-5. `bot pair` prints the paired phone number and exits.
+5. `bot pair` prints the paired phone number, what the registration stored
+   (chats, messages, and contacts), and exits. Add `--verbose` to also print
+   the structured log at the configured `log_level`.
 
 For new pairings, WhatsApp should show the companion as `Botflota`. Existing
 links keep their old name until they are unlinked and paired again.

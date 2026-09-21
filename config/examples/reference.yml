@@ -10,6 +10,8 @@ version: 1
 # Instance settings (global; only valid in the main file)
 address: "127.0.0.1"              # REST API bind address
 port: 3000                        # REST API port (0 disables the API)
+# log_level and log_level_deps describe `fleet run`. A one-shot command such as
+# `bot pair` logs at warn and takes --verbose for the configured level.
 log_level: "info"                 # debug, info, warn, error
 log_level_deps: "info"            # dependency logs; also accepts off
 default_timeout: 300              # Default graph session timeout in seconds

@@ -106,8 +106,11 @@ type PairOptions struct {
 	Logger         walog.Logger
 	// Log receives the history-sync progress of the pairing session. Nil
 	// discards it.
-	Log   *slog.Logger
-	Force bool // discard the existing local pairing before starting QR login
+	Log *slog.Logger
+	// DepsLogLevel is the minimum level for the protocol log this adapter
+	// forwards into Log when Logger is nil. Nil Log discards both.
+	DepsLogLevel slog.Level
+	Force        bool // discard the existing local pairing before starting QR login
 	// DeviceName is the companion name shown in the phone's Linked devices;
 	// empty uses the default.
 	DeviceName string
@@ -118,29 +121,43 @@ type PairOptions struct {
 	Now      func() time.Time
 }
 
+// PairResult reports what a successful pairing produced: the linked JID and
+// what the connection stored while it was alive. The command prints it as the
+// result of the operation instead of the log stream (ADR 0038).
+type PairResult struct {
+	JID      string
+	History  ImportTotals
+	Contacts int
+	Elapsed  time.Duration
+}
+
 // Pair runs the QR login and records the account. If the bot is already
 // paired it returns the stored JID unless Force asks for a new pairing. QR
 // sessions that WhatsApp resets are retried with a new code until the context
 // is canceled or a non-retryable error occurs.
-func Pair(ctx context.Context, opts PairOptions) (string, error) {
+func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	if opts.Devices == nil {
-		return "", errors.New("whatsapp: no device store")
+		return PairResult{}, errors.New("whatsapp: no device store")
 	}
 	if err := ValidateAccountOwners(ctx, opts.Accounts); err != nil {
-		return "", err
+		return PairResult{}, err
 	}
 	account, err := opts.Accounts.Get(ctx, opts.Scope, opts.Bot)
 	if err == nil && !opts.Force {
-		return account.JID, nil
+		return PairResult{JID: account.JID}, nil
 	} else if err != nil && !errors.Is(err, botflota.ErrNotFound) {
-		return "", err
+		return PairResult{}, err
 	}
 	logger := opts.Logger
 	if logger == nil {
-		// Pairing is interactive; keep whatsmeow's routine warnings (like the
-		// websocket close after a successful link) out of the terminal, but
-		// still surface real errors.
-		logger = walog.Stdout("whatsmeow/"+opts.Bot, "error", false)
+		// Forward the protocol log into the same structured logger on stderr,
+		// never whatsmeow's stdout helper: one format, and stdout stays the
+		// command's result (ADR 0038). A nil Log keeps it quiet.
+		base := opts.Log
+		if base == nil {
+			base = botflota.DiscardLogger()
+		}
+		logger = newWaLog(base, opts.DepsLogLevel)
 	}
 	render := opts.RenderQR
 	if render == nil {
@@ -156,19 +173,21 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	if account != nil {
 		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
 			pairingNow(opts.Now)); err != nil {
-			return "", err
+			return PairResult{}, err
 		}
 	}
+	started := time.Now()
 	for {
-		jid, retry, err := pairOnce(ctx, opts, logger, render, timeout)
+		result, retry, err := pairOnce(ctx, opts, logger, render, timeout)
 		if err != nil {
-			return "", err
+			return PairResult{}, err
 		}
 		if !retry {
-			return jid, nil
+			result.Elapsed = time.Since(started)
+			return result, nil
 		}
 		if err := waitForPairingRetry(ctx); err != nil {
-			return "", err
+			return PairResult{}, err
 		}
 	}
 }
@@ -179,18 +198,18 @@ func pairOnce(
 	logger walog.Logger,
 	render func(string),
 	timeout time.Duration,
-) (string, bool, error) {
+) (PairResult, bool, error) {
 	client := whatsmeow.NewClient(opts.Devices.newDevice(), logger)
 	defer client.Disconnect()
-	historyWaiter := attachHistory(ctx, client, opts)
+	historyWaiter, historyImporter := attachHistory(ctx, client, opts)
 	contactImport := attachContacts(ctx, client, opts)
 
 	qrChannel, err := client.GetQRChannel(ctx)
 	if err != nil {
-		return "", false, fmt.Errorf("whatsapp: qr channel: %w", err)
+		return PairResult{}, false, fmt.Errorf("whatsapp: qr channel: %w", err)
 	}
 	if err := client.Connect(); err != nil {
-		return "", false, fmt.Errorf("whatsapp: connect: %w", err)
+		return PairResult{}, false, fmt.Errorf("whatsapp: connect: %w", err)
 	}
 
 	deadline := time.NewTimer(timeout)
@@ -198,12 +217,12 @@ func pairOnce(
 	for {
 		select {
 		case <-ctx.Done():
-			return "", false, ctx.Err()
+			return PairResult{}, false, ctx.Err()
 		case <-deadline.C:
-			return "", true, nil
+			return PairResult{}, true, nil
 		case item, ok := <-qrChannel:
 			if !ok {
-				return "", true, nil
+				return PairResult{}, true, nil
 			}
 			switch item.Event {
 			case whatsmeow.QRChannelEventCode:
@@ -211,13 +230,13 @@ func pairOnce(
 			case whatsmeow.QRChannelSuccess.Event:
 				jid, err := saveAccount(ctx, opts, client)
 				if err != nil {
-					return "", false, err
+					return PairResult{}, false, err
 				}
 				confirmLink(client, logger)
 				if historyWaiter != nil {
 					if err := historyWaiter.wait(ctx,
 						historyWaitBudget(opts.FullHistory)); err != nil {
-						return "", false, err
+						return PairResult{}, false, err
 					}
 					if opts.Log != nil {
 						opts.Log.Info("history sync wait finished",
@@ -225,22 +244,26 @@ func pairOnce(
 							"complete", historyWaiter.finished())
 					}
 				}
-				if contactImport != nil && client.Store != nil {
-					contactImport.ImportCached(ctx, client.Store.Contacts)
+				result := PairResult{JID: jid}
+				if historyImporter != nil {
+					result.History = historyImporter.Totals()
 				}
-				return jid, false, nil
+				if contactImport != nil && client.Store != nil {
+					result.Contacts = contactImport.ImportCached(ctx, client.Store.Contacts)
+				}
+				return result, false, nil
 			case whatsmeow.QRChannelTimeout.Event:
-				return "", true, nil
+				return PairResult{}, true, nil
 			case whatsmeow.QRChannelScannedWithoutMultidevice.Event:
-				return "", false, errors.New(
+				return PairResult{}, false, errors.New(
 					"whatsapp: QR scanned, but multi-device is not enabled",
 				)
 			case whatsmeow.QRChannelClientOutdated.Event:
-				return "", false, errors.New("whatsapp: this client version is out of date")
+				return PairResult{}, false, errors.New("whatsapp: this client version is out of date")
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
-				return "", true, nil
+				return PairResult{}, true, nil
 			case whatsmeow.QRChannelEventError:
-				return "", false, fmt.Errorf("whatsapp: pairing: %w", item.Error)
+				return PairResult{}, false, fmt.Errorf("whatsapp: pairing: %w", item.Error)
 			}
 		}
 	}
@@ -249,12 +272,14 @@ func pairOnce(
 // attachHistory imports the account-wide history sync that WhatsApp delivers
 // right after linking. Whichever connection is alive captures it: this pairing
 // session imports the chunks it sees before it exits, and the fleet connection
-// imports the rest with the same importer (ADR 0035).
+// imports the rest with the same importer (ADR 0035). It returns the waiter
+// that tracks progress and the importer that holds the totals, either of which
+// is nil when history is disabled.
 func attachHistory(
 	ctx context.Context, client *whatsmeow.Client, opts PairOptions,
-) *historyWaiter {
+) (*historyWaiter, *historyImporter) {
 	if !opts.History {
-		return nil
+		return nil, nil
 	}
 	waiter := newHistoryWaiter(opts.FullHistory)
 	lookup := func(lid types.JID) (types.JID, bool) {
@@ -270,7 +295,7 @@ func attachHistory(
 	importer := newHistoryImporter(opts.Scope, opts.Bot, opts.Senders, opts.Chats,
 		opts.Messages, lookup, opts.Log)
 	if importer == nil {
-		return nil
+		return nil, nil
 	}
 	importer.ownPhone = devicePhone(client.Store)
 	client.AddEventHandler(func(raw any) {
@@ -283,7 +308,7 @@ func attachHistory(
 			waiter.progress(event.Data.GetSyncType(), event.Data.GetProgress())
 		}
 	})
-	return waiter
+	return waiter, importer
 }
 
 // attachContacts copies the account's address book while the pairing session

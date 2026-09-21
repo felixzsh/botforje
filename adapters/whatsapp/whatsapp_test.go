@@ -946,7 +946,7 @@ func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
 		Conversations: []*waHistorySync.Conversation{conversation},
 	}})
-	if stats.imported != 0 || stats.received != 1 || stats.skipped != 1 {
+	if stats.Imported != 0 || stats.Received != 1 || stats.Skipped != 1 {
 		t.Fatalf("stats = %#v, want one hidden provider entry", stats)
 	}
 	// A control-only shell is not a chat: WhatsApp sends one for every number
@@ -970,7 +970,7 @@ func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
 		Conversations: []*waHistorySync.Conversation{conversation},
 	}})
-	if stats.imported != 1 || stats.skipped != 0 {
+	if stats.Imported != 1 || stats.Skipped != 0 {
 		t.Fatalf("stats = %#v, want 1 imported, 0 skipped", stats)
 	}
 	sender, err := db.Senders().Get(ctx, "dev", "5215500000000")
@@ -1015,7 +1015,7 @@ func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
 	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
 		CallLogRecords: []*waSyncAction.CallLogRecord{call},
 	}})
-	if stats.imported != 1 || stats.received != 1 || stats.skipped != 0 {
+	if stats.Imported != 1 || stats.Received != 1 || stats.Skipped != 0 {
 		t.Fatalf("stats = %#v, want one imported call", stats)
 	}
 	sender, err := db.Senders().Get(ctx, "dev", "5215500000001")
@@ -1047,11 +1047,11 @@ func TestHistoryImporterDeduplicates(t *testing.T) {
 		Conversations: []*waHistorySync.Conversation{conversation},
 	}
 	first := importer.Handle(ctx, &events.HistorySync{Data: data})
-	if first.imported != 1 || first.duplicate != 0 {
+	if first.Imported != 1 || first.Duplicate != 0 {
 		t.Fatalf("first import = %#v, want 1 imported", first)
 	}
 	second := importer.Handle(ctx, &events.HistorySync{Data: data})
-	if second.imported != 0 || second.duplicate != 1 {
+	if second.Imported != 0 || second.Duplicate != 1 {
 		t.Fatalf("redelivered import = %#v, want 1 duplicate", second)
 	}
 
@@ -1069,6 +1069,70 @@ func TestHistoryImporterDeduplicates(t *testing.T) {
 	}
 	if len(messages) != 1 {
 		t.Fatalf("messages = %d, want 1 after a redelivered chunk", len(messages))
+	}
+}
+
+// TestHistoryImporterSummarizesPerTransfer covers the log shape ADR 0038 asks
+// for: one info line per finished transfer, the per-chunk detail at debug, and
+// the running totals the pairing command prints as its result.
+func TestHistoryImporterSummarizesPerTransfer(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	var buffer bytes.Buffer
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, botflota.NewLogger("debug", &buffer))
+
+	chunk := func(progress uint32, conversations ...*waHistorySync.Conversation) {
+		t.Helper()
+		importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+			SyncType:      waHistorySync.HistorySync_RECENT.Enum(),
+			Progress:      proto.Uint32(progress),
+			Conversations: conversations,
+		}})
+	}
+	chunk(10)
+	chunk(50, historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
+		historyText("M1", false, "hello", uint64(t0.Unix()), 1)))
+	chunk(100)
+
+	out := buffer.String()
+	if got := strings.Count(out, "history sync imported"); got != 1 {
+		t.Fatalf("transfer summaries = %d, want 1 in:\n%s", got, out)
+	}
+	if got := strings.Count(out, "history chunk imported"); got != 3 {
+		t.Fatalf("chunk lines = %d, want 3 in:\n%s", got, out)
+	}
+	totals := importer.Totals()
+	if totals.Chunks != 3 || totals.Conversations != 1 || totals.Imported != 1 {
+		t.Fatalf("totals = %+v, want 3 chunks, 1 chat, 1 message", totals)
+	}
+	if !strings.Contains(out, "chunks=3") {
+		t.Fatalf("the summary is missing the chunk count:\n%s", out)
+	}
+}
+
+// TestHistoryImporterIsSilentUntilATransferEnds keeps the default level quiet:
+// a sync in progress is per-chunk detail, so nothing is logged at info until
+// the transfer reports progress 100.
+func TestHistoryImporterIsSilentUntilATransferEnds(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	var buffer bytes.Buffer
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, botflota.NewLogger("info", &buffer))
+
+	data := &waHistorySync.HistorySync{
+		SyncType: waHistorySync.HistorySync_RECENT.Enum(),
+		Progress: proto.Uint32(10),
+	}
+	importer.Handle(ctx, &events.HistorySync{Data: data})
+	if buffer.Len() != 0 {
+		t.Fatalf("a transfer in progress logged at info:\n%s", buffer.String())
+	}
+	data.Progress = proto.Uint32(100)
+	importer.Handle(ctx, &events.HistorySync{Data: data})
+	if got := strings.Count(buffer.String(), "history sync imported"); got != 1 {
+		t.Fatalf("transfer summaries = %d, want 1 in:\n%s", got, buffer.String())
 	}
 }
 
@@ -1100,8 +1164,8 @@ func TestHistoryImporterAppliesPushNames(t *testing.T) {
 			Pushname: proto.String("Ana"),
 		}},
 	}})
-	if stats.pushNames != 1 {
-		t.Fatalf("push names = %d, want 1", stats.pushNames)
+	if stats.PushNames != 1 {
+		t.Fatalf("push names = %d, want 1", stats.PushNames)
 	}
 	after, err := db.Senders().Get(ctx, "dev", "5215500000000")
 	if err != nil {

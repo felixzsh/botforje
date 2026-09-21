@@ -185,13 +185,18 @@ func cliTree() *commandHelp {
 							"is stored; --import-history also asks for the full history window\n" +
 							"and waits for it, which is what brings the older chats. Without\n" +
 							"it the default recent window arrives and `chat sync` pages\n" +
-							"older messages per chat.",
+							"older messages per chat.\n" +
+							"The command answers with what it stored: the chats and messages\n" +
+							"the history sync brought, and the contacts the address book\n" +
+							"added. --verbose prints the structured log at the configured\n" +
+							"log_level instead of staying quiet.",
 						usage: "botflota bot pair [options] <bot>",
 						examples: []string{
 							"botflota bot pair support-bot",
 							"botflota bot pair --import-history support-bot",
 							"botflota bot pair --scope dev support-bot",
 							"botflota bot pair --force support-bot",
+							"botflota bot pair --import-history --verbose support-bot",
 						},
 						flags: func() *flag.FlagSet { return newPairCmd().fs },
 						run:   runPair,

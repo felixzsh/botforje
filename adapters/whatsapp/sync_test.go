@@ -101,7 +101,7 @@ func TestSyncRequestIgnoresChunksForOtherRequests(t *testing.T) {
 			PeerDataRequestSessionID: proto.String("OTHER"),
 		},
 	}
-	request.observe(other, historyStats{imported: 3})
+	request.observe(other, ImportTotals{Imported: 3})
 	select {
 	case <-request.done:
 		t.Fatal("a chunk for another request must not complete this one")
@@ -125,7 +125,7 @@ func TestSyncRequestCompletesWithMatchingChunk(t *testing.T) {
 			PeerDataRequestSessionID: proto.String("REQ"),
 		},
 	}
-	request.observe(event, historyStats{imported: 1})
+	request.observe(event, ImportTotals{Imported: 1})
 	select {
 	case <-request.done:
 	case <-time.After(time.Second):
