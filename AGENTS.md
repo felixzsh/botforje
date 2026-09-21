@@ -37,6 +37,20 @@ which document owns what, read `README.md`.
 - Tests are table-driven with `t.Run`; fixtures live in `testdata/`; prefer
   hand-written fakes over a mocking library.
 - Keep code, comments, logs, and documentation in English.
+- Keep a file readable in one sitting (about 350 lines). When one grows past
+  that, split it by type, port, or responsibility; never cut code in half.
+  Test files split the same way, mirroring their source files.
+
+## Comments
+
+- Make the code speak for itself first: name files, types, functions, and
+  variables so well that a comment is rarely needed. Only comment what the
+  code cannot say: a why, a non-obvious contract or gotcha, or where a
+  settled decision lives (an ADR pointer once per type, never per method).
+- Never restate the code, narrate edits, or repeat what `docs/glossary.md`,
+  an ADR, or the contract in `ports.go` and `records.go` already states.
+- Exception: `spec` and `config` doc comments feed `config.schema.json`;
+  they document the config for its author and stay.
 
 ## Go
 
