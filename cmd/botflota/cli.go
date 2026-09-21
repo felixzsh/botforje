@@ -176,9 +176,13 @@ func cliTree() *commandHelp {
 						name:    "pair",
 						summary: "pair a bot by scanning a QR code",
 						long: "Link a bot to WhatsApp by scanning a QR code. The command\n" +
-							"rejects a phone number already owned by another bot. Whatever\n" +
-							"WhatsApp delivers while the pairing connection is alive is\n" +
-							"stored; --import-history also asks for the full history window\n" +
+							"rejects a phone number already owned by another bot, and refuses\n" +
+							"to run while the API answers, because one device cannot be\n" +
+							"connected twice. An already paired bot is reported and left\n" +
+							"alone; --force discards that pairing and registers again, which\n" +
+							"is also the only way to change what the registration carries.\n" +
+							"Whatever WhatsApp delivers while the pairing connection is alive\n" +
+							"is stored; --import-history also asks for the full history window\n" +
 							"and waits for it, which is what brings the older chats. Without\n" +
 							"it the default recent window arrives and `chat sync` pages\n" +
 							"older messages per chat.",

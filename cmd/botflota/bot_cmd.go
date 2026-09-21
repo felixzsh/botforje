@@ -29,7 +29,7 @@ func newPairCmd() *pairCmd {
 		fs:     fs,
 		config: configFlag(fs),
 		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
-		force:  fs.Bool("force", false, "replace an existing pairing"),
+		force:  fs.Bool("force", false, "discard the local pairing and register again"),
 		importHistory: fs.Bool("import-history", false,
 			"ask the phone for the full history window and wait for it"),
 	}
@@ -97,20 +97,35 @@ func runPair(args []string) int {
 		printHelp(os.Stderr, "bot", "pair")
 		return 1
 	}
+	if fleetLooksRunning(cfg) {
+		fmt.Fprintln(os.Stderr,
+			"the fleet looks like it is running; stop it before pairing "+
+				"(one device cannot be connected twice)")
+		return 1
+	}
 	db, err := openDatabase(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	defer db.Close()
-	devices, err := openDevices(context.Background(), db, nil, cfg.LogLevelDeps)
+	ctx := context.Background()
+	// Pairing is idempotent: an existing link is reported and left alone, so
+	// nobody mistakes the no-op for a fresh registration.
+	if account, err := db.LinkedAccounts().Get(ctx, scopeName, name); err == nil && !*cmd.force {
+		fmt.Printf("bot %q (scope %q) is already paired as %s; "+
+			"use --force to replace the pairing\n",
+			name, scopeName, whatsapp.Number(account.JID))
+		return 0
+	}
+	devices, err := openDevices(ctx, db, nil, cfg.LogLevelDeps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 
 	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
-	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
+	jid, err := whatsapp.Pair(ctx, whatsapp.PairOptions{
 		Scope:          scopeName,
 		Bot:            name,
 		Devices:        devices,
@@ -153,6 +168,12 @@ func runUnpair(args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		printHelp(os.Stderr, "bot", "unpair")
+		return 1
+	}
+	if fleetLooksRunning(cfg) {
+		fmt.Fprintln(os.Stderr,
+			"the fleet looks like it is running; stop it before unpairing "+
+				"(one device cannot be connected twice)")
 		return 1
 	}
 	db, err := openDatabase(cfg)

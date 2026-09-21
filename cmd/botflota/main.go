@@ -7,9 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
@@ -120,6 +123,28 @@ func openDevices(
 		log = botflota.DiscardLogger()
 	}
 	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
+}
+
+// fleetLooksRunning reports whether something answers on the instance's API
+// address, so a command that changes the local device refuses instead of
+// pulling it out from under a running fleet. One phone number keeps one
+// companion connection at a time. A port of zero turns the API off, and then
+// there is nothing to ask.
+func fleetLooksRunning(cfg *config.Config) bool {
+	if cfg.Port == 0 {
+		return false
+	}
+	address := cfg.Address
+	if address == "" {
+		address = "127.0.0.1"
+	}
+	conn, err := net.DialTimeout("tcp",
+		net.JoinHostPort(address, strconv.Itoa(cfg.Port)), time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // historyEnabled interprets the per-bot history_sync switch; absent means on
