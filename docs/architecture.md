@@ -279,8 +279,11 @@ inertly (ADR 0035): `bot pair` and `fleet run` share one importer, every 1:1
 content message is kept under its kind (ADR 0036), and every row is `sync`
 with `unknown` origin and routing and no session run. The import never runs the
 engine and ignores the bot filter, because it is not a conversation turn;
-`settings.history_sync: false` turns it off. `provider_message_id` (the
-channel's own id) is the dedup key, both for a
+`settings.history_sync: false` turns it off. A conversation registers its
+sender and chat only when it stored at least one message or call, so the
+control-only shells WhatsApp sends for the account's address book never become
+chats. `provider_message_id` (the channel's own id) is the dedup key, both for
+a
 redelivered sync chunk and for a live reply the sync echoes afterwards. The
 `PUSH_NAME` chunk names the senders the import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`

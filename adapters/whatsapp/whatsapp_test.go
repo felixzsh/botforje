@@ -932,6 +932,34 @@ func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
 	}
 }
 
+func TestHistoryImporterSkipsControlEntries(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
+		&waHistorySync.HistorySyncMsg{
+			Message: &waWeb.WebMessageInfo{
+				Key: &waCommon.MessageKey{
+					ID: proto.String("REACTION-1"),
+				},
+				Message:          &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{}},
+				MessageTimestamp: proto.Uint64(uint64(t0.Unix())),
+			},
+		})
+	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{conversation},
+	}})
+	if stats.imported != 0 || stats.received != 1 || stats.skipped != 1 {
+		t.Fatalf("stats = %#v, want one hidden provider entry", stats)
+	}
+	// A control-only shell is not a chat: WhatsApp sends one for every number
+	// the account's address book knows, and it must not become a row.
+	if _, err := db.Senders().Get(ctx, "dev", "5215500000000"); !errors.Is(err, botflota.ErrNotFound) {
+		t.Fatalf("sender = %v, want ErrNotFound", err)
+	}
+}
+
 func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)

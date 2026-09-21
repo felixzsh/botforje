@@ -46,8 +46,9 @@ what arrives, without replying:
   call"), or `unknown` for anything else — so a chat whose history is all media
   still has an anchor for `chat sync`. Groups, broadcasts, status, and channels
   are not stored, and neither are edits, reactions, deletions, or poll votes.
-  A conversation with any message still registers its sender and chat, so it
-  appears in `chat list`.
+  A conversation registers its sender and chat only when it stored at least one
+  message or call, so `chat list` shows conversations rather than the
+  control-only shells WhatsApp sends for the account's address book.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
 - The account's contact names arrive with the sync and name the senders

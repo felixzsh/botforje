@@ -28,11 +28,12 @@ Import the history sync, inertly and honestly:
 - Only 1:1 chats are imported. Every content message is stored under its
   channel-neutral kind (ADR 0036): text, image, video, audio, document,
   sticker, location, contact, poll, event, interactive, commerce, call, and an
-  `unknown` fallback, so the chat has an anchor for `chat sync` even when the
-  entry carries no text. A control message — an edit, reaction, deletion, poll
+  `unknown` fallback. A control message — an edit, reaction, deletion, poll
   vote, pin, keep, or key-distribution traffic — stores no row. Groups,
-  broadcasts, status, and channels are skipped; a conversation with any
-  message still registers its sender and chat.
+  broadcasts, status, and channels are skipped. A conversation registers its
+  sender and chat only when it stored at least one message or call: WhatsApp
+  sends a control-only shell for every number the account's address book knows,
+  and a chat with no message is not history.
 - The account-wide `PUSH_NAME` chunk names the senders Botflota already knows,
   without creating a profile for a contact that never wrote and without moving
   first or last seen. A name learned this way is remembered for a sender a
@@ -72,8 +73,9 @@ Import the history sync, inertly and honestly:
 - A pairing can populate the database with many senders and chats at once,
   each with the messages WhatsApp delivered. Listing a chat starts from real
   history, and `message_count` still counts live inbound only (ADR 0029). A
-  chat can hold no stored row only when every entry was a control message or
-  carried no channel id; it still appears, with zero messages.
+  chat appears only when it stored at least one message or call. A chat with no
+  row is not listed and cannot be synced on demand until a real message lands
+  in it.
 - The import owns only what WhatsApp sends. It cannot promise completeness;
   `chat sync` pages back one bounded request at a time, and `RequireFullSync`
   stays out of scope because the phone, not Botflota, decides what to send.

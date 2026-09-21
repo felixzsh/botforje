@@ -24,11 +24,11 @@ import (
 // WhatsApp delivers the sync in chunks right after a companion links, and the
 // chunks carry conversations for many senders at once, not for one. The
 // importer resolves the chat's phone number, creates the sender and chat, and
-// appends the text messages and call attempts; a repeated chunk is
-// deduplicated through the channel message id. A conversation with any message
-// registers the chat even when every entry is a type the importer does not
-// store. A PUSH_NAME chunk carries the account's contact names, which the
-// importer applies to the senders it already has.
+// appends the content messages and call attempts; a repeated chunk is
+// deduplicated through the channel message id. A conversation registers its
+// sender and chat only when it stored at least one message or call. A PUSH_NAME
+// chunk carries the account's contact names, which the importer applies to the
+// senders it already has.
 type historyImporter struct {
 	scope     string
 	bot       string
@@ -86,13 +86,14 @@ func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync)
 	h.importCallLogs(ctx, data.GetCallLogRecords(), &stats)
 	for _, conversation := range data.GetConversations() {
 		stats.conversations++
-		got, dup, skip, err := h.importConversation(ctx, conversation)
+		got, dup, skip, received, err := h.importConversation(ctx, conversation)
 		if err != nil {
 			h.log.Warn("import history conversation", "error", err)
 		}
 		stats.imported += got
 		stats.duplicate += dup
 		stats.skipped += skip
+		stats.received += received
 	}
 	h.log.Info("history sync imported",
 		"sync_type", data.GetSyncType().String(),
@@ -196,18 +197,19 @@ func (h *historyImporter) importPushNames(
 
 // importConversation stores the content messages and call attempts of one
 // conversation, oldest first, and widens the chat's activity to cover them. A
-// conversation with any message registers the sender and chat even when every
-// entry is a type the importer does not store, so a chat that only ever saw a
-// call or media still appears in the read API (ADR 0035). It returns how many
-// messages were imported, how many were duplicates, and how many entries were
-// skipped.
+// conversation registers its sender and chat only when it stored at least one
+// message or call: WhatsApp sends a control-only shell for every number the
+// account's address book knows, and a chat with no message is not history
+// (ADR 0035). It returns how many messages were imported, how many were
+// duplicates, how many entries were skipped, and how many entries carried a
+// provider id.
 func (h *historyImporter) importConversation(
 	ctx context.Context, conversation *waHistorySync.Conversation,
-) (int, int, int, error) {
+) (int, int, int, int, error) {
 	phone, ok := historyChatPhone(conversation, h.lookup)
 	if !ok {
 		// Groups, broadcasts, status, and unresolved hidden-user chats.
-		return 0, 0, 1, nil
+		return 0, 0, 1, 0, nil
 	}
 	ordered := append([]*waHistorySync.HistorySyncMsg(nil), conversation.GetMessages()...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -216,6 +218,7 @@ func (h *historyImporter) importConversation(
 	records := make([]botflota.Message, 0, len(ordered))
 	name := conversation.GetName()
 	skipped := 0
+	received := 0
 	var from, to time.Time
 	for _, entry := range ordered {
 		if at := historyEntryAt(conversation, entry); !at.IsZero() {
@@ -226,6 +229,11 @@ func (h *historyImporter) importConversation(
 				to = at
 			}
 		}
+		if entry.GetMessage().GetKey().GetID() == "" {
+			skipped++
+			continue
+		}
+		received++
 		record, pushName, ok := historyRecord(conversation, entry)
 		if !ok {
 			skipped++
@@ -236,8 +244,12 @@ func (h *historyImporter) importConversation(
 		}
 		records = append(records, record)
 	}
-	if len(ordered) == 0 {
-		return 0, 0, skipped, nil
+	// A conversation whose entries are all control traffic registers nothing:
+	// no sender, no chat, no row. WhatsApp sends such a shell for every number
+	// the account's address book knows, and a chat with no message is noise,
+	// not history.
+	if len(records) == 0 {
+		return 0, 0, skipped, received, nil
 	}
 	if name == "" {
 		name = h.pushNames[phone]
@@ -251,14 +263,14 @@ func (h *historyImporter) importConversation(
 	}
 	sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, ensureAt)
 	if err != nil {
-		return 0, 0, skipped, fmt.Errorf("sender %s: %w", phone, err)
+		return 0, 0, skipped, received, fmt.Errorf("sender %s: %w", phone, err)
 	}
 	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, sender.ID, ensureAt)
 	if err != nil {
-		return 0, 0, skipped, fmt.Errorf("chat %s: %w", phone, err)
+		return 0, 0, skipped, received, fmt.Errorf("chat %s: %w", phone, err)
 	}
 	if err := h.chats.NoteHistory(ctx, chat.ID, from, to); err != nil {
-		return 0, 0, skipped, fmt.Errorf("chat activity %s: %w", phone, err)
+		return 0, 0, skipped, received, fmt.Errorf("chat activity %s: %w", phone, err)
 	}
 	imported, duplicate := 0, 0
 	for i := range records {
@@ -268,11 +280,12 @@ func (h *historyImporter) importConversation(
 				duplicate++
 				continue
 			}
-			return imported, duplicate, skipped, fmt.Errorf("append %s: %w", phone, err)
+			return imported, duplicate, skipped, received,
+				fmt.Errorf("append %s: %w", phone, err)
 		}
 		imported++
 	}
-	return imported, duplicate, skipped, nil
+	return imported, duplicate, skipped, received, nil
 }
 
 // historyRecord maps one synced message to a stored message. Every content
