@@ -292,6 +292,10 @@ Deliverables:
   (`message`, `location`, `media`, `contact`, `poll`) are defined in the config
   schema, and a channel rejects a kind it cannot deliver with
   `ErrUnsupportedKind`.
+- [ ] `bot pair --import-history` (ADR 0035): the flag asks WhatsApp for the
+  full history window at registration and waits for it, which is what brings
+  chats older than the default recent window; a pairing without it still
+  imports what arrives and leaves `chat sync` as the per-chat path.
 - [ ] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over a single stopped-fleet connection, in
   sequence and never in parallel, skipping chats without an anchor and

@@ -175,10 +175,16 @@ func cliTree() *commandHelp {
 						name:    "pair",
 						summary: "pair a bot by scanning a QR code",
 						long: "Link a bot to WhatsApp by scanning a QR code. The command\n" +
-							"rejects a phone number already owned by another bot.",
+							"rejects a phone number already owned by another bot. Whatever\n" +
+							"WhatsApp delivers while the pairing connection is alive is\n" +
+							"stored; --import-history also asks for the full history window\n" +
+							"and waits for it, which is what brings the older chats. Without\n" +
+							"it the default recent window arrives and `chat sync` pages\n" +
+							"older messages per chat.",
 						usage: "botflota bot pair [options] <bot>",
 						examples: []string{
 							"botflota bot pair support-bot",
+							"botflota bot pair --import-history support-bot",
 							"botflota bot pair --scope dev support-bot",
 							"botflota bot pair --force support-bot",
 						},

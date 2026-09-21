@@ -25,6 +25,22 @@ Import the history sync, inertly and honestly:
   the pairing session (`bot pair`) and the running fleet (`fleet run`). Both
   use the same importer, because the server may deliver different chunks to
   each connection.
+- A pairing always imports what WhatsApp delivers while its connection is
+  alive, because the server sends the account-wide sync once, to whichever
+  connection is up right after linking.
+- `bot pair --import-history` additionally advertises a Desktop companion with
+  `RequireFullSync=true` and a wide window (`full_sync_days_limit`,
+  `full_sync_size_mb_limit`, `storage_quota_mb`), overriding only those fields
+  so the other capability flags keep the defaults the library ships, and keeps
+  the connection alive until that transfer reaches progress 100, until chunks
+  stop arriving for a tolerant idle gap, or until a long wait budget of its
+  own, longer than the QR session, runs out. A recent or bootstrap chunk
+  completing early does not end the wait, because the full transfer follows it.
+  Without the flag the companion registers like a plain client, only the
+  default recent window arrives, and `chat sync` pages older messages per chat.
+  WhatsApp reads the window only while registering, so an existing link needs a
+  new registration to change it. The phone still decides the actual window and
+  may deliver less.
 - Only 1:1 chats are imported. Every content message is stored under its
   channel-neutral kind (ADR 0036): text, image, video, audio, document,
   sticker, location, contact, poll, event, interactive, commerce, call, and an

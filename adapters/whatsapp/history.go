@@ -94,6 +94,19 @@ func (h *historyImporter) Handle(ctx context.Context, event *events.HistorySync)
 		stats.duplicate += dup
 		stats.skipped += skip
 		stats.received += received
+		// Which chat arrived, with how many entries and how many survived, is
+		// how a chat the phone omitted is told from one it delivered empty.
+		if h.log.Enabled(ctx, slog.LevelDebug) {
+			phone, _ := historyChatPhone(conversation, h.lookup)
+			h.log.Debug("history conversation",
+				"chat", conversation.GetID(),
+				"phone", phone,
+				"messages", len(conversation.GetMessages()),
+				"imported", got,
+				"skipped", skip,
+				"received", received,
+				"end_of_history", conversation.GetEndOfHistoryTransferType().String())
+		}
 	}
 	h.log.Info("history sync imported",
 		"sync_type", data.GetSyncType().String(),

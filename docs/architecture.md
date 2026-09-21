@@ -347,7 +347,13 @@ pending step is reported and the bot stays stopped (ADR 0028).
 
 Right after linking, WhatsApp pushes the account-wide history sync. The same
 inert importer captures it in `bot pair` and in `fleet run`, whichever
-connection sees a chunk (ADR 0035).
+connection sees a chunk (ADR 0035). Pairing registers as a Desktop companion
+and always imports what arrives while its connection is alive. With
+`--import-history` it also registers with `RequireFullSync=true` and a wide
+window, and waits until that sync completes, the chunks go idle for a tolerant
+gap, or a long wait budget of its own runs out; without it, only the default
+recent window arrives and `chat sync` pages older messages per chat. The phone
+remains the authority over the actual window.
 
 ## Concurrency
 

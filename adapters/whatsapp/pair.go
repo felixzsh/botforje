@@ -11,10 +11,12 @@ import (
 
 	"github.com/mdp/qrterminal"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/felixzsh/botflota"
 )
@@ -25,12 +27,52 @@ const defaultDeviceName = "Botflota"
 
 // applyDeviceName sets the name of the next registered companion. WhatsApp
 // only reads it while registering a new device, so an existing link keeps the
-// name it was registered with.
+// name it was registered with. The history window is configured separately,
+// because both are read at registration and only there.
 func applyDeviceName(name string) {
 	if name == "" {
 		name = defaultDeviceName
 	}
 	store.SetOSInfo(name, [3]uint32{0, 1, 0})
+}
+
+// Full-sync window requested at registration. WhatsApp reads these only while
+// registering the companion, and it stays the authority over what it actually
+// sends; an unset day limit leaves the phone on its own, much shorter default.
+const (
+	fullSyncDays = 3650
+	fullSyncSize = 10240
+	storageQuota = 10240
+)
+
+// historyWaitBudget bounds the post-linking history wait. It is separate from
+// the QR session timeout because the widened full sync can outlast the code,
+// and the wait still ends early on completion or on an idle gap.
+func historyWaitBudget(full bool) time.Duration {
+	if full {
+		return historyFullWait
+	}
+	return historyPlainWait
+}
+
+// configureHistorySync advertises a Desktop companion that asks for the full
+// account history. It overrides only the fields whose default is narrower than
+// what the import wants, so a whatsmeow default for the other capability flags
+// is inherited instead of copied here.
+func configureHistorySync(enabled bool) {
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	store.DeviceProps.RequireFullSync = proto.Bool(enabled)
+	if !enabled {
+		return
+	}
+	config := store.DeviceProps.GetHistorySyncConfig()
+	if config == nil {
+		config = &waCompanionReg.DeviceProps_HistorySyncConfig{}
+		store.DeviceProps.HistorySyncConfig = config
+	}
+	config.FullSyncDaysLimit = proto.Uint32(fullSyncDays)
+	config.FullSyncSizeMbLimit = proto.Uint32(fullSyncSize)
+	config.StorageQuotaMb = proto.Uint32(storageQuota)
 }
 
 // PairOptions configures QR pairing for a bot.
@@ -46,8 +88,16 @@ type PairOptions struct {
 	Senders  botflota.SenderStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
-	History  bool
-	Logger   walog.Logger
+	// History attaches the importer, so whatever WhatsApp delivers while the
+	// pairing connection is alive is stored. It comes from the bot's
+	// `history_sync` setting.
+	History bool
+	// FullHistory asks WhatsApp for the full history window at registration and
+	// waits for it to finish. Without it the companion registers like a plain
+	// client, only the default recent window arrives, and `chat sync` pages
+	// older messages per chat (ADR 0035).
+	FullHistory bool
+	Logger      walog.Logger
 	// Log receives the history-sync progress of the pairing session. Nil
 	// discards it.
 	Log   *slog.Logger
@@ -96,6 +146,7 @@ func Pair(ctx context.Context, opts PairOptions) (string, error) {
 	}
 
 	applyDeviceName(opts.DeviceName)
+	configureHistorySync(opts.FullHistory)
 	if account != nil {
 		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
 			pairingNow(opts.Now)); err != nil {
@@ -125,7 +176,7 @@ func pairOnce(
 ) (string, bool, error) {
 	client := whatsmeow.NewClient(opts.Devices.newDevice(), logger)
 	defer client.Disconnect()
-	attachHistory(ctx, client, opts)
+	historyWaiter := attachHistory(ctx, client, opts)
 
 	qrChannel, err := client.GetQRChannel(ctx)
 	if err != nil {
@@ -156,6 +207,17 @@ func pairOnce(
 					return "", false, err
 				}
 				confirmLink(client, logger)
+				if historyWaiter != nil {
+					if err := historyWaiter.wait(ctx,
+						historyWaitBudget(opts.FullHistory)); err != nil {
+						return "", false, err
+					}
+					if opts.Log != nil {
+						opts.Log.Info("history sync wait finished",
+							"requested_full", opts.FullHistory,
+							"complete", historyWaiter.finished())
+					}
+				}
 				return jid, false, nil
 			case whatsmeow.QRChannelTimeout.Event:
 				return "", true, nil
@@ -178,10 +240,13 @@ func pairOnce(
 // right after linking. Whichever connection is alive captures it: this pairing
 // session imports the chunks it sees before it exits, and the fleet connection
 // imports the rest with the same importer (ADR 0035).
-func attachHistory(ctx context.Context, client *whatsmeow.Client, opts PairOptions) {
+func attachHistory(
+	ctx context.Context, client *whatsmeow.Client, opts PairOptions,
+) *historyWaiter {
 	if !opts.History {
-		return
+		return nil
 	}
+	waiter := newHistoryWaiter(opts.FullHistory)
 	lookup := func(lid types.JID) (types.JID, bool) {
 		if client.Store == nil || client.Store.LIDs == nil {
 			return types.JID{}, false
@@ -195,14 +260,20 @@ func attachHistory(ctx context.Context, client *whatsmeow.Client, opts PairOptio
 	importer := newHistoryImporter(opts.Scope, opts.Bot, opts.Senders, opts.Chats,
 		opts.Messages, lookup, opts.Log)
 	if importer == nil {
-		return
+		return nil
 	}
 	importer.ownPhone = devicePhone(client.Store)
 	client.AddEventHandler(func(raw any) {
-		if event, ok := raw.(*events.HistorySync); ok {
-			importer.Handle(ctx, event)
+		event, ok := raw.(*events.HistorySync)
+		if !ok {
+			return
+		}
+		importer.Handle(ctx, event)
+		if event.Data != nil {
+			waiter.progress(event.Data.GetSyncType(), event.Data.GetProgress())
 		}
 	})
+	return waiter
 }
 
 func waitForPairingRetry(ctx context.Context) error {

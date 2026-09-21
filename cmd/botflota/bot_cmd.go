@@ -15,10 +15,11 @@ import (
 )
 
 type pairCmd struct {
-	fs     *flag.FlagSet
-	config *string
-	scope  *string
-	force  *bool
+	fs            *flag.FlagSet
+	config        *string
+	scope         *string
+	force         *bool
+	importHistory *bool
 }
 
 func newPairCmd() *pairCmd {
@@ -29,6 +30,8 @@ func newPairCmd() *pairCmd {
 		config: configFlag(fs),
 		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
 		force:  fs.Bool("force", false, "replace an existing pairing"),
+		importHistory: fs.Bool("import-history", false,
+			"ask the phone for the full history window and wait for it"),
 	}
 }
 
@@ -108,18 +111,19 @@ func runPair(args []string) int {
 
 	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
 	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
-		Scope:      scopeName,
-		Bot:        name,
-		Devices:    devices,
-		Accounts:   db.LinkedAccounts(),
-		Pairings:   db.Pairings(),
-		Senders:    db.Senders(),
-		Chats:      db.Chats(),
-		Messages:   db.Messages(),
-		History:    historyEnabled(botSpec.Settings),
-		Log:        logger,
-		Force:      *cmd.force,
-		DeviceName: cfg.DeviceName,
+		Scope:       scopeName,
+		Bot:         name,
+		Devices:     devices,
+		Accounts:    db.LinkedAccounts(),
+		Pairings:    db.Pairings(),
+		Senders:     db.Senders(),
+		Chats:       db.Chats(),
+		Messages:    db.Messages(),
+		History:     historyEnabled(botSpec.Settings),
+		FullHistory: *cmd.importHistory,
+		Log:         logger,
+		Force:       *cmd.force,
+		DeviceName:  cfg.DeviceName,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

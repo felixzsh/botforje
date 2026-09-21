@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waSyncAction"
@@ -43,7 +44,15 @@ func TestApplyDeviceName(t *testing.T) {
 		store.DeviceProps.Version.GetSecondary(),
 		store.DeviceProps.Version.GetTertiary(),
 	}
-	t.Cleanup(func() { store.SetOSInfo(oldName, oldVersion) })
+	oldPlatform := store.DeviceProps.GetPlatformType()
+	oldRequireFullSync := store.DeviceProps.GetRequireFullSync()
+	oldHistoryConfig := store.DeviceProps.HistorySyncConfig
+	t.Cleanup(func() {
+		store.SetOSInfo(oldName, oldVersion)
+		store.DeviceProps.PlatformType = oldPlatform.Enum()
+		store.DeviceProps.RequireFullSync = proto.Bool(oldRequireFullSync)
+		store.DeviceProps.HistorySyncConfig = oldHistoryConfig
+	})
 
 	applyDeviceName("Acme Bots")
 	if got := store.DeviceProps.GetOs(); got != "Acme Bots" {
@@ -53,6 +62,29 @@ func TestApplyDeviceName(t *testing.T) {
 	if got := store.DeviceProps.GetOs(); got != defaultDeviceName {
 		t.Fatalf("device name = %q, want %q", got, defaultDeviceName)
 	}
+	configureHistorySync(true)
+	if got := store.DeviceProps.GetPlatformType(); got != waCompanionReg.DeviceProps_DESKTOP {
+		t.Fatalf("platform type = %v, want desktop", got)
+	}
+	if !store.DeviceProps.GetRequireFullSync() {
+		t.Fatal("full history sync was not requested")
+	}
+	config := store.DeviceProps.GetHistorySyncConfig()
+	if config.GetFullSyncDaysLimit() != fullSyncDays ||
+		config.GetFullSyncSizeMbLimit() != fullSyncSize ||
+		config.GetStorageQuotaMb() != storageQuota {
+		t.Fatalf("history sync config = %+v, want the full window", config)
+	}
+	// A whatsmeow default the import does not set must survive, so this never
+	// has to copy the whole struct and lose a future capability flag.
+	if !config.GetSupportCallLogHistory() {
+		t.Fatal("an inherited history sync capability was cleared")
+	}
+	configureHistorySync(false)
+	if store.DeviceProps.GetRequireFullSync() {
+		t.Fatal("history sync disabled must not require a full sync")
+	}
+	configureHistorySync(true)
 }
 
 func TestBackoffBounds(t *testing.T) {
@@ -896,42 +928,6 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	}
 }
 
-func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
-	ctx := context.Background()
-	db := openWhatsAppTestDB(t)
-	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
-		db.Messages(), nil, nil)
-	importer.ownPhone = "5215500000000"
-	call := &waSyncAction.CallLogRecord{
-		CallID:         proto.String("CALL-1"),
-		CallCreatorJID: proto.String("5215500000001@s.whatsapp.net"),
-		IsIncoming:     proto.Bool(true),
-		StartTime:      proto.Int64(t0.Unix()),
-		CallResult:     waSyncAction.CallLogRecord_MISSED.Enum(),
-	}
-	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
-		CallLogRecords: []*waSyncAction.CallLogRecord{call},
-	}})
-	if stats.imported != 1 || stats.received != 1 || stats.skipped != 0 {
-		t.Fatalf("stats = %#v, want one imported call", stats)
-	}
-	sender, err := db.Senders().Get(ctx, "dev", "5215500000001")
-	if err != nil {
-		t.Fatalf("sender: %v", err)
-	}
-	chat, err := db.Chats().ForSender(ctx, "dev", "bot", sender.ID)
-	if err != nil {
-		t.Fatalf("chat: %v", err)
-	}
-	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
-	if err != nil {
-		t.Fatalf("history: %v", err)
-	}
-	if len(messages) != 1 || messages[0].ProviderMessageID != "CALL-1" {
-		t.Fatalf("call log messages = %+v", messages)
-	}
-}
-
 func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
@@ -1000,6 +996,42 @@ func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 		messages[0].Ingest != botflota.IngestSync ||
 		messages[0].Direction != botflota.Inbound {
 		t.Fatalf("call provenance = %+v", messages[0])
+	}
+}
+
+func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := newHistoryImporter("dev", "bot", db.Senders(), db.Chats(),
+		db.Messages(), nil, nil)
+	importer.ownPhone = "5215500000000"
+	call := &waSyncAction.CallLogRecord{
+		CallID:         proto.String("CALL-1"),
+		CallCreatorJID: proto.String("5215500000001@s.whatsapp.net"),
+		IsIncoming:     proto.Bool(true),
+		StartTime:      proto.Int64(t0.Unix()),
+		CallResult:     waSyncAction.CallLogRecord_MISSED.Enum(),
+	}
+	stats := importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		CallLogRecords: []*waSyncAction.CallLogRecord{call},
+	}})
+	if stats.imported != 1 || stats.received != 1 || stats.skipped != 0 {
+		t.Fatalf("stats = %#v, want one imported call", stats)
+	}
+	sender, err := db.Senders().Get(ctx, "dev", "5215500000001")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	chat, err := db.Chats().ForSender(ctx, "dev", "bot", sender.ID)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(messages) != 1 || messages[0].ProviderMessageID != "CALL-1" {
+		t.Fatalf("call log messages = %+v", messages)
 	}
 }
 
@@ -1157,3 +1189,10 @@ func bodies(messages []botflota.Message) []string {
 	}
 	return out
 }
+
+// TestContactImporterKeepsTheAddressBookName covers the contact import: the
+// address-book name and the push name live in separate fields, so a later push
+// name never erases the name the phone's address book holds.
+
+// TestContactImporterResolvesALID checks the contact import stores the phone
+// number, not the hidden user id (ADR 0020).

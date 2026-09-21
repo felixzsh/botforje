@@ -98,8 +98,9 @@ type Adapter struct {
 
 	incoming chan botflota.IncomingMessage
 
-	importer    *historyImporter
-	history     chan *events.HistorySync
+	importer *historyImporter
+	history  chan *events.HistorySync
+	// historyDone closes when the import worker has drained and stopped.
 	historyDone chan struct{}
 
 	mu     sync.Mutex
@@ -457,22 +458,35 @@ func (a *Adapter) onHistory(event *events.HistorySync) {
 	}
 	select {
 	case a.history <- event:
-	default:
-		a.log.Warn("history queue full, dropping sync chunk")
+	case <-a.stop:
 	}
 }
 
-// importHistory drains the queued sync chunks until the adapter stops.
+// importHistory drains the queued sync chunks until the adapter stops. It is
+// the only caller of the importer, so an on-demand response and a background
+// chunk never import concurrently.
 func (a *Adapter) importHistory() {
 	defer close(a.historyDone)
 	for {
 		select {
 		case <-a.stop:
-			return
+			for {
+				select {
+				case event := <-a.history:
+					a.handleHistory(event)
+				default:
+					return
+				}
+			}
 		case event := <-a.history:
-			a.importer.Handle(context.Background(), event)
+			a.handleHistory(event)
 		}
 	}
+}
+
+// handleHistory imports one chunk.
+func (a *Adapter) handleHistory(event *events.HistorySync) {
+	a.importer.Handle(context.Background(), event)
 }
 
 // devicePhone returns the paired account's phone number for call-log routing.

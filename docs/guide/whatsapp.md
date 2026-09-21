@@ -8,7 +8,7 @@ end to end.
 1. Build: `make build`.
 2. Configure the bot and validate: `./bin/botflota config validate`.
 3. Pair it; this prints an ASCII QR and waits:
-   `./bin/botflota bot pair support-bot`
+   `./bin/botflota bot pair --import-history support-bot`
    Add `--scope name` when the bot name repeats across scopes. The QR is
    rendered half-block, so it stays narrow enough for a normal terminal; if
    your font is very large, zoom out or widen the window first. The code
@@ -37,8 +37,23 @@ listed.
 ## History import
 
 When an account links, WhatsApp pushes the account-wide history sync: the
-conversations it chooses, with the recent messages it chooses. Botflota stores
-what arrives, without replying:
+conversations it chooses, with the messages it chooses. Botflota stores what
+arrives, without replying. The pairing connection is the only one that sees
+this sync, so `bot pair` always imports it while it waits.
+
+`--import-history` is what decides how much arrives:
+
+- With it, the companion registers asking for the full window
+  (`RequireFullSync` plus a ten-year, 10 GB limit) and the command waits until
+  that transfer reaches 100 %, goes idle, or a ten-minute budget runs out. This
+  is the mode that brings chats older than the default window: on a real
+  account it took the same pairing from 13 to 184 conversations.
+- Without it, the companion registers like a plain client and only the default
+  recent window arrives. `chat sync` pages older messages per chat afterwards.
+
+The phone remains the authority: it decides what it sends, and the window is
+read only while registering, so changing it needs a new registration
+(`--force`).
 
 - Only 1:1 chats are imported. Every message is stored under its kind — text,
   image, video, audio, document, sticker, location, contact, poll, event, an
@@ -57,7 +72,8 @@ what arrives, without replying:
   apply: a chat outside `allowed_senders` is still stored.
 - The sync arrives in chunks. `bot pair` captures what it sees before it
   exits; `fleet run` captures the rest when it connects, so start the fleet
-  after pairing if the backlog does not appear at once.
+  after pairing if the backlog does not appear at once. A sync delivered to a
+  connection nobody captured is gone: the server sends it once.
 - Set `settings.history_sync: false` on a bot to store none of it.
 
 See which senders arrived with `./bin/botflota chat list <bot>`, then read one
