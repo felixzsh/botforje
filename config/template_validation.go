@@ -10,8 +10,7 @@ import (
 )
 
 // templateIssue is one template problem in a scope. Action names the action
-// that owns the site. Graph and Node name the node-level check, where the
-// action is only referenced; in that case Action holds the referenced action.
+// that owns the site, or the referenced one for a Graph or Node check.
 type templateIssue struct {
 	Action string
 	Graph  string
@@ -20,7 +19,6 @@ type templateIssue struct {
 	Err    error
 }
 
-// templateSite is one string in an action that may contain references.
 type templateSite struct {
 	where string
 	text  string
@@ -47,9 +45,6 @@ func validateTemplates(scope spec.Scope) []templateIssue {
 	return issues
 }
 
-// validateNodeTemplates resolves the references of every action a node runs,
-// on entry, exit, or as a tool, against the variables the graph and node
-// declare and the request results available in the node.
 func validateNodeTemplates(
 	scope spec.Scope, graphName, nodeName string, g spec.Graph,
 ) []templateIssue {
@@ -103,8 +98,6 @@ func validateNodeTemplates(
 	return issues
 }
 
-// checkReference returns a problem when path is not declared in the action
-// inputs, the node and graph variables, or the node's request results.
 func checkReference(
 	action spec.Action, path, site string,
 	nodeVars, graphVars, requests map[string]bool,
@@ -201,8 +194,6 @@ func templateSites(a spec.Action) []templateSite {
 	return sites
 }
 
-// requestNames collects the request names an action produces, which are the
-// node references its own or later actions may read.
 func requestNames(a spec.Action) map[string]bool {
 	names := map[string]bool{}
 	collect := func(steps []spec.Step) {

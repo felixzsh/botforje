@@ -35,14 +35,11 @@ func JSONSchema() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// addGoComments loads the doc comments of this package and spec into the
-// reflector. The library keys each comment by the module path joined with the
-// walked directory, so a walk from anywhere but the module root produces keys
-// the reflector never looks up and every description is silently lost. The
-// walk here runs on the absolute directories the source file knows, and the
-// keys are rewritten to the import paths afterwards, so generation works from
-// any working directory. Without sources around (a trimmed release binary)
-// the schema is generated without descriptions rather than failing.
+// addGoComments loads the doc comments of this package and spec. The
+// reflector keys them by the walked path, so the walk runs on the absolute
+// source directories and the keys are rewritten to import paths afterwards;
+// without sources (a trimmed binary) the schema keeps working without
+// descriptions.
 func addGoComments(reflector *jsonschema.Reflector) {
 	module, root, err := moduleRoot()
 	if err != nil {
@@ -57,8 +54,6 @@ func addGoComments(reflector *jsonschema.Reflector) {
 	}
 }
 
-// addPackageComments adds one package directory and remaps its comment keys
-// from the walked path to the import path.
 func addPackageComments(
 	reflector *jsonschema.Reflector, module, root, dir string,
 ) {
@@ -94,8 +89,6 @@ func sourceDir() string {
 	return filepath.Dir(file)
 }
 
-// moduleRoot returns the module path and its directory, found by walking up
-// from this source file to go.mod.
 func moduleRoot() (path, dir string, err error) {
 	source := sourceDir()
 	if source == "" {

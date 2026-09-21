@@ -6,10 +6,9 @@ import (
 	"strings"
 )
 
-// DataDirPath resolves the instance data directory. An absolute data_dir is
-// used as-is; a relative one resolves against the directory of the config
-// file, like include paths (ADR 0016); an empty one falls back to the XDG data
-// home for botflota.
+// DataDirPath resolves the instance data directory: an absolute data_dir as
+// is, a relative one against the config file like includes (ADR 0016), an
+// empty one against the XDG data home.
 func (c *Config) DataDirPath() (string, error) {
 	if c.DataDir == "" {
 		if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {

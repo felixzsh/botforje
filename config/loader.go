@@ -16,9 +16,8 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// Loader reads configuration files.
 type Loader struct {
-	// LookupEnv resolves environment variables. Defaults to os.LookupEnv.
+	// LookupEnv resolves environment variables; nil means os.LookupEnv.
 	LookupEnv func(string) (string, bool)
 }
 
@@ -176,7 +175,6 @@ func recordOrigins(cfg *Config, path string) {
 	}
 }
 
-// recordOrigin names the file that defined every entity of one kind.
 func recordOrigin[V any](cfg *Config, file, kind, scope string, names map[string]V) {
 	for name := range names {
 		cfg.origin[originKey(kind, scope, name)] = file
@@ -244,8 +242,8 @@ func (c *Config) originOf(kind, scope, name string) string {
 	return c.origin[originKey(kind, scope, name)]
 }
 
-// SortedKeys returns a map's keys in sorted order, so validation output and
-// report order stay deterministic.
+// SortedKeys returns a map's keys in sorted order, so validation output stays
+// deterministic.
 func SortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

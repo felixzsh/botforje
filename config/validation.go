@@ -7,14 +7,13 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// ValidationError names the file, the entity, and the reason (Phase 1 gate).
+// ValidationError names the file, the entity, and the reason.
 type ValidationError struct {
 	File   string
 	Entity string
 	Reason string
 }
 
-// addError records one validation failure for a file and entity.
 type addError func(file, entity, format string, args ...any)
 
 func (e ValidationError) Error() string {
@@ -80,8 +79,7 @@ func Validate(cfg *Config) []ValidationError {
 }
 
 // validateScopeTemplates runs the template checks and attributes each finding
-// to the file and entity that declared it (ADR 0018, ADR 0034). The template
-// language lives in the core; config owns the provenance.
+// to the file and entity that declared it (ADR 0018, ADR 0034).
 func validateScopeTemplates(cfg *Config, scopeName string, scope spec.Scope, add addError) {
 	for _, issue := range validateTemplates(scope) {
 		if issue.Graph != "" {
