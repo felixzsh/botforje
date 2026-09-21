@@ -22,4 +22,9 @@ type BotSettings struct {
 	// HistorySync imports the messages WhatsApp delivers when the account is
 	// linked. It defaults to true; false stores none of that backlog.
 	HistorySync *bool `yaml:"history_sync" json:"history_sync,omitempty"`
+	// ImportContacts copies the linked account's address book into the
+	// instance's own contacts, keyed by (scope, bot, phone). It defaults to
+	// false: the book may hold people this account never wrote to, and it can
+	// overlap with the address book of a personal account on the same phone.
+	ImportContacts *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
 }

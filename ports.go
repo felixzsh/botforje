@@ -124,6 +124,19 @@ type SenderStore interface {
 	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
 }
 
+// ContactStore records the address-book entries of each bot's linked account
+// when contact import is on. It is separate from SenderStore: a contact is an
+// identity the account knows, whether or not it ever wrote, and it never
+// creates a chat. Put merges the non-empty name fields and never clears one,
+// so a push name learned from a message does not erase the address-book name.
+// List returns the most recently updated entries first; a zero limit means
+// every one of them. It is optional for a channel that has no address book
+// (ADR 0029, ADR 0037).
+type ContactStore interface {
+	Put(ctx context.Context, contact *Contact) error
+	List(ctx context.Context, scope, bot string, limit int) ([]Contact, error)
+}
+
 // SessionStore records a chat's session runs. Latest returns the most recent
 // one, or ErrNotFound when the chat never had a session; CountActive counts
 // the unexpired runs of one bot at a time, for status (ADR 0026).

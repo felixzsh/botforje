@@ -34,6 +34,7 @@ type Options struct {
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
 	Senders  botflota.SenderStore
+	Contacts botflota.ContactStore
 	Chats    botflota.ChatStore
 	Sessions botflota.SessionStore
 	Messages botflota.MessageStore
@@ -49,6 +50,7 @@ type Server struct {
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
 	senders  botflota.SenderStore
+	contacts botflota.ContactStore
 	chats    botflota.ChatStore
 	sessions botflota.SessionStore
 	messages botflota.MessageStore
@@ -76,6 +78,9 @@ func New(opts Options) (*Server, error) {
 	if opts.Senders == nil {
 		return nil, errors.New("api: no sender store")
 	}
+	if opts.Contacts == nil {
+		return nil, errors.New("api: no contact store")
+	}
 	if opts.Chats == nil {
 		return nil, errors.New("api: no chat store")
 	}
@@ -98,7 +103,7 @@ func New(opts Options) (*Server, error) {
 	server := &Server{
 		cfg: opts.Config, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
-		senders: opts.Senders, chats: opts.Chats,
+		senders: opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger, started: time.Now(),
 	}
@@ -126,6 +131,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/chats", s.handleChats)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts", s.handleContacts)
 	mux.HandleFunc("POST /api/v1/scopes/{scope}/chats/sync", s.handleChatSync)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)

@@ -85,6 +85,10 @@ generic `control` facade.
   phone, push name, and first/last seen, keyed by (scope, phone). The
   bot-person thread is the chat; a person may write to several bots of the same
   scope (ADR 0029).
+- Contact — an address-book entry of one bot's linked account, keyed by
+  (scope, bot, phone) and copied only when the bot sets `import_contacts`. It
+  is an identity the account knows, never a chat or a sender, and it takes no
+  part in routing (ADR 0037).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0030), and a map of nodes.
 - Node — goal, policy, entry/exit actions, tools, and optional node-local
@@ -282,8 +286,10 @@ engine and ignores the bot filter, because it is not a conversation turn;
 `settings.history_sync: false` turns it off. A conversation registers its
 sender and chat only when it stored at least one message or call, so the
 control-only shells WhatsApp sends for the account's address book never become
-chats. `provider_message_id` (the channel's own id) is the dedup key, both for
-a
+chats. The address book itself is a separate, opt-in import
+(`settings.import_contacts`): it fills the `contacts` resource per bot and
+never touches senders, chats, or the engine (ADR 0037).
+`provider_message_id` (the channel's own id) is the dedup key, both for a
 redelivered sync chunk and for a live reply the sync echoes afterwards. The
 `PUSH_NAME` chunk names the senders the import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`
@@ -304,7 +310,7 @@ configured maximum.
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
 scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
-`sessions`, and `messages`. Every addressable object carries its scope, a
+`contacts`, `sessions`, and `messages`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
 pair plus the sender's phone number. `messages` returns the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`

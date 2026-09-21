@@ -296,6 +296,11 @@ Deliverables:
   full history window at registration and waits for it, which is what brings
   chats older than the default recent window; a pairing without it still
   imports what arrives and leaves `chat sync` as the per-chat path.
+- [ ] Contact import (ADR 0037): a per-bot `settings.import_contacts` copies the
+  linked account's address book into its own `contacts` resource, keyed by
+  (scope, bot, phone), with the address-book, business, and push names kept
+  apart; `contact list` and the scope `contacts` route read it. A control-only
+  conversation shell registers no sender and no chat.
 - [ ] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over a single stopped-fleet connection, in
   sequence and never in parallel, skipping chats without an anchor and

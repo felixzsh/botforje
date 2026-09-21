@@ -111,19 +111,21 @@ func runPair(args []string) int {
 
 	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
 	jid, err := whatsapp.Pair(context.Background(), whatsapp.PairOptions{
-		Scope:       scopeName,
-		Bot:         name,
-		Devices:     devices,
-		Accounts:    db.LinkedAccounts(),
-		Pairings:    db.Pairings(),
-		Senders:     db.Senders(),
-		Chats:       db.Chats(),
-		Messages:    db.Messages(),
-		History:     historyEnabled(botSpec.Settings),
-		FullHistory: *cmd.importHistory,
-		Log:         logger,
-		Force:       *cmd.force,
-		DeviceName:  cfg.DeviceName,
+		Scope:          scopeName,
+		Bot:            name,
+		Devices:        devices,
+		Accounts:       db.LinkedAccounts(),
+		Pairings:       db.Pairings(),
+		Senders:        db.Senders(),
+		Chats:          db.Chats(),
+		Messages:       db.Messages(),
+		History:        historyEnabled(botSpec.Settings),
+		FullHistory:    *cmd.importHistory,
+		Contacts:       db.Contacts(),
+		ImportContacts: contactsEnabled(botSpec.Settings),
+		Log:            logger,
+		Force:          *cmd.force,
+		DeviceName:     cfg.DeviceName,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

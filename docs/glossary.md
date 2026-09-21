@@ -51,6 +51,9 @@
 - Sender — the durable profile of one person who writes to bots in a scope:
   their phone, push name, and first/last seen. One per (scope, phone), shared by
   the scope's bots; the bot-person thread is the chat.
+- Contact — an address-book entry of one bot's linked account, keyed by
+  (scope, bot, phone), copied only when the bot sets `import_contacts`. It is
+  an identity the account knows, never a chat or a sender (ADR 0037).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp

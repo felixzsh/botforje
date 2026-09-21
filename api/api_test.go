@@ -133,6 +133,26 @@ func (f *fakeAccessTokens) Revoke(_ context.Context, id int64, at time.Time) err
 	return botflota.ErrNotFound
 }
 
+// fakeContacts is the imported address-book store.
+type fakeContacts struct{ contacts []botflota.Contact }
+
+func (f fakeContacts) Put(context.Context, *botflota.Contact) error { return nil }
+
+func (f fakeContacts) List(
+	_ context.Context, scope, bot string, limit int,
+) ([]botflota.Contact, error) {
+	out := make([]botflota.Contact, 0, len(f.contacts))
+	for _, contact := range f.contacts {
+		if contact.Scope == scope && contact.Bot == bot {
+			out = append(out, contact)
+		}
+	}
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 type fakeSenders struct{ senders map[string]botflota.Sender }
 
 func (f fakeSenders) Get(_ context.Context, scope, phone string) (*botflota.Sender, error) {
@@ -363,6 +383,20 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 		Senders: fakeSenders{senders: map[string]botflota.Sender{
 			"support/" + sender.Phone: sender,
 			"support/" + quiet.Phone:  quiet,
+		}},
+		Contacts: fakeContacts{contacts: []botflota.Contact{
+			{
+				Scope: "support", Bot: "demo", Phone: "5215500000001",
+				Name: "Ana", UpdatedAt: testTime,
+			},
+			{
+				Scope: "support", Bot: "demo", Phone: "5215500000002",
+				PushName: "Beto", UpdatedAt: testTime,
+			},
+			{
+				Scope: "ventas", Bot: "other", Phone: "5215500000003",
+				Name: "Cora", UpdatedAt: testTime,
+			},
 		}},
 		Chats: fakeChats{chats: map[string]botflota.ChatSummary{
 			"support/demo/7": chat,
@@ -1010,5 +1044,36 @@ func TestTokenMintValidation(t *testing.T) {
 					recorder.Body)
 			}
 		})
+	}
+}
+
+func TestContactsEndpoint(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(),
+		"/api/v1/scopes/support/contacts?bot=demo", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
+	}
+	var body struct {
+		Contacts []struct {
+			Phone    string `json:"phone"`
+			Name     string `json:"name"`
+			PushName string `json:"push_name"`
+		} `json:"contacts"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Contacts) != 2 {
+		t.Fatalf("contacts = %+v, want the bot's two", body.Contacts)
+	}
+}
+
+func TestContactsEndpointNeedsABot(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(),
+		"/api/v1/scopes/support/contacts", testOwnerToken)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
 	}
 }

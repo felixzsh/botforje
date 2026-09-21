@@ -97,7 +97,13 @@ type PairOptions struct {
 	// client, only the default recent window arrives, and `chat sync` pages
 	// older messages per chat (ADR 0035).
 	FullHistory bool
-	Logger      walog.Logger
+	// Contacts receives the account's address book when ImportContacts is on
+	// (ADR 0037).
+	Contacts botflota.ContactStore
+	// ImportContacts copies the address book of the linked account. It is off
+	// by default: the book may hold people this account never wrote to.
+	ImportContacts bool
+	Logger         walog.Logger
 	// Log receives the history-sync progress of the pairing session. Nil
 	// discards it.
 	Log   *slog.Logger
@@ -177,6 +183,7 @@ func pairOnce(
 	client := whatsmeow.NewClient(opts.Devices.newDevice(), logger)
 	defer client.Disconnect()
 	historyWaiter := attachHistory(ctx, client, opts)
+	contactImport := attachContacts(ctx, client, opts)
 
 	qrChannel, err := client.GetQRChannel(ctx)
 	if err != nil {
@@ -217,6 +224,9 @@ func pairOnce(
 							"requested_full", opts.FullHistory,
 							"complete", historyWaiter.finished())
 					}
+				}
+				if contactImport != nil && client.Store != nil {
+					contactImport.ImportCached(ctx, client.Store.Contacts)
 				}
 				return jid, false, nil
 			case whatsmeow.QRChannelTimeout.Event:
@@ -274,6 +284,37 @@ func attachHistory(
 		}
 	})
 	return waiter
+}
+
+// attachContacts copies the account's address book while the pairing session
+// is alive. The events arrive as WhatsApp syncs the book, and the caller reads
+// the cache once the history wait is over, for whatever the events missed
+// (ADR 0037).
+func attachContacts(
+	ctx context.Context, client *whatsmeow.Client, opts PairOptions,
+) *contactImporter {
+	if !opts.ImportContacts {
+		return nil
+	}
+	lookup := func(lid types.JID) (types.JID, bool) {
+		if client.Store == nil || client.Store.LIDs == nil {
+			return types.JID{}, false
+		}
+		pn, err := client.Store.LIDs.GetPNForLID(ctx, lid)
+		if err != nil || pn.IsEmpty() {
+			return types.JID{}, false
+		}
+		return pn, true
+	}
+	importer := newContactImporter(opts.Scope, opts.Bot, opts.Contacts, lookup, opts.Log)
+	if importer == nil {
+		return nil
+	}
+	// A full address-book sync is otherwise applied silently, which would skip
+	// every contact event this import runs on.
+	client.EmitAppStateEventsOnFullSync = true
+	client.AddEventHandler(func(raw any) { importer.Handle(ctx, raw) })
+	return importer
 }
 
 func waitForPairingRetry(ctx context.Context) error {

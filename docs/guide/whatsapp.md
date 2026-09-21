@@ -101,6 +101,36 @@ It is best effort, not a guarantee:
   retried automatically. Repeat it to page further back.
 - WhatsApp, not Botflota, decides whether and how much to send.
 
+## Contacts
+
+An address book is not a conversation. WhatsApp Business knows every number in
+the phone's contact list, including people you only talk to from a personal
+account on the same phone, and it sends a control-only conversation shell for
+each of them. Those shells are skipped, so they never appear as chats.
+
+To copy the address book anyway, opt in per bot:
+
+```yaml
+bots:
+  support-bot:
+    graph: "support"
+    settings:
+      import_contacts: true
+```
+
+The import stores one record per number, keyed by bot, and never creates a chat
+or a sender:
+
+```bash
+./bin/botflota contact list support-bot
+./bin/botflota contact list --limit 500 support-bot
+```
+
+The name shown is the address-book name, falling back to the verified business
+name and then the push name. The import runs at `bot pair` and at `fleet run`,
+like the history sync; a bot that never sets `import_contacts` answers with an
+empty list.
+
 ## List bots
 
 `./bin/botflota bot list` prints a compact table with the `BOT`, `SCOPE`,

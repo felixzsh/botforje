@@ -128,6 +128,13 @@ func historyEnabled(settings *spec.BotSettings) bool {
 	return settings == nil || settings.HistorySync == nil || *settings.HistorySync
 }
 
+// contactsEnabled interprets the per-bot import_contacts switch; absent means
+// off, because the address book may hold people the account never wrote to
+// (ADR 0037).
+func contactsEnabled(settings *spec.BotSettings) bool {
+	return settings != nil && settings.ImportContacts != nil && *settings.ImportContacts
+}
+
 func findBot(cfg *config.Config, name, scope string) (string, spec.Bot, error) {
 	if scope != "" {
 		s, ok := cfg.Scopes[scope]

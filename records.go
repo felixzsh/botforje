@@ -32,6 +32,36 @@ type Sender struct {
 	LastSeen      time.Time
 }
 
+// Contact is an address-book entry of one bot's linked account, copied from
+// the channel's contact data when the bot imports contacts. It is keyed by
+// (scope, bot, phone), because the address book belongs to the linked account,
+// not to the scope: two bots of one scope may link accounts with different
+// books. It is not a Sender: a contact is an identity the account knows,
+// whether or not it ever wrote (ADR 0029, ADR 0037).
+type Contact struct {
+	Scope        string
+	Bot          string
+	Phone        string
+	Name         string
+	PushName     string
+	BusinessName string
+	UpdatedAt    time.Time
+}
+
+// DisplayName is the name a reader shows: the address-book name first, then
+// the verified business name, then the push name. It is best effort and never
+// an identifier; the phone number is the key.
+func (c Contact) DisplayName() string {
+	switch {
+	case c.Name != "":
+		return c.Name
+	case c.BusinessName != "":
+		return c.BusinessName
+	default:
+		return c.PushName
+	}
+}
+
 // Chat is the durable thread between one bot and one sender, one per
 // (scope, bot, sender). It never ends and gathers every message (ADR 0026).
 // MessageCount is the inbound count for this bot until message history is

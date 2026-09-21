@@ -85,6 +85,7 @@ func cliTree() *commandHelp {
 			"botflota fleet run",
 			"botflota fleet status",
 			"botflota chat list support-bot",
+			"botflota contact list support-bot",
 			"botflota message tail support-bot 5215500000000 --follow",
 		},
 		flags: func() *flag.FlagSet {
@@ -287,6 +288,36 @@ func cliTree() *commandHelp {
 						},
 						flags: func() *flag.FlagSet { return newChatSyncCmd().fs },
 						run:   runChatSync,
+					},
+				},
+			},
+			{
+				name:    "contact",
+				summary: "list the address book a bot imported",
+				long: "List the contacts Botflota copied from one bot's linked\n" +
+					"account. A contact is an identity the account knows, whether or\n" +
+					"not it ever wrote; it is not a chat. Only a bot that sets\n" +
+					"settings.import_contacts has any.",
+				usage: "botflota contact <command> [options]",
+				examples: []string{
+					"botflota contact list support-bot",
+				},
+				moreHelp: "for more help: botflota contact <command> --help",
+				sub: []commandHelp{
+					{
+						name:    "list",
+						summary: "print one bot's imported contacts",
+						long: "Print one row per contact, most recently updated first, with\n" +
+							"the address-book name, the push name, and the business name.\n" +
+							"The bot is named as in bot list; add --scope when the name\n" +
+							"exists in more than one scope.",
+						usage: "botflota contact list [options] <bot>",
+						examples: []string{
+							"botflota contact list support-bot",
+							"botflota contact list --limit 500 support-bot",
+						},
+						flags: func() *flag.FlagSet { return newContactListCmd().fs },
+						run:   runContactList,
 					},
 				},
 			},

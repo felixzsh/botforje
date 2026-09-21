@@ -49,7 +49,7 @@ Import the history sync, inertly and honestly:
   broadcasts, status, and channels are skipped. A conversation registers its
   sender and chat only when it stored at least one message or call: WhatsApp
   sends a control-only shell for every number the account's address book knows,
-  and a chat with no message is not history.
+  and a chat with no message is not history (ADR 0037).
 - The account-wide `PUSH_NAME` chunk names the senders Botflota already knows,
   without creating a profile for a contact that never wrote and without moving
   first or last seen. A name learned this way is remembered for a sender a
@@ -78,8 +78,8 @@ Import the history sync, inertly and honestly:
 - `settings.history_sync` disables the import for a bot; absent means on.
 - Older messages beyond the delivered backlog are requested by `chat sync
   <bot> <sender>`, the path a pairing without `--import-history` relies on. It
-  pages backwards from the chat's oldest stored message, asking the primary
-  device for batches of up to 50 messages older than it
+  pages backwards from the chat's oldest stored message,
+  asking the primary device for batches of up to 50 messages older than it
   (`BuildHistorySyncRequest`) and importing every correlated `ON_DEMAND` chunk
   with the same importer. The next cursor is the oldest message the phone
   returned, so paging stops when a page carries nothing older or the phone
@@ -109,15 +109,15 @@ Import the history sync, inertly and honestly:
   row is not listed and cannot be synced on demand until a real message lands
   in it.
 - The import owns only what WhatsApp sends. It cannot promise completeness;
-  `chat sync` pages back one bounded request at a time, and `RequireFullSync`
-  stays out of scope because the phone, not Botflota, decides what to send.
-  The reference to what is missing is the conversation's end-of-transfer
-  marker.
+  `chat sync` asks in recommended batches until the cursor stops moving or the
+  phone reports no access. `RequireFullSync` increases the requested initial
+  window, but the phone still decides what to send. The reference to what is
+  missing is the conversation's end-of-transfer marker.
 - Deduplication is in the store, not in memory: a redelivered chunk, a
   restart, or an echoed reply all collapse through the unique index on
   `(chat_id, provider_message_id)`.
 - The importer runs on a bounded worker, so a large bootstrap never blocks the
-  channel event loop or reconnect; chunks dropped by a full queue are the
-  recoverable case the next connection covers.
+  channel event loop; the queue applies backpressure instead of dropping a
+  chunk, and the worker drains what is queued before the adapter stops.
 - A large import can write a lot of personal data. `history_sync: false` is
   the switch for hosts that do not want the backlog.

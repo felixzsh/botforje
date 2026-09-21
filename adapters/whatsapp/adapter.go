@@ -58,6 +58,13 @@ type Options struct {
 	Messages botflota.MessageStore
 	// History enables the inert import of that sync (ADR 0035).
 	History bool
+	// Contacts receives the account's address book when ImportContacts is on
+	// (ADR 0037).
+	Contacts botflota.ContactStore
+	// ImportContacts copies the address book of the linked account into
+	// Contacts. It is off by default: the book may hold people this account
+	// never wrote to.
+	ImportContacts bool
 	// HTTPClient fetches remote media an action sends (ADR 0036). Defaults to
 	// http.DefaultClient.
 	HTTPClient *http.Client
@@ -102,7 +109,10 @@ type Adapter struct {
 	chats    botflota.ChatStore
 	messages botflota.MessageStore
 	importer *historyImporter
-	history  chan *events.HistorySync
+	// contacts copies the account's address book when contact import is on.
+	contacts     *contactImporter
+	contactsOnce sync.Once
+	history      chan *events.HistorySync
 	// historyDone closes when the import worker has drained and stopped.
 	historyDone chan struct{}
 
@@ -183,6 +193,9 @@ func New(opts Options) (*Adapter, error) {
 		stop:      make(chan struct{}),
 		stopped:   make(chan struct{}),
 	}
+	if opts.ImportContacts {
+		a.contacts = newContactImporter(a.scope, a.bot, opts.Contacts, a.lookupPN, log)
+	}
 	if opts.History {
 		a.importer = newHistoryImporter(a.scope, a.bot, opts.Senders, opts.Chats,
 			opts.Messages, a.lookupPN, log)
@@ -215,6 +228,9 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	client := whatsmeow.NewClient(device, a.waLogger)
 	// Reconnection is ours so it uses the capped backoff with jitter (ADR 0011).
 	client.DisableLoginAutoReconnect = true
+	// A full address-book sync is otherwise applied silently, which would skip
+	// every contact event this import runs on (ADR 0037).
+	client.EmitAppStateEventsOnFullSync = a.contacts != nil
 	client.AddEventHandler(a.handleEvent)
 	if a.importer != nil {
 		a.importer.ownPhone = devicePhone(device)
@@ -399,9 +415,12 @@ func (a *Adapter) handleEvent(raw any) {
 		a.onMessage(event)
 	case *events.HistorySync:
 		a.onHistory(event)
+	case *events.Contact, *events.PushName, *events.BusinessName:
+		a.onContact(raw)
 	case *events.Connected:
 		a.backoff.Reset()
 		a.setState(StateConnected)
+		a.onceConnected()
 	case *events.Disconnected:
 		a.setState(StateConnecting)
 		a.signalReconnect()
@@ -471,6 +490,36 @@ func (a *Adapter) onHistory(event *events.HistorySync) {
 	case a.history <- event:
 	case <-a.stop:
 	}
+}
+
+// onContact stores one contact-related event when contact import is on.
+func (a *Adapter) onContact(raw any) {
+	if a.contacts == nil {
+		return
+	}
+	a.contacts.Handle(context.Background(), raw)
+}
+
+// onceConnected copies the cached address book once per adapter. A reconnect
+// whose snapshot was applied silently, or a book that only became importable
+// after a config change, would otherwise never reach the store.
+func (a *Adapter) onceConnected() {
+	if a.contacts == nil {
+		return
+	}
+	a.contactsOnce.Do(func() { go a.importAllContacts() })
+}
+
+// importAllContacts reads the device store's address book and stores it. It
+// runs off the event loop because the book can hold thousands of entries.
+func (a *Adapter) importAllContacts() {
+	a.mu.Lock()
+	client := a.client
+	a.mu.Unlock()
+	if client == nil || client.Store == nil {
+		return
+	}
+	a.contacts.ImportCached(context.Background(), client.Store.Contacts)
 }
 
 // importHistory drains the queued sync chunks until the adapter stops. It is

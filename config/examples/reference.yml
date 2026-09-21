@@ -413,6 +413,7 @@ scopes:
           allowed_senders: []         # Empty means all senders allowed
           ignored_senders: ["5215500000000"]  # Plain phone numbers, no JID suffix
           history_sync: true          # Import the WhatsApp backlog when linking
+          import_contacts: false      # Copy the account's address book too
 
       sales-bot:
         graph: "faq-support"        # No llm: this bot is deterministic

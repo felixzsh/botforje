@@ -72,6 +72,18 @@ var schema = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS messages_provider
 		ON messages (chat_id, provider_message_id)
 		WHERE provider_message_id != ''`,
+	`CREATE TABLE IF NOT EXISTS contacts (
+		scope         TEXT NOT NULL,
+		bot           TEXT NOT NULL,
+		phone         TEXT NOT NULL,
+		name          TEXT NOT NULL DEFAULT '',
+		push_name     TEXT NOT NULL DEFAULT '',
+		business_name TEXT NOT NULL DEFAULT '',
+		updated_at    TEXT NOT NULL,
+		PRIMARY KEY (scope, bot, phone)
+	)`,
+	`CREATE INDEX IF NOT EXISTS contacts_updated
+		ON contacts (scope, bot, updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS linked_accounts (
 		scope TEXT NOT NULL,
 		bot   TEXT NOT NULL,
@@ -142,6 +154,9 @@ func (d *DB) Chats() *ChatStore { return &ChatStore{db: d.DB} }
 
 // Senders returns the sender-profile repository.
 func (d *DB) Senders() *SenderStore { return &SenderStore{db: d.DB} }
+
+// Contacts returns the imported address-book repository.
+func (d *DB) Contacts() *ContactStore { return &ContactStore{db: d.DB} }
 
 // Sessions returns the session repository.
 func (d *DB) Sessions() *SessionStore { return &SessionStore{db: d.DB} }

@@ -87,6 +87,10 @@
         "history_sync": {
           "type": "boolean",
           "description": "HistorySync imports the messages WhatsApp delivers when the account is\nlinked. It defaults to true; false stores none of that backlog."
+        },
+        "import_contacts": {
+          "type": "boolean",
+          "description": "ImportContacts copies the linked account's address book into the\ninstance's own contacts, keyed by (scope, bot, phone). It defaults to\nfalse: the book may hold people this account never wrote to, and it can\noverlap with the address book of a personal account on the same phone."
         }
       },
       "additionalProperties": false,

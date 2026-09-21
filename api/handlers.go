@@ -50,6 +50,20 @@ type chatView struct {
 	Live      int64      `json:"live"`
 }
 
+// contactView is one imported address-book entry of a bot's linked account.
+// DisplayName is the resolved name a reader shows; Name, BusinessName, and
+// PushName are the raw fields behind it (ADR 0037).
+type contactView struct {
+	Scope        string    `json:"scope"`
+	Bot          string    `json:"bot"`
+	Phone        string    `json:"phone"`
+	DisplayName  string    `json:"display_name,omitempty"`
+	Name         string    `json:"name,omitempty"`
+	PushName     string    `json:"push_name,omitempty"`
+	BusinessName string    `json:"business_name,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 // messageView is one stored message. Kind and Body are the derived summary of
 // Content, which carries the structured payload (ADR 0036). IngestKind,
 // Origin, and Routing carry the provenance the engine recorded (ADR 0026);
@@ -219,6 +233,49 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": views})
+}
+
+// handleContacts lists the imported contacts of one bot, most recently updated
+// first. It is empty unless the bot sets `import_contacts` (ADR 0037).
+func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
+	scope, ok := s.scopeParam(w, r)
+	if !ok {
+		return
+	}
+	bot, ok := s.botParam(w, r, scope)
+	if !ok {
+		return
+	}
+	if bot == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "bot is required")
+		return
+	}
+	limit, err := limitParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	contacts, err := s.contacts.List(r.Context(), scope, bot, limit)
+	if err != nil {
+		s.fail(w, "list contacts", err)
+		return
+	}
+	views := make([]contactView, 0, len(contacts))
+	for _, contact := range contacts {
+		views = append(views, contactView{
+			Scope:        contact.Scope,
+			Bot:          contact.Bot,
+			Phone:        contact.Phone,
+			DisplayName:  contact.DisplayName(),
+			Name:         contact.Name,
+			PushName:     contact.PushName,
+			BusinessName: contact.BusinessName,
+			UpdatedAt:    contact.UpdatedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"scope": scope, "bot": bot, "contacts": views,
+	})
 }
 
 // historySyncer is the live-fleet capability of asking the primary device for
