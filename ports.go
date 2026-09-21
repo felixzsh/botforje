@@ -103,6 +103,8 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 type ChatStore interface {
 	Ensure(ctx context.Context, scope, bot string, senderID int64, at time.Time) (*Chat, error)
 	ForSender(ctx context.Context, scope, bot string, senderID int64) (*Chat, error)
+	// Recent returns the most recently active chats first. A zero limit means
+	// every chat, which is how `chat sync --all` walks them (ADR 0035).
 	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
 	RecordMessage(ctx context.Context, id int64, at time.Time) error
 	// NoteHistory widens a chat's activity to cover imported history:

@@ -96,6 +96,14 @@ Import the history sync, inertly and honestly:
   way. `?count=N` limits the total requested entries and zero means all
   accessible history; one sync runs per bot at a time. A missing reply is a
   reported outcome, not a silent success.
+- `chat sync --all <bot>` walks every chat of one bot through that same
+  per-chat endpoint, newest activity first, one chat at a time, because the
+  fleet runs one sync per bot. It is an API client loop rather than a new
+  route, so a dashboard walks the same two routes. A chat that fails is
+  reported and counted and the walk continues, so one unreachable chat never
+  stops the rest. `GET /chats?limit=0` lists them all, the zero-means-every
+  convention the contact list already uses; the walk is resumable, because
+  every chat already imported reports that it has nothing older.
 - A sync request never uses a bootstrap chunk's download path: the running
   fleet keeps importing every chunk, and the request only observes the chunks
   that carry its own `PeerDataRequestSessionID`.

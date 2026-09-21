@@ -190,6 +190,11 @@ func TestChatGetAndList(t *testing.T) {
 		len(other) != 0 {
 		t.Fatalf("Recent other = %#v, %v", other, err)
 	}
+	// A zero limit means every chat, which `chat sync --all` walks.
+	if every, err := db.Chats().Recent(ctx, "support", "", 0); err != nil ||
+		len(every) != 1 || every[0].ID != chat.ID {
+		t.Fatalf("Recent all = %#v, %v", every, err)
+	}
 }
 
 // TestChatRecentCounts covers the stored message counts the read API shows:

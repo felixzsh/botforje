@@ -285,15 +285,19 @@ func cliTree() *commandHelp {
 					},
 					{
 						name:    "sync",
-						summary: "ask the phone for older messages of one chat",
+						summary: "ask the phone for older messages of one chat or all of them",
 						long: "Ask the primary device for older messages and import batches\n" +
-							"until the cursor stops moving. --count limits the total; zero\n" +
-							"means all accessible history. The running fleet owns the live\n" +
-							"connection, so this is an API client and fleet run must be up.",
-						usage: "botflota chat sync [options] <bot> <sender>",
+							"until the cursor stops moving. --count limits the total per chat;\n" +
+							"zero means all accessible history. The running fleet owns the live\n" +
+							"connection, so this is an API client and fleet run must be up.\n" +
+							"--all walks every chat of the bot, newest activity first, one at a\n" +
+							"time, printing a line per chat and a final total; the command takes\n" +
+							"only the bot, and a chat that fails is reported and skipped.",
+						usage: "botflota chat sync [options] <bot> [sender]",
 						examples: []string{
 							"botflota chat sync support-bot 5215500000000",
 							"botflota chat sync --count 75 support-bot 5215500000000",
+							"botflota chat sync --all support-bot",
 						},
 						flags: func() *flag.FlagSet { return newChatSyncCmd().fs },
 						run:   runChatSync,

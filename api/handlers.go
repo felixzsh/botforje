@@ -205,7 +205,7 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, err := limitParam(r)
+	limit, err := limitParam(r, true)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
@@ -250,7 +250,7 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "bot is required")
 		return
 	}
-	limit, err := limitParam(r)
+	limit, err := limitParam(r, false)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
@@ -375,7 +375,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, err := limitParam(r)
+	limit, err := limitParam(r, false)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
@@ -532,14 +532,16 @@ func (s *Server) activeSessions(ctx context.Context, scope, bot string) (int, er
 }
 
 // limitParam reads ?limit=, defaulting to defaultLimit and capping at
-// maxLimit.
-func limitParam(r *http.Request) (int, error) {
+// maxLimit. When allowAll is set, zero means every row, for a collection whose
+// store supports an unbounded read; the callers that must not return
+// everything keep it off.
+func limitParam(r *http.Request, allowAll bool) (int, error) {
 	raw := r.URL.Query().Get("limit")
 	if raw == "" {
 		return defaultLimit, nil
 	}
 	limit, err := strconv.Atoi(raw)
-	if err != nil || limit < 1 {
+	if err != nil || limit < 0 || (limit == 0 && !allowAll) {
 		return 0, fmt.Errorf("limit must be a positive integer")
 	}
 	if limit > maxLimit {

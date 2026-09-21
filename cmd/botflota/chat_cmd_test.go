@@ -106,3 +106,116 @@ func TestChatsQueryPath(t *testing.T) {
 		t.Fatalf("path = %q, want the filters", got)
 	}
 }
+
+// chatsWithBlankPhone has a chat the API cannot address by sender, which the
+// bulk walk skips.
+const chatsWithBlankPhone = `{"chats":[
+	{"id":3,"scope":"support","bot":"demo",
+	 "sender":{"phone":"5215500000000","name":"Ana"},
+	 "started_at":"2026-09-13T10:00:00Z","updated_at":"2026-09-13T10:05:00Z",
+	 "messages":5,"sync":3,"live":2},
+	{"id":2,"scope":"support","bot":"demo",
+	 "sender":{"phone":"","name":"no phone"},
+	 "started_at":"2026-09-13T09:00:00Z","updated_at":"2026-09-13T09:00:00Z",
+	 "messages":0,"sync":0,"live":0},
+	{"id":1,"scope":"support","bot":"demo",
+	 "sender":{"phone":"5215500000001","name":""},
+	 "started_at":"2026-09-12T09:00:00Z","updated_at":"2026-09-12T09:00:00Z",
+	 "messages":0,"sync":0,"live":0}
+]}`
+
+// TestSyncEveryChatWalksEveryChat covers `chat sync --all`: it lists every chat
+// with a zero limit and backfills each one in order, one line per chat and a
+// final total (ADR 0035).
+func TestSyncEveryChatWalksEveryChat(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		synced []string
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		switch r.URL.Path {
+		case "/api/v1/scopes/support/chats":
+			if got := r.URL.Query().Get("limit"); got != "0" {
+				t.Errorf("chats limit = %q, want 0 for every chat", got)
+			}
+			_, _ = w.Write([]byte(chatsWithBlankPhone))
+		case "/api/v1/scopes/support/chats/sync":
+			mu.Lock()
+			synced = append(synced, r.URL.Query().Get("sender"))
+			mu.Unlock()
+			_, _ = w.Write([]byte(`{"received":3,"rounds":1,"imported":2,` +
+				`"duplicate":1,"skipped":0,"stable":true}`))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := &apiClient{base: server.URL, token: "tok", http: server.Client()}
+
+	var out bytes.Buffer
+	code := syncEveryChat(context.Background(), &out, client, "support", "demo", 0, 90)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	text := out.String()
+	for _, want := range []string{
+		"syncing 2 chat(s)",
+		"5215500000000",
+		"5215500000001",
+		"imported 2 (duplicate 1, skipped 0) [nothing older]",
+		"synced 2 chat(s), imported 4 (duplicate 2, skipped 0), 0 failed",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output %q is missing %q", text, want)
+		}
+	}
+	if strings.Contains(text, "no phone") {
+		t.Errorf("a chat without a phone was walked: %q", text)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(synced) != 2 || synced[0] != "5215500000000" || synced[1] != "5215500000001" {
+		t.Fatalf("synced = %v, want both chats in order", synced)
+	}
+}
+
+// TestSyncEveryChatKeepsGoingAfterAFailure keeps one unreachable chat from
+// stopping the walk: it is counted, reported, and the rest still runs.
+func TestSyncEveryChatKeepsGoingAfterAFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		switch r.URL.Path {
+		case "/api/v1/scopes/support/chats":
+			_, _ = w.Write([]byte(twoChats))
+		case "/api/v1/scopes/support/chats/sync":
+			if r.URL.Query().Get("sender") == "5215500000000" {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = w.Write([]byte(
+					`{"error":{"code":"sync_failed","message":"no answer"}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"received":1,"rounds":1,"imported":1,` +
+				`"duplicate":0,"skipped":0,"exhausted":true}`))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	client := &apiClient{base: server.URL, token: "tok", http: server.Client()}
+
+	var out bytes.Buffer
+	code := syncEveryChat(context.Background(), &out, client, "support", "demo", 0, 90)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0: one chat failing is not the walk failing", code)
+	}
+	text := out.String()
+	for _, want := range []string{
+		"failed", "no answer", "5215500000001", "[no more access]",
+		"synced 1 chat(s), imported 1 (duplicate 0, skipped 0), 1 failed",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output %q is missing %q", text, want)
+		}
+	}
+}

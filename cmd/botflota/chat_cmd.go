@@ -74,6 +74,7 @@ type chatSyncCmd struct {
 	scope   *string
 	count   *int
 	timeout *int
+	all     *bool
 }
 
 func newChatSyncCmd() *chatSyncCmd {
@@ -83,8 +84,9 @@ func newChatSyncCmd() *chatSyncCmd {
 		fs:      fs,
 		config:  configFlag(fs),
 		scope:   fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
-		count:   fs.Int("count", 0, "`N` older messages to import (0 = all accessible)"),
-		timeout: fs.Int("timeout", 90, "`SECONDS` to wait for the primary device to answer"),
+		count:   fs.Int("count", 0, "`N` older messages to import per chat (0 = all accessible)"),
+		timeout: fs.Int("timeout", 90, "`SECONDS` to wait for the primary device, per chat"),
+		all:     fs.Bool("all", false, "sync every chat of the bot, one at a time"),
 	}
 }
 
@@ -93,11 +95,15 @@ func runChatSync(args []string) int {
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
-	if cmd.fs.NArg() < 2 {
+	if cmd.fs.NArg() < 1 || (!*cmd.all && cmd.fs.NArg() < 2) {
 		printHelp(os.Stderr, "chat", "sync")
 		return 2
 	}
-	botName, phone := cmd.fs.Arg(0), cmd.fs.Arg(1)
+	botName := cmd.fs.Arg(0)
+	phone := ""
+	if !*cmd.all {
+		phone = cmd.fs.Arg(1)
+	}
 	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
@@ -112,46 +118,154 @@ func runChatSync(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if *cmd.count > 0 {
-		fmt.Printf("requesting up to %d older messages for %s through the fleet...\n",
-			*cmd.count, phone)
-	} else {
-		fmt.Printf("requesting all accessible older messages for %s through the fleet...\n",
-			phone)
-	}
-	values := url.Values{
-		"bot":     {botName},
-		"sender":  {phone},
-		"count":   {strconv.Itoa(*cmd.count)},
-		"timeout": {strconv.Itoa(*cmd.timeout)},
-	}
-	path := "/api/v1/scopes/" + url.PathEscape(scopeName) + "/chats/sync?" + values.Encode()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	var result struct {
-		Received  int  `json:"received"`
-		Rounds    int  `json:"rounds"`
-		Imported  int  `json:"imported"`
-		Duplicate int  `json:"duplicate"`
-		Skipped   int  `json:"skipped"`
-		Stable    bool `json:"stable"`
-		Exhausted bool `json:"exhausted"`
+	if *cmd.all {
+		return syncEveryChat(ctx, os.Stdout, client, scopeName, botName,
+			*cmd.count, *cmd.timeout)
 	}
-	timeout := time.Duration(*cmd.timeout) * time.Second
-	if err := client.post(ctx, path, &result, syncHTTPTimeout(*cmd.count, timeout)); err != nil {
+	return syncOneChat(ctx, os.Stdout, client, scopeName, botName, phone,
+		*cmd.count, *cmd.timeout)
+}
+
+// chatSyncResult is one backfill answer from the API.
+type chatSyncResult struct {
+	Received  int  `json:"received"`
+	Rounds    int  `json:"rounds"`
+	Imported  int  `json:"imported"`
+	Duplicate int  `json:"duplicate"`
+	Skipped   int  `json:"skipped"`
+	Stable    bool `json:"stable"`
+	Exhausted bool `json:"exhausted"`
+}
+
+// syncOneChat backfills one chat and prints its result.
+func syncOneChat(
+	ctx context.Context, w io.Writer, client *apiClient, scope, bot, phone string,
+	count, timeoutSeconds int,
+) int {
+	if count > 0 {
+		fmt.Fprintf(w, "requesting up to %d older messages for %s through the fleet...\n",
+			count, phone)
+	} else {
+		fmt.Fprintf(w, "requesting all accessible older messages for %s through the fleet...\n",
+			phone)
+	}
+	result, err := requestChatSync(ctx, client, scope, bot, phone, count, timeoutSeconds)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("received %d in %d batch(es), imported %d (duplicate %d, skipped %d)",
+	line := fmt.Sprintf("received %d in %d batch(es), imported %d (duplicate %d, skipped %d)",
 		result.Received, result.Rounds, result.Imported, result.Duplicate, result.Skipped)
 	switch {
 	case result.Exhausted:
-		fmt.Print("; stopped: the phone reports no more access")
+		line += "; stopped: the phone reports no more access"
 	case result.Stable:
-		fmt.Print("; stopped: nothing older to page")
+		line += "; stopped: nothing older to page"
 	}
-	fmt.Println()
+	fmt.Fprintln(w, line)
 	return 0
+}
+
+// syncEveryChat backfills every chat of one bot, one chat at a time, printing a
+// line per chat. A chat that fails is counted and the walk continues, so one
+// unreachable chat never stops the rest (ADR 0035). The fleet keeps one sync
+// running per bot, which this walk respects by going in sequence.
+func syncEveryChat(
+	ctx context.Context, w io.Writer, client *apiClient, scope, bot string,
+	count, timeoutSeconds int,
+) int {
+	phones, err := listChatPhones(ctx, client, scope, bot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if len(phones) == 0 {
+		fmt.Fprintln(w, "no chats to sync")
+		return 0
+	}
+	fmt.Fprintf(w, "syncing %d chat(s) through the fleet...\n", len(phones))
+	total := chatSyncResult{}
+	failed := 0
+	for _, phone := range phones {
+		if err := ctx.Err(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		result, err := requestChatSync(ctx, client, scope, bot, phone, count, timeoutSeconds)
+		if err != nil {
+			failed++
+			fmt.Fprintf(w, "%-15s failed: %v\n", phone, err)
+			continue
+		}
+		total.Imported += result.Imported
+		total.Duplicate += result.Duplicate
+		total.Skipped += result.Skipped
+		fmt.Fprintf(w, "%-15s imported %d (duplicate %d, skipped %d)%s\n",
+			phone, result.Imported, result.Duplicate, result.Skipped, stopReason(result))
+	}
+	fmt.Fprintf(w, "synced %d chat(s), imported %d (duplicate %d, skipped %d), %d failed\n",
+		len(phones)-failed, total.Imported, total.Duplicate, total.Skipped, failed)
+	return 0
+}
+
+// requestChatSync runs one backfill over the API.
+func requestChatSync(
+	ctx context.Context, client *apiClient, scope, bot, phone string,
+	count, timeoutSeconds int,
+) (chatSyncResult, error) {
+	values := url.Values{
+		"bot":     {bot},
+		"sender":  {phone},
+		"count":   {strconv.Itoa(count)},
+		"timeout": {strconv.Itoa(timeoutSeconds)},
+	}
+	path := "/api/v1/scopes/" + url.PathEscape(scope) + "/chats/sync?" + values.Encode()
+	var result chatSyncResult
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	if err := client.post(ctx, path, &result, syncHTTPTimeout(count, timeout)); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+// listChatPhones lists every chat of one bot, newest activity first, for the
+// bulk walk. A chat the API reports without a phone number is skipped.
+func listChatPhones(
+	ctx context.Context, client *apiClient, scope, bot string,
+) ([]string, error) {
+	var body struct {
+		Chats []struct {
+			Sender struct {
+				Phone string `json:"phone"`
+			} `json:"sender"`
+		} `json:"chats"`
+	}
+	// A zero limit asks the API for every chat.
+	query := chatsQuery{scope: scope, bot: bot, limit: 0}
+	if err := client.get(ctx, query.path(), &body); err != nil {
+		return nil, err
+	}
+	phones := make([]string, 0, len(body.Chats))
+	for _, chat := range body.Chats {
+		if chat.Sender.Phone != "" {
+			phones = append(phones, chat.Sender.Phone)
+		}
+	}
+	return phones, nil
+}
+
+// stopReason says why one backfill ended, when the answer reports it.
+func stopReason(result chatSyncResult) string {
+	switch {
+	case result.Exhausted:
+		return " [no more access]"
+	case result.Stable:
+		return " [nothing older]"
+	default:
+		return ""
+	}
 }
 
 // syncHTTPTimeout bounds the whole backfill call: one batch per fifty requested

@@ -683,6 +683,23 @@ func TestChatsEndpoint(t *testing.T) {
 		chat.Messages != 5 || chat.Sync != 3 || chat.Live != 2 {
 		t.Fatalf("chat = %#v", chat)
 	}
+	// A zero limit asks for every chat, which `chat sync --all` walks.
+	all := get(t, server.Handler(),
+		"/api/v1/scopes/support/chats?bot=demo&limit=0", testOwnerToken)
+	if all.Code != http.StatusOK {
+		t.Fatalf("limit=0 status = %d, want 200", all.Code)
+	}
+	var every struct {
+		Chats []struct {
+			ID int64 `json:"id"`
+		} `json:"chats"`
+	}
+	if err := json.Unmarshal(all.Body.Bytes(), &every); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(every.Chats) != 2 {
+		t.Fatalf("limit=0 chats = %#v, want every chat", every.Chats)
+	}
 }
 
 func TestMessagesEndpoint(t *testing.T) {

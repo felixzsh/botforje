@@ -220,10 +220,14 @@ func (s *ChatStore) ForSender(
 
 // Recent returns up to limit chats of a scope, newest first, each with its
 // sender profile and the stored message counts by ingest kind. An empty bot
-// means every bot in the scope.
+// means every bot in the scope. A limit of zero means every chat: SQLite reads
+// a negative LIMIT as no bound, which is what `chat sync --all` walks.
 func (s *ChatStore) Recent(
 	ctx context.Context, scope, bot string, limit int,
 ) ([]botflota.ChatSummary, error) {
+	if limit <= 0 {
+		limit = -1
+	}
 	const query = `SELECT c.id, c.scope, c.bot, c.sender_id, c.started_at,
 			c.updated_at, c.message_count, c.guards, s.phone, s.display_name,
 			COALESCE(m.total, 0), COALESCE(m.sync, 0), COALESCE(m.live, 0)

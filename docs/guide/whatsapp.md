@@ -105,6 +105,26 @@ message. `chat sync` asks the phone for older messages of one chat:
 ./bin/botflota chat sync --count 50 --timeout 120 support-bot 5215500000000
 ```
 
+To walk every chat instead of one, add `--all`; the command takes only the bot
+and goes through the chats newest first, one at a time, printing a line per
+chat and a total:
+
+```bash
+./bin/botflota chat sync --all support-bot
+```
+
+```
+syncing 184 chat(s) through the fleet...
+5218994330966   imported 52 (duplicate 0, skipped 2) [nothing older]
+5218998573061   imported 18 (duplicate 1, skipped 0) [no more access]
+...
+synced 184 chat(s), imported 1204 (duplicate 31, skipped 12), 0 failed
+```
+
+A chat that fails is reported and skipped, so one unreachable chat does not stop
+the walk, and running it again is cheap: a chat with nothing older answers at
+once.
+
 It is best effort, not a guarantee:
 
 - It runs on the live connection of `fleet run`, so **start the fleet first**;
