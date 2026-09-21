@@ -34,8 +34,8 @@ documents against them, including their template references
 (`config/template_validation.go`); `engine` executes them and owns the runtime
 context (`context.go`). The fleet, with its per-bot filter, lives in `fleet`;
 the outbox is an unexported part of that package. Concrete integrations are
-separate: `adapters/sqlite` implements the store ports and
-`adapters/whatsapp` implements `MessageChannel`.
+separate: `adapters/sqlite` opens the database and `adapters/sqlite/stores`
+implements the store ports; `adapters/whatsapp` implements `MessageChannel`.
 
 Behavior types (`Graph`, `Action`, `Node`) live in `spec`; a store may build
 them directly when the database becomes their source (ROADMAP Phase 15).
@@ -57,7 +57,9 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
 - `api` — REST handlers and routes; `fleet run` injects the live fleet and
   the stores.
 - `adapters/<technology>` — concrete implementations of the core ports; an
-  adapter may import the core, never the reverse.
+  adapter may import the core, never the reverse. `adapters/sqlite` opens the
+  database and holds the DDL; `adapters/sqlite/stores` implements the store
+  ports, one file per repository.
 - `cmd/botflota` — argument parsing and assembly.
 - `internal/` — only a shared implementation detail that is not a capability
   and has no owner; nothing lives there today.

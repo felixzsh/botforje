@@ -1,5 +1,5 @@
-// Package sqlite implements the core store ports on SQLite. SQL stays in
-// this adapter; the core package owns the interfaces (ADR 0006).
+// Package sqlite opens the SQLite database behind the store ports: pragmas,
+// schema, and the repositories in stores (ADR 0006).
 package sqlite
 
 import (
@@ -8,14 +8,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/felixzsh/botflota/adapters/sqlite/stores"
+
 	_ "modernc.org/sqlite"
 )
 
-// schema is the whole database, applied on open with IF NOT EXISTS. Pre-release
-// it is edited in place and the development database is recreated with
-// `make dev-reset`; versioned, append-only migrations start at the first
-// release (ADR 0006). The chat, session, and message shapes are in ADR 0026;
-// the chat's guard state is in ADR 0027; the sender profile is in ADR 0029.
+// schema is the whole database, applied on open with IF NOT EXISTS.
+// Pre-release it is edited in place (`make dev-reset` recreates the dev
+// database); versioned migrations start at the first release (ADR 0006).
+// Shapes: ADR 0026, ADR 0027, ADR 0029.
 var schema = []string{
 	`CREATE TABLE IF NOT EXISTS senders (
 		id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,8 +122,8 @@ var schema = []string{
 // DB is an open SQLite database with its schema applied.
 type DB struct{ *sql.DB }
 
-// Open opens (creating if needed) the database at path, enables the pragmas
-// from ADR 0006, and applies the schema.
+// Open opens (creating if needed) the database at path with the ADR 0006
+// pragmas and the schema.
 func Open(path string) (*DB, error) {
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -149,32 +150,29 @@ func Open(path string) (*DB, error) {
 	return &DB{DB: db}, nil
 }
 
-// Chats returns the chat repository.
-func (d *DB) Chats() *ChatStore { return &ChatStore{db: d.DB} }
+func (d *DB) Chats() *stores.ChatStore { return stores.NewChatStore(d.DB) }
 
-// Senders returns the sender-profile repository.
-func (d *DB) Senders() *SenderStore { return &SenderStore{db: d.DB} }
+func (d *DB) Senders() *stores.SenderStore { return stores.NewSenderStore(d.DB) }
 
-// Contacts returns the imported address-book repository.
-func (d *DB) Contacts() *ContactStore { return &ContactStore{db: d.DB} }
+func (d *DB) Contacts() *stores.ContactStore { return stores.NewContactStore(d.DB) }
 
-// Sessions returns the session repository.
-func (d *DB) Sessions() *SessionStore { return &SessionStore{db: d.DB} }
+func (d *DB) Sessions() *stores.SessionStore { return stores.NewSessionStore(d.DB) }
 
-// Messages returns the message repository.
-func (d *DB) Messages() *MessageStore { return &MessageStore{db: d.DB} }
+func (d *DB) Messages() *stores.MessageStore { return stores.NewMessageStore(d.DB) }
 
-// LinkedAccounts returns the linked-account repository.
-func (d *DB) LinkedAccounts() *LinkedAccountStore { return &LinkedAccountStore{db: d.DB} }
+func (d *DB) LinkedAccounts() *stores.LinkedAccountStore {
+	return stores.NewLinkedAccountStore(d.DB)
+}
 
-// Pairings returns the pairing-status repository.
-func (d *DB) Pairings() *PairingStore { return &PairingStore{db: d.DB} }
+func (d *DB) Pairings() *stores.PairingStore { return stores.NewPairingStore(d.DB) }
 
-// OwnerTokens returns the owner-token repository.
-func (d *DB) OwnerTokens() *OwnerTokenStore { return &OwnerTokenStore{db: d.DB} }
+func (d *DB) OwnerTokens() *stores.OwnerTokenStore {
+	return stores.NewOwnerTokenStore(d.DB)
+}
 
-// AccessTokens returns the scoped access-token repository.
-func (d *DB) AccessTokens() *AccessTokenStore { return &AccessTokenStore{db: d.DB} }
+func (d *DB) AccessTokens() *stores.AccessTokenStore {
+	return stores.NewAccessTokenStore(d.DB)
+}
 
 func applySchema(db *sql.DB) error {
 	for _, statement := range schema {
@@ -192,8 +190,6 @@ func applySchema(db *sql.DB) error {
 	return nil
 }
 
-// addColumn adds a column a newer build introduced and does nothing when it is
-// already present.
 func addColumn(db *sql.DB, table, column, definition string) error {
 	rows, err := db.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
