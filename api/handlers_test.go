@@ -1,0 +1,212 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/felixzsh/botflota"
+)
+
+type fakeSyncFleet struct {
+	fakeFleet
+	scope, bot, phone string
+	count             int
+	timeout           time.Duration
+	err               error
+}
+
+func (f *fakeSyncFleet) HistorySync(
+	_ context.Context, scope, bot, phone string, count int, timeout time.Duration,
+) (botflota.HistoryResult, error) {
+	f.scope, f.bot, f.phone = scope, bot, phone
+	f.count, f.timeout = count, timeout
+	if f.err != nil {
+		return botflota.HistoryResult{}, f.err
+	}
+	return botflota.HistoryResult{
+		Received: 75, Rounds: 2, Imported: 73,
+		Duplicate: 2, Stable: true,
+	}, nil
+}
+
+func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
+	live := &fakeSyncFleet{}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000&count=75&timeout=30",
+		testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
+	}
+	if live.scope != "support" || live.bot != "demo" || live.phone != "5215500000000" {
+		t.Fatalf("addressed %s/%s/%s", live.scope, live.bot, live.phone)
+	}
+	if live.count != 75 || live.timeout != 30*time.Second {
+		t.Fatalf("count = %d, timeout = %s", live.count, live.timeout)
+	}
+	var body struct {
+		Received  int  `json:"received"`
+		Rounds    int  `json:"rounds"`
+		Duplicate int  `json:"duplicate"`
+		Stable    bool `json:"stable"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Received != 75 || body.Rounds != 2 || body.Duplicate != 2 || !body.Stable {
+		t.Fatalf("body = %+v", body)
+	}
+}
+
+func TestChatSyncReportsAFleetWithoutHistory(t *testing.T) {
+	server := testServer(t)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
+		testOwnerToken)
+	if recorder.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501", recorder.Code)
+	}
+}
+
+func TestChatSyncRejectsAnUnknownChat(t *testing.T) {
+	live := &fakeSyncFleet{}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=000", testOwnerToken)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+}
+
+func TestChatSyncReportsAPhoneFailure(t *testing.T) {
+	live := &fakeSyncFleet{err: fmt.Errorf("the phone did not answer")}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
+		testOwnerToken)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "did not answer") {
+		t.Fatalf("body = %s, want the phone error", recorder.Body)
+	}
+}
+
+func TestConfigEndpointMasksSecrets(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(), "/api/v1/config", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+	if strings.Contains(body, "sk-live-secret") {
+		t.Fatal("config response leaked the model API key")
+	}
+	if !strings.Contains(body, `"***"`) {
+		t.Fatalf("masked secret missing from %s", body)
+	}
+	if strings.Contains(body, "sk-live-header") {
+		t.Fatal("config response leaked the request header secret")
+	}
+	if !strings.Contains(body, `"Bearer ${API_TOKEN}"`) {
+		t.Fatalf("header placeholder missing from %s", body)
+	}
+}
+
+func TestChatsEndpoint(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(), "/api/v1/scopes/support/chats?bot=demo", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Chats []struct {
+			ID     int64  `json:"id"`
+			Scope  string `json:"scope"`
+			Bot    string `json:"bot"`
+			Sender struct {
+				Phone string `json:"phone"`
+				Name  string `json:"name"`
+			} `json:"sender"`
+			Messages int64 `json:"messages"`
+			Sync     int64 `json:"sync"`
+			Live     int64 `json:"live"`
+		} `json:"chats"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Chats) != 2 {
+		t.Fatalf("chats = %#v, want two", body.Chats)
+	}
+	chat := body.Chats[0]
+	if chat.ID != 3 || chat.Scope != "support" || chat.Bot != "demo" ||
+		chat.Sender.Phone != "5215500000000" || chat.Sender.Name != "Ana" ||
+		chat.Messages != 5 || chat.Sync != 3 || chat.Live != 2 {
+		t.Fatalf("chat = %#v", chat)
+	}
+	// A zero limit asks for every chat, which `chat sync --all` walks.
+	all := get(t, server.Handler(),
+		"/api/v1/scopes/support/chats?bot=demo&limit=0", testOwnerToken)
+	if all.Code != http.StatusOK {
+		t.Fatalf("limit=0 status = %d, want 200", all.Code)
+	}
+	var every struct {
+		Chats []struct {
+			ID int64 `json:"id"`
+		} `json:"chats"`
+	}
+	if err := json.Unmarshal(all.Body.Bytes(), &every); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(every.Chats) != 2 {
+		t.Fatalf("limit=0 chats = %#v, want every chat", every.Chats)
+	}
+}
+
+// The ?after_id= cursor is the polling contract of `message tail --follow`.
+func TestMessagesAfterCursor(t *testing.T) {
+	server := testServer(t)
+	base := "/api/v1/scopes/support/messages?bot=demo&sender=5215500000000"
+	var body struct {
+		Messages []struct {
+			ID   int64  `json:"id"`
+			Body string `json:"body"`
+		} `json:"messages"`
+	}
+	recorder := get(t, server.Handler(), base+"&after_id=1", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Messages) != 1 || body.Messages[0].ID != 2 {
+		t.Fatalf("after_id=1 = %#v, want message 2", body.Messages)
+	}
+
+	recorder = get(t, server.Handler(), base+"&after_id=2", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Messages) != 0 {
+		t.Fatalf("after_id=2 = %#v, want none", body.Messages)
+	}
+}
+
+func TestContactsEndpointNeedsABot(t *testing.T) {
+	server := testServer(t)
+	recorder := get(t, server.Handler(),
+		"/api/v1/scopes/support/contacts", testOwnerToken)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", recorder.Code)
+	}
+}

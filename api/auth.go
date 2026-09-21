@@ -17,33 +17,25 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// OwnerTokenFile is the one-time clear owner token written under data_dir. The
-// CLI reads it to call the API (ADR 0025).
+// OwnerTokenFile is the clear-token file the CLI reads to call the API.
 const OwnerTokenFile = "owner.token"
 
-// ErrUnauthenticated reports a missing, unknown, revoked, or expired
-// credential; the middleware answers 401 for it. Every other resolution error
-// is internal, and a custom resolver must return this one (or wrap it) so a
-// failure stays a 401.
+// ErrUnauthenticated is the only resolution error that answers 401. A custom
+// resolver must return it (or wrap it) for a missing, unknown, revoked, or
+// expired credential, so a failure stays a 401 and not a 500.
 var ErrUnauthenticated = errors.New("api: unauthenticated")
 
-// Auth resolves a request credential to a Principal: the owner token is the
-// instance owner, and a stored access token is scoped. The clear credentials
-// never enter logs.
+// Auth resolves a request credential to a Principal; clear credentials never
+// enter logs.
 type Auth struct {
 	ownerHash []byte
 	tokens    botflota.AccessTokenStore
 }
 
-// NewAuth builds the resolver from the owner token hash and the access-token
-// store. Both are read-only: the owner token is bootstrapped separately.
 func NewAuth(ownerHash []byte, tokens botflota.AccessTokenStore) *Auth {
 	return &Auth{ownerHash: ownerHash, tokens: tokens}
 }
 
-// EnsureOwnerToken loads the stored owner token and creates one on first run.
-// created reports a new token, which is also written to dataDir/owner.token
-// with mode 0600. The clear token never enters logs.
 func EnsureOwnerToken(
 	ctx context.Context, store botflota.OwnerTokenStore, dataDir string,
 ) (hash []byte, created bool, err error) {
@@ -61,8 +53,6 @@ func EnsureOwnerToken(
 	return hash, true, nil
 }
 
-// RotateOwnerToken replaces the stored owner token with a fresh one and
-// rewrites the token file. Use it when the token or its file is lost.
 func RotateOwnerToken(
 	ctx context.Context, store botflota.OwnerTokenStore, dataDir string,
 ) ([]byte, error) {
@@ -83,8 +73,6 @@ func RotateOwnerToken(
 	return hash[:], nil
 }
 
-// Resolve turns the request credential into a Principal. A missing, unknown,
-// revoked, or expired credential fails with ErrUnauthenticated.
 func (a *Auth) Resolve(r *http.Request) (*Principal, error) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
@@ -114,8 +102,6 @@ func (a *Auth) Resolve(r *http.Request) (*Principal, error) {
 	return &Principal{Kind: KindScoped, Scopes: scopes}, nil
 }
 
-// newToken returns 256 random bits as a URL-safe string, for the owner token
-// and for minted access tokens.
 func newToken() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {

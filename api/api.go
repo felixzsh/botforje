@@ -1,8 +1,7 @@
-// Package api serves the REST API that fleet run composes and hosts in its own
-// process (ADR 0025, ADR 0034). Handlers stay small and direct: they read the
-// live fleet and the stores, and every addressable object carries its scope.
-// One middleware resolves the credential to a Principal; handlers authorize
-// against it (ROADMAP Phase 10/13).
+// Package api serves the REST API that fleet run composes and hosts in its
+// own process (ADR 0025, ADR 0034). Every addressable object carries its
+// scope; one middleware resolves the credential to a Principal and handlers
+// authorize against it (ROADMAP Phase 10/13).
 package api
 
 import (
@@ -21,12 +20,11 @@ import (
 	"github.com/felixzsh/botflota/fleet"
 )
 
-// Fleet is the live side of the API: the runtime state of the running bots.
 type Fleet interface {
 	Status() []fleet.BotStatus
 }
 
-// Options are the dependencies fleet run injects. Every field is required
+// Options are the dependencies fleet run injects; every field is required
 // except Log.
 type Options struct {
 	Config   *config.Config
@@ -43,7 +41,6 @@ type Options struct {
 	Log      *slog.Logger
 }
 
-// Server is the REST API.
 type Server struct {
 	cfg      *config.Config
 	fleet    Fleet
@@ -61,7 +58,6 @@ type Server struct {
 	handler  http.Handler
 }
 
-// New validates the dependencies and builds the routes.
 func New(opts Options) (*Server, error) {
 	if opts.Config == nil {
 		return nil, errors.New("api: no config")
@@ -111,15 +107,11 @@ func New(opts Options) (*Server, error) {
 	return server, nil
 }
 
-// Handler returns the routes with authentication applied. Tests use it
-// directly.
 func (s *Server) Handler() http.Handler { return s.handler }
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Instance level: status and bots are filtered by authority, the rest is
-	// owner only.
 	mux.HandleFunc("GET /api/v1/status", s.handleStatus)
 	mux.HandleFunc("GET /api/v1/bots", s.handleBots)
 	mux.HandleFunc("GET /api/v1/config", s.handleConfig)
@@ -127,7 +119,6 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/tokens", s.handleTokensList)
 	mux.HandleFunc("DELETE /api/v1/tokens/{id}", s.handleTokensRevoke)
 
-	// Scope level: the scope is part of the address.
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/chats", s.handleChats)
@@ -139,8 +130,6 @@ func (s *Server) routes() http.Handler {
 	return s.authenticate(mux)
 }
 
-// authenticate resolves the credential once and stores the Principal in the
-// request context.
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, err := s.resolver.Resolve(r)
@@ -159,8 +148,8 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	})
 }
 
-// Listen binds the configured address so a bad address fails at startup
-// instead of inside the serving goroutine.
+// Listen binds here, so a bad address fails at startup instead of inside the
+// serving goroutine.
 func (s *Server) Listen() (net.Listener, error) {
 	address := s.cfg.Address
 	if address == "" {
@@ -174,8 +163,6 @@ func (s *Server) Listen() (net.Listener, error) {
 	return listener, nil
 }
 
-// Serve serves on the listener until ctx is cancelled and then shuts down in
-// an orderly way.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	server := &http.Server{Handler: s.handler, ReadHeaderTimeout: 5 * time.Second}
 	errs := make(chan error, 1)

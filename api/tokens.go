@@ -12,14 +12,13 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// tokenRequest is the owner payload that mints a scoped access token.
 type tokenRequest struct {
 	Name      string   `json:"name"`
 	Scopes    []string `json:"scopes"`
 	ExpiresAt string   `json:"expires_at,omitempty"`
 }
 
-// tokenView is a minted access token without its hash or clear value.
+// tokenView never carries the hash or the clear value.
 type tokenView struct {
 	ID        int64      `json:"id"`
 	Name      string     `json:"name"`
@@ -29,8 +28,6 @@ type tokenView struct {
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 
-// handleTokensCreate mints a scoped access token. The clear token is returned
-// once and never stored; only its hash is kept (ROADMAP Phase 13).
 func (s *Server) handleTokensCreate(w http.ResponseWriter, r *http.Request) {
 	if !principalFrom(r.Context()).Owner() {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
@@ -105,7 +102,6 @@ func (s *Server) handleTokensCreate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleTokensList lists the minted tokens without hashes.
 func (s *Server) handleTokensList(w http.ResponseWriter, r *http.Request) {
 	if !principalFrom(r.Context()).Owner() {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
@@ -123,8 +119,6 @@ func (s *Server) handleTokensList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tokens": views})
 }
 
-// handleTokensRevoke revokes one token. Revoking an already revoked token is a
-// no-op.
 func (s *Server) handleTokensRevoke(w http.ResponseWriter, r *http.Request) {
 	if !principalFrom(r.Context()).Owner() {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
