@@ -16,15 +16,14 @@ import (
 )
 
 // Devices is the whatsmeow device store on Botflota's shared SQLite connection
-// (ADR 0006). Open it once per process and pass it to every pairing operation
-// and channel, so the container is built and upgraded once.
+// (ADR 0006). Open it once per process: the container is built and upgraded
+// once.
 type Devices struct {
 	container *sqlstore.Container
 }
 
 // OpenDevices opens and upgrades the device store. A nil logger keeps its
-// output quiet; depsLevel is the minimum level the store forwards, mirroring
-// log_level_deps.
+// output quiet; depsLevel is the minimum level the store forwards.
 func OpenDevices(
 	ctx context.Context, db *sql.DB, log *slog.Logger, depsLevel slog.Level,
 ) (*Devices, error) {
@@ -43,7 +42,7 @@ func OpenDevices(
 	return devices, nil
 }
 
-// device returns the stored device of an account, or nil when it is missing.
+// device reports a missing device as a nil result, not an error.
 func (d *Devices) device(
 	ctx context.Context, account *botflota.LinkedAccount,
 ) (*store.Device, error) {
@@ -64,7 +63,7 @@ func (d *Devices) device(
 	return device, nil
 }
 
-// delete removes an account's local credentials; a missing device is fine.
+// delete removes the account's local credentials; a missing device is fine.
 func (d *Devices) delete(ctx context.Context, account *botflota.LinkedAccount) error {
 	device, err := d.device(ctx, account)
 	if err != nil {
@@ -79,10 +78,8 @@ func (d *Devices) delete(ctx context.Context, account *botflota.LinkedAccount) e
 	return nil
 }
 
-// newDevice builds an unpaired device for the QR login.
 func (d *Devices) newDevice() *store.Device { return d.container.NewDevice() }
 
-// UnpairOptions configures removal of one bot's local pairing.
 type UnpairOptions struct {
 	Scope    string
 	Bot      string
@@ -111,7 +108,6 @@ func ValidateAccountOwners(ctx context.Context, accounts botflota.LinkedAccountS
 	return nil
 }
 
-// ValidateAccounts checks stored ownership and local whatsmeow credentials.
 // Missing local credentials are recoverable and do not abort validation.
 func ValidateAccounts(
 	ctx context.Context, devices *Devices,
@@ -142,9 +138,8 @@ func ValidateAccounts(
 	return nil
 }
 
-// CheckPairing reports whether one configured bot can initialize its channel.
-// Missing account records and local credentials are expected, recoverable
-// states; other database and pairing errors are returned.
+// CheckPairing treats a missing account or missing local credentials as an
+// expected state, not an error; other database and pairing errors are returned.
 func CheckPairing(
 	ctx context.Context,
 	devices *Devices,
@@ -180,7 +175,6 @@ func CheckPairing(
 	return botflota.PairingPaired, nil
 }
 
-// HasLocalDevice reports whether an account has matching local credentials.
 func HasLocalDevice(
 	ctx context.Context, devices *Devices, account *botflota.LinkedAccount,
 ) (bool, error) {
@@ -194,8 +188,8 @@ func HasLocalDevice(
 	return device != nil, nil
 }
 
-// Unpair removes local credentials and the account record. It does not unlink
-// the companion from WhatsApp; remove that old device from the phone if needed.
+// Unpair does not unlink the companion from WhatsApp; remove that old device
+// from the phone if needed.
 func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if opts.Devices == nil {
 		return errors.New("whatsapp: no device store")

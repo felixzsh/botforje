@@ -28,10 +28,8 @@ type historyCursor struct {
 }
 
 // historyPage is one completed on-demand request. Received counts only the
-// requested chat; the importer may also store metadata for other conversations
-// present in the same WhatsApp blob. Next is the oldest message the page
-// returned, the cursor of the next request; nil means the page carried nothing
-// older, so paging stops.
+// requested chat; Next is the oldest message the page returned, and nil means
+// the page carried nothing older, so paging stops.
 type historyPage struct {
 	Received  int
 	Imported  int
@@ -47,9 +45,9 @@ type historyRequester func(
 	context.Context, *historyCursor, int, time.Duration,
 ) (historyPage, error)
 
-// backfillChat pages backwards from the chat's oldest known message until the
-// phone runs out of older entries or reports no access. It is independent of
-// the WhatsApp connection, so its stop conditions are explicit and testable.
+// backfillChat pages backwards from the chat's oldest known message until
+// the phone runs out of older entries or reports no access. It is independent
+// of the WhatsApp connection, so its stop conditions are testable.
 func backfillChat(
 	ctx context.Context, limit int, timeout time.Duration,
 	load cursorLoader, request historyRequester,
@@ -91,10 +89,9 @@ func backfillChat(
 	}
 }
 
-// oldestCursor loads the oldest stored message that carries a provider id, the
-// anchor an on-demand request pages back from (ADR 0035). A chat with no such
-// message cannot be paged: a control entry (a reaction or an edit) and an
-// account-level call record are not valid anchors, so they are never used.
+// oldestCursor finds the anchor an on-demand request pages back from (ADR
+// 0035). A control entry (a reaction or an edit) and an account-level call
+// record are not valid anchors, so they are never chosen.
 func oldestCursor(
 	ctx context.Context, scope, bot, phone string,
 	senders botflota.SenderStore, chats botflota.ChatStore,
@@ -130,10 +127,9 @@ func oldestCursor(
 	}, nil
 }
 
-// SyncHistory asks the primary device for older messages of one chat over the
-// live connection (ADR 0035). Count is the total number of entries to request;
-// zero means every entry the phone makes available. One sync runs per bot at a
-// time, and the fleet must be connected.
+// SyncHistory asks the primary device for older messages of one chat (ADR
+// 0035). Count is the total to request; zero means every entry the phone
+// makes available. One sync runs per bot at a time.
 func (a *Adapter) SyncHistory(
 	ctx context.Context, phone string, count int, timeout time.Duration,
 ) (botflota.HistoryResult, error) {
@@ -161,7 +157,6 @@ func (a *Adapter) SyncHistory(
 	return backfillChat(ctx, count, timeout, load, request)
 }
 
-// beginSync takes the per-bot sync slot.
 func (a *Adapter) beginSync() error {
 	a.syncMu.Lock()
 	defer a.syncMu.Unlock()
@@ -245,8 +240,8 @@ func (a *Adapter) clearPending(request *syncRequest) {
 	a.syncMu.Unlock()
 }
 
-// observeSync feeds one imported chunk to the sync waiting for it, if any. The
-// import worker is the only caller, so the importer stays single-threaded.
+// observeSync feeds one imported chunk to the sync waiting for it, if any.
+// The import worker is the only caller, so the importer stays single-threaded.
 func (a *Adapter) observeSync(event *events.HistorySync, stats ImportTotals) {
 	a.syncMu.Lock()
 	pending := a.pending
@@ -258,8 +253,8 @@ func (a *Adapter) observeSync(event *events.HistorySync, stats ImportTotals) {
 	pending.observe(event, stats)
 }
 
-// logOnDemandChunk records what one answered chunk carried, which is how an
-// empty answer is told apart from a conversation that never came back.
+// logOnDemandChunk is how an empty answer is told apart from a conversation
+// that never came back.
 func (a *Adapter) logOnDemandChunk(event *events.HistorySync) {
 	if event.Data == nil || !a.log.Enabled(context.Background(), slog.LevelDebug) {
 		return
@@ -293,8 +288,8 @@ func newSyncRequest(id, phone string, lookup pnLookup) *syncRequest {
 	}
 }
 
-// observe accumulates one matching chunk and closes done once the response is
-// complete.
+// observe accumulates one matching chunk and closes done exactly once, when
+// the response is complete.
 func (r *syncRequest) observe(event *events.HistorySync, stats ImportTotals) {
 	if historySyncRequestID(event) != r.id {
 		return
@@ -333,7 +328,6 @@ func historySyncRequestID(event *events.HistorySync) string {
 	return event.Notification.GetPeerDataRequestSessionID()
 }
 
-// historySyncCompleteFor reports the final chunk of an on-demand response.
 func historySyncCompleteFor(
 	event *events.HistorySync, phone string, lookup pnLookup,
 ) bool {
@@ -359,8 +353,8 @@ func historySyncCompleteFor(
 	return false
 }
 
-// historySyncExhausted reports whether the phone said it has nothing more to
-// give for this chat, so paging would only repeat itself.
+// historySyncExhausted reports the phone's nothing-more-to-give marker, so
+// paging would only repeat itself.
 func historySyncExhausted(
 	event *events.HistorySync, phone string, lookup pnLookup,
 ) bool {
@@ -381,10 +375,9 @@ func historySyncExhausted(
 	return false
 }
 
-// historyEventPage reads the requested chat out of one response chunk: how many
-// messages it carried and the oldest among them, the cursor of the next
-// request. Entries for other conversations are metadata, not this chat's page,
-// and a top-level call record is never part of it.
+// historyEventPage reads the requested chat out of one response chunk: how
+// many entries it carried and the oldest among them. Entries for other
+// conversations are metadata, not this chat's page.
 func historyEventPage(
 	event *events.HistorySync, phone string, lookup pnLookup,
 ) (int, *historyCursor) {
@@ -423,8 +416,8 @@ func historyEventPage(
 	return count, next
 }
 
-// historyAnchorInfo builds the whatsmeow anchor of one cursor, addressed to the
-// chat's LID when the device store knows the mapping (ADR 0020).
+// historyAnchorInfo addresses the anchor to the chat's LID when the device
+// store knows the mapping (ADR 0020).
 func historyAnchorInfo(
 	ctx context.Context, phone string, from *historyCursor,
 	lids store.LIDStore,

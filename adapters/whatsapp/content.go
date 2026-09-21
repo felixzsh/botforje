@@ -16,20 +16,17 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// maxMediaSize bounds an attachment the adapter reads into memory before it
-// uploads it, so a large file or a slow URL cannot exhaust the process. The
-// engine never fetches media (ADR 0036).
+// maxMediaSize bounds what the adapter buffers before upload, so a large file
+// or a slow URL cannot exhaust the process (ADR 0036).
 const maxMediaSize = 16 << 20
 
-// uploader uploads attachment bytes. It is a field so a test injects a fake
-// instead of a live connection.
+// uploader is a field so a test injects a fake instead of a live connection.
 type uploader func(
 	ctx context.Context, data []byte, mediaType whatsmeow.MediaType,
 ) (whatsmeow.UploadResponse, error)
 
-// contentFor maps an outbound message to the WhatsApp wire message. Media
-// uploads its bytes first, so it needs the live connection; every other kind
-// is built locally (ADR 0036).
+// contentFor needs the live connection only for media, which uploads its
+// bytes first; every other kind is built locally (ADR 0036).
 func (a *Adapter) contentFor(
 	ctx context.Context, msg botflota.OutgoingMessage,
 ) (*waE2E.Message, error) {
@@ -39,8 +36,6 @@ func (a *Adapter) contentFor(
 	return buildContent(msg.Content)
 }
 
-// buildContent maps content that needs neither network nor device: text,
-// location, contact, and poll.
 func buildContent(content botflota.SendableContent) (*waE2E.Message, error) {
 	switch c := content.(type) {
 	case nil:
@@ -110,8 +105,8 @@ func buildPoll(content botflota.PollContent) (*waE2E.Message, error) {
 	}, nil
 }
 
-// selectableCount clamps how many options a voter may pick: one by default,
-// never more than the poll offers.
+// selectableCount picks one option by default, never more than the poll
+// offers.
 func selectableCount(content botflota.PollContent) uint32 {
 	count := content.Selectable
 	if count <= 0 {
@@ -123,8 +118,6 @@ func selectableCount(content botflota.PollContent) uint32 {
 	return uint32(count)
 }
 
-// buildMedia reads an attachment from its url or path, uploads it, and builds
-// the matching wire message (ADR 0036).
 func (a *Adapter) buildMedia(
 	ctx context.Context, content botflota.MediaContent,
 ) (*waE2E.Message, error) {
@@ -154,7 +147,6 @@ func (a *Adapter) buildMedia(
 	return mediaMessage(content, mime, resp)
 }
 
-// mediaMessage fills the wire message of one media type from an upload.
 func mediaMessage(
 	content botflota.MediaContent, mime string, resp whatsmeow.UploadResponse,
 ) (*waE2E.Message, error) {
@@ -198,8 +190,7 @@ func mediaMessage(
 	}
 }
 
-// mediaTypeFor picks the upload key system of a media type. Images and
-// stickers share the image keys.
+// mediaTypeFor shares the image upload keys between images and stickers.
 func mediaTypeFor(t botflota.MediaType) whatsmeow.MediaType {
 	switch t {
 	case botflota.MediaVideo:
@@ -213,7 +204,6 @@ func mediaTypeFor(t botflota.MediaType) whatsmeow.MediaType {
 	}
 }
 
-// readMedia reads the attachment bytes from a url or a local path.
 func (a *Adapter) readMedia(
 	ctx context.Context, content botflota.MediaContent,
 ) ([]byte, error) {
@@ -248,8 +238,6 @@ func (a *Adapter) readMedia(
 	}
 }
 
-// readLimited reads at most maxMediaSize bytes and reports an oversized file
-// instead of buffering it whole.
 func readLimited(reader io.Reader) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(reader, maxMediaSize+1))
 	if err != nil {
@@ -261,8 +249,6 @@ func readLimited(reader io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-// clientForUpload returns the live client, or an error when the channel is not
-// connected. Media needs it to upload the bytes.
 func (a *Adapter) clientForUpload() (*whatsmeow.Client, error) {
 	a.mu.Lock()
 	client := a.client

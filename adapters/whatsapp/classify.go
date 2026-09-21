@@ -6,11 +6,10 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// contentType classifies an unwrapped WhatsApp message into a Botflota
-// content (ADR 0036). ok is false for a control or internal message that
-// carries no content, which the store never keeps (ADR 0035). Anything
-// recognized as content but unknown falls back to UnknownContent, so the chat
-// still has an anchor for `chat sync`.
+// contentType classifies an unwrapped WhatsApp message (ADR 0036). ok is
+// false for a control or internal message, which the store never keeps (ADR
+// 0035). Anything else falls back to UnknownContent, so the chat still has an
+// anchor for `chat sync`.
 func contentType(m *waE2E.Message) (botflota.MessageContent, bool) {
 	if m == nil || controlMessage(m) {
 		return nil, false
@@ -122,7 +121,6 @@ func contentType(m *waE2E.Message) (botflota.MessageContent, bool) {
 	}
 }
 
-// pollContent reads a poll's question, options, and selectable count.
 func pollContent(poll *waE2E.PollCreationMessage) botflota.PollContent {
 	content := botflota.PollContent{
 		Question:   poll.GetName(),
@@ -134,10 +132,8 @@ func pollContent(poll *waE2E.PollCreationMessage) botflota.PollContent {
 	return content
 }
 
-// controlMessage reports a message that changes another message or steers the
-// protocol instead of carrying content: edits, reactions, deletions, poll
-// votes, pins, keeps, and key-distribution traffic. They are control-only and
-// never stored (ADR 0035).
+// controlMessage is a message that changes another message or steers the
+// protocol instead of carrying content; it is never stored (ADR 0035).
 func controlMessage(m *waE2E.Message) bool {
 	switch {
 	case m == nil,
@@ -157,10 +153,8 @@ func controlMessage(m *waE2E.Message) bool {
 	}
 }
 
-// unwrapMessage peels the wrappers WhatsApp puts around a real payload
-// (ephemeral, view once, document with caption, device-sent, bot invoke) so the
-// history import can classify what is inside. It returns nil for a control
-// message (ADR 0035).
+// unwrapMessage peels the wrappers WhatsApp puts around a real payload; it
+// reports nil for a control message (ADR 0035).
 func unwrapMessage(m *waE2E.Message) *waE2E.Message {
 	if controlMessage(m) {
 		return nil
@@ -198,8 +192,7 @@ func unwrapMessage(m *waE2E.Message) *waE2E.Message {
 	return m
 }
 
-// documentText is a document's visible text: its caption, its title, or its
-// file name (ADR 0036).
+// documentText falls back from caption to title to file name (ADR 0036).
 func documentText(doc *waE2E.DocumentMessage) string {
 	if caption := doc.GetCaption(); caption != "" {
 		return caption
@@ -210,8 +203,6 @@ func documentText(doc *waE2E.DocumentMessage) string {
 	return doc.GetFileName()
 }
 
-// isCallMessage reports a call attempt or call log entry, which the import
-// keeps under KindCall.
 func isCallMessage(m *waE2E.Message) bool {
 	switch {
 	case m.GetCall() != nil,
@@ -226,7 +217,7 @@ func isCallMessage(m *waE2E.Message) bool {
 }
 
 // callText labels a call entry so a chat whose only history is calls keeps a
-// readable row (ADR 0035). A scheduled call uses its title.
+// readable row; a scheduled call uses its title (ADR 0035).
 func callText(m *waE2E.Message) string {
 	if schedule := m.GetScheduledCallCreationMessage(); schedule != nil {
 		if title := schedule.GetTitle(); title != "" {
@@ -240,7 +231,6 @@ func callText(m *waE2E.Message) string {
 	return "Call"
 }
 
-// callLogLabel describes an ended call attempt.
 func callLogLabel(web *waE2E.Message) (string, bool) {
 	call := web.GetCallLogMesssage()
 	if call == nil {

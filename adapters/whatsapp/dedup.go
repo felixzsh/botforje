@@ -1,7 +1,7 @@
 package whatsapp
 
-// dedup remembers the most recent message IDs so a redelivery is ignored. It
-// is not safe for concurrent use; the event handler serializes access.
+// dedup remembers recent message IDs so a redelivery is ignored. It is not
+// safe for concurrent use; the event handler serializes access.
 type dedup struct {
 	capacity int
 	seen     map[string]struct{}
@@ -15,7 +15,6 @@ func newDedup(capacity int) *dedup {
 	return &dedup{capacity: capacity, seen: make(map[string]struct{}, capacity)}
 }
 
-// fresh records id and reports whether it had not been seen before.
 func (d *dedup) fresh(id string) bool {
 	if id == "" {
 		return true

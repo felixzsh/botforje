@@ -12,11 +12,8 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// contactImporter copies the linked account's address book into Botflota's own
-// contacts when a bot imports contacts. It never creates a chat or a sender: a
-// contact is an identity the account knows, not a conversation, and the
-// address book belongs to the account rather than to the scope (ADR 0029,
-// ADR 0037).
+// contactImporter copies the linked account's address book into ContactStore
+// (ADR 0037).
 type contactImporter struct {
 	scope    string
 	bot      string
@@ -26,8 +23,8 @@ type contactImporter struct {
 	now      func() time.Time
 }
 
-// newContactImporter builds an importer, or nil when the store is missing, so
-// a caller can treat contact import as disabled.
+// newContactImporter returns nil when the store is missing, so a caller can
+// treat contact import as disabled.
 func newContactImporter(
 	scope, bot string, contacts botflota.ContactStore,
 	lookup pnLookup, log *slog.Logger,
@@ -45,8 +42,8 @@ func newContactImporter(
 }
 
 // Handle stores one contact-related event. The address-book name, the push
-// name, and the verified business name stay in separate fields, so a later
-// push name never erases the name the phone's address book holds.
+// name, and the business name stay in separate fields, so a later push name
+// never erases the name the phone's address book holds.
 func (h *contactImporter) Handle(ctx context.Context, raw any) {
 	switch event := raw.(type) {
 	case *events.Contact:
@@ -66,10 +63,8 @@ func (h *contactImporter) Handle(ctx context.Context, raw any) {
 	}
 }
 
-// ImportCached copies the address book the device store already holds. It
-// covers a session that ended before every contact event arrived, and a
-// reconnect whose address-book snapshot was applied silently. It returns how
-// many entries it stored.
+// ImportCached covers a session that ended before every contact event
+// arrived, and a reconnect whose address-book snapshot was applied silently.
 func (h *contactImporter) ImportCached(
 	ctx context.Context, known store.ContactStore,
 ) int {
@@ -84,8 +79,6 @@ func (h *contactImporter) ImportCached(
 	return h.ImportAll(ctx, contacts)
 }
 
-// ImportAll stores every entry of one address book and reports how many it
-// stored.
 func (h *contactImporter) ImportAll(
 	ctx context.Context, known map[types.JID]types.ContactInfo,
 ) int {
@@ -105,9 +98,8 @@ func (h *contactImporter) ImportAll(
 	return stored
 }
 
-// put resolves the phone number and stores the entry, reporting whether it
-// stored one. A group, broadcast, or unresolved hidden-user contact is
-// skipped.
+// put stores one entry and reports whether it did; a group, broadcast, or
+// unresolved hidden-user contact is skipped.
 func (h *contactImporter) put(
 	ctx context.Context, jid types.JID, pnJID string, at time.Time,
 	contact botflota.Contact,
@@ -130,9 +122,7 @@ func (h *contactImporter) put(
 	return true
 }
 
-// contactPhone resolves one contact entry to the domain phone number: the
-// phone JID the action carries, the entry's own phone JID, or the LID store
-// (ADR 0020).
+// contactPhone prefers the phone JID the action carries over the entry's own.
 func contactPhone(jid types.JID, pnJID string, lookup pnLookup) (string, bool) {
 	if pnJID != "" {
 		if phone, ok := historyJIDPhone(pnJID, lookup); ok {
@@ -145,8 +135,7 @@ func contactPhone(jid types.JID, pnJID string, lookup pnLookup) (string, bool) {
 	return historyJIDPhone(jid.String(), lookup)
 }
 
-// contactName picks the address-book name: the full name WhatsApp stores, or
-// the first name when the book holds only that.
+// contactName falls back to the first name when the book holds only that.
 func contactName(full, first string) string {
 	if full != "" {
 		return full
@@ -154,7 +143,7 @@ func contactName(full, first string) string {
 	return first
 }
 
-// contactAt is the event time, or now when the event carries none.
+// contactAt falls back to now when the event carries no time.
 func contactAt(at time.Time, now func() time.Time) time.Time {
 	if at.IsZero() {
 		return now().UTC()

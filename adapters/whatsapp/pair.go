@@ -25,10 +25,8 @@ import (
 // when the config does not set device_name.
 const defaultDeviceName = "Botflota"
 
-// applyDeviceName sets the name of the next registered companion. WhatsApp
-// only reads it while registering a new device, so an existing link keeps the
-// name it was registered with. The history window is configured separately,
-// because both are read at registration and only there.
+// applyDeviceName sets the name of the next registered companion: WhatsApp
+// only reads it while registering, so an existing link keeps its old name.
 func applyDeviceName(name string) {
 	if name == "" {
 		name = defaultDeviceName
@@ -36,18 +34,17 @@ func applyDeviceName(name string) {
 	store.SetOSInfo(name, [3]uint32{0, 1, 0})
 }
 
-// Full-sync window requested at registration. WhatsApp reads these only while
-// registering the companion, and it stays the authority over what it actually
-// sends; an unset day limit leaves the phone on its own, much shorter default.
+// Full-sync window requested at registration only; WhatsApp stays the
+// authority over what it actually sends, and an unset day limit leaves the
+// phone on its own much shorter default.
 const (
 	fullSyncDays = 3650
 	fullSyncSize = 10240
 	storageQuota = 10240
 )
 
-// historyWaitBudget bounds the post-linking history wait. It is separate from
-// the QR session timeout because the widened full sync can outlast the code,
-// and the wait still ends early on completion or on an idle gap.
+// historyWaitBudget is separate from the QR session timeout because the
+// widened full sync can outlast the code.
 func historyWaitBudget(full bool) time.Duration {
 	if full {
 		return historyFullWait
@@ -55,10 +52,9 @@ func historyWaitBudget(full bool) time.Duration {
 	return historyPlainWait
 }
 
-// configureHistorySync advertises a Desktop companion that asks for the full
-// account history. It overrides only the fields whose default is narrower than
-// what the import wants, so a whatsmeow default for the other capability flags
-// is inherited instead of copied here.
+// configureHistorySync overrides only the fields whose default is narrower
+// than what the import wants, so a whatsmeow default for the other capability
+// flags is inherited instead of copied here.
 func configureHistorySync(enabled bool) {
 	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
 	store.DeviceProps.RequireFullSync = proto.Bool(enabled)
@@ -75,55 +71,47 @@ func configureHistorySync(enabled bool) {
 	config.StorageQuotaMb = proto.Uint32(storageQuota)
 }
 
-// PairOptions configures QR pairing for a bot.
 type PairOptions struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
-	// Senders, Chats, and Messages receive the account-wide history sync that
-	// WhatsApp delivers right after linking; all three are required to import
-	// it. The fleet connection imports the rest (ADR 0035).
+	// Senders, Chats, and Messages are all required to import the history
+	// sync; the fleet connection imports what this session misses (ADR 0035).
 	Senders  botflota.SenderStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
-	// History attaches the importer, so whatever WhatsApp delivers while the
-	// pairing connection is alive is stored. It comes from the bot's
-	// `history_sync` setting.
+	// History stores whatever WhatsApp delivers while the pairing connection
+	// is alive (the bot's history_sync setting).
 	History bool
-	// FullHistory asks WhatsApp for the full history window at registration and
-	// waits for it to finish. Without it the companion registers like a plain
-	// client, only the default recent window arrives, and `chat sync` pages
-	// older messages per chat (ADR 0035).
+	// FullHistory asks for the full history window at registration and waits
+	// for it; without it only the default recent window arrives and `chat
+	// sync` pages older messages per chat (ADR 0035).
 	FullHistory bool
-	// Contacts receives the account's address book when ImportContacts is on
-	// (ADR 0037).
-	Contacts botflota.ContactStore
-	// ImportContacts copies the address book of the linked account. It is off
-	// by default: the book may hold people this account never wrote to.
+	Contacts    botflota.ContactStore
+	// ImportContacts is off by default: the book may hold people this account
+	// never wrote to.
 	ImportContacts bool
 	Logger         walog.Logger
-	// Log receives the history-sync progress of the pairing session. Nil
-	// discards it.
+	// Log receives the history-sync progress; nil discards it.
 	Log *slog.Logger
-	// DepsLogLevel is the minimum level for the protocol log this adapter
-	// forwards into Log when Logger is nil. Nil Log discards both.
+	// DepsLogLevel is the minimum level for the protocol log forwarded into
+	// Log when Logger is nil; a nil Log discards both.
 	DepsLogLevel slog.Level
 	Force        bool // discard the existing local pairing before starting QR login
-	// DeviceName is the companion name shown in the phone's Linked devices;
-	// empty uses the default.
+	// DeviceName is the companion name in the phone's Linked devices; empty
+	// uses the default.
 	DeviceName string
-	// RenderQR draws one pairing code; the default clears the terminal and
-	// writes a compact QR on stdout.
+	// RenderQR defaults to clearing the terminal and writing a compact QR on
+	// stdout.
 	RenderQR func(code string)
 	Timeout  time.Duration // maximum wait for one QR session
 	Now      func() time.Time
 }
 
-// PairResult reports what a successful pairing produced: the linked JID and
-// what the connection stored while it was alive. The command prints it as the
-// result of the operation instead of the log stream (ADR 0038).
+// PairResult is what a successful pairing produced; the command prints it as
+// the result instead of the log stream (ADR 0038).
 type PairResult struct {
 	JID      string
 	History  ImportTotals
@@ -131,10 +119,10 @@ type PairResult struct {
 	Elapsed  time.Duration
 }
 
-// Pair runs the QR login and records the account. If the bot is already
-// paired it returns the stored JID unless Force asks for a new pairing. QR
-// sessions that WhatsApp resets are retried with a new code until the context
-// is canceled or a non-retryable error occurs.
+// Pair runs the QR login and records the account. An already-paired bot
+// returns its stored JID unless Force asks for a new pairing, and a QR session
+// WhatsApp resets is retried with a new code until the context is canceled or
+// a non-retryable error occurs.
 func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	if opts.Devices == nil {
 		return PairResult{}, errors.New("whatsapp: no device store")
@@ -151,8 +139,8 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	logger := opts.Logger
 	if logger == nil {
 		// Forward the protocol log into the same structured logger on stderr,
-		// never whatsmeow's stdout helper: one format, and stdout stays the
-		// command's result (ADR 0038). A nil Log keeps it quiet.
+		// never whatsmeow's stdout helper: stdout stays the command's result
+		// (ADR 0038). A nil Log keeps it quiet.
 		base := opts.Log
 		if base == nil {
 			base = botflota.DiscardLogger()
@@ -269,12 +257,10 @@ func pairOnce(
 	}
 }
 
-// attachHistory imports the account-wide history sync that WhatsApp delivers
-// right after linking. Whichever connection is alive captures it: this pairing
-// session imports the chunks it sees before it exits, and the fleet connection
-// imports the rest with the same importer (ADR 0035). It returns the waiter
-// that tracks progress and the importer that holds the totals, either of which
-// is nil when history is disabled.
+// attachHistory imports the history sync WhatsApp delivers right after
+// linking: whichever connection is alive captures it, this pairing session
+// before it exits and the fleet connection the rest (ADR 0035). Both results
+// are nil when history is disabled.
 func attachHistory(
 	ctx context.Context, client *whatsmeow.Client, opts PairOptions,
 ) (*historyWaiter, *historyImporter) {
@@ -312,9 +298,8 @@ func attachHistory(
 }
 
 // attachContacts copies the account's address book while the pairing session
-// is alive. The events arrive as WhatsApp syncs the book, and the caller reads
-// the cache once the history wait is over, for whatever the events missed
-// (ADR 0037).
+// is alive; the caller reads the cache afterwards for whatever the events
+// missed (ADR 0037).
 func attachContacts(
 	ctx context.Context, client *whatsmeow.Client, opts PairOptions,
 ) *contactImporter {
@@ -371,26 +356,23 @@ func removePairing(
 		botflota.PairingNotPaired, changedAt)
 }
 
-// renderQR writes a compact half-block QR, the rendering whatsmeow's own
-// example uses. Full blocks are roughly twice as wide and often do not fit a
-// terminal, which makes the code impossible to scan.
+// renderQR writes a compact half-block QR: full blocks are roughly twice as
+// wide and often do not fit a terminal, making the code impossible to scan.
 func renderQR(code string, w io.Writer) {
 	qrterminal.GenerateHalfBlock(code, qrterminal.L, w)
 }
 
-// renderPairingQR clears the previous code so only the current one is visible:
-// stale codes expire and make the phone report a failed link, and the client
-// rotates them every ~20 seconds.
+// renderPairingQR clears the previous code so only the current one is
+// visible: stale codes expire and make the phone report a failed link.
 func renderPairingQR(code string, w io.Writer) {
 	fmt.Fprint(w, "\033[2J\033[H")
 	fmt.Fprintln(w, "Scan with WhatsApp > Linked devices. The code refreshes on its own.")
 	renderQR(code, w)
 }
 
-// confirmLink waits for the server to drop the pairing socket, reconnects, and
-// waits until the companion is online. The server accepts the link at
-// pair-success, but the phone reports failure if the companion never comes
-// online; exiting right after pairing caused exactly that.
+// confirmLink waits for the server to drop the pairing socket, then brings
+// the companion online: the phone reports a failed link if it never comes
+// online, and exiting right after pairing caused exactly that.
 func confirmLink(client *whatsmeow.Client, logger walog.Logger) {
 	if !waitUntilDisconnected(client, 5*time.Second) {
 		logger.Debugf("pairing socket still open; confirming anyway")

@@ -1,6 +1,6 @@
 // Package whatsapp implements the MessageChannel port with whatsmeow
 // (ADR 0001, ADR 0004). It owns the device store, reconnection, dedup, sender
-// resolution, and presence (ADR 0011, ADR 0020).
+// resolution, and presence (ADR 0011).
 package whatsapp
 
 import (
@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	walog "go.mau.fi/whatsmeow/util/log"
@@ -43,49 +42,43 @@ type Settings struct {
 	Jitter time.Duration
 }
 
-// Options configures an Adapter. Bot, Scope, Devices, Accounts, and Pairings
-// are required.
+// Options requires Bot, Scope, Devices, Accounts, and Pairings.
 type Options struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
-	// Senders, Chats, and Messages receive the account-wide history sync that
-	// WhatsApp delivers after linking; all three are required to import it.
+	// Senders, Chats, and Messages are all required to import the account-wide
+	// history sync WhatsApp delivers after linking.
 	Senders  botflota.SenderStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
 	// History enables the inert import of that sync (ADR 0035).
-	History bool
-	// Contacts receives the account's address book when ImportContacts is on
-	// (ADR 0037).
+	History  bool
 	Contacts botflota.ContactStore
-	// ImportContacts copies the address book of the linked account into
-	// Contacts. It is off by default: the book may hold people this account
+	// ImportContacts is off by default: the book may hold people this account
 	// never wrote to.
 	ImportContacts bool
-	// HTTPClient fetches remote media an action sends (ADR 0036). Defaults to
-	// http.DefaultClient.
+	// HTTPClient defaults to http.DefaultClient; it fetches remote media.
 	HTTPClient *http.Client
 	Settings   Settings
 	Log        *slog.Logger
-	// DepsLogLevel is the minimum level for logs forwarded from dependencies
-	// (whatsmeow). The zero value is info.
+	// DepsLogLevel is the minimum level for forwarded whatsmeow logs; the zero
+	// value is info.
 	DepsLogLevel slog.Level
 	Queue        int
 	MinBackoff   time.Duration
 	MaxBackoff   time.Duration
 	Now          func() time.Time
 	Rand         *rand.Rand
-	// Sleep waits for a pacing delay; tests inject a fake to avoid real waits.
-	Sleep func(ctx context.Context, d time.Duration) error
-	// OnState is called when the channel lifecycle changes, for status.
+	// Sleep lets tests avoid real pacing waits.
+	Sleep   func(ctx context.Context, d time.Duration) error
 	OnState func(State)
 }
 
 // Adapter is the whatsmeow implementation of botflota.MessageChannel for one
-// bot. Create it with New, then Connect.
+// bot.
 type Adapter struct {
 	scope    string
 	bot      string
@@ -105,18 +98,17 @@ type Adapter struct {
 
 	incoming chan botflota.IncomingMessage
 
-	senders  botflota.SenderStore
-	chats    botflota.ChatStore
-	messages botflota.MessageStore
-	importer *historyImporter
-	// contacts copies the account's address book when contact import is on.
+	senders      botflota.SenderStore
+	chats        botflota.ChatStore
+	messages     botflota.MessageStore
+	importer     *historyImporter
 	contacts     *contactImporter
 	contactsOnce sync.Once
 	history      chan *events.HistorySync
 	// historyDone closes when the import worker has drained and stopped.
 	historyDone chan struct{}
 
-	// syncMu guards the one-at-a-time on-demand backfill of this bot.
+	// syncMu guards the one-at-a-time on-demand backfill.
 	syncMu  sync.Mutex
 	syncing bool
 	pending *syncRequest
@@ -139,7 +131,6 @@ type lastInbound struct {
 	sender types.JID
 }
 
-// New builds the adapter on the shared device store.
 func New(opts Options) (*Adapter, error) {
 	if opts.Devices == nil {
 		return nil, errors.New("whatsapp: no device store")
@@ -209,7 +200,6 @@ func New(opts Options) (*Adapter, error) {
 	return a, nil
 }
 
-// Connect loads the paired device and starts the client.
 func (a *Adapter) Connect(ctx context.Context) error {
 	account, err := a.accounts.Get(ctx, a.scope, a.bot)
 	if err != nil {
@@ -247,7 +237,6 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect stops the client and the reconnect loop.
 func (a *Adapter) Disconnect(context.Context) error {
 	a.mu.Lock()
 	client := a.client
@@ -265,107 +254,15 @@ func (a *Adapter) Disconnect(context.Context) error {
 	return nil
 }
 
-// Send delivers one message with human-like pacing (ADR 0011): it waits
-// read_receipt_delay before marking the inbound read, waits reply_delay while
-// showing composing presence, then sends. Jitter is drawn once per delay. The
-// recipient is a plain phone number; the adapter maps it to the JID the message
-// arrived from, or to the phone-number JID when that is unknown (ADR 0020). It
-// returns WhatsApp's message id so the stored reply can be deduplicated.
-func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (string, error) {
-	a.mu.Lock()
-	client := a.client
-	last := a.last[msg.RecipientPhone]
-	a.mu.Unlock()
-	if client == nil || !client.IsConnected() {
-		return "", errors.New("whatsapp: not connected")
-	}
-	if msg.RecipientPhone == "" {
-		return "", errors.New("whatsapp: message has no recipient")
-	}
-	to := last.chat
-	if to.IsEmpty() {
-		to = types.NewJID(msg.RecipientPhone, types.DefaultUserServer)
-	}
-	readDelay := a.jittered(a.settings.ReadReceiptDelay)
-	replyDelay := a.jittered(a.settings.ReplyDelay)
-	if a.settings.ReadReceipts && !last.chat.IsEmpty() {
-		if err := a.sleepFor(ctx, readDelay); err != nil {
-			return "", err
-		}
-		if err := client.MarkRead(ctx, []types.MessageID{last.id}, a.now(),
-			last.chat, last.sender); err != nil {
-			a.log.Warn("read receipt failed", "error", err)
-		}
-	}
-	content, err := a.contentFor(ctx, msg)
-	if err != nil {
-		return "", err
-	}
-	a.log.Debug("reply pacing", "read_receipt_delay", readDelay,
-		"reply_delay", replyDelay, "jitter", a.settings.Jitter)
-	composing := false
-	if a.settings.SimulateTyping {
-		if err := client.SendChatPresence(ctx, to, types.ChatPresenceComposing,
-			types.ChatPresenceMediaText); err != nil {
-			a.log.Warn("composing presence failed", "error", err)
-		} else {
-			composing = true
-		}
-	}
-	if err := a.sleepFor(ctx, replyDelay); err != nil {
-		return "", err
-	}
-	response, err := client.SendMessage(ctx, to, content)
-	if composing {
-		_ = client.SendChatPresence(ctx, to, types.ChatPresencePaused,
-			types.ChatPresenceMediaText)
-	}
-	if err != nil {
-		return "", err
-	}
-	return string(response.ID), nil
-}
-
-// Incoming is the stream of mapped inbound messages.
 func (a *Adapter) Incoming() <-chan botflota.IncomingMessage { return a.incoming }
 
-// State reports the current lifecycle state.
 func (a *Adapter) State() State {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.state
 }
 
-// ChannelState reports the lifecycle state as a string (botflota.StateReporter).
 func (a *Adapter) ChannelState() string { return string(a.State()) }
-
-// jittered adds a random value in [0, jitter] to one delay. Each call draws
-// again, so consecutive replies never share the same pacing.
-func (a *Adapter) jittered(delay time.Duration) time.Duration {
-	if a.settings.Jitter <= 0 || a.rnd == nil {
-		return delay
-	}
-	return delay + time.Duration(a.rnd.Int63n(int64(a.settings.Jitter)+1))
-}
-
-// sleepFor waits for one pacing delay and honors cancellation. Tests inject a
-// fake sleep so they never wait in real time.
-func (a *Adapter) sleepFor(ctx context.Context, delay time.Duration) error {
-	if delay <= 0 {
-		return nil
-	}
-	if a.sleep != nil {
-		return a.sleep(ctx, delay)
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
 
 func (a *Adapter) setState(state State) {
 	a.mu.Lock()
@@ -407,213 +304,4 @@ func (a *Adapter) logPairingStatusError(err error) {
 	if a.log != nil {
 		a.log.Error("persist pairing status", "error", err)
 	}
-}
-
-func (a *Adapter) handleEvent(raw any) {
-	switch event := raw.(type) {
-	case *events.Message:
-		a.onMessage(event)
-	case *events.HistorySync:
-		a.onHistory(event)
-	case *events.Contact, *events.PushName, *events.BusinessName:
-		a.onContact(raw)
-	case *events.Connected:
-		a.backoff.Reset()
-		a.setState(StateConnected)
-		a.onceConnected()
-	case *events.Disconnected:
-		a.setState(StateConnecting)
-		a.signalReconnect()
-	case *events.LoggedOut:
-		a.setState(StateLoggedOut)
-		a.stopReconnecting()
-	case *events.TemporaryBan:
-		a.setState(StateBanned)
-		a.stopReconnecting()
-	case *events.StreamReplaced:
-		a.setState(StateStopped)
-		a.stopReconnecting()
-	}
-}
-
-func (a *Adapter) onMessage(event *events.Message) {
-	if event.Info.IsFromMe || event.IsEdit {
-		return
-	}
-	// An unclassifiable live payload is dropped rather than turned into a
-	// conversation turn; the import still keeps it as an anchor (ADR 0036).
-	content, ok := contentType(event.Message)
-	if !ok || content.MessageKind() == botflota.KindUnknown {
-		return
-	}
-	id := string(event.Info.ID)
-	if !a.seen.fresh(id) {
-		return
-	}
-	pn, ok := resolveSender(event.Info, a.lookupPN)
-	if !ok {
-		a.log.Warn("dropping message: sender has no known phone number")
-		return
-	}
-	sender := pn.User
-	chat := event.Info.Chat
-
-	a.mu.Lock()
-	a.last[sender] = lastInbound{
-		id: event.Info.ID, chat: chat, sender: event.Info.Sender,
-	}
-	a.mu.Unlock()
-
-	message := botflota.IncomingMessage{
-		Bot:               a.bot,
-		SenderPhone:       sender,
-		SenderDisplayName: event.Info.PushName,
-		Content:           content,
-		ProviderMessageID: id,
-		IsGroup:           event.Info.IsGroup,
-		At:                event.Info.Timestamp,
-	}
-	select {
-	case a.incoming <- message:
-	default:
-		a.log.Warn("incoming queue full, dropping message", "sender", sender)
-	}
-}
-
-// onHistory queues one account-wide history-sync chunk for the import worker,
-// so a large bootstrap never blocks the event loop (ADR 0035).
-func (a *Adapter) onHistory(event *events.HistorySync) {
-	if a.importer == nil {
-		return
-	}
-	select {
-	case a.history <- event:
-	case <-a.stop:
-	}
-}
-
-// onContact stores one contact-related event when contact import is on.
-func (a *Adapter) onContact(raw any) {
-	if a.contacts == nil {
-		return
-	}
-	a.contacts.Handle(context.Background(), raw)
-}
-
-// onceConnected copies the cached address book once per adapter. A reconnect
-// whose snapshot was applied silently, or a book that only became importable
-// after a config change, would otherwise never reach the store.
-func (a *Adapter) onceConnected() {
-	if a.contacts == nil {
-		return
-	}
-	a.contactsOnce.Do(func() { go a.importAllContacts() })
-}
-
-// importAllContacts reads the device store's address book and stores it. It
-// runs off the event loop because the book can hold thousands of entries.
-func (a *Adapter) importAllContacts() {
-	a.mu.Lock()
-	client := a.client
-	a.mu.Unlock()
-	if client == nil || client.Store == nil {
-		return
-	}
-	a.contacts.ImportCached(context.Background(), client.Store.Contacts)
-}
-
-// importHistory drains the queued sync chunks until the adapter stops. It is
-// the only caller of the importer, so an on-demand response and a background
-// chunk never import concurrently.
-func (a *Adapter) importHistory() {
-	defer close(a.historyDone)
-	for {
-		select {
-		case <-a.stop:
-			for {
-				select {
-				case event := <-a.history:
-					a.handleHistory(event)
-				default:
-					return
-				}
-			}
-		case event := <-a.history:
-			a.handleHistory(event)
-		}
-	}
-}
-
-// handleHistory imports one chunk and offers it to a waiting on-demand sync.
-func (a *Adapter) handleHistory(event *events.HistorySync) {
-	stats := a.importer.Handle(context.Background(), event)
-	a.observeSync(event, stats)
-}
-
-// devicePhone returns the paired account's phone number for call-log routing.
-func devicePhone(device *store.Device) string {
-	if device == nil || device.GetJID().Server != types.DefaultUserServer {
-		return ""
-	}
-	return device.GetJID().User
-}
-
-// lookupPN resolves a LID through the WhatsApp LID store (ADR 0020).
-func (a *Adapter) lookupPN(lid types.JID) (types.JID, bool) {
-	a.mu.Lock()
-	client := a.client
-	a.mu.Unlock()
-	if client == nil || client.Store == nil || client.Store.LIDs == nil {
-		return types.JID{}, false
-	}
-	pn, err := client.Store.LIDs.GetPNForLID(context.Background(), lid)
-	if err != nil || pn.IsEmpty() {
-		return types.JID{}, false
-	}
-	return pn, true
-}
-
-func (a *Adapter) loop() {
-	defer close(a.stopped)
-	for {
-		select {
-		case <-a.stop:
-			return
-		case <-a.reconnect:
-			a.reconnectOnce()
-		}
-	}
-}
-
-func (a *Adapter) reconnectOnce() {
-	delay := a.backoff.Next()
-	a.log.Debug("reconnecting", "delay", delay)
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-a.stop:
-		return
-	case <-timer.C:
-	}
-	a.mu.Lock()
-	client := a.client
-	a.mu.Unlock()
-	if client == nil {
-		return
-	}
-	if err := client.Connect(); err != nil {
-		a.log.Warn("reconnect failed", "error", err, "attempt", a.backoff.attempt)
-		a.signalReconnect()
-	}
-}
-
-func (a *Adapter) signalReconnect() {
-	select {
-	case a.reconnect <- struct{}{}:
-	default:
-	}
-}
-
-func (a *Adapter) stopReconnecting() {
-	a.stopOnce.Do(func() { close(a.stop) })
 }

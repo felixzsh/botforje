@@ -11,10 +11,9 @@ import (
 	walog "go.mau.fi/whatsmeow/util/log"
 )
 
-// waLog forwards whatsmeow's logger into the structured logger, so protocol
-// warnings and errors land in journalctl/Docker without ANSI colors. It builds
-// the record itself so the source is whatsmeow's call site, not this adapter,
-// and drops anything below the dependency log level.
+// waLog forwards whatsmeow's logger into the structured logger. It builds the
+// record itself so the source is whatsmeow's call site, not this adapter, and
+// drops anything below the dependency log level.
 type waLog struct {
 	logger *slog.Logger
 	module string
@@ -36,9 +35,8 @@ func (l waLog) Sub(module string) walog.Logger {
 
 func (l waLog) emit(level slog.Level, msg string, args ...any) {
 	message := fmt.Sprintf(msg, args...)
-	// On shutdown whatsmeow warns when the close frame races a peer that has
-	// already closed the socket (framesocket.go); it is benign, so keep it but
-	// at debug instead of warning on every clean exit.
+	// On shutdown whatsmeow warns when the close frame races an already-closed
+	// socket (framesocket.go); benign, so demote it to debug.
 	if level == slog.LevelWarn && strings.HasPrefix(message, "Error sending close to websocket") {
 		level = slog.LevelDebug
 	}
