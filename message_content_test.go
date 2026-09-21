@@ -89,8 +89,6 @@ func TestContentErrors(t *testing.T) {
 	}
 }
 
-// TestContentHelpersAreNilSafe covers the read helpers a logger or a handler
-// uses before the engine normalizes the payload.
 func TestContentHelpersAreNilSafe(t *testing.T) {
 	if kind := ContentKind(nil); kind != "" {
 		t.Fatalf("ContentKind(nil) = %q, want empty", kind)

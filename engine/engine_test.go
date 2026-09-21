@@ -21,8 +21,6 @@ import (
 
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
 
-// memStore is an in-memory SenderStore, ChatStore, and SessionStore for engine
-// tests.
 type memStore struct {
 	senders    map[string]*botflota.Sender
 	chats      map[string]*botflota.Chat
@@ -254,7 +252,6 @@ func (s *memStore) History(
 	return out, nil
 }
 
-// sessionFor reads a chat's current session by its config identity.
 func (s *memStore) sessionFor(scope, bot, sender string) (*botflota.Session, error) {
 	profile, ok := s.senders[senderKey(scope, sender)]
 	if !ok {
@@ -378,12 +375,10 @@ func TestDefaultEdgeAndFallback(t *testing.T) {
 	sender := "s3"
 	outbound(t, eng, sender, "hello")
 
-	// The menu's default edge catches unmatched input.
 	got := outbound(t, eng, sender, "zzz")
 	if want := []string{"Choose a number from the menu."}; !slices.Equal(got, want) {
 		t.Fatalf("default edge = %q, want %q", got, want)
 	}
-	// Move to the terminal node, then rely on the graph fallback.
 	outbound(t, eng, sender, "0")
 	got = outbound(t, eng, sender, "zzz")
 	if want := []string{"Choose a number from the menu."}; !slices.Equal(got, want) {
@@ -559,13 +554,12 @@ func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 	if got := outbound(t, eng, "s", "a"); !slices.Equal(got, []string{"warning"}) {
 		t.Fatalf("first run = %q, want warning", got)
 	}
-	// Past the session timeout but inside the rate limit window: the guard
-	// state lives on the chat, so it still blocks.
+	// The guard state lives on the chat, so it still blocks past the session
+	// timeout.
 	now = now.Add(301 * time.Second)
 	if got := outbound(t, eng, "s", "b"); !slices.Equal(got, []string{"slow down"}) {
 		t.Fatalf("after session expiry = %q, want slow down", got)
 	}
-	// Another sender has its own chat and is not blocked.
 	if got := outbound(t, eng, "t", "c"); !slices.Equal(got, []string{"warning"}) {
 		t.Fatalf("other sender = %q, want warning", got)
 	}
@@ -903,7 +897,6 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 	}
 }
 
-// flakyTransport fails the first fail calls, then answers JSON.
 type flakyTransport struct {
 	calls int
 	fail  int

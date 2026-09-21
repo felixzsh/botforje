@@ -18,23 +18,21 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// BotSpec identifies a bot to the channel factory.
 type BotSpec struct {
 	Scope    string
 	Name     string
 	Settings spec.BotSettings
 }
 
-// Options configures a Fleet. Store, Chats, Senders, and NewChannel are
-// required.
+// Store, Chats, Senders, Messages, and NewChannel are required.
 type Options struct {
 	Store      botflota.SessionStore
 	Chats      botflota.ChatStore
 	Senders    botflota.SenderStore
 	Messages   botflota.MessageStore
 	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
-	// Skip omits a bot before its runtime is built. It is for recoverable
-	// runtime conditions such as a missing local pairing.
+	// Skip is for recoverable runtime conditions such as a missing local
+	// pairing; a skipped bot never gets a channel.
 	Skip           func(scope, bot string) bool
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -44,12 +42,10 @@ type Options struct {
 	Log            *slog.Logger
 }
 
-// Fleet is the set of bot actors.
 type Fleet struct {
 	bots []*Bot
 }
 
-// BotStatus is one bot's runtime state.
 type BotStatus struct {
 	Scope       string
 	Bot         string
@@ -57,7 +53,6 @@ type BotStatus struct {
 	OutboxDepth int
 }
 
-// Bot runs one bot: one channel, one engine, one outbox.
 type Bot struct {
 	scope   string
 	name    string
@@ -69,7 +64,7 @@ type Bot struct {
 	log     *slog.Logger
 }
 
-// New builds the fleet from config. It starts nothing and connects nothing.
+// New starts nothing and connects nothing.
 func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if cfg == nil {
 		return nil, errors.New("fleet: nil config")
@@ -169,7 +164,6 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	return fleet, nil
 }
 
-// Run starts every bot and blocks until ctx is cancelled or all bots stop.
 func (f *Fleet) Run(ctx context.Context) error {
 	var wait sync.WaitGroup
 	errs := make(chan error, len(f.bots))
@@ -199,8 +193,6 @@ func (f *Fleet) Run(ctx context.Context) error {
 	return first
 }
 
-// HistorySync runs an on-demand backfill on one bot's live channel. A channel
-// that cannot reach the primary device reports an error instead (ADR 0035).
 func (f *Fleet) HistorySync(
 	ctx context.Context, scope, bot, phone string,
 	count int, timeout time.Duration,
@@ -219,7 +211,6 @@ func (f *Fleet) HistorySync(
 	return botflota.HistoryResult{}, fmt.Errorf("fleet: unknown bot %s/%s", scope, bot)
 }
 
-// Status reports each bot's runtime state.
 func (f *Fleet) Status() []BotStatus {
 	statuses := make([]BotStatus, 0, len(f.bots))
 	for _, bot := range f.bots {

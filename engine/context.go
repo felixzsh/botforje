@@ -11,26 +11,20 @@ import (
 )
 
 var (
-	// ErrMissingPath reports a reference whose value is not set.
 	ErrMissingPath = errors.New("missing path")
-	// ErrReadOnly reports a write to a read-only root.
-	ErrReadOnly = errors.New("read-only root")
+	ErrReadOnly    = errors.New("read-only root")
 )
 
-// writable reports whether the engine lets steps write the root. Graph and
-// node variables are read-write (ADR 0033); the rest are fixed by the engine
-// for the duration of a message.
 func writable(root botflota.Root) bool {
 	return root == botflota.RootGraph || root == botflota.RootNode
 }
 
-// templateContext holds the values a template reads, grouped by root. It is
-// not safe for concurrent use; one bot actor owns it (docs/architecture.md).
+// templateContext is not safe for concurrent use; one bot actor owns it
+// (docs/architecture.md).
 type templateContext struct {
 	values map[botflota.Root]map[string]any
 }
 
-// newtemplateContext returns an empty context with every root ready to use.
 func newtemplateContext() *templateContext {
 	c := &templateContext{values: map[botflota.Root]map[string]any{}}
 	for _, root := range []botflota.Root{
@@ -42,10 +36,7 @@ func newtemplateContext() *templateContext {
 	return c
 }
 
-// Reset replaces every value of one root. The engine uses it to seed a session
-// (graph), a node entry (node), a message (sender, message, bot), and a tool
-// call (input). The values are cloned, so later writes never mutate the config
-// that produced them.
+// The values are cloned, so later writes never mutate the caller's map.
 func (c *templateContext) Reset(root botflota.Root, values map[string]any) error {
 	if !root.Known() {
 		return fmt.Errorf("%w: %q", botflota.ErrUnknownRoot, root)
@@ -58,8 +49,7 @@ func (c *templateContext) Reset(root botflota.Root, values map[string]any) error
 	return nil
 }
 
-// Set writes one graph or node variable. Bind targets are exactly one level
-// deep (ADR 0033); read-only roots reject the write.
+// Bind targets are exactly one level deep (ADR 0033).
 func (c *templateContext) Set(path string, value any) error {
 	root, segments, err := botflota.ParseTemplatePath(path)
 	if err != nil {
@@ -75,8 +65,7 @@ func (c *templateContext) Set(path string, value any) error {
 	return nil
 }
 
-// Get resolves path to its value. A step that references an unset value is an
-// error, never an empty string (ADR 0018).
+// A reference to an unset value is an error, never an empty string (ADR 0018).
 func (c *templateContext) Get(path string) (any, error) {
 	root, segments, err := botflota.ParseTemplatePath(path)
 	if err != nil {
@@ -111,9 +100,7 @@ func step(value any, segment string) (any, error) {
 	}
 }
 
-// Values returns the live map behind a root so the engine can persist it back
-// after running a step. The caller must not mutate it once the context is
-// reused.
+// The returned map is live, not a copy; the caller must not mutate it.
 func (c *templateContext) Values(root botflota.Root) map[string]any {
 	if !root.Known() {
 		return nil
@@ -121,8 +108,6 @@ func (c *templateContext) Values(root botflota.Root) map[string]any {
 	return c.values[root]
 }
 
-// requestResult is the captured outcome of a request step. Phase 4 fills it in
-// when it runs the HTTP call.
 type requestResult struct {
 	Status   int
 	Headers  map[string]string
@@ -130,8 +115,6 @@ type requestResult struct {
 	Duration time.Duration
 }
 
-// SetRequest stores a captured request under the node root, addressable as
-// {{node.<name>.resp.body.*}}, .resp.headers.*, .status, and .duration.
 func (c *templateContext) SetRequest(name string, result requestResult) error {
 	if !botflota.ValidSegment(name) {
 		return fmt.Errorf("%w: request name %q", botflota.ErrInvalidPath, name)

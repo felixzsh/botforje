@@ -11,14 +11,11 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// errOutboxClosed is returned by push after close.
 var errOutboxClosed = errors.New("outbox: closed")
 
-// outboxSender delivers one message and returns the channel's message id; a
-// channel adapter implements it.
 type outboxSender func(ctx context.Context, msg botflota.OutgoingMessage) (string, error)
 
-// outboxConfig configures an outbox. Only Sender is required.
+// Only Sender is required.
 type outboxConfig struct {
 	Sender       outboxSender
 	Delay        time.Duration
@@ -30,15 +27,11 @@ type outboxConfig struct {
 	Rand         *rand.Rand
 	Sleep        func(ctx context.Context, d time.Duration) error
 	OnError      func(msg botflota.OutgoingMessage, err error)
-	// OnSent receives the channel message id of a delivered message, for
-	// deduplication of the stored reply (ADR 0026).
-	OnSent func(msg botflota.OutgoingMessage, providerID string)
-	Log    *slog.Logger
+	OnSent       func(msg botflota.OutgoingMessage, providerID string)
+	Log          *slog.Logger
 }
 
-// outbox paces one bot's outbound messages (ADR 0011): a per-bot FIFO with
-// queue_delay plus random jitter, an optional per-minute ceiling, and
-// backpressure when the buffer is full. Push blocks when it is full.
+// outbox paces one bot's outbound messages (ADR 0011).
 type outbox struct {
 	cfg       outboxConfig
 	in        chan botflota.OutgoingMessage
@@ -51,7 +44,6 @@ type outbox struct {
 	count       int
 }
 
-// newOutbox builds an outbox and starts its send loop.
 func newOutbox(cfg outboxConfig) *outbox {
 	if cfg.Capacity <= 0 {
 		cfg.Capacity = 64
@@ -80,7 +72,7 @@ func newOutbox(cfg outboxConfig) *outbox {
 	return q
 }
 
-// Push enqueues a message, blocking while the buffer is full.
+// Push blocks while the buffer is full.
 func (q *outbox) Push(ctx context.Context, msg botflota.OutgoingMessage) error {
 	select {
 	case q.in <- msg:
@@ -98,10 +90,8 @@ func (q *outbox) Push(ctx context.Context, msg botflota.OutgoingMessage) error {
 // Close stops accepting messages; what is already queued still goes out.
 func (q *outbox) Close() { q.closeOnce.Do(func() { close(q.in) }) }
 
-// Wait blocks until the queue has drained.
 func (q *outbox) Wait() { <-q.done }
 
-// Depth is the number of messages not yet sent.
 func (q *outbox) Depth() int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -133,7 +123,7 @@ func (q *outbox) jitter() time.Duration {
 	return time.Duration(q.cfg.Rand.Int63n(int64(q.cfg.Jitter) + 1))
 }
 
-// waitRate enforces max_messages_per_minute with a fixed one-minute window.
+// The ceiling uses a fixed one-minute window, not a sliding one.
 func (q *outbox) waitRate() {
 	if q.cfg.MaxPerMinute <= 0 {
 		return

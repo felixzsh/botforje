@@ -78,8 +78,6 @@ func (c *fakeChannel) wasDisconnected() bool {
 	return c.disconnected
 }
 
-// memStore is an in-memory SenderStore, ChatStore, and SessionStore for fleet
-// tests.
 type memStore struct {
 	mu         sync.Mutex
 	senders    map[string]*botflota.Sender
@@ -387,7 +385,6 @@ func buildFleetWithStore(
 	return runner, channels, store
 }
 
-// syncChannel adds the on-demand history capability to the fake channel.
 type syncChannel struct {
 	fakeChannel
 	phone string

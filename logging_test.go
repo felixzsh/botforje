@@ -12,8 +12,6 @@ import (
 	"testing"
 )
 
-// sourceName is the "dir/file.go" source column the handler derives for this
-// file, wherever the repository is checked out.
 func sourceName(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(1)

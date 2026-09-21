@@ -15,7 +15,6 @@ func reset(t *testing.T, ctx *templateContext, root botflota.Root, values map[st
 	}
 }
 
-// testContext seeds one value per root, the shape a Handle call builds.
 func testContext(t *testing.T) *templateContext {
 	t.Helper()
 	ctx := newtemplateContext()
@@ -236,9 +235,6 @@ func TestSetRequestRejectsBadName(t *testing.T) {
 	}
 }
 
-// TestMessageStepRenders mirrors a message step whose body references a
-// captured request result (Phase 2 gate): the engine's context resolves the
-// path and the core template renders it.
 func TestMessageStepRenders(t *testing.T) {
 	ctx := testContext(t)
 	err := ctx.SetRequest("lead-capture", requestResult{

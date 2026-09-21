@@ -17,8 +17,8 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// Options configures an Engine. Bot, Graph, Actions, Store, Chats, and Senders
-// are required.
+// Options configures an Engine. Bot, Graph, Actions, Store, Chats, Senders,
+// and Messages are required.
 type Options struct {
 	Bot            string
 	Scope          string
@@ -36,8 +36,8 @@ type Options struct {
 	Log            *slog.Logger
 }
 
-// Engine runs one graph for one bot. It is not safe for concurrent use; one
-// bot actor owns it (docs/architecture.md).
+// Engine is not safe for concurrent use; one bot actor owns it
+// (docs/architecture.md).
 type Engine struct {
 	bot            string
 	scope          string
@@ -56,7 +56,6 @@ type Engine struct {
 	log            *slog.Logger
 }
 
-// New builds an Engine and fills in its optional collaborators.
 func New(opts Options) *Engine {
 	e := &Engine{
 		bot:            opts.Bot,
@@ -93,9 +92,6 @@ func New(opts Options) *Engine {
 	return e
 }
 
-// Handle processes one inbound message and returns the messages to deliver.
-// It loads or creates the session, routes, runs the transition and its
-// actions, and persists the session.
 func (e *Engine) Handle(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) ([]botflota.OutgoingMessage, error) {
@@ -104,7 +100,7 @@ func (e *Engine) Handle(
 	}
 	if msg.Content == nil {
 		// A channel that predates the kind vocabulary, or a plain text event,
-		// leaves the payload empty (ADR 0036).
+		// leaves the payload empty.
 		msg.Content = botflota.TextContent{}
 	}
 	if e.messages == nil {
@@ -166,12 +162,8 @@ func (e *Engine) Handle(
 	return r.out, nil
 }
 
-// recordMessages stores the inbound message and every reply under the chat and
-// the session run that handled them (ADR 0026). The session is saved first, so
-// its id is set; an outbound reply keeps its kind, so a location stays
-// distinguishable from text. Provenance travels with the records: the channel
-// message id for dedup, and the routing that handled the run plus the origin
-// of each reply.
+// recordMessages needs the session saved first, so the records can carry its
+// id.
 func (e *Engine) recordMessages(
 	ctx context.Context,
 	chatID, sessionID int64,
@@ -207,9 +199,6 @@ func (e *Engine) recordMessages(
 		if err := e.messages.Append(ctx, sent); err != nil {
 			return fmt.Errorf("engine: record outbound: %w", err)
 		}
-		// The channel reports its message id after delivery; the fleet fills
-		// the stored row with it so a later history sync deduplicates the
-		// reply (ADR 0026, ADR 0035).
 		out[i].StoredMessageID = sent.ID
 	}
 	return nil
@@ -261,8 +250,6 @@ func (e *Engine) sessionTimeout() time.Duration {
 	return e.defaultTimeout
 }
 
-// expiry returns the session deadline, or the zero time when no timeout is
-// configured (a zero deadline never expires).
 func (e *Engine) expiry(now time.Time) time.Time {
 	if timeout := e.sessionTimeout(); timeout > 0 {
 		return now.Add(timeout)
@@ -293,8 +280,6 @@ func (e *Engine) contextOf(
 	return tctx
 }
 
-// run is the state of one Handle call. Routing is how this message was
-// handled; every message the run persists carries it (ADR 0026).
 type run struct {
 	ctx         context.Context
 	engine      *Engine
@@ -307,8 +292,6 @@ type run struct {
 	guardsDirty bool
 }
 
-// move runs the exit actions when asked, enters target, resets its node
-// context, and reorders visited nodes so target is last (ADR 0010).
 func (r *run) move(target string, runExit bool) error {
 	if runExit {
 		if err := r.actions(r.engine.graph.Nodes[r.session.Node].OnExit); err != nil {
@@ -325,7 +308,6 @@ func (r *run) move(target string, runExit bool) error {
 	return r.enter()
 }
 
-// enter runs the entry actions of the current node.
 func (r *run) enter() error {
 	return r.actions(r.engine.graph.Nodes[r.session.Node].OnEnter)
 }
@@ -339,7 +321,6 @@ func (r *run) actions(names []string) error {
 	return nil
 }
 
-// action runs one action, applying its guards (ADR 0011).
 func (r *run) action(name string) error {
 	action, ok := r.engine.actions[name]
 	if !ok {
@@ -351,7 +332,6 @@ func (r *run) action(name string) error {
 	return r.steps(action.Steps, name)
 }
 
-// applyGuards checks an action's guards and records the run when they allow it.
 // A blocking guard reports true and has already run its on_blocked steps.
 func (r *run) applyGuards(name string, guards *spec.Guards) (bool, error) {
 	if guards == nil {
@@ -376,8 +356,6 @@ func (r *run) applyGuards(name string, guards *spec.Guards) (bool, error) {
 	return false, nil
 }
 
-// recordGuards stamps an allowed run in the chat so the next one is judged
-// against it (ADR 0027).
 func (r *run) recordGuards(
 	name string, guards *spec.Guards, state botflota.GuardState,
 	now time.Time, window time.Duration,

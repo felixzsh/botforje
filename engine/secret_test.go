@@ -12,8 +12,6 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// fakeLLM returns fixed text from Realize, so a test controls what a model
-// would generate for a message. A non-nil err makes realization fail.
 type fakeLLM struct {
 	body string
 	err  error
@@ -49,7 +47,6 @@ func TestCheckNoSecret(t *testing.T) {
 	}
 }
 
-// testRun builds the minimal state a message or location step needs.
 func testRun() *run {
 	return &run{
 		ctx:    context.Background(),
@@ -169,7 +166,6 @@ func TestGeneratedBodyQueuesPlainText(t *testing.T) {
 	}
 }
 
-// headerTransport records the headers of one request.
 type headerTransport struct{ header http.Header }
 
 func (h *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {

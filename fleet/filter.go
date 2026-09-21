@@ -2,8 +2,7 @@ package fleet
 
 import "github.com/felixzsh/botflota"
 
-// Filter holds one bot's inbound rules (ADR 0011): ignore groups, and an
-// allow/ignore list of sender phone numbers. Deduplication lives in the
+// Filter holds one bot's inbound rules (ADR 0011). Deduplication lives in the
 // channel adapter, which sees the transport event first.
 type Filter struct {
 	IgnoreGroups bool
@@ -11,7 +10,6 @@ type Filter struct {
 	Ignored      []string
 }
 
-// Allow reports whether the message reaches the engine.
 func (f Filter) Allow(msg botflota.IncomingMessage) bool {
 	if msg.IsGroup && f.IgnoreGroups {
 		return false
@@ -25,7 +23,6 @@ func (f Filter) Allow(msg botflota.IncomingMessage) bool {
 	return true
 }
 
-// matches compares the lists against the sender phone number.
 func matches(list []string, msg botflota.IncomingMessage) bool {
 	for _, id := range list {
 		if id == msg.SenderPhone {

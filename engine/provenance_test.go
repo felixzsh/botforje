@@ -10,7 +10,6 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// scriptedLLM answers Realize with fixed text; a non-nil err fails it.
 type scriptedLLM struct {
 	body string
 	err  error
@@ -26,8 +25,6 @@ func (s scriptedLLM) Realize(context.Context, botflota.RealizeRequest) (string, 
 	return s.body, s.err
 }
 
-// provenanceGraph reaches every trigger layer with one probe each, plus a
-// default edge for unmatched input.
 func provenanceGraph() spec.Graph {
 	return spec.Graph{
 		Root: "menu",
@@ -39,7 +36,7 @@ func provenanceGraph() spec.Graph {
 					{Intent: "sequence", Triggers: []string{"opening hours"}, Goto: "done"},
 					{Intent: "words", Triggers: []string{"catalog products"}, Goto: "done"},
 					{Intent: "fuzzy", Triggers: []string{"book now"}, Goto: "done"},
-					{Goto: "done"}, // default edge: empty intent
+					{Goto: "done"},
 				},
 			},
 			"done": {OnEnter: []string{"ok"}},
@@ -56,7 +53,6 @@ var provenanceActions = map[string]spec.Action{
 	}}}},
 }
 
-// provenanceEngine builds an engine whose replies come from fixed bodies.
 func provenanceEngine(
 	t *testing.T, store *memStore, graph spec.Graph, llm botflota.LLMProvider,
 ) *engine.Engine {
@@ -69,7 +65,6 @@ func provenanceEngine(
 	})
 }
 
-// lastRecord returns the newest stored message of one direction.
 func lastRecord(
 	t *testing.T, store *memStore, direction botflota.Direction,
 ) botflota.Message {
@@ -119,8 +114,6 @@ func TestRoutingMethodsAreRecorded(t *testing.T) {
 	}
 }
 
-// TestRootRoutingOnSessionCreation covers the unmatched first message: the
-// root handles it and the reply is preset.
 func TestRootRoutingOnSessionCreation(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
@@ -137,7 +130,6 @@ func TestRootRoutingOnSessionCreation(t *testing.T) {
 	}
 }
 
-// TestFallbackRouting covers an unmatched message with no default edge.
 func TestFallbackRouting(t *testing.T) {
 	graph := spec.Graph{
 		Root: "menu",
@@ -198,8 +190,6 @@ func TestGeneratedReplyOrigin(t *testing.T) {
 	}
 }
 
-// TestProviderMessageIDIsRecorded keeps the inbound channel id for the dedup
-// of a future history import.
 func TestProviderMessageIDIsRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
@@ -216,8 +206,6 @@ func TestProviderMessageIDIsRecorded(t *testing.T) {
 	}
 }
 
-// TestOutboundRecordIDLinksTheStoredReply keeps the stored row id on the reply
-// the engine returns, so the channel can fill its provider id after delivery.
 func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)

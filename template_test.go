@@ -7,12 +7,8 @@ import (
 	"testing"
 )
 
-// errNoValue is the resolver failure the template tests expect Render to
-// propagate unchanged.
 var errNoValue = errors.New("no value")
 
-// testResolver resolves a reference against a map keyed by full path, so a
-// render test stays independent of the engine's runtime context.
 func testResolver(values map[string]any) func(string) (any, error) {
 	return func(path string) (any, error) {
 		value, ok := values[path]

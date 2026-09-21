@@ -10,7 +10,6 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// textMessage is an outbound text message for the queue tests.
 func textMessage(body string) botflota.OutgoingMessage {
 	return botflota.OutgoingMessage{Content: botflota.TextContent{Body: body}}
 }
@@ -40,7 +39,6 @@ func TestOrderAndDrain(t *testing.T) {
 	}
 }
 
-// clock is an injected Now/Sleep that records waits and advances.
 type clock struct {
 	mu     sync.Mutex
 	now    time.Time

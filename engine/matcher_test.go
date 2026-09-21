@@ -2,9 +2,8 @@ package engine
 
 import "testing"
 
-// TestMatchScore checks the matching layers by outcome (ADR 0019): every shape
-// of match must clear the routing threshold and unrelated input must not. The
-// exact numbers stay free so tuning the algorithm does not break the test.
+// Every shape of match must clear the routing threshold and unrelated input
+// must not; the exact scores stay free so tuning does not break the test.
 func TestMatchScore(t *testing.T) {
 	cases := []struct {
 		name    string

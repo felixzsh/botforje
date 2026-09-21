@@ -16,13 +16,10 @@ import (
 
 const defaultRequestTimeout = 10 * time.Second
 
-// errSecretInMessage reports a `${...}` reference that reached an outgoing
-// message. Config validation rejects it earlier (ADR 0014); this is a last
-// guard so a secret can never leave through a message.
+// Config validation rejects a `${...}` reference earlier (ADR 0014); this is
+// a last guard so a secret can never leave through a message.
 var errSecretInMessage = errors.New("unresolved secret reference in outgoing message")
 
-// checkNoSecret rejects a `${...}` reference in an outgoing string. Templates
-// use `{{...}}`, and secrets stay inside their field.
 func checkNoSecret(text string) error {
 	if strings.Contains(text, "${") {
 		return errSecretInMessage
@@ -56,11 +53,6 @@ func (r *run) steps(steps []spec.Step, where string) error {
 	return nil
 }
 
-// message renders a reply (ADR 0032). The body is the deterministic text and
-// the fallback; the intent asks the LLM to realize it. With no provider, an
-// anchored message keeps the body and an intent-only message fails. An
-// optional To overrides the recipient; a To that resolves empty is an error,
-// never a silent reply to the sender.
 func (r *run) message(m spec.Message) error {
 	recipient, err := r.recipient(m.To)
 	if err != nil {
@@ -75,7 +67,7 @@ func (r *run) message(m spec.Message) error {
 		body = rendered
 	}
 	// A reply is preset unless the model really produced the body; a failed
-	// realization that falls back to the anchor stays preset (ADR 0026).
+	// realization that falls back to the anchor stays preset.
 	origin := botflota.OriginPreset
 	if m.Intent != "" {
 		generated, err := r.engine.llm.Realize(r.ctx, botflota.RealizeRequest{
@@ -119,9 +111,7 @@ func (r *run) pickVariant(body spec.Text) string {
 	}
 }
 
-// recipient resolves a step's recipient: the sender by default, or the
-// rendered `to` override. A `to` that resolves empty is an error, never a
-// silent reply to the sender.
+// A `to` that resolves empty is an error, never a silent reply to the sender.
 func (r *run) recipient(to string) (string, error) {
 	if to == "" {
 		return r.msg.SenderPhone, nil
@@ -136,10 +126,6 @@ func (r *run) recipient(to string) (string, error) {
 	return rendered, nil
 }
 
-// media renders an attachment and queues it (ADR 0036). The channel reads the
-// bytes from url or path; the engine never fetches the file, so a large
-// attachment or a secret stays out of the runtime context. Exactly one source
-// is required, since which one wins would otherwise be ambiguous.
 func (r *run) media(m spec.Media) error {
 	mediaType, ok := mediaTypeOf(m.Kind)
 	if !ok {
@@ -189,9 +175,6 @@ func (r *run) media(m spec.Media) error {
 	return nil
 }
 
-// mediaTypeOf maps a configured media kind to its core type. Only the media
-// kinds are accepted; anything else is a config error the channel must not
-// guess at.
 func mediaTypeOf(name string) (botflota.MediaType, bool) {
 	mediaType := botflota.MediaType(name)
 	if !mediaType.Valid() {
@@ -200,7 +183,6 @@ func mediaTypeOf(name string) (botflota.MediaType, bool) {
 	return mediaType, true
 }
 
-// contact renders a shared contact card and queues it (ADR 0036).
 func (r *run) contact(c spec.Contact) error {
 	name, err := botflota.RenderTemplate(c.Name, r.tctx.Get)
 	if err != nil {
@@ -232,7 +214,6 @@ func (r *run) contact(c spec.Contact) error {
 	return nil
 }
 
-// poll renders a poll and queues it (ADR 0036).
 func (r *run) poll(p spec.Poll) error {
 	question, err := botflota.RenderTemplate(p.Question, r.tctx.Get)
 	if err != nil {
@@ -273,8 +254,6 @@ func (r *run) poll(p spec.Poll) error {
 	return nil
 }
 
-// request renders and performs an HTTP call, retrying on failure, and stores
-// the captured result under the node root as {{node.<name>.resp.*}}.
 func (r *run) request(req spec.Request) error {
 	url, err := botflota.RenderTemplate(req.URL, r.tctx.Get)
 	if err != nil {

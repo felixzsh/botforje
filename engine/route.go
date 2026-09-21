@@ -4,18 +4,11 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// routeResult is the chosen transition and how it was chosen, recorded on the
-// messages the run persists (ADR 0026).
 type routeResult struct {
 	Target string
 	Method botflota.RoutingMethod
 }
 
-// route picks the next node for the incoming message. Candidates are the
-// visited nodes with the current one last (ADR 0010); an explicit trigger
-// match wins, then the LLM when the mode allows it, then the current node's
-// default edge, then the graph fallback. On session creation only an explicit
-// match transitions; otherwise the root's entry actions run (ADR 0010).
 func (e *Engine) route(r *run, created bool) (routeResult, error) {
 	mode := e.graph.Routing
 	if mode == "" {
@@ -54,9 +47,7 @@ func (e *Engine) route(r *run, created bool) (routeResult, error) {
 	return routeResult{Method: botflota.RoutingUnknown}, nil
 }
 
-// matchTriggers scores every trigger edge of every candidate and returns the
-// best target with the layer that matched. Ties go to the most recent
-// candidate.
+// Ties go to the most recent candidate.
 func (e *Engine) matchTriggers(r *run) (string, botflota.RoutingMethod) {
 	bestScore := 0.0
 	bestIndex := -1
@@ -84,7 +75,6 @@ func (e *Engine) matchTriggers(r *run) (string, botflota.RoutingMethod) {
 	return bestTarget, bestMethod
 }
 
-// classify asks the LLM to pick an edge intent among the candidate nodes.
 func (e *Engine) classify(r *run) (string, bool, error) {
 	intents := map[string]string{}
 	var ordered []string

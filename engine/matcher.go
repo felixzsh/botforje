@@ -7,11 +7,8 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// matchThreshold is the lowest trigger score that still transitions.
 const matchThreshold = 0.7
 
-// bestTriggerMatch returns the highest-scoring trigger of an edge and the
-// matching layer that produced it, for the engine to record (ADR 0019).
 func bestTriggerMatch(text string, triggers []string) (float64, botflota.RoutingMethod) {
 	best := 0.0
 	bestMethod := botflota.RoutingMethod("")
@@ -24,16 +21,11 @@ func bestTriggerMatch(text string, triggers []string) (float64, botflota.Routing
 	return best, bestMethod
 }
 
-// matchScore scores how well a trigger matches the user text.
 func matchScore(text, trigger string) float64 {
 	score, _ := matchTrigger(text, trigger)
 	return score
 }
 
-// matchTrigger scores a trigger against the user text and names the layer that
-// won (ADR 0019): an exact match, then the trigger appearing as contiguous
-// words, then all of its words in any order, then a typo-tolerant similarity
-// (the fuzzy path). A score below the threshold returns no layer.
 func matchTrigger(text, trigger string) (float64, botflota.RoutingMethod) {
 	a := normalize(text)
 	b := normalize(trigger)
