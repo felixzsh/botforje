@@ -175,9 +175,6 @@ func newFleetStatusCmd() *fleetStatusCmd {
 	}
 }
 
-// runFleetStatus asks the running instance for its state: uptime and each
-// bot's connection state, outbox depth, and active sessions. It is an API
-// client, so the fleet must be running (ADR 0025).
 func runFleetStatus(args []string) int {
 	cmd := newFleetStatusCmd()
 	if code := parseArgs(cmd.fs, args); code >= 0 {
@@ -227,9 +224,9 @@ func runFleetStatus(args []string) int {
 	return 0
 }
 
-// serveAPI starts the REST API in the fleet process (ADR 0025). It returns
-// after binding the address; serving continues until ctx is cancelled. A
-// serving failure stops the fleet so the supervisor can restart it.
+// serveAPI binds the address and then serves in the background until ctx is
+// cancelled; a serving failure stops the fleet so the supervisor can restart
+// it.
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
 	runner *fleet.Fleet, db *sqlite.DB, logger *slog.Logger, rotate bool,

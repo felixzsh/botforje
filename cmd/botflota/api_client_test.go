@@ -12,8 +12,6 @@ import (
 	"github.com/felixzsh/botflota/config"
 )
 
-// clearAPIEnv removes the environment overrides so a test sees the config
-// and the token file.
 func clearAPIEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("BOTFLOTA_API_URL", "")

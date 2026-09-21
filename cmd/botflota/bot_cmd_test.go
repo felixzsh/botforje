@@ -10,9 +10,8 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// TestPrintPairImport covers the result `bot pair` answers with: the chats and
-// messages the history sync brought, and the contacts the address book added
-// (ADR 0038). A switch that is off prints no line at all.
+// TestPrintPairImport covers the result `bot pair` answers with (ADR 0038):
+// a switch that is off prints no line at all.
 func TestPrintPairImport(t *testing.T) {
 	on, off := true, false
 	settings := func(history, contacts *bool) *spec.BotSettings {

@@ -10,11 +10,8 @@ import (
 	"github.com/felixzsh/botflota/config"
 )
 
-// schemaFileName is the generated schema written beside the config file.
 const schemaFileName = "config.schema.json"
 
-// minimalConfig is the starting point config init writes: a valid document
-// with nothing to delete.
 var minimalConfig = []byte(`# Botflota configuration. Validate it with botflota config validate.
 # Secrets stay out of this file: a model api_key or a request header may
 # reference an environment variable as ${ENV_VAR}.
@@ -42,9 +39,6 @@ func newInitCmd() *initCmd {
 	}
 }
 
-// runInit writes a minimal config file and its generated schema beside it.
-// It is non-interactive, refuses to touch an existing file without --force,
-// and needs no running instance (ADR 0025).
 func runInit(args []string) int {
 	cmd := newInitCmd()
 	if code := parseArgs(cmd.fs, args); code >= 0 {
@@ -68,7 +62,6 @@ func runInit(args []string) int {
 	return 0
 }
 
-// initConfig writes the minimal config and the generated schema.
 func initConfig(path string, force bool) error {
 	schemaPath := filepath.Join(filepath.Dir(path), schemaFileName)
 	if !force {

@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// messageCmd reads one chat's stored history through the API. tail adds
-// --follow, which polls with a cursor instead of using a stream (Phase 10).
+// messageCmd's tail --follow polls with a cursor instead of streaming.
 type messageCmd struct {
 	fs     *flag.FlagSet
 	config *string
@@ -92,11 +91,8 @@ func runMessage(cmd *messageCmd, args []string) int {
 	return 0
 }
 
-// followInterval is how often message tail --follow asks for new messages.
 const followInterval = 2 * time.Second
 
-// messageQuery addresses one chat in the API: its scope, bot, sender phone,
-// and page size.
 type messageQuery struct {
 	scope string
 	bot   string
@@ -104,7 +100,6 @@ type messageQuery struct {
 	limit int
 }
 
-// path builds the messages route, with the cursor when there is one.
 func (q messageQuery) path(afterID int64) string {
 	values := url.Values{
 		"bot":    {q.bot},
@@ -117,8 +112,7 @@ func (q messageQuery) path(afterID int64) string {
 	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/messages?" + values.Encode()
 }
 
-// printMessages fetches a chat's messages, writes them to w, and returns the
-// last id seen, which is the cursor of the next poll.
+// printMessages returns the last id seen: the cursor of the next poll.
 func printMessages(
 	ctx context.Context, w io.Writer, client *apiClient, q messageQuery, afterID int64,
 ) (int64, error) {
@@ -150,8 +144,6 @@ func printMessages(
 	return last, nil
 }
 
-// dash keeps a table aligned when a field is empty, like the origin of an
-// inbound message.
 func dash(value string) string {
 	if value == "" {
 		return "-"
@@ -159,8 +151,6 @@ func dash(value string) string {
 	return value
 }
 
-// followMessages polls the API until ctx is cancelled, printing only messages
-// newer than the cursor.
 func followMessages(
 	ctx context.Context, w io.Writer, client *apiClient, q messageQuery,
 	lastID int64, every time.Duration,

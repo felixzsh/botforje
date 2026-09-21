@@ -11,12 +11,10 @@ import (
 	"time"
 )
 
-// messagesServer answers the messages route and records the queries it saw.
 type messagesServer struct {
 	mu      sync.Mutex
 	queries []string
-	// page returns the JSON body for one request.
-	page func(afterID string) string
+	page    func(afterID string) string
 }
 
 func (m *messagesServer) handler(t *testing.T) http.Handler {
@@ -111,7 +109,6 @@ func TestPrintMessagesResumesFromCursor(t *testing.T) {
 	}
 }
 
-// syncBuffer is a writer a test can read while the follower writes.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -129,8 +126,6 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// TestFollowMessagesPollsWithCursor checks that the loop prints the messages
-// after the cursor and advances it on the next poll.
 func TestFollowMessagesPollsWithCursor(t *testing.T) {
 	advanced := make(chan struct{}, 1)
 	page := &messagesServer{page: func(afterID string) string {
@@ -170,7 +165,6 @@ func TestFollowMessagesPollsWithCursor(t *testing.T) {
 	}
 }
 
-// waitFor polls condition until it holds or a deadline passes.
 func waitFor(t *testing.T, condition func() bool, message string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

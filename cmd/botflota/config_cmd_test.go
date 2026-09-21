@@ -36,7 +36,7 @@ func TestInitWritesConfigAndSchema(t *testing.T) {
 		t.Fatalf("schema is not valid JSON: %v", err)
 	}
 	// Both files are user-facing: they must read as documentation, never as
-	// references to internal design notes.
+	// internal design notes.
 	for name, text := range map[string]string{
 		"config": string(configData),
 		"schema": string(data),

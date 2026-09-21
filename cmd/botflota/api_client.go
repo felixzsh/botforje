@@ -18,20 +18,14 @@ import (
 	"github.com/felixzsh/botflota/config"
 )
 
-// apiClient calls the REST API of a running instance. Operational commands
-// are clients of that API instead of opening the database themselves
-// (ADR 0025).
+// apiClient calls the REST API of a running instance instead of opening the
+// database itself (ADR 0025).
 type apiClient struct {
 	base  string
 	token string
 	http  *http.Client
 }
 
-// newAPIClient resolves the base URL and the credential:
-//
-//   - BOTFLOTA_API_URL when set, otherwise address and port from the config.
-//   - BOTFLOTA_TOKEN (owner or access token) when set, otherwise the
-//     owner.token file under data_dir, which fleet run writes on first start.
 func newAPIClient(cfg *config.Config) (*apiClient, error) {
 	base := os.Getenv("BOTFLOTA_API_URL")
 	if base == "" {
@@ -66,13 +60,11 @@ func newAPIClient(cfg *config.Config) (*apiClient, error) {
 	}, nil
 }
 
-// apiTimeout bounds a read call, so a hung instance does not hang the terminal
-// forever. A sync call overrides it because the phone decides how long it
-// takes.
+// apiTimeout keeps a hung instance from hanging the terminal; a sync call
+// overrides it because the phone decides how long it takes.
 const apiTimeout = 10 * time.Second
 
-// get fetches a path and decodes the JSON body into out; a nil out discards
-// the body.
+// get: a nil out discards the body.
 func (c *apiClient) get(ctx context.Context, path string, out any) error {
 	body, err := c.getRaw(ctx, path)
 	if err != nil {
@@ -84,14 +76,12 @@ func (c *apiClient) get(ctx context.Context, path string, out any) error {
 	return json.Unmarshal(body, out)
 }
 
-// getRaw fetches a path and returns the body, which a --json mode can pass
-// through unchanged.
 func (c *apiClient) getRaw(ctx context.Context, path string) ([]byte, error) {
 	return c.do(ctx, http.MethodGet, path, apiTimeout)
 }
 
-// post calls a mutating endpoint and decodes its JSON body into out. The
-// timeout bounds the whole call, because some operations wait on the phone.
+// post's timeout bounds the whole call, because some operations wait on the
+// phone.
 func (c *apiClient) post(
 	ctx context.Context, path string, out any, timeout time.Duration,
 ) error {
@@ -105,8 +95,6 @@ func (c *apiClient) post(
 	return json.Unmarshal(body, out)
 }
 
-// do sends one authenticated request and returns the body. A non-zero timeout
-// bounds it through the request context.
 func (c *apiClient) do(
 	ctx context.Context, method, path string, timeout time.Duration,
 ) ([]byte, error) {
@@ -136,8 +124,6 @@ func (c *apiClient) do(
 	return body, nil
 }
 
-// apiError turns the API's single error shape, `{"error":{"code","message"}}`,
-// into an error for the terminal.
 func apiError(status int, body []byte) error {
 	var parsed struct {
 		Error struct {

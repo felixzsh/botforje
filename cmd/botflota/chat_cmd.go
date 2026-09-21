@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// chatCmd lists one bot's stored chats through the API: each chat is a sender
-// the bot has a thread with, keyed by (scope, bot, sender) (ADR 0026).
 type chatCmd struct {
 	fs     *flag.FlagSet
 	config *string
@@ -65,9 +63,8 @@ func runChatList(args []string) int {
 	return 0
 }
 
-// chatSyncCmd asks the primary device for older messages of one chat. It is an
-// API client: the running fleet owns the live connection, so the same endpoint
-// serves a dashboard later (ADR 0025, ADR 0035).
+// chatSyncCmd is an API client: the running fleet owns the live connection
+// (ADR 0025).
 type chatSyncCmd struct {
 	fs      *flag.FlagSet
 	config  *string
@@ -128,7 +125,6 @@ func runChatSync(args []string) int {
 		*cmd.count, *cmd.timeout)
 }
 
-// chatSyncResult is one backfill answer from the API.
 type chatSyncResult struct {
 	Received  int  `json:"received"`
 	Rounds    int  `json:"rounds"`
@@ -139,7 +135,6 @@ type chatSyncResult struct {
 	Exhausted bool `json:"exhausted"`
 }
 
-// syncOneChat backfills one chat and prints its result.
 func syncOneChat(
 	ctx context.Context, w io.Writer, client *apiClient, scope, bot, phone string,
 	count, timeoutSeconds int,
@@ -168,10 +163,8 @@ func syncOneChat(
 	return 0
 }
 
-// syncEveryChat backfills every chat of one bot, one chat at a time, printing a
-// line per chat. A chat that fails is counted and the walk continues, so one
-// unreachable chat never stops the rest (ADR 0035). The fleet keeps one sync
-// running per bot, which this walk respects by going in sequence.
+// syncEveryChat goes one chat at a time (the fleet keeps one sync running per
+// bot) and keeps walking when one fails (ADR 0035).
 func syncEveryChat(
 	ctx context.Context, w io.Writer, client *apiClient, scope, bot string,
 	count, timeoutSeconds int,
@@ -210,7 +203,6 @@ func syncEveryChat(
 	return 0
 }
 
-// requestChatSync runs one backfill over the API.
 func requestChatSync(
 	ctx context.Context, client *apiClient, scope, bot, phone string,
 	count, timeoutSeconds int,
@@ -230,8 +222,6 @@ func requestChatSync(
 	return result, nil
 }
 
-// listChatPhones lists every chat of one bot, newest activity first, for the
-// bulk walk. A chat the API reports without a phone number is skipped.
 func listChatPhones(
 	ctx context.Context, client *apiClient, scope, bot string,
 ) ([]string, error) {
@@ -242,7 +232,6 @@ func listChatPhones(
 			} `json:"sender"`
 		} `json:"chats"`
 	}
-	// A zero limit asks the API for every chat.
 	query := chatsQuery{scope: scope, bot: bot, limit: 0}
 	if err := client.get(ctx, query.path(), &body); err != nil {
 		return nil, err
@@ -256,7 +245,6 @@ func listChatPhones(
 	return phones, nil
 }
 
-// stopReason says why one backfill ended, when the answer reports it.
 func stopReason(result chatSyncResult) string {
 	switch {
 	case result.Exhausted:
@@ -268,9 +256,9 @@ func stopReason(result chatSyncResult) string {
 	}
 }
 
-// syncHTTPTimeout bounds the whole backfill call: one batch per fifty requested
-// entries plus headroom. An unbounded request gets a generous ceiling, since
-// the phone decides how much history exists.
+// syncHTTPTimeout prices one batch per fifty requested entries plus headroom;
+// the phone decides how long a backfill takes, so an unbounded request gets a
+// generous ceiling.
 func syncHTTPTimeout(count int, perBatch time.Duration) time.Duration {
 	if count <= 0 {
 		return 30 * time.Minute
@@ -279,14 +267,12 @@ func syncHTTPTimeout(count int, perBatch time.Duration) time.Duration {
 	return time.Duration(batches)*perBatch + 30*time.Second
 }
 
-// chatsQuery addresses one bot's chats in the API.
 type chatsQuery struct {
 	scope string
 	bot   string
 	limit int
 }
 
-// path builds the chats route with its filters.
 func (q chatsQuery) path() string {
 	values := url.Values{
 		"bot":   {q.bot},
@@ -295,9 +281,6 @@ func (q chatsQuery) path() string {
 	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/chats?" + values.Encode()
 }
 
-// printChats writes one row per chat, newest activity first, as the API
-// returns them: the sender's phone and name, the stored message total split by
-// ingest kind, and the first and last activity.
 func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuery) error {
 	var body struct {
 		Chats []struct {

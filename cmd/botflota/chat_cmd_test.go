@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// chatsServer answers the chats route and records the queries it saw.
 type chatsServer struct {
 	mu      sync.Mutex
 	queries []string
@@ -95,8 +94,8 @@ func TestRunChatSyncNeedsABotAndSender(t *testing.T) {
 	}
 }
 
-// The routes are scope-addressed; make sure the query encodes them like the
-// messages command does.
+// TestChatsQueryPath checks a scope-addressed route: the query must encode
+// it like the messages command does.
 func TestChatsQueryPath(t *testing.T) {
 	got := chatsQuery{scope: "dev scope", bot: "demo", limit: 5}.path()
 	if !strings.Contains(got, "/api/v1/scopes/dev%20scope/chats?") {
@@ -107,8 +106,8 @@ func TestChatsQueryPath(t *testing.T) {
 	}
 }
 
-// chatsWithBlankPhone has a chat the API cannot address by sender, which the
-// bulk walk skips.
+// chatsWithBlankPhone carries a chat the API cannot address by sender; the
+// bulk walk must skip it.
 const chatsWithBlankPhone = `{"chats":[
 	{"id":3,"scope":"support","bot":"demo",
 	 "sender":{"phone":"5215500000000","name":"Ana"},
@@ -124,9 +123,8 @@ const chatsWithBlankPhone = `{"chats":[
 	 "messages":0,"sync":0,"live":0}
 ]}`
 
-// TestSyncEveryChatWalksEveryChat covers `chat sync --all`: it lists every chat
-// with a zero limit and backfills each one in order, one line per chat and a
-// final total (ADR 0035).
+// TestSyncEveryChatWalksEveryChat covers `chat sync --all`: every chat listed
+// with a zero limit, backfilled in order (ADR 0035).
 func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 	var (
 		mu     sync.Mutex
@@ -180,8 +178,8 @@ func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 	}
 }
 
-// TestSyncEveryChatKeepsGoingAfterAFailure keeps one unreachable chat from
-// stopping the walk: it is counted, reported, and the rest still runs.
+// TestSyncEveryChatKeepsGoingAfterAFailure: one unreachable chat is counted
+// and reported without stopping the walk.
 func TestSyncEveryChatKeepsGoingAfterAFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")

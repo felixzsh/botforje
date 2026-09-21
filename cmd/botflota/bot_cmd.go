@@ -73,7 +73,6 @@ func newBotListCmd() *botListCmd {
 	}
 }
 
-// botListEntry is one row of bot list, in table and JSON form.
 type botListEntry struct {
 	Bot        string     `json:"bot"`
 	Scope      string     `json:"scope"`
@@ -116,16 +115,13 @@ func runPair(args []string) int {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	// Pairing is idempotent: an existing link is reported and left alone, so
-	// nobody mistakes the no-op for a fresh registration.
+	// Pairing is idempotent: an existing link is reported and left alone.
 	if account, err := db.LinkedAccounts().Get(ctx, scopeName, name); err == nil && !*cmd.force {
 		fmt.Printf("bot %q (scope %q) is already paired as %s; "+
 			"use --force to replace the pairing\n",
 			name, scopeName, whatsapp.Number(account.JID))
 		return 0
 	}
-	// A one-shot command answers with a result, not a log stream: the summary
-	// goes to stdout and the logger stays quiet unless --verbose (ADR 0038).
 	logger := pairLogger(cfg, *cmd.verbose)
 	var deps *slog.Logger
 	if *cmd.verbose {
@@ -165,9 +161,8 @@ func runPair(args []string) int {
 	return 0
 }
 
-// pairLogger is the logger of a one-shot command. Without --verbose only
-// warnings and errors surface, so a pairing that went well prints its result
-// and nothing else; --verbose raises it to the configured level (ADR 0038).
+// pairLogger is the logger of a one-shot command: without --verbose only
+// warnings and errors surface (ADR 0038).
 func pairLogger(cfg *config.Config, verbose bool) *slog.Logger {
 	if !verbose {
 		return botflota.NewLogger("warn", os.Stderr)
@@ -175,9 +170,8 @@ func pairLogger(cfg *config.Config, verbose bool) *slog.Logger {
 	return botflota.NewLogger(cfg.LogLevel, os.Stderr)
 }
 
-// printPairImport reports what the pairing stored: the chats and messages the
-// history sync brought, and the contacts the address book added. This is the
-// command's result, so it never depends on the log level (ADR 0038).
+// printPairImport is the command's result, not a log line, so it never
+// depends on the log level.
 func printPairImport(w io.Writer, settings *spec.BotSettings, result whatsapp.PairResult) {
 	if historyEnabled(settings) {
 		if result.History.Chunks == 0 {

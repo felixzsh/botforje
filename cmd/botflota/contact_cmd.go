@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// contactCmd lists the address book one bot imported through the API. It is a
-// separate resource from a chat: a contact is an identity the linked account
-// knows, whether or not it ever wrote (ADR 0037).
 type contactCmd struct {
 	fs     *flag.FlagSet
 	config *string
@@ -64,14 +61,12 @@ func runContactList(args []string) int {
 	return 0
 }
 
-// contactQuery addresses one bot's contacts in the API.
 type contactQuery struct {
 	scope string
 	bot   string
 	limit int
 }
 
-// path builds the contacts route with its filters.
 func (q contactQuery) path() string {
 	values := url.Values{
 		"bot":   {q.bot},
@@ -80,8 +75,6 @@ func (q contactQuery) path() string {
 	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/contacts?" + values.Encode()
 }
 
-// printContacts writes one row per contact, most recently updated first, with
-// the name a reader shows and the names behind it.
 func printContacts(
 	ctx context.Context, w io.Writer, client *apiClient, q contactQuery,
 ) error {

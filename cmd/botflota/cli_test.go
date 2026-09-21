@@ -38,10 +38,8 @@ func TestHelpTreeIsComplete(t *testing.T) {
 	}
 }
 
-// TestHelpOutputSections checks the shape of the rendered help: every node has
-// a usage line and an options section, groups list commands, and leaves do not.
-// Command names and flags are deliberately not asserted, so rewording them
-// does not break the test.
+// TestHelpOutputSections checks the help's shape, not its wording: command
+// names and flags are deliberately not asserted.
 func TestHelpOutputSections(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -92,9 +90,8 @@ func TestHelpOutputSections(t *testing.T) {
 	}
 }
 
-// TestOrderFlags covers interspersed flags. The standard flag package stops at
-// the first non-flag argument, so a flag written after the arguments used to be
-// dropped in silence.
+// TestOrderFlags covers interspersed flags: one written after the arguments
+// must not be dropped in silence.
 func TestOrderFlags(t *testing.T) {
 	cases := []struct {
 		name string
@@ -171,8 +168,7 @@ func TestParseArgsRejectsAnUnknownFlag(t *testing.T) {
 	}
 }
 
-// silenceStderr keeps a command's help out of the test output; printHelp reads
-// os.Stderr when it runs, so replacing it is enough.
+// silenceStderr works because printHelp reads os.Stderr at call time.
 func silenceStderr(t *testing.T) {
 	t.Helper()
 	file, err := os.CreateTemp(t.TempDir(), "stderr")

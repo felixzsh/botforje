@@ -1,5 +1,4 @@
-// Command botflota is the Botflota CLI. Phase 1 implements validate and the
-// schema generator; the rest of the commands arrive in later phases.
+// Command botflota is the command-line interface to the Botflota fleet runner.
 package main
 
 import (
@@ -21,25 +20,20 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// version is the build version, set with
-// `-ldflags "-X main.version=..."` at release time.
+// version is injected at release time with
+// `-ldflags "-X main.version=..."`.
 var version = "dev"
 
 func main() {
 	os.Exit(dispatch(cliTree(), nil, os.Args[1:]))
 }
 
-// configFlag registers the common --config flag shared by every subcommand.
 func configFlag(fs *flag.FlagSet) *string {
 	return fs.String("config", "", "`FILE` path to the config file (default: XDG discovery)")
 }
 
-// systemConfigDir is the last place discovery looks.
 const systemConfigDir = "/etc"
 
-// discoverConfig returns the first config file that exists: BOTFLOTA_CONFIG,
-// the user config directory, then the system one. An explicit --config wins
-// over all of them and the caller uses it directly.
 func discoverConfig() (string, error) {
 	if path := os.Getenv("BOTFLOTA_CONFIG"); path != "" {
 		if _, err := os.Stat(path); err != nil {
@@ -50,7 +44,6 @@ func discoverConfig() (string, error) {
 	return firstExisting(configSearchPaths())
 }
 
-// configSearchPaths lists where discovery looks, most specific first.
 func configSearchPaths() []string {
 	var paths []string
 	if dir, err := os.UserConfigDir(); err == nil {
@@ -59,8 +52,6 @@ func configSearchPaths() []string {
 	return append(paths, filepath.Join(systemConfigDir, "botflota", "config.yml"))
 }
 
-// defaultConfigPath is where `config init` writes without --config: the user
-// config directory, the first place discovery checks.
 func defaultConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -69,8 +60,6 @@ func defaultConfigPath() (string, error) {
 	return filepath.Join(dir, "botflota", "config.yml"), nil
 }
 
-// firstExisting returns the first path that exists, or an error naming every
-// candidate.
 func firstExisting(paths []string) (string, error) {
 	for _, path := range paths {
 		if _, err := os.Stat(path); err == nil {
@@ -80,8 +69,6 @@ func firstExisting(paths []string) (string, error) {
 	return "", fmt.Errorf("no config found; tried %s", strings.Join(paths, ", "))
 }
 
-// loadConfig discovers and validates the config, returning an exit code on
-// failure.
 func loadConfig(path string) (*config.Config, int) {
 	if path == "" {
 		found, err := discoverConfig()
@@ -113,9 +100,7 @@ func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
 	return sqlite.Open(filepath.Join(dir, "botflota.db"))
 }
 
-// openDevices opens the whatsmeow device store that a command's pairing
-// operations share. A nil logger keeps its output quiet; depsLevel is the
-// configured log_level_deps.
+// openDevices: a nil logger keeps the whatsmeow store quiet.
 func openDevices(
 	ctx context.Context, db *sqlite.DB, log *slog.Logger, depsLevel string,
 ) (*whatsapp.Devices, error) {
@@ -125,11 +110,9 @@ func openDevices(
 	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
 }
 
-// fleetLooksRunning reports whether something answers on the instance's API
-// address, so a command that changes the local device refuses instead of
-// pulling it out from under a running fleet. One phone number keeps one
-// companion connection at a time. A port of zero turns the API off, and then
-// there is nothing to ask.
+// fleetLooksRunning backs the bot pair and bot unpair guard: one phone number
+// keeps one companion connection at a time, so the local device must not
+// change under a running fleet. A port of zero turns the API off.
 func fleetLooksRunning(cfg *config.Config) bool {
 	if cfg.Port == 0 {
 		return false
@@ -147,15 +130,13 @@ func fleetLooksRunning(cfg *config.Config) bool {
 	return true
 }
 
-// historyEnabled interprets the per-bot history_sync switch; absent means on
-// (ADR 0035).
+// historyEnabled: an absent history_sync switch means on (ADR 0035).
 func historyEnabled(settings *spec.BotSettings) bool {
 	return settings == nil || settings.HistorySync == nil || *settings.HistorySync
 }
 
-// contactsEnabled interprets the per-bot import_contacts switch; absent means
-// off, because the address book may hold people the account never wrote to
-// (ADR 0037).
+// contactsEnabled: an absent import_contacts switch means off, because the
+// address book may hold people the account never wrote to (ADR 0037).
 func contactsEnabled(settings *spec.BotSettings) bool {
 	return settings != nil && settings.ImportContacts != nil && *settings.ImportContacts
 }
