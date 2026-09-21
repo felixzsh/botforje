@@ -93,8 +93,8 @@ message. `chat sync` asks the phone for older messages of one chat:
 
 It is best effort, not a guarantee:
 
-- It opens the account's device directly, so **stop `fleet run` first**. The
-  command refuses to run when it can see the API answering.
+- It runs on the live connection of `fleet run`, so **start the fleet first**;
+  one phone number keeps one companion connection at a time.
 - It requests up to `--count` messages older than the chat's oldest stored
   message and waits up to `--timeout` seconds for the phone to answer.
 - A reply is imported like any other sync; a missing reply is reported, not

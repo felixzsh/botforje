@@ -11,9 +11,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-
-	"github.com/felixzsh/botflota/adapters/whatsapp"
-	"github.com/felixzsh/botflota/config"
 )
 
 // chatCmd lists one bot's stored chats through the API: each chat is a sender
@@ -68,9 +65,9 @@ func runChatList(args []string) int {
 	return 0
 }
 
-// chatSyncCmd asks the primary device for older messages of one chat. It is a
-// bounded experiment (ADR 0035) and opens the device directly, so the fleet
-// must be stopped.
+// chatSyncCmd asks the primary device for older messages of one chat. It is an
+// API client: the running fleet owns the live connection, so the same endpoint
+// serves a dashboard later (ADR 0025, ADR 0035).
 type chatSyncCmd struct {
 	fs      *flag.FlagSet
 	config  *string
@@ -86,7 +83,7 @@ func newChatSyncCmd() *chatSyncCmd {
 		fs:      fs,
 		config:  configFlag(fs),
 		scope:   fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
-		count:   fs.Int("count", 50, "`N` older messages to request (WhatsApp recommends <= 50)"),
+		count:   fs.Int("count", 0, "`N` older messages to import (0 = all accessible)"),
 		timeout: fs.Int("timeout", 90, "`SECONDS` to wait for the primary device to answer"),
 	}
 }
@@ -110,63 +107,62 @@ func runChatSync(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if fleetLooksRunning(cfg) {
-		fmt.Fprintln(os.Stderr,
-			"the fleet looks like it is running; stop it before chat sync "+
-				"(one device cannot be connected twice)")
-		return 1
-	}
-	db, err := openDatabase(cfg)
+	client, err := newAPIClient(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer db.Close()
-	devices, err := openDevices(context.Background(), db, nil, cfg.LogLevelDeps)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+	if *cmd.count > 0 {
+		fmt.Printf("requesting up to %d older messages for %s through the fleet...\n",
+			*cmd.count, phone)
+	} else {
+		fmt.Printf("requesting all accessible older messages for %s through the fleet...\n",
+			phone)
 	}
-	timeout := time.Duration(*cmd.timeout) * time.Second
-	fmt.Printf("requesting up to %d older messages for %s; waiting up to %s...\n",
-		*cmd.count, phone, timeout)
-
+	values := url.Values{
+		"bot":     {botName},
+		"sender":  {phone},
+		"count":   {strconv.Itoa(*cmd.count)},
+		"timeout": {strconv.Itoa(*cmd.timeout)},
+	}
+	path := "/api/v1/scopes/" + url.PathEscape(scopeName) + "/chats/sync?" + values.Encode()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	result, err := whatsapp.SyncHistory(ctx, whatsapp.SyncOptions{
-		Scope:    scopeName,
-		Bot:      botName,
-		Devices:  devices,
-		Accounts: db.LinkedAccounts(),
-		Senders:  db.Senders(),
-		Chats:    db.Chats(),
-		Messages: db.Messages(),
-		Phone:    phone,
-		Count:    *cmd.count,
-		Timeout:  timeout,
-	})
-	if err != nil {
+	var result struct {
+		Received  int  `json:"received"`
+		Rounds    int  `json:"rounds"`
+		Imported  int  `json:"imported"`
+		Duplicate int  `json:"duplicate"`
+		Skipped   int  `json:"skipped"`
+		Stable    bool `json:"stable"`
+		Exhausted bool `json:"exhausted"`
+	}
+	timeout := time.Duration(*cmd.timeout) * time.Second
+	if err := client.post(ctx, path, &result, syncHTTPTimeout(*cmd.count, timeout)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Printf("imported %d (duplicate %d, skipped %d)\n",
-		result.Imported, result.Duplicate, result.Skipped)
+	fmt.Printf("received %d in %d batch(es), imported %d (duplicate %d, skipped %d)",
+		result.Received, result.Rounds, result.Imported, result.Duplicate, result.Skipped)
+	switch {
+	case result.Exhausted:
+		fmt.Print("; stopped: the phone reports no more access")
+	case result.Stable:
+		fmt.Print("; stopped: nothing older to page")
+	}
+	fmt.Println()
 	return 0
 }
 
-// fleetLooksRunning reports whether the API answers, so a command that opens
-// the device can refuse instead of disrupting the connected fleet. Any error
-// means "not running" and lets the command continue.
-func fleetLooksRunning(cfg *config.Config) bool {
-	if cfg.Port == 0 {
-		return false
+// syncHTTPTimeout bounds the whole backfill call: one batch per fifty requested
+// entries plus headroom. An unbounded request gets a generous ceiling, since
+// the phone decides how much history exists.
+func syncHTTPTimeout(count int, perBatch time.Duration) time.Duration {
+	if count <= 0 {
+		return 30 * time.Minute
 	}
-	client, err := newAPIClient(cfg)
-	if err != nil {
-		return false
-	}
-	_, err = client.getRaw(context.Background(), "/api/v1/status")
-	return err == nil
+	batches := (count + 49) / 50
+	return time.Duration(batches)*perBatch + 30*time.Second
 }
 
 // chatsQuery addresses one bot's chats in the API.

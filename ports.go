@@ -23,6 +23,31 @@ type StateReporter interface {
 	ChannelState() string
 }
 
+// HistorySyncer is an optional MessageChannel capability: a channel that can
+// ask the primary device for older messages of one chat over the live
+// connection. The fleet and the REST API reach it through this port, so a
+// future UI asks for a sync without opening the device itself (ADR 0035).
+type HistorySyncer interface {
+	SyncHistory(
+		ctx context.Context, phone string, count int, timeout time.Duration,
+	) (HistoryResult, error)
+}
+
+// HistoryResult reports one chat's on-demand history backfill. Received counts
+// the provider entries of the chat the phone answered with; Rounds counts the
+// requests; Imported, Duplicate, and Skipped describe what the store kept;
+// Stable means a page carried nothing older and Exhausted means the phone
+// reported no further access (ADR 0035).
+type HistoryResult struct {
+	Received  int
+	Rounds    int
+	Imported  int
+	Duplicate int
+	Skipped   int
+	Stable    bool
+	Exhausted bool
+}
+
 // LLMProvider classifies unmatched input and realizes replies (ADR 0032).
 // Phase 4 defines the port with a null implementation; Phase 8 adds real
 // providers and may refine the request shapes.
@@ -113,7 +138,9 @@ type SessionStore interface {
 // ErrDuplicate when the chat already holds a row with the same provider id.
 // SetProviderID fills the channel id of a stored outbound message once the
 // channel reports it. Oldest returns the oldest stored message that carries a
-// channel id, the anchor of an on-demand history request (ADR 0035). History
+// channel id and can anchor a history request, the point `chat sync` pages
+// back from; a call row is never one, because it is not a position in the
+// chat's own message list (ADR 0035). History
 // returns up to limit messages of a chat, oldest first: the last ones when
 // afterID is zero, or the messages newer than afterID otherwise. A reader shows
 // the conversation in order and a follower resumes from the last id it saw.

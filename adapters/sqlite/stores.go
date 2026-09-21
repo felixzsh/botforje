@@ -444,11 +444,15 @@ func (s *MessageStore) SetProviderID(ctx context.Context, id int64, providerID s
 }
 
 // Oldest returns the oldest stored message of a chat that carries a channel
-// id, the anchor an on-demand history request pages back from; a chat with no
-// such message reports botflota.ErrNotFound (ADR 0035).
+// id and can anchor an on-demand history request; a chat with no such message
+// reports botflota.ErrNotFound (ADR 0035). Call rows are excluded: a call
+// arrives either as an account-level record or as a call entry, neither of
+// which is a position in the chat's own message list, so the primary device
+// cannot page from it. Calls stay visible in the read API.
 func (s *MessageStore) Oldest(ctx context.Context, chatID int64) (*botflota.Message, error) {
 	const query = `SELECT ` + messageColumns +
 		` FROM messages WHERE chat_id = ? AND provider_message_id != ''
+			AND kind != 'call'
 		 ORDER BY sent_at ASC, id ASC LIMIT 1`
 	rows, err := s.db.QueryContext(ctx, query, chatID)
 	if err != nil {

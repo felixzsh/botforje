@@ -199,6 +199,26 @@ func (f *Fleet) Run(ctx context.Context) error {
 	return first
 }
 
+// HistorySync runs an on-demand backfill on one bot's live channel. A channel
+// that cannot reach the primary device reports an error instead (ADR 0035).
+func (f *Fleet) HistorySync(
+	ctx context.Context, scope, bot, phone string,
+	count int, timeout time.Duration,
+) (botflota.HistoryResult, error) {
+	for _, candidate := range f.bots {
+		if candidate.scope != scope || candidate.name != bot {
+			continue
+		}
+		syncer, ok := candidate.channel.(botflota.HistorySyncer)
+		if !ok {
+			return botflota.HistoryResult{}, fmt.Errorf(
+				"fleet: bot %s/%s does not support on-demand history", scope, bot)
+		}
+		return syncer.SyncHistory(ctx, phone, count, timeout)
+	}
+	return botflota.HistoryResult{}, fmt.Errorf("fleet: unknown bot %s/%s", scope, bot)
+}
+
 // Status reports each bot's runtime state.
 func (f *Fleet) Status() []BotStatus {
 	statuses := make([]BotStatus, 0, len(f.bots))

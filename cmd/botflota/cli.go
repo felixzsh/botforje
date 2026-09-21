@@ -276,14 +276,14 @@ func cliTree() *commandHelp {
 					{
 						name:    "sync",
 						summary: "ask the phone for older messages of one chat",
-						long: "Ask the primary device for messages older than the chat's\n" +
-							"oldest stored message and import the reply. WhatsApp may not\n" +
-							"answer; it waits up to --timeout. It opens the device directly,\n" +
-							"so stop the fleet first.",
+						long: "Ask the primary device for older messages and import batches\n" +
+							"until the cursor stops moving. --count limits the total; zero\n" +
+							"means all accessible history. The running fleet owns the live\n" +
+							"connection, so this is an API client and fleet run must be up.",
 						usage: "botflota chat sync [options] <bot> <sender>",
 						examples: []string{
 							"botflota chat sync support-bot 5215500000000",
-							"botflota chat sync --count 50 support-bot 5215500000000",
+							"botflota chat sync --count 75 support-bot 5215500000000",
 						},
 						flags: func() *flag.FlagSet { return newChatSyncCmd().fs },
 						run:   runChatSync,

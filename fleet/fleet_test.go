@@ -387,6 +387,58 @@ func buildFleetWithStore(
 	return runner, channels, store
 }
 
+// syncChannel adds the on-demand history capability to the fake channel.
+type syncChannel struct {
+	fakeChannel
+	phone string
+	count int
+}
+
+func (c *syncChannel) SyncHistory(
+	_ context.Context, phone string, count int, _ time.Duration,
+) (botflota.HistoryResult, error) {
+	c.phone, c.count = phone, count
+	return botflota.HistoryResult{
+		Received: count, Rounds: 1, Imported: count,
+	}, nil
+}
+
+func TestHistorySyncRoutesToTheChannelThatSupportsIt(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	channel := &syncChannel{fakeChannel: *newFakeChannel()}
+	runner, err := New(cfg, Options{
+		Store: store, Chats: store, Senders: store, Messages: store,
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) { return channel, nil },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	result, err := runner.HistorySync(
+		context.Background(), "dev", "alpha", "5215500000000", 50, time.Second)
+	if err != nil {
+		t.Fatalf("HistorySync: %v", err)
+	}
+	if channel.phone != "5215500000000" || channel.count != 50 || result.Received != 50 {
+		t.Fatalf("channel = %s/%d, result = %+v", channel.phone, channel.count, result)
+	}
+	if _, err := runner.HistorySync(
+		context.Background(), "dev", "ghost", "5215500000000", 50, time.Second); err == nil {
+		t.Fatal("an unknown bot must report an error")
+	}
+}
+
+func TestHistorySyncRejectsAChannelWithoutTheCapability(t *testing.T) {
+	runner, _ := buildFleet(t, "", nil)
+	if _, err := runner.HistorySync(
+		context.Background(), "dev", "alpha", "5215500000000", 50, time.Second); err == nil {
+		t.Fatal("a channel without on-demand history must report an error")
+	}
+}
+
 func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
 	if err != nil {

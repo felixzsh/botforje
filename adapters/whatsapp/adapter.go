@@ -98,10 +98,18 @@ type Adapter struct {
 
 	incoming chan botflota.IncomingMessage
 
+	senders  botflota.SenderStore
+	chats    botflota.ChatStore
+	messages botflota.MessageStore
 	importer *historyImporter
 	history  chan *events.HistorySync
 	// historyDone closes when the import worker has drained and stopped.
 	historyDone chan struct{}
+
+	// syncMu guards the one-at-a-time on-demand backfill of this bot.
+	syncMu  sync.Mutex
+	syncing bool
+	pending *syncRequest
 
 	mu     sync.Mutex
 	client *whatsmeow.Client
@@ -164,6 +172,9 @@ func New(opts Options) (*Adapter, error) {
 		rnd:       rnd,
 		sleep:     opts.Sleep,
 		onState:   opts.OnState,
+		senders:   opts.Senders,
+		chats:     opts.Chats,
+		messages:  opts.Messages,
 		incoming:  make(chan botflota.IncomingMessage, queue),
 		state:     StateStopped,
 		seen:      newDedup(2048),
@@ -484,9 +495,10 @@ func (a *Adapter) importHistory() {
 	}
 }
 
-// handleHistory imports one chunk.
+// handleHistory imports one chunk and offers it to a waiting on-demand sync.
 func (a *Adapter) handleHistory(event *events.HistorySync) {
-	a.importer.Handle(context.Background(), event)
+	stats := a.importer.Handle(context.Background(), event)
+	a.observeSync(event, stats)
 }
 
 // devicePhone returns the paired account's phone number for call-log routing.

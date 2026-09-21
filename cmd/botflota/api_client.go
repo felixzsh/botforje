@@ -62,9 +62,14 @@ func newAPIClient(cfg *config.Config) (*apiClient, error) {
 	return &apiClient{
 		base:  strings.TrimRight(base, "/"),
 		token: token,
-		http:  &http.Client{Timeout: 10 * time.Second},
+		http:  &http.Client{},
 	}, nil
 }
+
+// apiTimeout bounds a read call, so a hung instance does not hang the terminal
+// forever. A sync call overrides it because the phone decides how long it
+// takes.
+const apiTimeout = 10 * time.Second
 
 // get fetches a path and decodes the JSON body into out; a nil out discards
 // the body.
@@ -82,14 +87,43 @@ func (c *apiClient) get(ctx context.Context, path string, out any) error {
 // getRaw fetches a path and returns the body, which a --json mode can pass
 // through unchanged.
 func (c *apiClient) getRaw(ctx context.Context, path string) ([]byte, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	return c.do(ctx, http.MethodGet, path, apiTimeout)
+}
+
+// post calls a mutating endpoint and decodes its JSON body into out. The
+// timeout bounds the whole call, because some operations wait on the phone.
+func (c *apiClient) post(
+	ctx context.Context, path string, out any, timeout time.Duration,
+) error {
+	body, err := c.do(ctx, http.MethodPost, path, timeout)
+	if err != nil {
+		return err
+	}
+	if out == nil {
+		return nil
+	}
+	return json.Unmarshal(body, out)
+}
+
+// do sends one authenticated request and returns the body. A non-zero timeout
+// bounds it through the request context.
+func (c *apiClient) do(
+	ctx context.Context, method, path string, timeout time.Duration,
+) ([]byte, error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	request, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Set("Authorization", "Bearer "+c.token)
 	response, err := c.http.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("call the API at %s: %w", c.base, err)
+		return nil, fmt.Errorf(
+			"call the API at %s (is fleet run up?): %w", c.base, err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)

@@ -126,6 +126,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/chats", s.handleChats)
+	mux.HandleFunc("POST /api/v1/scopes/{scope}/chats/sync", s.handleChatSync)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)
 

@@ -571,7 +571,7 @@ func TestMessageSetProviderID(t *testing.T) {
 }
 
 // TestMessageOldest picks the oldest anchored message: a row without a channel
-// id cannot anchor an on-demand request.
+// id and a call row cannot anchor an on-demand request, so neither is chosen.
 func TestMessageOldest(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
@@ -580,22 +580,22 @@ func TestMessageOldest(t *testing.T) {
 		t.Fatalf("Oldest on an empty chat = %v, want ErrNotFound", err)
 	}
 	for _, spec := range []struct {
-		body string
-		at   time.Time
-		id   string
+		at      time.Time
+		id      string
+		content botflota.MessageContent
 	}{
-		{"newest", t2, "C"},
-		{"oldest", t0, "A"},
-		{"no anchor", t1, ""},
+		{t2, "C", botflota.TextContent{Body: "newest"}},
+		{t0, "A", botflota.TextContent{Body: "oldest"}},
+		{t1, "", botflota.TextContent{Body: "no anchor"}},
+		{t0.Add(-time.Hour), "CALL-1", botflota.CallContent{Label: "Missed call"}},
 	} {
 		message := &botflota.Message{
 			ChatID: chat.ID, Direction: botflota.Inbound,
-			Content: botflota.TextContent{Body: spec.body},
-			At:      spec.at, ProviderMessageID: spec.id,
+			Content: spec.content, At: spec.at, ProviderMessageID: spec.id,
 			Ingest: botflota.IngestSync,
 		}
 		if err := db.Messages().Append(ctx, message); err != nil {
-			t.Fatalf("Append(%s): %v", spec.body, err)
+			t.Fatalf("Append(%s): %v", spec.id, err)
 		}
 	}
 	oldest, err := db.Messages().Oldest(ctx, chat.ID)

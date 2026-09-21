@@ -287,8 +287,12 @@ a
 redelivered sync chunk and for a live reply the sync echoes afterwards. The
 `PUSH_NAME` chunk names the senders the import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`
-pages older messages back from the phone one bounded request at a time; it
-opens the device directly and needs the fleet stopped.
+pages older messages back from the chat's oldest stored message in sequential
+batches, re-anchoring on the oldest message each page returned, until a page
+carries nothing older or the phone reports no access. It runs over the live
+fleet connection, so one phone number keeps one companion connection: the
+channel exposes `botflota.HistorySyncer`, the API serves
+`POST /api/v1/scopes/{scope}/chats/sync`, and the CLI calls that endpoint.
 
 The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
@@ -306,8 +310,10 @@ pair plus the sender's phone number. `messages` returns the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
 polls, and each message carries its kind, its visible text, and the structured
 `content`; `chats` lists a bot's chats with their sender profiles, which is how
-`chat list` reads them; `status` and `bots` report each bot's active sessions.
-Errors use one shape, `{"error":{"code","message"}}`.
+`chat list` reads them; `status` and `bots` report each bot's active sessions;
+`POST chats/sync` asks the phone for older messages of one chat over the live
+connection and reports the batch counts. Errors use one shape,
+`{"error":{"code","message"}}`.
 
 One middleware resolves the credential to a `Principal` through a small
 `PrincipalResolver` port (`Auth` is the built-in implementation), and handlers

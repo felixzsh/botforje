@@ -275,6 +275,14 @@ func hashOf(key string) []byte {
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
+	return testServerWithFleet(t, fakeFleet{statuses: []fleet.BotStatus{
+		{Scope: "support", Bot: "demo", State: "connected", OutboxDepth: 2},
+		{Scope: "ventas", Bot: "other", State: "connected", OutboxDepth: 1},
+	}})
+}
+
+func testServerWithFleet(t *testing.T, live Fleet) *Server {
+	t.Helper()
 	cfg := &config.Config{
 		Address: "127.0.0.1",
 		Port:    3000,
@@ -348,11 +356,8 @@ func testServer(t *testing.T) *Server {
 		},
 	}}
 	server, err := New(Options{
-		Config: cfg,
-		Fleet: fakeFleet{statuses: []fleet.BotStatus{
-			{Scope: "support", Bot: "demo", State: "connected", OutboxDepth: 2},
-			{Scope: "ventas", Bot: "other", State: "connected", OutboxDepth: 1},
-		}},
+		Config:   cfg,
+		Fleet:    live,
 		Accounts: accounts,
 		Pairings: pairings,
 		Senders: fakeSenders{senders: map[string]botflota.Sender{
@@ -401,13 +406,112 @@ func testServer(t *testing.T) *Server {
 
 func get(t *testing.T, handler http.Handler, path, token string) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(http.MethodGet, path, nil)
+	return do(t, handler, http.MethodGet, path, token)
+}
+
+func post(t *testing.T, handler http.Handler, path, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	return do(t, handler, http.MethodPost, path, token)
+}
+
+func do(
+	t *testing.T, handler http.Handler, method, path, token string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, path, nil)
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	return recorder
+}
+
+// fakeSyncFleet adds the on-demand history capability to the status fake and
+// records the arguments it received.
+type fakeSyncFleet struct {
+	fakeFleet
+	scope, bot, phone string
+	count             int
+	timeout           time.Duration
+	err               error
+}
+
+func (f *fakeSyncFleet) HistorySync(
+	_ context.Context, scope, bot, phone string, count int, timeout time.Duration,
+) (botflota.HistoryResult, error) {
+	f.scope, f.bot, f.phone = scope, bot, phone
+	f.count, f.timeout = count, timeout
+	if f.err != nil {
+		return botflota.HistoryResult{}, f.err
+	}
+	return botflota.HistoryResult{
+		Received: 75, Rounds: 2, Imported: 73,
+		Duplicate: 2, Stable: true,
+	}, nil
+}
+
+func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
+	live := &fakeSyncFleet{}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000&count=75&timeout=30",
+		testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
+	}
+	if live.scope != "support" || live.bot != "demo" || live.phone != "5215500000000" {
+		t.Fatalf("addressed %s/%s/%s", live.scope, live.bot, live.phone)
+	}
+	if live.count != 75 || live.timeout != 30*time.Second {
+		t.Fatalf("count = %d, timeout = %s", live.count, live.timeout)
+	}
+	var body struct {
+		Received  int  `json:"received"`
+		Rounds    int  `json:"rounds"`
+		Duplicate int  `json:"duplicate"`
+		Stable    bool `json:"stable"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Received != 75 || body.Rounds != 2 || body.Duplicate != 2 || !body.Stable {
+		t.Fatalf("body = %+v", body)
+	}
+}
+
+func TestChatSyncReportsAFleetWithoutHistory(t *testing.T) {
+	server := testServer(t)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
+		testOwnerToken)
+	if recorder.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501", recorder.Code)
+	}
+}
+
+func TestChatSyncRejectsAnUnknownChat(t *testing.T) {
+	live := &fakeSyncFleet{}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=000", testOwnerToken)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+}
+
+func TestChatSyncReportsAPhoneFailure(t *testing.T) {
+	live := &fakeSyncFleet{err: fmt.Errorf("the phone did not answer")}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
+		testOwnerToken)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "did not answer") {
+		t.Fatalf("body = %s, want the phone error", recorder.Body)
+	}
 }
 
 func TestAuthMiddleware(t *testing.T) {

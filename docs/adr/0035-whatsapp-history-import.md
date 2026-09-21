@@ -76,13 +76,29 @@ Import the history sync, inertly and honestly:
   its own message id after delivery. The fleet writes that id back onto the
   stored row, so a later sync that echoes the reply deduplicates it too.
 - `settings.history_sync` disables the import for a bot; absent means on.
-- Older messages beyond the delivered backlog are not requested automatically.
-  A bounded, explicit `chat sync <bot> <sender>` asks the primary device for
-  one page of messages older than the chat's oldest known message
-  (`BuildHistorySyncRequest`) and imports the `ON_DEMAND` reply with the same
-  importer. It opens the device directly, so the fleet must be stopped, and a
-  missing reply is a reported outcome, not a silent success. Automatic paging
-  stays out of scope until the phone is shown to answer reliably.
+- Older messages beyond the delivered backlog are requested by `chat sync
+  <bot> <sender>`, the path a pairing without `--import-history` relies on. It
+  pages backwards from the chat's oldest stored message, asking the primary
+  device for batches of up to 50 messages older than it
+  (`BuildHistorySyncRequest`) and importing every correlated `ON_DEMAND` chunk
+  with the same importer. The next cursor is the oldest message the phone
+  returned, so paging stops when a page carries nothing older or the phone
+  reports no access. Only a stored message is a valid anchor: a control entry
+  and a call record carry a provider id but no position in the chat's own
+  message list, so the phone cannot page from them. The store never returns a
+  call row as the oldest anchor, and a chat that arrived with only calls or
+  control entries reports that it has no anchor instead of a silent zero.
+- `chat sync` runs over the live connection of the running fleet, not over a
+  second connection, because one phone number has one companion connection at
+  a time. The fleet exposes the operation through `botflota.HistorySyncer` and
+  `api` serves it as `POST /api/v1/scopes/{scope}/chats/sync?bot=&sender=`,
+  so the CLI is an API client and a dashboard asks for a backfill the same
+  way. `?count=N` limits the total requested entries and zero means all
+  accessible history; one sync runs per bot at a time. A missing reply is a
+  reported outcome, not a silent success.
+- A sync request never uses a bootstrap chunk's download path: the running
+  fleet keeps importing every chunk, and the request only observes the chunks
+  that carry its own `PeerDataRequestSessionID`.
 
 ## Consequences
 

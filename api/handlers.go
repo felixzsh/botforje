@@ -55,17 +55,17 @@ type chatView struct {
 // Origin, and Routing carry the provenance the engine recorded (ADR 0026);
 // Origin is empty for an inbound message.
 type messageView struct {
-	ID         int64                    `json:"id"`
-	ChatID     int64                    `json:"chat_id"`
-	SessionID  int64                    `json:"session_id,omitempty"`
-	Direction  botflota.Direction       `json:"direction"`
-	Kind       botflota.MessageKind     `json:"kind"`
-	IngestKind botflota.Ingest          `json:"ingest_kind"`
-	Origin     botflota.MessageOrigin   `json:"origin,omitempty"`
-	Routing    botflota.RoutingMethod   `json:"routing"`
-	Body       string                   `json:"body"`
-	Content    botflota.MessageContent  `json:"content"`
-	At         time.Time                `json:"at"`
+	ID         int64                   `json:"id"`
+	ChatID     int64                   `json:"chat_id"`
+	SessionID  int64                   `json:"session_id,omitempty"`
+	Direction  botflota.Direction      `json:"direction"`
+	Kind       botflota.MessageKind    `json:"kind"`
+	IngestKind botflota.Ingest         `json:"ingest_kind"`
+	Origin     botflota.MessageOrigin  `json:"origin,omitempty"`
+	Routing    botflota.RoutingMethod  `json:"routing"`
+	Body       string                  `json:"body"`
+	Content    botflota.MessageContent `json:"content"`
+	At         time.Time               `json:"at"`
 }
 
 // sessionView is the latest graph run of a chat.
@@ -219,6 +219,62 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": views})
+}
+
+// historySyncer is the live-fleet capability of asking the primary device for
+// older messages of one chat (ADR 0035). fleet.Fleet implements it.
+type historySyncer interface {
+	HistorySync(
+		ctx context.Context, scope, bot, phone string,
+		count int, timeout time.Duration,
+	) (botflota.HistoryResult, error)
+}
+
+// handleChatSync asks the phone for older messages of one chat over the live
+// connection and imports what it answers, so the CLI and a future dashboard
+// request a backfill without opening the device themselves (ADR 0035). The
+// chat is addressed by scope, bot, and the sender's phone, like the other chat
+// routes; ?count= limits the total and zero means all accessible history.
+func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
+	scope, bot, chat, ok := s.chatParams(w, r)
+	if !ok {
+		return
+	}
+	syncer, ok := s.fleet.(historySyncer)
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "unsupported",
+			"on-demand history is not available")
+		return
+	}
+	count, err := countParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	timeout, err := timeoutParam(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	phone := r.URL.Query().Get("sender")
+	result, err := syncer.HistorySync(r.Context(), scope, bot, phone, count, timeout)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "sync_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"scope":     scope,
+		"bot":       bot,
+		"sender":    phone,
+		"chat_id":   chat.ID,
+		"received":  result.Received,
+		"rounds":    result.Rounds,
+		"imported":  result.Imported,
+		"duplicate": result.Duplicate,
+		"skipped":   result.Skipped,
+		"stable":    result.Stable,
+		"exhausted": result.Exhausted,
+	})
 }
 
 // handleSessions reports the latest graph run of one chat. The chat is
@@ -433,6 +489,34 @@ func limitParam(r *http.Request) (int, error) {
 		return maxLimit, nil
 	}
 	return limit, nil
+}
+
+// countParam reads ?count=, the total an on-demand history backfill may
+// import; zero means every entry the phone makes available.
+func countParam(r *http.Request) (int, error) {
+	raw := r.URL.Query().Get("count")
+	if raw == "" {
+		return 0, nil
+	}
+	count, err := strconv.Atoi(raw)
+	if err != nil || count < 0 {
+		return 0, fmt.Errorf("count must be a non-negative integer")
+	}
+	return count, nil
+}
+
+// timeoutParam reads ?timeout=, the seconds to wait for one answer from the
+// phone.
+func timeoutParam(r *http.Request) (time.Duration, error) {
+	raw := r.URL.Query().Get("timeout")
+	if raw == "" {
+		return 0, nil
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return 0, fmt.Errorf("timeout must be a positive integer")
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 // fail reports an internal read error and hides its detail from the client.
