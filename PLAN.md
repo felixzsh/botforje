@@ -288,6 +288,10 @@ Deliverables:
   principal requesting another scope gets 404, never 403. This advances the
   scoped tokens of ROADMAP Phase 13 because the route shape depends on the
   principal.
+- [x] Request budgets and opaque public errors: a fixed-window budget per
+  credential plus one per source address for failed attempts (429 with
+  `Retry-After`), upstream failures answered by code and never by detail,
+  and the pairing `code` kept out of every log (ADR 0025).
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [x] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`

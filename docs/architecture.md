@@ -385,6 +385,15 @@ serves the typed model with secrets masked (ADR 0014). Handlers stay small and
 direct; a narrow service is extracted only when a second real caller shares
 the operation.
 
+Requests are budgeted in fixed one-minute windows: one allowance per
+credential, keyed from the credential's own hash, and a separate allowance
+per source address for attempts that carry no usable credential, so guessing
+is bounded without one source spending another's budget. A refusal is the
+standard error shape with code `rate_limited` and a `Retry-After` header.
+Public errors never carry upstream detail — the caller gets a stable code
+and the log gets the reason — and the pairing session's `code` reaches only
+the response that asks for it, never a log (ADR 0025).
+
 ## Pairing
 
 Linking a bot to WhatsApp is a separate step from running it: `bot pair` opens a
