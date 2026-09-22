@@ -7,6 +7,7 @@ the reasoning behind the design.
 ## Design principles
 
 - Favor simple designs over sophisticated architectures.
+- Defaults serve the simple case; configuration opts into complexity.
 - Model the domain first; infrastructure adapts to it.
 - Clear responsibilities over multifunction components.
 - Explicit dependencies over hidden relationships (no globals or service
