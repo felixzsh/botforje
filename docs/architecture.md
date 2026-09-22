@@ -390,6 +390,8 @@ credential, keyed from the credential's own hash, and a separate allowance
 per source address for attempts that carry no usable credential, so guessing
 is bounded without one source spending another's budget. A refusal is the
 standard error shape with code `rate_limited` and a `Retry-After` header.
+The budgets are instance settings (`rate_limit`): the defaults are 600 per
+credential and 60 failed attempts per minute, and `0` turns one off.
 Public errors never carry upstream detail — the caller gets a stable code
 and the log gets the reason — and the pairing session's `code` reaches only
 the response that asks for it, never a log (ADR 0025).

@@ -55,6 +55,14 @@ func Validate(cfg *Config) []ValidationError {
 	default:
 		add("", "config", "invalid log_level_deps %q", cfg.LogLevelDeps)
 	}
+	if cfg.RateLimit != nil {
+		if v := cfg.RateLimit.CredentialPerMinute; v != nil && *v < 0 {
+			add("", "config", "rate_limit.credential_per_minute must be >= 0")
+		}
+		if v := cfg.RateLimit.FailedPerMinute; v != nil && *v < 0 {
+			add("", "config", "rate_limit.failed_per_minute must be >= 0")
+		}
+	}
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		for _, name := range SortedKeys(scope.LLMs) {

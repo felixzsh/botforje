@@ -49,7 +49,10 @@ type Options struct {
 	Messages botflota.MessageStore
 	Tokens   botflota.AccessTokenStore
 	Resolver PrincipalResolver
-	Log      *slog.Logger
+	// RateBudgets are the per-minute request budgets; nil uses the built-in
+	// defaults and an explicit zero turns a budget off (config: rate_limit).
+	RateBudgets *config.RateBudgets
+	Log         *slog.Logger
 }
 
 type Server struct {
@@ -125,7 +128,7 @@ func New(opts Options) (*Server, error) {
 		senders:  opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
-		limiter: newRateLimiter(), started: time.Now(),
+		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
 	}
 	server.handler = server.routes()
 	return server, nil

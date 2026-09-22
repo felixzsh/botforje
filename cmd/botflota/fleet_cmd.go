@@ -283,22 +283,24 @@ func serveAPI(
 	owner := whatsapp.AccountOwner{
 		Devices: devices, Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
 	}
+	budgets := cfg.RateBudgets()
 	server, err := api.New(api.Options{
-		Config:   source,
-		Fleet:    runner,
-		Accounts: db.LinkedAccounts(),
-		Pairings: db.Pairings(),
-		Pairing:  pairings,
-		Presence: owner,
-		Unpairer: owner,
-		Senders:  db.Senders(),
-		Contacts: db.Contacts(),
-		Chats:    db.Chats(),
-		Sessions: db.Sessions(),
-		Messages: db.Messages(),
-		Tokens:   db.AccessTokens(),
-		Resolver: api.NewAuth(ownerHash, db.AccessTokens()),
-		Log:      logger,
+		Config:      source,
+		Fleet:       runner,
+		Accounts:    db.LinkedAccounts(),
+		Pairings:    db.Pairings(),
+		Pairing:     pairings,
+		Presence:    owner,
+		Unpairer:    owner,
+		Senders:     db.Senders(),
+		Contacts:    db.Contacts(),
+		Chats:       db.Chats(),
+		Sessions:    db.Sessions(),
+		Messages:    db.Messages(),
+		Tokens:      db.AccessTokens(),
+		RateBudgets: &budgets,
+		Resolver:    api.NewAuth(ownerHash, db.AccessTokens()),
+		Log:         logger,
 	})
 	if err != nil {
 		pairings.Close()

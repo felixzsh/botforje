@@ -63,6 +63,10 @@ func TestRequiresRestartClassifiesChanges(t *testing.T) {
 		}, []string{`bot "other" of scope "support" added`}},
 		{"scope removed", func(c *Config) { delete(c.Scopes, "support") },
 			[]string{`scope "support" removed`}},
+		{"rate limit", func(c *Config) {
+			off := 0
+			c.RateLimit = &RateLimitSettings{CredentialPerMinute: &off}
+		}, []string{"global setting rate_limit"}},
 	}
 
 	for _, tc := range cases {

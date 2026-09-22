@@ -6,16 +6,14 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/felixzsh/botflota/config"
 )
 
-// Budgets for the control plane, per fixed one-minute window. They are
-// generous enough for the CLI's polling (a pairing session is read twice a
-// second) and still bound one credential or one source from drowning the
-// instance. No config knob until someone asks for one.
 const (
-	credentialPerMinute      = 600
-	unauthenticatedPerMinute = 60
-	rateLimitWindow          = time.Minute
+	// One fixed one-minute window per key; the budgets themselves come from
+	// config.RateBudgets, where zero turns a budget off.
+	rateLimitWindow = time.Minute
 	// pruneAbove keeps the window map from growing without bound as source
 	// addresses come and go.
 	pruneAbove = 4096
@@ -36,18 +34,29 @@ type rateLimiter struct {
 	failedAttempt int
 }
 
-func newRateLimiter() *rateLimiter {
-	return &rateLimiter{
+// newRateLimiter builds the budgets from config; a nil value uses the
+// built-in defaults, and fleet run always passes the resolved ones.
+func newRateLimiter(budgets *config.RateBudgets) *rateLimiter {
+	limiter := &rateLimiter{
 		now:           time.Now,
 		windows:       map[string]limitWindow{},
-		credential:    credentialPerMinute,
-		failedAttempt: unauthenticatedPerMinute,
+		credential:    config.DefaultCredentialPerMinute,
+		failedAttempt: config.DefaultFailedPerMinute,
 	}
+	if budgets != nil {
+		limiter.credential = budgets.CredentialPerMinute
+		limiter.failedAttempt = budgets.FailedPerMinute
+	}
+	return limiter
 }
 
 // allow consumes one unit for key and reports whether the caller may
-// proceed; after a refusal it says how long the window has left.
+// proceed; after a refusal it says how long the window has left. A budget
+// of zero or less turns the limit off (config: rate_limit).
 func (l *rateLimiter) allow(key string, limit int) (bool, time.Duration) {
+	if limit <= 0 {
+		return true, 0
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
