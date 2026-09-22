@@ -21,6 +21,9 @@ import (
 
 type Fleet interface {
 	Status() []botflota.BotStatus
+	// StopBot waits for one bot to drain and disconnect, so its credentials
+	// may be replaced underneath (ADR 0021).
+	StopBot(scope, bot string) error
 }
 
 // Options are the dependencies fleet run injects; every field is required
@@ -36,6 +39,9 @@ type Options struct {
 	// injects it, and a server without it answers from the stored pairing
 	// state (ADR 0039).
 	Presence botflota.DevicePresence
+	// Unpairer drops a bot's link; the handler stops the running bot before
+	// asking for it (ADR 0021, ADR 0039).
+	Unpairer botflota.AccountUnpairer
 	Senders  botflota.SenderStore
 	Contacts botflota.ContactStore
 	Chats    botflota.ChatStore
@@ -53,6 +59,7 @@ type Server struct {
 	pairings botflota.PairingStore
 	pairing  botflota.PairingRunner
 	presence botflota.DevicePresence
+	unpairer botflota.AccountUnpairer
 	senders  botflota.SenderStore
 	contacts botflota.ContactStore
 	chats    botflota.ChatStore
@@ -81,6 +88,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Pairing == nil {
 		return nil, errors.New("api: no pairing runner")
+	}
+	if opts.Unpairer == nil {
+		return nil, errors.New("api: no account unpairer")
 	}
 	if opts.Senders == nil {
 		return nil, errors.New("api: no sender store")
@@ -111,7 +121,8 @@ func New(opts Options) (*Server, error) {
 		cfg: opts.Config, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		pairing: opts.Pairing, presence: opts.Presence,
-		senders: opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
+		unpairer: opts.Unpairer,
+		senders:  opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(), started: time.Now(),
@@ -147,6 +158,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+pairing, s.handlePairStart)
 	mux.HandleFunc("GET "+pairing, s.handlePairState)
 	mux.HandleFunc("DELETE "+pairing, s.handlePairCancel)
+
+	account := "/api/v1/scopes/{scope}/bots/{bot}/account"
+	mux.HandleFunc("DELETE "+account, s.handleAccountDelete)
 
 	return s.authenticate(mux)
 }

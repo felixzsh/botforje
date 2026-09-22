@@ -109,7 +109,7 @@ func runPair(args []string) int {
 	if err != nil {
 		if errors.Is(err, instance.ErrOwned) {
 			return pairThroughAPI(os.Stdout, cfg, scopeName, name,
-				botSpec.Settings, *cmd.importHistory)
+				botSpec.Settings, *cmd.importHistory, *cmd.force)
 		}
 		reportOwned(err, "pairing (one device cannot be connected twice)")
 		return 1
@@ -201,9 +201,11 @@ const pairPollInterval = 500 * time.Millisecond
 
 // pairThroughAPI pairs by driving the running instance's session: the same
 // path a dashboard uses, with the QR rendered here (ADR 0025, ADR 0039).
+// Force replaces the link first, through the instance, so no state needs a
+// stopped fleet: unpair stops the bot, and the new session starts it again.
 func pairThroughAPI(
 	w io.Writer, cfg *config.Config, scopeName, botName string,
-	settings *spec.BotSettings, fullHistory bool,
+	settings *spec.BotSettings, fullHistory, force bool,
 ) int {
 	client, err := newAPIClient(cfg)
 	if err != nil {
@@ -219,13 +221,22 @@ func pairThroughAPI(
 		return 1
 	}
 	for _, entry := range entries {
-		if entry.Scope == scopeName && entry.Bot == botName &&
-			entry.Status == string(botflota.PairingPaired) {
+		if entry.Scope != scopeName || entry.Bot != botName ||
+			entry.Status != string(botflota.PairingPaired) {
+			continue
+		}
+		if !force {
 			fmt.Fprintf(w, "bot %q (scope %q) is already paired as %s; "+
-				"stop the fleet and run bot pair to replace it\n",
+				"run bot pair --force to replace it\n",
 				botName, scopeName, dash(entry.Phone))
 			return 0
 		}
+		if err := client.delete(ctx, accountPath(scopeName, botName),
+			unpairTimeout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		break
 	}
 	session, err := startPairing(ctx, client, scopeName, botName, fullHistory)
 	if err != nil {
@@ -341,6 +352,9 @@ func runUnpair(args []string) int {
 	}
 	lock, err := lockInstance(cfg)
 	if err != nil {
+		if errors.Is(err, instance.ErrOwned) {
+			return unpairThroughAPI(os.Stdout, cfg, scopeName, name)
+		}
 		reportOwned(err, "unpairing")
 		return 1
 	}
@@ -364,6 +378,38 @@ func runUnpair(args []string) int {
 		return 1
 	}
 	fmt.Printf("bot %q (scope %q) local pairing removed\n", name, scopeName)
+	return 0
+}
+
+// unpairTimeout bounds the call: the instance stops the bot, draining its
+// outbox, before it removes the credentials.
+const unpairTimeout = time.Minute
+
+// accountPath addresses the linked account a pairing leaves behind; deleting
+// it is the replace operation behind `bot pair --force` (ADR 0039).
+func accountPath(scope, bot string) string {
+	return "/api/v1/scopes/" + url.PathEscape(scope) + "/bots/" +
+		url.PathEscape(bot) + "/account"
+}
+
+// unpairThroughAPI drops the pairing through the running instance — the same
+// path a dashboard uses: it stops the bot before the credentials go
+// (ADR 0021, ADR 0039).
+func unpairThroughAPI(
+	w io.Writer, cfg *config.Config, scopeName, botName string,
+) int {
+	client, err := newAPIClient(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	err = client.delete(context.Background(), accountPath(scopeName, botName),
+		unpairTimeout)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Fprintf(w, "bot %q (scope %q) unpaired\n", botName, scopeName)
 	return 0
 }
 

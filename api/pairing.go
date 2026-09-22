@@ -84,7 +84,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.accounts.Get(r.Context(), scope, bot); err == nil {
 		writeError(w, http.StatusConflict, "already_paired",
-			"bot is already paired; replace it with bot pair while the fleet is stopped")
+			"bot is already paired; unpair the account before pairing it again")
 		return
 	} else if !errors.Is(err, botflota.ErrNotFound) {
 		s.fail(w, "read account", err)

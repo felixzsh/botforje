@@ -280,13 +280,17 @@ func serveAPI(
 			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
 	pairings := pairingManager(source, db, devices, runner, logger)
+	owner := whatsapp.AccountOwner{
+		Devices: devices, Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+	}
 	server, err := api.New(api.Options{
 		Config:   source,
 		Fleet:    runner,
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),
 		Pairing:  pairings,
-		Presence: devices,
+		Presence: owner,
+		Unpairer: owner,
 		Senders:  db.Senders(),
 		Contacts: db.Contacts(),
 		Chats:    db.Chats(),

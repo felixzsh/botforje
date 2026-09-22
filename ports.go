@@ -29,6 +29,14 @@ type DevicePresence interface {
 	HasCredentials(ctx context.Context, account *LinkedAccount) (bool, error)
 }
 
+// AccountUnpairer removes a linked account and its local credentials, the
+// destructive counterpart of DevicePresence (ADR 0021, ADR 0039). The caller
+// stops the running bot first, so no channel holds the connection while its
+// credentials go away.
+type AccountUnpairer interface {
+	UnpairAccount(ctx context.Context, scope, bot string) error
+}
+
 // HistorySyncer is an optional MessageChannel capability: asking the primary
 // device for older messages of one chat over the live connection (ADR 0035).
 type HistorySyncer interface {

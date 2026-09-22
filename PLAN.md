@@ -267,12 +267,17 @@ Deliverables:
 - [x] Pairing session in the API: start, cancel, and status per bot, carrying
   the method, the payload (QR or code), the state, and the expiry, so a UI can
   drive onboarding without shell access; a session that succeeds activates the
-  bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing stays a
-  local operation until Phase 12.
+  bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing is an
+  unpair plus a new session, both through the API.
 - [x] `bot pair` follows instance ownership (ADR 0039): it drives the running
   instance's pairing session through the API — rendering its QR and polling
   until WhatsApp answers — and pairs locally under the lock when the fleet is
   stopped. No path falls back to the database beneath a live instance.
+- [x] Account lifecycle in the API: `DELETE .../bots/{bot}/account` cancels a
+  live pairing session, stops the running bot so its channel disconnects, and
+  removes the credentials; `bot unpair` drives it while the instance is owned
+  and works locally when it is not, and `bot pair --force` replaces through
+  the same path (ADR 0021, ADR 0039).
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).

@@ -29,9 +29,33 @@ const (
 
 var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
-type fakeFleet struct{ statuses []botflota.BotStatus }
+type fakeFleet struct {
+	statuses []botflota.BotStatus
+	stopped  []string
+}
 
-func (f fakeFleet) Status() []botflota.BotStatus { return f.statuses }
+func (f *fakeFleet) Status() []botflota.BotStatus { return f.statuses }
+
+func (f *fakeFleet) StopBot(scope, bot string) error {
+	f.stopped = append(f.stopped, scope+"/"+bot)
+	return nil
+}
+
+// fakeUnpairer records the links the handler dropped.
+type fakeUnpairer struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeUnpairer) UnpairAccount(
+	_ context.Context, scope, bot string,
+) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.calls = append(f.calls, scope+"/"+bot)
+	return nil
+}
 
 type fakeAccounts struct {
 	accounts map[string]botflota.LinkedAccount
@@ -338,7 +362,7 @@ func hashOf(key string) []byte {
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	return testServerWithFleet(t, fakeFleet{statuses: []botflota.BotStatus{
+	return testServerWithFleet(t, &fakeFleet{statuses: []botflota.BotStatus{
 		{Scope: "support", Bot: "demo", State: "connected", OutboxDepth: 2},
 		{Scope: "ventas", Bot: "other", State: "connected", OutboxDepth: 1},
 	}})
@@ -484,6 +508,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 				ExpiresAt: testTime.Add(time.Hour),
 			},
 		},
+		Unpairer: &fakeUnpairer{},
 		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
 	})
 	if err != nil {
@@ -621,6 +646,13 @@ func TestNewRequiresDependencies(t *testing.T) {
 	}{
 		{"config", Options{}},
 		{"fleet", Options{Config: config.NewSource(&config.Config{})}},
+		{"account unpairer", Options{
+			Config:   config.NewSource(&config.Config{}),
+			Fleet:    &fakeFleet{},
+			Accounts: fakeAccounts{},
+			Pairings: fakePairings{},
+			Pairing:  &fakePairing{},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

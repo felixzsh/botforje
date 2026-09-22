@@ -285,6 +285,27 @@ func (d *Devices) HasCredentials(
 	return HasLocalDevice(ctx, d, account)
 }
 
+// AccountOwner is the account lifecycle the control plane asks for: presence
+// through its Devices, and dropping the whole link (ADR 0039). fleet run
+// composes it once from the stores it already holds.
+type AccountOwner struct {
+	*Devices
+	Accounts botflota.LinkedAccountStore
+	Pairings botflota.PairingStore
+}
+
+// UnpairAccount removes the local credentials, the account record, and the
+// stored pairing state of one bot (ADR 0021). The caller stops the running
+// bot first, so nothing holds the connection while the credentials go.
+func (o AccountOwner) UnpairAccount(
+	ctx context.Context, scope, bot string,
+) error {
+	return Unpair(ctx, UnpairOptions{
+		Scope: scope, Bot: bot, Devices: o.Devices,
+		Accounts: o.Accounts, Pairings: o.Pairings,
+	})
+}
+
 // DevicePhone is the paired account's own number, which call-log routing uses
 // to tell the local side from the peer.
 func DevicePhone(device *store.Device) string {

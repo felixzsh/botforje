@@ -81,6 +81,15 @@ func (c *apiClient) getRaw(ctx context.Context, path string) ([]byte, error) {
 	return c.do(ctx, http.MethodGet, path, nil, apiTimeout)
 }
 
+// delete calls a destructive route with no body; its timeout bounds the whole
+// call because the instance drains the stopped bot before answering.
+func (c *apiClient) delete(
+	ctx context.Context, path string, timeout time.Duration,
+) error {
+	_, err := c.do(ctx, http.MethodDelete, path, nil, timeout)
+	return err
+}
+
 // post's timeout bounds the whole call, because some operations wait on the
 // phone.
 func (c *apiClient) post(

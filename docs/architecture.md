@@ -421,6 +421,14 @@ gap, or a long wait budget of its own runs out; without it, only the default
 recent window arrives and `chat sync` pages older messages per chat. The phone
 remains the authority over the actual window.
 
+Pairing operations travel over the API of a running instance (ADR 0039):
+`POST`, `GET`, and `DELETE` on `.../bots/{bot}/pairing` start, read, and
+cancel a session, and `DELETE .../bots/{bot}/account` cancels a live session,
+stops the bot so its channel disconnects, and removes the credentials. The
+CLI drives those routes while another process owns the instance and works
+locally when it does not; replacing a pairing is an unpair followed by a
+pair, whichever way the instance is running.
+
 ## Concurrency
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
