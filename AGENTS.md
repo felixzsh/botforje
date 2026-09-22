@@ -7,6 +7,11 @@ which document owns what, read `README.md`.
 
 - Start a new session by reading `docs/glossary.md`; it defines the terms used
   across every document.
+- Botflota is a public framework for any deployment: never write SaaS,
+  tenant, customer, or business-model language in code, comments, commits,
+  or docs. Use the vocabulary `docs/glossary.md` defines — the integrator is
+  `host`, isolation is `scope`, the credential is a `scoped token` (see
+  `ROADMAP.md`, "Outside the boundary").
 - Write only inside this repository. Do not modify sibling repositories.
 - Read `PLAN.md` and work on the current phase; check its deliverables in the
   same commit that completes them.
