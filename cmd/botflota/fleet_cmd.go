@@ -106,6 +106,7 @@ func runFleet(args []string) int {
 		Chats:    db.Chats(),
 		Senders:  db.Senders(),
 		Messages: db.Messages(),
+		Turn:     db.Turns(),
 		Skip: func(scope, bot string) bool {
 			return skipped[scope][bot]
 		},

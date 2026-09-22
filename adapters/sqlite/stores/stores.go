@@ -3,9 +3,20 @@
 package stores
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 )
+
+// dbtx is what the stores need from the connection: *sql.DB and *sql.Tx both
+// satisfy it, so a turn can run the stores it composes inside one
+// transaction.
+type dbtx interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
 
 func encodeJSON(value any) (string, error) {
 	data, err := json.Marshal(value)

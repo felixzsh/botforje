@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"slices"
 	"strconv"
@@ -201,6 +202,51 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
+func (s *memStore) HasProviderID(
+	_ context.Context, chatID int64, providerID string,
+) (bool, error) {
+	if providerID == "" {
+		return false, nil
+	}
+	for _, message := range s.messages {
+		if message.ChatID == chatID && message.ProviderMessageID == providerID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// CommitTurn applies the turn in order, the way SQLite applies it in one
+// transaction: the fake cannot fail halfway, so both shapes stay equivalent.
+func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) error {
+	if turn.Session == nil {
+		return errors.New("memstore: turn has no session")
+	}
+	if turn.Inbound == nil {
+		return errors.New("memstore: turn has no inbound message")
+	}
+	if err := s.Save(ctx, turn.Session); err != nil {
+		return err
+	}
+	turn.Inbound.SessionID = turn.Session.ID
+	if err := s.Append(ctx, turn.Inbound); err != nil {
+		return err
+	}
+	for _, outbound := range turn.Outbound {
+		outbound.SessionID = turn.Session.ID
+		if err := s.Append(ctx, outbound); err != nil {
+			return err
+		}
+	}
+	if err := s.RecordMessage(ctx, turn.ChatID, turn.At); err != nil {
+		return err
+	}
+	if turn.Guards != nil {
+		return s.SaveGuards(ctx, turn.ChatID, turn.Guards)
+	}
+	return nil
+}
+
 func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
 	var oldest *botflota.Message
 	for _, message := range s.messages {
@@ -310,6 +356,7 @@ func fixtureEngine(t *testing.T, store *memStore) *engine.Engine {
 		Chats:          store,
 		Senders:        store,
 		Messages:       store,
+		Turn:           store,
 		DefaultTimeout: 300 * time.Second,
 	})
 }
@@ -388,7 +435,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	eng := engine.New(engine.Options{
 		Bot: "support-bot", Scope: "support",
 		Graph: scope.Graphs["faq"], Actions: scope.Actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 		Rand:           rand.New(rand.NewSource(1)),
@@ -431,7 +478,7 @@ func TestCooldownGuard(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -470,7 +517,7 @@ func TestRateLimitGuard(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -511,7 +558,7 @@ func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 	})
@@ -540,7 +587,7 @@ func TestInboundKindRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	ctx := context.Background()
 	if _, err := eng.Handle(ctx, botflota.IncomingMessage{
@@ -644,7 +691,7 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 	}
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
 		Bot: "b", SenderPhone: "52155", At: t0,
@@ -672,5 +719,38 @@ func TestSameInputDifferentHistory(t *testing.T) {
 	want := []string{"leaving hours", "Main menu: 1 hours, 2 catalog, 0 exit"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("after visiting hours = %q, want %q (ADR 0010)", got, want)
+	}
+}
+
+// TestDuplicateMessageStopsBeforeTheTurn covers the idempotency guard: a
+// redelivered message runs no action, returns no reply, and stores nothing
+// new, so a repeated HTTP step never fires twice (ADR 0026).
+func TestDuplicateMessageStopsBeforeTheTurn(t *testing.T) {
+	store := newMemStore()
+	eng := fixtureEngine(t, store)
+	message := botflota.IncomingMessage{
+		Bot: "support-bot", SenderPhone: "5215500000000",
+		ProviderMessageID: "dup-1", At: t0,
+		Content: botflota.TextContent{Body: "1"},
+	}
+	first, err := eng.Handle(context.Background(), message)
+	if err != nil {
+		t.Fatalf("first Handle: %v", err)
+	}
+	if len(first) == 0 {
+		t.Fatal("the first message produced no reply")
+	}
+	stored := len(store.messages)
+
+	second, err := eng.Handle(context.Background(), message)
+	if err != nil {
+		t.Fatalf("second Handle: %v", err)
+	}
+	if second != nil {
+		t.Fatalf("duplicate replies = %#v, want none", second)
+	}
+	if len(store.messages) != stored {
+		t.Fatalf("stored messages = %d, want %d after the duplicate",
+			len(store.messages), stored)
 	}
 }

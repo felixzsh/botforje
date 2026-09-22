@@ -25,12 +25,13 @@ type BotSpec struct {
 	Settings spec.BotSettings
 }
 
-// Store, Chats, Senders, Messages, and NewChannel are required.
+// Store, Chats, Senders, Messages, Turn, and NewChannel are required.
 type Options struct {
 	Store      botflota.SessionStore
 	Chats      botflota.ChatStore
 	Senders    botflota.SenderStore
 	Messages   botflota.MessageStore
+	Turn       botflota.TurnStore
 	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
 	// Skip is for recoverable runtime conditions such as a missing local
 	// pairing; a skipped bot never gets a channel.
@@ -90,6 +91,9 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	}
 	if opts.Messages == nil {
 		return nil, errors.New("fleet: no message store")
+	}
+	if opts.Turn == nil {
+		return nil, errors.New("fleet: no turn store")
 	}
 	if opts.NewChannel == nil {
 		return nil, errors.New("fleet: no channel factory")
@@ -206,6 +210,7 @@ func (f *Fleet) buildRuntime(
 		Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
 		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
 		Messages:   opts.Messages,
+		Turn:       opts.Turn,
 		HTTPClient: opts.HTTPClient, Now: opts.Now,
 		Rand:           rand.New(rand.NewSource(opts.Rand.Int63())),
 		DefaultTimeout: opts.DefaultTimeout,

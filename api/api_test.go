@@ -288,6 +288,12 @@ type fakeMessages struct{ messages map[int64][]botflota.Message }
 
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
 
+func (f fakeMessages) HasProviderID(
+	context.Context, int64, string,
+) (bool, error) {
+	return false, nil
+}
+
 func (f fakeMessages) SetProviderID(context.Context, int64, string) error { return nil }
 
 func (f fakeMessages) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {

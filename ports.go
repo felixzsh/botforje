@@ -153,12 +153,37 @@ type SessionStore interface {
 // returns the oldest message that can anchor a history request — one with a
 // channel id, never a call row (ADR 0035). History returns up to limit
 // messages oldest first: the last ones when afterID is zero, or those newer
-// than afterID.
+// than afterID. HasProviderID is the cheap read the engine uses before it
+// runs a turn, so a redelivery never repeats an action.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
 	SetProviderID(ctx context.Context, id int64, providerID string) error
 	Oldest(ctx context.Context, chatID int64) (*Message, error)
 	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
+	HasProviderID(ctx context.Context, chatID int64, providerID string) (bool, error)
+}
+
+// TurnRecord is one message turn's writes: the session it advanced, the
+// inbound message, the replies it produced, the chat activity, and the guard
+// state it changed (ADR 0026, ADR 0027). Session, Inbound, and every
+// Outbound entry are required; CommitTurn links the messages to the session
+// it saved and reports their stored ids back through them.
+type TurnRecord struct {
+	Session  *Session
+	ChatID   int64
+	At       time.Time
+	Inbound  *Message
+	Outbound []*Message
+	// Guards is nil when the turn changed no guard state.
+	Guards map[string]GuardState
+}
+
+// TurnStore commits one message turn as one unit: either the whole turn
+// lands — session, messages, chat activity, and guards — or none of it does.
+// A partial turn would leave a session advanced with lost replies, which is
+// why the engine never writes those shapes directly (ADR 0026, ADR 0027).
+type TurnStore interface {
+	CommitTurn(ctx context.Context, turn TurnRecord) error
 }
 
 // LinkedAccountStore records the channel identity linked to each bot

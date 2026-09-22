@@ -291,6 +291,53 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
+func (s *memStore) HasProviderID(
+	_ context.Context, chatID int64, providerID string,
+) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if providerID == "" {
+		return false, nil
+	}
+	for _, message := range s.messages {
+		if message.ChatID == chatID && message.ProviderMessageID == providerID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// CommitTurn applies the turn in order, the way SQLite applies it in one
+// transaction: the fake cannot fail halfway, so both shapes stay equivalent.
+func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) error {
+	if turn.Session == nil {
+		return errors.New("memstore: turn has no session")
+	}
+	if turn.Inbound == nil {
+		return errors.New("memstore: turn has no inbound message")
+	}
+	if err := s.Save(ctx, turn.Session); err != nil {
+		return err
+	}
+	turn.Inbound.SessionID = turn.Session.ID
+	if err := s.Append(ctx, turn.Inbound); err != nil {
+		return err
+	}
+	for _, outbound := range turn.Outbound {
+		outbound.SessionID = turn.Session.ID
+		if err := s.Append(ctx, outbound); err != nil {
+			return err
+		}
+	}
+	if err := s.RecordMessage(ctx, turn.ChatID, turn.At); err != nil {
+		return err
+	}
+	if turn.Guards != nil {
+		return s.SaveGuards(ctx, turn.ChatID, turn.Guards)
+	}
+	return nil
+}
+
 func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -367,6 +414,7 @@ func buildFleetWithStore(
 		Chats:          store,
 		Senders:        store,
 		Messages:       store,
+		Turn:           store,
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
@@ -409,7 +457,7 @@ func TestHistorySyncRoutesToTheChannelThatSupportsIt(t *testing.T) {
 	store := newStore()
 	channel := &syncChannel{fakeChannel: *newFakeChannel()}
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) { return channel, nil },
 	})
 	if err != nil {
@@ -452,6 +500,7 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 		Chats:    store,
 		Senders:  store,
 		Messages: store,
+		Turn:     store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
 			created = append(created, spec.Name)
@@ -483,6 +532,7 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 		Chats:    store,
 		Senders:  store,
 		Messages: store,
+		Turn:     store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil

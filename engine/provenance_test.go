@@ -60,7 +60,7 @@ func provenanceEngine(
 	return newTestEngine(t, engine.Options{
 		Bot: "support-bot", Scope: "support", Graph: graph,
 		Actions: provenanceActions,
-		Store:   store, Chats: store, Senders: store, Messages: store,
+		Store:   store, Chats: store, Senders: store, Messages: store, Turn: store,
 		LLM: llm,
 	})
 }
@@ -167,7 +167,7 @@ func TestGeneratedReplyOrigin(t *testing.T) {
 		store := newMemStore()
 		eng := newTestEngine(t, engine.Options{
 			Bot: "support-bot", Scope: "support", Graph: graph, Actions: actions,
-			Store: store, Chats: store, Senders: store, Messages: store,
+			Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 			LLM: llm,
 		})
 		return store, eng

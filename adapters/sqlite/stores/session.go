@@ -10,7 +10,7 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-type SessionStore struct{ db *sql.DB }
+type SessionStore struct{ db dbtx }
 
 func NewSessionStore(db *sql.DB) *SessionStore { return &SessionStore{db: db} }
 
