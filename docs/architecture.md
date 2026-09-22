@@ -39,7 +39,8 @@ implements the store ports; `adapters/whatsapp/channel` implements
 `MessageChannel`.
 
 Behavior types (`Graph`, `Action`, `Node`) live in `spec`; a store may build
-them directly when the database becomes their source (ROADMAP Phase 15).
+them directly; the config loader stays their only builder, and the dashboard
+publishes behavior as config (ROADMAP Phase 15, ADR 0002).
 
 ## Package layout
 
@@ -75,9 +76,9 @@ nor `engine` imports the other, and both use the core template language
 (ADR 0034).
 
 Planned capabilities land as `dashboard` (embedded UI), `auth` (authority and
-credentials), `webhook` (outbound delivery), `behavior`
-(`Graph`, `Action`, and `Node` once the database is their source), and one
-package per channel or model provider under `adapters/`.
+credentials), `webhook` (outbound delivery), and one package per channel or
+model provider under `adapters/`. The dashboard edits behavior by publishing
+config through the API; it never becomes a second source of truth (ADR 0002).
 
 `fleet run` is the composition root: it loads config, opens stores and channel
 devices, builds the fleet, and gives those live dependencies to `api`. API

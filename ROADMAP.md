@@ -50,8 +50,9 @@ These shape every phase and become ADRs when the phase that owns them starts.
   Botflota enforces.
 - The dashboard ships inside the release binary: no auxiliary process and no
   Node runtime in production.
-- Behavior stays in YAML until Phase 15 moves it to the database. Until then
-  the UI is a client of the API, never a second source of truth.
+- Behavior stays in YAML, including when the dashboard edits it: the API
+  writes validated fragments and reloads them, so the UI is never a second
+  source of truth (ADR 0002).
 - A passkey or a browser session is never imported: the companion identity lives
   in the device store and runs on a server, while every passkey ceremony happens
   on the account owner's device (ADR 0028).
@@ -234,21 +235,25 @@ Gate: an external harness acting as an issuer creates a scope, signs a
 sign-in token, lands a browser, sees only that scope, and receives usage
 webhooks, with no code for any particular host inside Botflota.
 
-### Phase 15 — Behavior in the database and the editor
+### Phase 15 — Behavior editor and YAML publishing
 
 Goal: everything YAML expresses today can be edited in the dashboard, with
-validation, review, and rollback.
+validation, review, and rollback, while YAML stays the source of truth
+(ADR 0002).
 
 Deliverables:
 
-- [ ] ADR: supersedes ADR 0002. Behavior tables in SQLite, YAML as import and
-  export, one-time migration from the config directory.
-- [ ] Versioned store: every change is a revision with author, time, and diff;
-  publish is atomic; rollback is one action.
+- [ ] Publishing over the API: apply a validated scope document as one include
+  fragment per scope (ADR 0016), written atomically and reloaded through the
+  watcher and validation of ADR 0009; a rejected publish changes nothing. An
+  expected version rejects a stale write instead of overwriting a newer edit.
+- [ ] Revisions: every publish records author, time, and a diff against the
+  previous fragment; rollback restores one revision and reloads it.
 - [ ] Validation before publish: the same semantic rules as `config validate`
-  plus template reference checks; a rejected publish changes nothing.
-- [ ] Publish semantics reuse the reload classes (ADR 0009): safe changes
-  apply live, incompatible ones wait for a window.
+  plus template reference checks, so a dashboard edit and a hand edit pass
+  the same gate.
+- [ ] Reload classes already apply (ADR 0009): safe changes go live,
+  incompatible ones are kept and reported as restart-required.
 - [ ] Editors for bots, graphs, nodes, edges, actions, steps, guards, llms,
   and scope settings, with a YAML view beside the form.
 - [ ] Graph editor: topology view with node and edge editing, and
@@ -258,15 +263,13 @@ Deliverables:
 - [ ] Starter templates: packaged graphs (support menu, appointment request,
   quote) a scope can instantiate and edit.
 - [ ] Import and export of a whole scope as YAML, with the publish validation.
-- [ ] Behavior from the database: `spec` already owns `Graph`, `Action`, and
-  `Node`, so the store builds `spec` values. Revisit only if the YAML and
-  schema coupling forces a split.
-- [ ] Tests: migration from a fixture config directory, concurrent edit
-  conflict, publish and rollback, simulator cases.
+- [ ] Tests: concurrent edit conflict, rejected publish, revision rollback,
+  and simulator cases.
 
 Gate: an operator with no file access creates a bot from a template, edits its
-graph, simulates a conversation, publishes it, sees it live, and rolls it back.
-This phase may split into the store and the editors; the gate applies to both.
+graph, simulates a conversation, publishes it, sees the fragment on disk and
+the change live, and rolls it back. This phase may split into the publishing
+layer and the editors; the gate applies to both.
 
 ### Phase 16 — Onboarding assistant and history analysis
 
@@ -467,7 +470,8 @@ model traffic through a gateway.
 - Account-system features inside Botflota: user registry, signup, plans, or
   branding.
 - Browser automation for WhatsApp.
-- Behavior in the database before Phase 15.
+- Behavior tables in SQLite: YAML stays the behavior source of truth and the
+  dashboard edits it through the API (ADR 0002).
 - References or graphs shared between scopes.
 - A second database engine for the hosted path; SQLite is enough until a
   real limit appears.

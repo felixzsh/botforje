@@ -63,5 +63,6 @@ module's own releases.
   reuse. `fleet run` is the composition root and injects its live fleet and
   stores into `api`; narrow services are extracted only after two real callers
   share an operation.
-- When behavior moves to the database (ROADMAP Phase 15), the store builds
-  `spec` values; no separate "behavior" package is planned.
+- `cmd/botflota` holds no domain logic. When the dashboard edits behavior,
+  the API publishes YAML fragments that the config loader reads as always
+  (ROADMAP Phase 15, ADR 0002); no separate "behavior" package is planned.
