@@ -102,12 +102,12 @@ func runPair(args []string) int {
 		printHelp(os.Stderr, "bot", "pair")
 		return 1
 	}
-	if fleetLooksRunning(cfg) {
-		fmt.Fprintln(os.Stderr,
-			"the fleet looks like it is running; stop it before pairing "+
-				"(one device cannot be connected twice)")
+	lock, err := lockInstance(cfg)
+	if err != nil {
+		reportOwned(err, "pairing (one device cannot be connected twice)")
 		return 1
 	}
+	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	db, err := openDatabase(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -208,12 +208,12 @@ func runUnpair(args []string) int {
 		printHelp(os.Stderr, "bot", "unpair")
 		return 1
 	}
-	if fleetLooksRunning(cfg) {
-		fmt.Fprintln(os.Stderr,
-			"the fleet looks like it is running; stop it before unpairing "+
-				"(one device cannot be connected twice)")
+	lock, err := lockInstance(cfg)
+	if err != nil {
+		reportOwned(err, "unpairing")
 		return 1
 	}
+	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	db, err := openDatabase(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

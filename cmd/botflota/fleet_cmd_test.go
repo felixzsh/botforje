@@ -1,11 +1,12 @@
 package main
 
 import (
-	"net"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/instance"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -28,24 +29,26 @@ func TestWhatsappSettingsMapsPacing(t *testing.T) {
 	}
 }
 
-// TestFleetLooksRunning covers the guard that keeps bot pair and bot unpair
-// from changing the local device under a running fleet.
-func TestFleetLooksRunning(t *testing.T) {
-	if fleetLooksRunning(&config.Config{}) {
-		t.Fatal("a port of zero turns the API off, so nothing can answer")
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+// TestLockInstance covers the guard that keeps a local write command out of a
+// running fleet: ownership comes from the lock, never from the API port
+// (ADR 0039).
+func TestLockInstance(t *testing.T) {
+	cfg := &config.Config{DataDir: t.TempDir()}
+	lock, err := lockInstance(cfg)
 	if err != nil {
-		t.Fatalf("listen: %v", err)
+		t.Fatalf("lockInstance: %v", err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	if !fleetLooksRunning(&config.Config{Address: "127.0.0.1", Port: port}) {
-		t.Fatal("a listening address must report a running fleet")
+	if _, err := lockInstance(cfg); !errors.Is(err, instance.ErrOwned) {
+		t.Fatalf("second lock = %v, want instance.ErrOwned", err)
 	}
-	if err := listener.Close(); err != nil {
-		t.Fatalf("close: %v", err)
+	if err := lock.Release(); err != nil {
+		t.Fatalf("release: %v", err)
 	}
-	if fleetLooksRunning(&config.Config{Address: "127.0.0.1", Port: port}) {
-		t.Fatal("a closed port must not report a running fleet")
+	lock, err = lockInstance(cfg)
+	if err != nil {
+		t.Fatalf("lock after release: %v", err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatalf("release: %v", err)
 	}
 }

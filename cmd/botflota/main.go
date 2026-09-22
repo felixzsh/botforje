@@ -3,20 +3,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/instance"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -110,24 +109,34 @@ func openDevices(
 	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
 }
 
-// fleetLooksRunning backs the bot pair and bot unpair guard: one phone number
-// keeps one companion connection at a time, so the local device must not
-// change under a running fleet. A port of zero turns the API off.
-func fleetLooksRunning(cfg *config.Config) bool {
-	if cfg.Port == 0 {
-		return false
-	}
-	address := cfg.Address
-	if address == "" {
-		address = "127.0.0.1"
-	}
-	conn, err := net.DialTimeout("tcp",
-		net.JoinHostPort(address, strconv.Itoa(cfg.Port)), time.Second)
+// lockInstance takes the exclusive ownership that keeps a local write command
+// out of a running fleet (ADR 0039). It does not look at the API port: the
+// owner process is the one holding the lock.
+func lockInstance(cfg *config.Config) (*instance.Lock, error) {
+	dir, err := cfg.DataDirPath()
 	if err != nil {
-		return false
+		return nil, err
 	}
-	_ = conn.Close()
-	return true
+	return instance.Acquire(dir)
+}
+
+// releaseInstance releases the ownership taken by lockInstance.
+func releaseInstance(lock *instance.Lock, report func(error)) {
+	if err := lock.Release(); err != nil {
+		report(err)
+	}
+}
+
+// reportOwned explains a refused local command: the instance is taken by
+// `fleet run` or another local command, and their API is the way in.
+func reportOwned(err error, before string) {
+	if errors.Is(err, instance.ErrOwned) {
+		fmt.Fprintf(os.Stderr,
+			"another botflota process owns this instance; stop fleet run before %s\n",
+			before)
+		return
+	}
+	fmt.Fprintln(os.Stderr, err)
 }
 
 // historyEnabled: an absent history_sync switch means on (ADR 0035).

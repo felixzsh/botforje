@@ -245,6 +245,11 @@ Deliverables:
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
   (`shared`, `system_one`) surface without reworking handlers.
+- [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
+  write take an exclusive lock on `data_dir` for the life of the process, so a
+  second run or a pairing beneath a live fleet fails immediately; the port
+  probe that guarded `bot pair` is gone and `port: 0` no longer hides a
+  running fleet.
 - [ ] Pairing methods: keep the QR and add the eight-digit pairing code, so an
   account whose passkey step happens on the phone can link without another
   client; a pending step is a reported state, never a wait until the code

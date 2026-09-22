@@ -49,6 +49,15 @@ func runFleet(args []string) int {
 	}
 	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
 
+	lock, err := lockInstance(cfg)
+	if err != nil {
+		logger.Error("own instance", "error", err)
+		return 1
+	}
+	defer releaseInstance(lock, func(err error) {
+		logger.Error("release instance", "error", err)
+	})
+
 	db, err := openDatabase(cfg)
 	if err != nil {
 		logger.Error("open database", "error", err)
