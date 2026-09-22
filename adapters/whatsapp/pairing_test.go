@@ -170,3 +170,77 @@ func TestPairManagerFailure(t *testing.T) {
 		t.Fatalf("error = %q, want the pairing failure", final.Error)
 	}
 }
+
+// TestPairManagerCloseStopsLiveSessions proves the shutdown contract: Close
+// cancels the running pairing, waits for its goroutine, and refuses new
+// sessions, so no writer touches the stores after their owner closes them.
+func TestPairManagerCloseStopsLiveSessions(t *testing.T) {
+	started := make(chan PairOptions, 1)
+	manager := testPairManager(t, PairManagerOptions{})
+	manager.pair = func(ctx context.Context, opts PairOptions) (PairResult, error) {
+		started <- opts
+		<-ctx.Done()
+		return PairResult{}, ctx.Err()
+	}
+	if _, err := manager.StartPair(
+		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {
+		t.Fatalf("StartPair: %v", err)
+	}
+	<-started
+
+	manager.Close()
+
+	final := waitSession(t, manager, "dev", "alpha", botflota.PairCancelled, true)
+	if final.State != botflota.PairCancelled {
+		t.Fatalf("state = %s, want cancelled", final.State)
+	}
+	if _, err := manager.StartPair(
+		context.Background(), "dev", "beta", botflota.PairRequest{},
+	); !errors.Is(err, errPairingClosed) {
+		t.Fatalf("StartPair after Close = %v, want errPairingClosed", err)
+	}
+}
+
+// TestPairManagerCancelDuringActivationKeepsSuccess covers the race between a
+// save and its report: once the account is stored, a cancel in the activation
+// window is ignored and the session still reports paired (ADR 0025).
+func TestPairManagerCancelDuringActivationKeepsSuccess(t *testing.T) {
+	inActivation := make(chan struct{})
+	release := make(chan struct{})
+	manager := testPairManager(t, PairManagerOptions{
+		OnPaired: func(context.Context, string, string) error {
+			close(inActivation)
+			<-release
+			return nil
+		},
+	})
+	manager.pair = func(_ context.Context, opts PairOptions) (PairResult, error) {
+		opts.OnSaved()
+		return PairResult{JID: "5215500000001@s.whatsapp.net"}, nil
+	}
+	if _, err := manager.StartPair(
+		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {
+		t.Fatalf("StartPair: %v", err)
+	}
+	<-inActivation
+
+	if err := manager.CancelPair(context.Background(), "dev", "alpha"); err != nil {
+		t.Fatalf("CancelPair: %v", err)
+	}
+	current, err := manager.CurrentPair(context.Background(), "dev", "alpha")
+	if err != nil {
+		t.Fatalf("CurrentPair: %v", err)
+	}
+	if current.State == botflota.PairCancelled {
+		t.Fatal("the saved pairing was rewritten to cancelled")
+	}
+	close(release)
+
+	final := waitSession(t, manager, "dev", "alpha", botflota.PairSucceeded, true)
+	if final.State != botflota.PairSucceeded {
+		t.Fatalf("state = %s, want paired", final.State)
+	}
+	if final.Result.Phone != "5215500000001" {
+		t.Fatalf("result = %#v, want the stored phone", final.Result)
+	}
+}

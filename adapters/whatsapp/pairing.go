@@ -35,7 +35,13 @@ type PairManager struct {
 	pair     func(context.Context, PairOptions) (PairResult, error)
 	mu       sync.Mutex
 	sessions map[string]*pairingSession
+	// closed stops new sessions; wg waits for the running ones.
+	closed bool
+	wg     sync.WaitGroup
 }
+
+// errPairingClosed reports StartPair after Close.
+var errPairingClosed = errors.New("whatsapp: pairing manager is closed")
 
 type pairingSession struct {
 	state  botflota.PairingSession // guarded by PairManager.mu
@@ -45,6 +51,10 @@ type pairingSession struct {
 	// ended is a final state chosen by Cancel or expiry before the pairing
 	// returned; finish must not overwrite it.
 	ended botflota.PairState
+	// saved marks the account stored: the pairing really happened, so a
+	// cancel or an expiry arriving before success is reported must not
+	// rewrite the outcome (ADR 0025).
+	saved bool
 }
 
 // NewPairManager returns nil when Build is missing, so a caller can treat
@@ -96,6 +106,12 @@ func (m *PairManager) StartPair(
 	published := session.state
 
 	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		session.timer.Stop()
+		cancel()
+		return nil, errPairingClosed
+	}
 	if current, ok := m.sessions[key]; ok && !current.state.Final() {
 		m.mu.Unlock()
 		session.timer.Stop()
@@ -106,12 +122,35 @@ func (m *PairManager) StartPair(
 	m.mu.Unlock()
 
 	opts.RenderQR = func(code string) { m.setCode(key, code) }
-	opts.OnSaved = func() { m.stopTimer(key, session) }
+	opts.OnSaved = func() { m.markSaved(key, session) }
+	m.wg.Add(1)
 	go func() {
+		defer m.wg.Done()
 		result, err := m.pair(pairCtx, opts)
 		m.finish(key, session, result, err)
 	}()
 	return &published, nil
+}
+
+// Close stops accepting sessions, cancels every live one, and waits for the
+// pairing goroutines, so no writer touches the stores after their owner
+// closes them. A pairing already saved still reports success.
+func (m *PairManager) Close() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.closed = true
+	for _, session := range m.sessions {
+		if session.state.Final() {
+			continue
+		}
+		m.endLocked(session, botflota.PairCancelled)
+		// A saved pairing keeps its outcome; only its wait has to end.
+		session.cancel()
+	}
+	m.mu.Unlock()
+	m.wg.Wait()
 }
 
 func (m *PairManager) CurrentPair(
@@ -138,6 +177,8 @@ func (m *PairManager) CancelPair(ctx context.Context, scope, bot string) error {
 	if session.state.Final() {
 		return nil
 	}
+	// A saved pairing is not cancellable; endLocked ignores it and finish
+	// reports the success that already happened.
 	m.endLocked(session, botflota.PairCancelled)
 	return nil
 }
@@ -159,12 +200,16 @@ func (m *PairManager) setCode(key, code string) {
 	session.state.UpdatedAt = m.nowLocked()
 }
 
-func (m *PairManager) stopTimer(key string, session *pairingSession) {
+// markSaved records that the account is stored: it stops the expiry timer and
+// makes the session immune to a cancel or expiry racing the success report.
+func (m *PairManager) markSaved(key string, session *pairingSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.sessions[key] == session {
-		session.timer.Stop()
+	if m.sessions[key] != session {
+		return
 	}
+	session.saved = true
+	session.timer.Stop()
 }
 
 func (m *PairManager) expire(key string, session *pairingSession) {
@@ -177,6 +222,9 @@ func (m *PairManager) expire(key string, session *pairingSession) {
 }
 
 func (m *PairManager) endLocked(session *pairingSession, state botflota.PairState) {
+	if session.saved {
+		return
+	}
 	session.state.State = state
 	session.state.Code = ""
 	session.state.UpdatedAt = m.nowLocked()
@@ -200,7 +248,9 @@ func (m *PairManager) finish(
 	state := &session.state
 	state.Code = ""
 	state.UpdatedAt = m.nowLocked()
-	if err != nil {
+	// An error after the account is stored only ends the wait (shutdown or
+	// cancellation); the pairing itself happened and still reports success.
+	if err != nil && !session.saved {
 		state.State = botflota.PairFailed
 		state.Error = err.Error()
 		scope, bot := state.Scope, state.Bot
@@ -209,7 +259,16 @@ func (m *PairManager) finish(
 		return
 	}
 	scope, bot := state.Scope, state.Bot
+	// Saved also when Pair reported success without OnSaved (the
+	// already-paired shortcut), so a cancel in the window below cannot
+	// rewrite the outcome.
+	session.saved = true
+	interrupted := err
 	m.mu.Unlock()
+	if interrupted != nil {
+		m.opts.Log.Warn("pairing wait interrupted; the account is stored",
+			"scope", scope, "bot", bot, "error", interrupted)
+	}
 
 	if m.opts.OnPaired != nil {
 		activation, cancel := context.WithTimeout(context.Background(),

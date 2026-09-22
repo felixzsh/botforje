@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -157,10 +158,16 @@ func runFleet(args []string) int {
 			logger.Error("--new-owner-token needs the API; port is 0")
 			return 2
 		}
-	} else if err := serveAPI(ctx, stop, cfg, source, runner, db, devices, logger,
-		*cmd.newOwnerToken); err != nil {
-		logger.Error("start api", "error", err)
-		return 1
+	} else {
+		stopAPI, err := serveAPI(ctx, stop, cfg, source, runner, db, devices,
+			logger, *cmd.newOwnerToken)
+		if err != nil {
+			logger.Error("start api", "error", err)
+			return 1
+		}
+		// Registered after db.Close, so it runs first: serving and pairing
+		// finish before the database they write goes away.
+		defer stopAPI()
 	}
 
 	if len(statuses) == 0 {
@@ -241,21 +248,23 @@ func runFleetStatus(args []string) int {
 	return 0
 }
 
-// serveAPI binds the address and then serves in the background until ctx is
+// serveAPI binds the address and serves in the background until ctx is
 // cancelled; a serving failure stops the fleet so the supervisor can restart
-// it.
+// it. The returned cleanup cancels serving, waits for it, and closes the
+// pairing manager, so nothing writes the stores after the caller closes them;
+// defer it after db.Close so it runs first.
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
 	source *config.Source, runner *fleet.Fleet, db *sqlite.DB,
 	devices *whatsapp.Devices, logger *slog.Logger, rotate bool,
-) error {
+) (func(), error) {
 	dataDir, err := cfg.DataDirPath()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	ownerHash, created, err := api.EnsureOwnerToken(ctx, db.OwnerTokens(), dataDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if created {
 		logger.Warn("owner token created; the CLI reads it",
@@ -263,17 +272,18 @@ func serveAPI(
 	}
 	if rotate {
 		if ownerHash, err = api.RotateOwnerToken(ctx, db.OwnerTokens(), dataDir); err != nil {
-			return err
+			return nil, err
 		}
 		logger.Warn("owner token rotated",
 			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
+	pairings := pairingManager(source, db, devices, runner, logger)
 	server, err := api.New(api.Options{
 		Config:   source,
 		Fleet:    runner,
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),
-		Pairing:  pairingManager(cfg, db, devices, runner, logger),
+		Pairing:  pairings,
 		Presence: devices,
 		Senders:  db.Senders(),
 		Contacts: db.Contacts(),
@@ -285,20 +295,31 @@ func serveAPI(
 		Log:      logger,
 	})
 	if err != nil {
-		return err
+		pairings.Close()
+		return nil, err
 	}
 	listener, err := server.Listen()
 	if err != nil {
-		return err
+		pairings.Close()
+		return nil, err
 	}
 	logger.Info("api listening", "address", listener.Addr().String())
+	served := make(chan struct{})
 	go func() {
+		defer close(served)
 		if err := server.Serve(ctx, listener); err != nil {
 			logger.Error("api failed", "error", err)
 			stop()
 		}
 	}()
-	return nil
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			stop()
+			<-served
+			pairings.Close()
+		})
+	}, nil
 }
 
 func whatsappSettings(settings spec.BotSettings) channel.Settings {
@@ -312,14 +333,15 @@ func whatsappSettings(settings spec.BotSettings) channel.Settings {
 }
 
 // pairingManager is the API path of `bot pair`: the session it runs resolves
-// the bot's settings from the config the fleet holds and starts the bot when
-// WhatsApp accepts the scan (ADR 0025).
+// the bot's settings against the current config snapshot, so a reload reaches
+// it too, and starts the bot when WhatsApp accepts the scan (ADR 0025).
 func pairingManager(
-	cfg *config.Config, db *sqlite.DB, devices *whatsapp.Devices,
+	source *config.Source, db *sqlite.DB, devices *whatsapp.Devices,
 	runner *fleet.Fleet, logger *slog.Logger,
 ) *whatsapp.PairManager {
 	return whatsapp.NewPairManager(whatsapp.PairManagerOptions{
 		Build: func(scope, botName string, fullHistory bool) (whatsapp.PairOptions, error) {
+			cfg := source.Current()
 			scopeCfg, ok := cfg.Scopes[scope]
 			if !ok {
 				return whatsapp.PairOptions{}, fmt.Errorf("unknown scope %q", scope)
