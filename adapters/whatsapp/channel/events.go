@@ -73,10 +73,13 @@ func (a *Adapter) onMessage(event *events.Message) {
 		IsGroup:           event.Info.IsGroup,
 		At:                event.Info.Timestamp,
 	}
+	// The queue applies backpressure instead of dropping: the whatsmeow event
+	// handler waits until the bot actor takes the message (ADR 0011,
+	// docs/architecture.md), and closing the adapter unblocks it.
 	select {
 	case a.incoming <- message:
-	default:
-		a.log.Warn("incoming queue full, dropping message", "sender", sender)
+	case <-a.stop:
+		a.log.Debug("message not delivered; adapter stopped", "sender", sender)
 	}
 }
 
