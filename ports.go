@@ -22,6 +22,13 @@ type StateReporter interface {
 	ChannelState() string
 }
 
+// DevicePresence reports whether a linked account's local channel
+// credentials still exist, without exposing the device store or the transport
+// addressing to its consumers (ADR 0020, ADR 0039).
+type DevicePresence interface {
+	HasCredentials(ctx context.Context, account *LinkedAccount) (bool, error)
+}
+
 // HistorySyncer is an optional MessageChannel capability: asking the primary
 // device for older messages of one chat over the live connection (ADR 0035).
 type HistorySyncer interface {
@@ -41,6 +48,15 @@ type HistoryResult struct {
 	Skipped   int
 	Stable    bool
 	Exhausted bool
+}
+
+// BotStatus is one bot's live report for the control plane: its connection
+// state and outbox depth (ADR 0011, ADR 0039).
+type BotStatus struct {
+	Scope       string
+	Bot         string
+	State       string
+	OutboxDepth int
 }
 
 // LLMProvider classifies unmatched input and realizes replies (ADR 0032).

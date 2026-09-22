@@ -17,7 +17,6 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/config"
-	"github.com/felixzsh/botflota/fleet"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -30,9 +29,9 @@ const (
 
 var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
-type fakeFleet struct{ statuses []fleet.BotStatus }
+type fakeFleet struct{ statuses []botflota.BotStatus }
 
-func (f fakeFleet) Status() []fleet.BotStatus { return f.statuses }
+func (f fakeFleet) Status() []botflota.BotStatus { return f.statuses }
 
 type fakeAccounts struct {
 	accounts map[string]botflota.LinkedAccount
@@ -335,7 +334,7 @@ func hashOf(key string) []byte {
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	return testServerWithFleet(t, fakeFleet{statuses: []fleet.BotStatus{
+	return testServerWithFleet(t, fakeFleet{statuses: []botflota.BotStatus{
 		{Scope: "support", Bot: "demo", State: "connected", OutboxDepth: 2},
 		{Scope: "ventas", Bot: "other", State: "connected", OutboxDepth: 1},
 	}})

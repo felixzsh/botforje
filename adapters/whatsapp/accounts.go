@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/store"
@@ -275,14 +274,15 @@ func PairingNow(now func() time.Time) time.Time {
 // Number strips the device suffix and the server from a stored account JID
 // for display: the JID itself stays internal (ADR 0020).
 func Number(jid string) string {
-	number := jid
-	if at := strings.IndexByte(number, '@'); at >= 0 {
-		number = number[:at]
-	}
-	if colon := strings.IndexByte(number, ':'); colon >= 0 {
-		number = number[:colon]
-	}
-	return number
+	return botflota.LinkedAccount{JID: jid}.Phone()
+}
+
+// HasCredentials implements botflota.DevicePresence for the live device
+// store, so a consumer asks for presence without receiving the store.
+func (d *Devices) HasCredentials(
+	ctx context.Context, account *botflota.LinkedAccount,
+) (bool, error) {
+	return HasLocalDevice(ctx, d, account)
 }
 
 // DevicePhone is the paired account's own number, which call-log routing uses

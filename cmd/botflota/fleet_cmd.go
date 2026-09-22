@@ -274,7 +274,7 @@ func serveAPI(
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),
 		Pairing:  pairingManager(cfg, db, devices, runner, logger),
-		Devices:  devices,
+		Presence: devices,
 		Senders:  db.Senders(),
 		Contacts: db.Contacts(),
 		Chats:    db.Chats(),

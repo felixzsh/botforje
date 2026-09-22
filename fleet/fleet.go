@@ -58,13 +58,6 @@ type Fleet struct {
 	wait sync.WaitGroup
 }
 
-type BotStatus struct {
-	Scope       string
-	Bot         string
-	State       string
-	OutboxDepth int
-}
-
 type Bot struct {
 	scope   string
 	name    string
@@ -349,11 +342,13 @@ func (f *Fleet) HistorySync(
 	return botflota.HistoryResult{}, fmt.Errorf("fleet: unknown bot %s/%s", scope, bot)
 }
 
-func (f *Fleet) Status() []BotStatus {
+func (f *Fleet) Status() []botflota.BotStatus {
 	bots := f.ordered()
-	statuses := make([]BotStatus, 0, len(bots))
+	statuses := make([]botflota.BotStatus, 0, len(bots))
 	for _, bot := range bots {
-		status := BotStatus{Scope: bot.scope, Bot: bot.name, OutboxDepth: bot.outbox.Depth()}
+		status := botflota.BotStatus{
+			Scope: bot.scope, Bot: bot.name, OutboxDepth: bot.outbox.Depth(),
+		}
 		if reporter, ok := bot.channel.(botflota.StateReporter); ok {
 			status.State = reporter.ChannelState()
 		}
