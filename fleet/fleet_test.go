@@ -755,6 +755,54 @@ func waitConnected(t *testing.T, runner *Fleet) {
 	t.Fatal("bots did not connect in time")
 }
 
+// TestStopBotStopsAndStartBotRebuilds covers the lifecycle the account
+// operations need: a stopped bot drains, disconnects, and reports stopped,
+// and a later start builds a fresh channel — after a re-pair the device
+// store it was built with is gone (ADR 0021, ADR 0022).
+func TestStopBotStopsAndStartBotRebuilds(t *testing.T) {
+	runner, channels := buildFleet(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+	first := channels["alpha"]
+
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("StopBot: %v", err)
+	}
+	if !first.wasDisconnected() {
+		t.Fatal("the stopped bot did not disconnect its channel")
+	}
+	for _, status := range runner.Status() {
+		if status.Bot == "alpha" && status.State != "stopped" {
+			t.Fatalf("stopped bot reports %q", status.State)
+		}
+	}
+	// A second stop is a no-op, not a double close.
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("second StopBot: %v", err)
+	}
+
+	if err := runner.StartBot("dev", "alpha"); err != nil {
+		t.Fatalf("StartBot: %v", err)
+	}
+	if channels["alpha"] == first {
+		t.Fatal("the restarted bot reused its old channel")
+	}
+	waitConnected(t, runner)
+}
+
+// TestStopBotWithoutRunIsANoop: a bot that never started is already stopped.
+func TestStopBotWithoutRunIsANoop(t *testing.T) {
+	runner, _ := buildFleet(t, "", nil)
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("StopBot before Run: %v", err)
+	}
+	if err := runner.StopBot("dev", "ghost"); err != nil {
+		t.Fatalf("StopBot of an unknown bot: %v", err)
+	}
+}
+
 func receive(t *testing.T, messages <-chan botflota.OutgoingMessage) botflota.OutgoingMessage {
 	t.Helper()
 	select {
