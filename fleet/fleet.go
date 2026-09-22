@@ -25,13 +25,14 @@ type BotSpec struct {
 	Settings spec.BotSettings
 }
 
-// Store, Chats, Senders, Messages, Turn, and NewChannel are required.
+// Store, Chats, Senders, Messages, Turn, Outbox, and NewChannel are required.
 type Options struct {
 	Store      botflota.SessionStore
 	Chats      botflota.ChatStore
 	Senders    botflota.SenderStore
 	Messages   botflota.MessageStore
 	Turn       botflota.TurnStore
+	Outbox     botflota.OutboxStore
 	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
 	// Skip is for recoverable runtime conditions such as a missing local
 	// pairing; a skipped bot never gets a channel.
@@ -95,6 +96,9 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.Turn == nil {
 		return nil, errors.New("fleet: no turn store")
 	}
+	if opts.Outbox == nil {
+		return nil, errors.New("fleet: no outbox store")
+	}
 	if opts.NewChannel == nil {
 		return nil, errors.New("fleet: no channel factory")
 	}
@@ -147,6 +151,9 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 		return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)
 	}
 	queue := newOutbox(outboxConfig{
+		Store:        opts.Outbox,
+		Scope:        scopeName,
+		Bot:          botName,
 		Sender:       channel.Send,
 		Delay:        time.Duration(settings.QueueDelay) * time.Millisecond,
 		Jitter:       time.Duration(settings.Jitter) * time.Millisecond,
@@ -157,16 +164,6 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 		OnError: func(_ botflota.OutgoingMessage, err error) {
 			if opts.OnError != nil {
 				opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
-			}
-		},
-		OnSent: func(msg botflota.OutgoingMessage, providerID string) {
-			if msg.StoredMessageID == 0 {
-				return
-			}
-			if err := opts.Messages.SetProviderID(
-				context.Background(), msg.StoredMessageID, providerID,
-			); err != nil {
-				botLog.Warn("record outbound provider id", "error", err)
 			}
 		},
 	})
@@ -404,11 +401,10 @@ func (b *Bot) run(ctx context.Context) error {
 				b.onError(err)
 				continue
 			}
-			for _, reply := range replies {
-				if err := b.outbox.Push(ctx, reply); err != nil {
-					b.log.Debug("enqueue reply failed", "error", err)
-					return err
-				}
+			// The replies are committed with their turn; the wake only asks
+			// the worker to deliver them now.
+			if len(replies) > 0 {
+				b.outbox.Wake()
 			}
 		}
 	}

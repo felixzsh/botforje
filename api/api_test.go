@@ -294,8 +294,6 @@ func (f fakeMessages) HasProviderID(
 	return false, nil
 }
 
-func (f fakeMessages) SetProviderID(context.Context, int64, string) error { return nil }
-
 func (f fakeMessages) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
 	var oldest *botflota.Message
 	for i := range f.messages[chatID] {

@@ -39,13 +39,30 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 	if err := messages.Append(ctx, turn.Inbound); err != nil {
 		return err
 	}
-	for _, outbound := range turn.Outbound {
-		if outbound == nil {
+	if turn.Scope == "" || turn.Bot == "" {
+		return errors.New("sqlite: turn has no scope or bot")
+	}
+	for i := range turn.Outbound {
+		outbound := turn.Outbound[i]
+		if outbound.Message == nil {
 			return errors.New("sqlite: turn has an empty reply")
 		}
-		outbound.SessionID = turn.Session.ID
-		if err := messages.Append(ctx, outbound); err != nil {
+		if outbound.Recipient == "" {
+			return errors.New("sqlite: reply has no recipient")
+		}
+		outbound.Message.SessionID = turn.Session.ID
+		if err := messages.Append(ctx, outbound.Message); err != nil {
 			return err
+		}
+		// The reply is queued in the same transaction that stored it: a
+		// crash never leaves a message row nobody will send (ADR 0011).
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO outbox (scope, bot, message_id, recipient, state,
+			 attempts, next_attempt, error, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
+			turn.Scope, turn.Bot, outbound.Message.ID, outbound.Recipient,
+			formatTime(turn.At), formatTime(turn.At)); err != nil {
+			return fmt.Errorf("sqlite: queue reply: %w", err)
 		}
 	}
 	if err := chats.RecordMessage(ctx, turn.ChatID, turn.At); err != nil {

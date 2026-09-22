@@ -85,10 +85,12 @@ type memStore struct {
 	chats      map[string]*botflota.Chat
 	sessions   map[int64]*botflota.Session
 	messages   []*botflota.Message
+	outbox     []queuedReply
 	nextSender int64
 	nextChat   int64
 	nextSess   int64
 	nextMsg    int64
+	nextOut    int64
 }
 
 func newStore() *memStore {
@@ -308,7 +310,9 @@ func (s *memStore) HasProviderID(
 }
 
 // CommitTurn applies the turn in order, the way SQLite applies it in one
-// transaction: the fake cannot fail halfway, so both shapes stay equivalent.
+// transaction, and queues every reply: the engine fake cannot fail halfway,
+// and the durable queue itself is proven by the SQLite stores. The queue the
+// SQLite adapter writes is emulated here so the worker can be driven in tests.
 func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) error {
 	if turn.Session == nil {
 		return errors.New("memstore: turn has no session")
@@ -323,11 +327,32 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 	if err := s.Append(ctx, turn.Inbound); err != nil {
 		return err
 	}
-	for _, outbound := range turn.Outbound {
-		outbound.SessionID = turn.Session.ID
-		if err := s.Append(ctx, outbound); err != nil {
+	for i := range turn.Outbound {
+		outbound := turn.Outbound[i]
+		if outbound.Message == nil {
+			return errors.New("memstore: turn has an empty reply")
+		}
+		if outbound.Recipient == "" {
+			return errors.New("memstore: reply has no recipient")
+		}
+		outbound.Message.SessionID = turn.Session.ID
+		if err := s.Append(ctx, outbound.Message); err != nil {
 			return err
 		}
+		content, ok := outbound.Message.Content.(botflota.SendableContent)
+		if !ok {
+			return errors.New("memstore: reply is not sendable")
+		}
+		s.nextOut++
+		s.outbox = append(s.outbox, queuedReply{
+			scope: turn.Scope, bot: turn.Bot,
+			entry: botflota.OutboxEntry{
+				ID: s.nextOut, Recipient: outbound.Recipient,
+				MessageID: outbound.Message.ID, Content: content,
+				Origin:  outbound.Message.Origin,
+				Routing: outbound.Message.Routing,
+			},
+		})
 	}
 	if err := s.RecordMessage(ctx, turn.ChatID, turn.At); err != nil {
 		return err
@@ -338,16 +363,107 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 	return nil
 }
 
-func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
+// queuedReply mirrors one outbox row for the worker tests.
+type queuedReply struct {
+	scope, bot  string
+	entry       botflota.OutboxEntry
+	nextAttempt time.Time
+	sent        bool
+	failed      bool
+}
+
+func (s *memStore) NextPending(
+	_ context.Context, scope, bot string, now time.Time, limit int,
+) ([]botflota.OutboxEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, message := range s.messages {
-		if message.ID == id {
-			message.ProviderMessageID = providerID
-			return nil
+	var entries []botflota.OutboxEntry
+	for _, queued := range s.outbox {
+		if len(entries) >= limit {
+			break
+		}
+		if queued.scope != scope || queued.bot != bot || queued.sent || queued.failed {
+			continue
+		}
+		if !queued.nextAttempt.IsZero() && queued.nextAttempt.After(now) {
+			continue
+		}
+		entry := queued.entry
+		entry.Attempts = queued.entry.Attempts
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func (s *memStore) findQueued(id int64) *queuedReply {
+	for i := range s.outbox {
+		if s.outbox[i].entry.ID == id {
+			return &s.outbox[i]
 		}
 	}
-	return botflota.ErrNotFound
+	return nil
+}
+
+func (s *memStore) MarkSent(
+	_ context.Context, id int64, providerID string, _ time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	if queued == nil || queued.sent || queued.failed {
+		return botflota.ErrNotFound
+	}
+	queued.sent = true
+	queued.entry.Attempts++
+	if providerID != "" {
+		for _, message := range s.messages {
+			if message.ID == queued.entry.MessageID {
+				message.ProviderMessageID = providerID
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func (s *memStore) MarkRetry(
+	_ context.Context, id int64, _ string, nextAttempt, _ time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	if queued == nil || queued.sent || queued.failed {
+		return botflota.ErrNotFound
+	}
+	queued.entry.Attempts++
+	queued.nextAttempt = nextAttempt
+	return nil
+}
+
+func (s *memStore) MarkFailed(
+	_ context.Context, id int64, _ string, _ time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	if queued == nil || queued.sent || queued.failed {
+		return botflota.ErrNotFound
+	}
+	queued.failed = true
+	queued.entry.Attempts++
+	return nil
+}
+
+func (s *memStore) Depth(_ context.Context, scope, bot string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	depth := 0
+	for _, queued := range s.outbox {
+		if queued.scope == scope && queued.bot == bot && !queued.sent && !queued.failed {
+			depth++
+		}
+	}
+	return depth, nil
 }
 
 func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
@@ -415,6 +531,7 @@ func buildFleetWithStore(
 		Senders:        store,
 		Messages:       store,
 		Turn:           store,
+		Outbox:         store,
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
@@ -458,6 +575,7 @@ func TestHistorySyncRoutesToTheChannelThatSupportsIt(t *testing.T) {
 	channel := &syncChannel{fakeChannel: *newFakeChannel()}
 	runner, err := New(cfg, Options{
 		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Outbox:     store,
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) { return channel, nil },
 	})
 	if err != nil {
@@ -501,6 +619,7 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 		Senders:  store,
 		Messages: store,
 		Turn:     store,
+		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
 			created = append(created, spec.Name)
@@ -533,6 +652,7 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 		Senders:  store,
 		Messages: store,
 		Turn:     store,
+		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil

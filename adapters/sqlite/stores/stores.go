@@ -33,11 +33,15 @@ func decodeJSON(data string, out any) error {
 	return json.Unmarshal([]byte(data), out)
 }
 
+// formatTime writes a fixed-width RFC 3339 UTC timestamp: the width keeps
+// the stored text ordered chronologically, which is what the comparisons in
+// NoteHistory, CountActive, and the outbox retry schedule rely on. A zero
+// time is the empty string.
 func formatTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format("2006-01-02T15:04:05.000000000Z07:00")
 }
 
 func parseTime(value string) time.Time {

@@ -197,6 +197,8 @@ func (e *Engine) commitTurn(
 	guardsDirty bool,
 ) error {
 	turn := botflota.TurnRecord{
+		Scope:   e.scope,
+		Bot:     e.bot,
 		Session: session,
 		ChatID:  chat.ID,
 		At:      now,
@@ -209,17 +211,20 @@ func (e *Engine) commitTurn(
 			Ingest:            botflota.IngestLive,
 			Routing:           routing,
 		},
-		Outbound: make([]*botflota.Message, 0, len(out)),
+		Outbound: make([]botflota.OutboundRecord, 0, len(out)),
 	}
 	for i := range out {
-		turn.Outbound = append(turn.Outbound, &botflota.Message{
-			ChatID:    chat.ID,
-			Direction: botflota.Outbound,
-			Content:   out[i].Content,
-			At:        now,
-			Ingest:    botflota.IngestLive,
-			Origin:    out[i].Origin,
-			Routing:   out[i].Routing,
+		turn.Outbound = append(turn.Outbound, botflota.OutboundRecord{
+			Recipient: out[i].RecipientPhone,
+			Message: &botflota.Message{
+				ChatID:    chat.ID,
+				Direction: botflota.Outbound,
+				Content:   out[i].Content,
+				At:        now,
+				Ingest:    botflota.IngestLive,
+				Origin:    out[i].Origin,
+				Routing:   out[i].Routing,
+			},
 		})
 	}
 	if guardsDirty {
@@ -229,7 +234,7 @@ func (e *Engine) commitTurn(
 		return fmt.Errorf("engine: commit turn: %w", err)
 	}
 	for i := range out {
-		out[i].StoredMessageID = turn.Outbound[i].ID
+		out[i].StoredMessageID = turn.Outbound[i].Message.ID
 	}
 	return nil
 }

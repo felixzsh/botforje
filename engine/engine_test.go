@@ -217,7 +217,9 @@ func (s *memStore) HasProviderID(
 }
 
 // CommitTurn applies the turn in order, the way SQLite applies it in one
-// transaction: the fake cannot fail halfway, so both shapes stay equivalent.
+// transaction: the engine fake cannot fail halfway, so both shapes stay
+// equivalent. Queueing the replies belongs to the outbox store, whose own
+// behavior the SQLite tests cover.
 func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) error {
 	if turn.Session == nil {
 		return errors.New("memstore: turn has no session")
@@ -232,9 +234,13 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 	if err := s.Append(ctx, turn.Inbound); err != nil {
 		return err
 	}
-	for _, outbound := range turn.Outbound {
-		outbound.SessionID = turn.Session.ID
-		if err := s.Append(ctx, outbound); err != nil {
+	for i := range turn.Outbound {
+		message := turn.Outbound[i].Message
+		if message == nil {
+			return errors.New("memstore: turn has an empty reply")
+		}
+		message.SessionID = turn.Session.ID
+		if err := s.Append(ctx, message); err != nil {
 			return err
 		}
 	}
@@ -262,16 +268,6 @@ func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, e
 		return nil, botflota.ErrNotFound
 	}
 	return oldest, nil
-}
-
-func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
-	for _, message := range s.messages {
-		if message.ID == id {
-			message.ProviderMessageID = providerID
-			return nil
-		}
-	}
-	return botflota.ErrNotFound
 }
 
 func (s *memStore) History(

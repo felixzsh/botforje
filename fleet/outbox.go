@@ -2,7 +2,6 @@ package fleet
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"math/rand"
 	"sync"
@@ -11,45 +10,71 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-var errOutboxClosed = errors.New("outbox: closed")
+const (
+	// defaultOutboxPoll is the fallback read when no wake signal arrives;
+	// it also picks up replies queued before a restart.
+	defaultOutboxPoll  = time.Second
+	defaultSendTimeout = 30 * time.Second
+	defaultMaxAttempts = 5
+	// defaultRetryBase doubles per attempt, capped at one minute, so a
+	// temporarily rejected send is not hammered and a banned account is not
+	// poked (ADR 0011).
+	defaultRetryBase = 2 * time.Second
+	maxRetryDelay    = time.Minute
+)
 
 type outboxSender func(ctx context.Context, msg botflota.OutgoingMessage) (string, error)
 
-// Only Sender is required.
+// Only Store, Scope, Bot, and Sender are required.
 type outboxConfig struct {
+	Store        botflota.OutboxStore
+	Scope        string
+	Bot          string
 	Sender       outboxSender
 	Delay        time.Duration
 	Jitter       time.Duration
 	MaxPerMinute int
-	Capacity     int
+	MaxAttempts  int
 	SendTimeout  time.Duration
+	Poll         time.Duration
+	RetryBase    time.Duration
 	Now          func() time.Time
 	Rand         *rand.Rand
 	Sleep        func(ctx context.Context, d time.Duration) error
 	OnError      func(msg botflota.OutgoingMessage, err error)
-	OnSent       func(msg botflota.OutgoingMessage, providerID string)
 	Log          *slog.Logger
 }
 
-// outbox paces one bot's outbound messages (ADR 0011).
+// outbox delivers one bot's queued replies from the durable queue: the engine
+// commits a reply with the turn it answers, and this worker paces, retries,
+// and records the outcome, so a crash loses neither the reply nor its status
+// (ADR 0011).
 type outbox struct {
-	cfg       outboxConfig
-	in        chan botflota.OutgoingMessage
+	cfg  outboxConfig
+	wake chan struct{}
+	// closing is closed by Close; an empty queue then ends the worker.
+	closing   chan struct{}
 	done      chan struct{}
 	closeOnce sync.Once
 
+	// windowStart and count pace max_messages_per_minute (ADR 0011).
 	mu          sync.Mutex
-	depth       int
 	windowStart time.Time
 	count       int
 }
 
 func newOutbox(cfg outboxConfig) *outbox {
-	if cfg.Capacity <= 0 {
-		cfg.Capacity = 64
+	if cfg.Poll <= 0 {
+		cfg.Poll = defaultOutboxPoll
 	}
 	if cfg.SendTimeout <= 0 {
-		cfg.SendTimeout = 30 * time.Second
+		cfg.SendTimeout = defaultSendTimeout
+	}
+	if cfg.MaxAttempts <= 0 {
+		cfg.MaxAttempts = defaultMaxAttempts
+	}
+	if cfg.RetryBase <= 0 {
+		cfg.RetryBase = defaultRetryBase
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -64,55 +89,99 @@ func newOutbox(cfg outboxConfig) *outbox {
 		cfg.Log = botflota.DiscardLogger()
 	}
 	q := &outbox{
-		cfg:  cfg,
-		in:   make(chan botflota.OutgoingMessage, cfg.Capacity),
-		done: make(chan struct{}),
+		cfg:     cfg,
+		wake:    make(chan struct{}, 1),
+		closing: make(chan struct{}),
+		done:    make(chan struct{}),
 	}
 	go q.run()
 	return q
 }
 
-// Push blocks while the buffer is full.
-func (q *outbox) Push(ctx context.Context, msg botflota.OutgoingMessage) error {
+// Wake asks the worker to read the queue now; a queued reply does not wait
+// for the poll. A wake while one is pending is coalesced.
+func (q *outbox) Wake() {
 	select {
-	case q.in <- msg:
-		q.mu.Lock()
-		q.depth++
-		q.mu.Unlock()
-		return nil
-	case <-q.done:
-		return errOutboxClosed
-	case <-ctx.Done():
-		return ctx.Err()
+	case q.wake <- struct{}{}:
+	default:
 	}
 }
 
-// Close stops accepting messages; what is already queued still goes out.
-func (q *outbox) Close() { q.closeOnce.Do(func() { close(q.in) }) }
+// Close stops the worker after it drains what is already queued, so shutdown
+// keeps the promise of ADR 0011.
+func (q *outbox) Close() { q.closeOnce.Do(func() { close(q.closing) }) }
 
 func (q *outbox) Wait() { <-q.done }
 
+// Depth reports the replies still waiting. It reads the queue directly: a
+// status question deserves the stored truth, and the driver bounds the query
+// with its busy timeout.
 func (q *outbox) Depth() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.depth
+	depth, err := q.cfg.Store.Depth(context.Background(), q.cfg.Scope, q.cfg.Bot)
+	if err != nil {
+		q.cfg.Log.Warn("outbox depth", "error", err)
+		return 0
+	}
+	return depth
 }
 
 func (q *outbox) run() {
 	defer close(q.done)
+	ticker := time.NewTicker(q.cfg.Poll)
+	defer ticker.Stop()
 	var last time.Time
-	for msg := range q.in {
-		var pacing time.Duration
+	for {
+		entry, err := q.next()
+		if err != nil {
+			q.cfg.Log.Error("outbox read failed", "error", err)
+			select {
+			case <-q.closing:
+				return
+			case <-ticker.C:
+			}
+			continue
+		}
+		if entry == nil {
+			if q.isClosing() {
+				return
+			}
+			select {
+			case <-q.wake:
+			case <-q.closing:
+			case <-ticker.C:
+			}
+			continue
+		}
 		if !last.IsZero() {
-			pacing = q.cfg.Delay + q.jitter()
-			_ = q.cfg.Sleep(context.Background(), pacing)
+			pacing := q.cfg.Delay + q.jitter()
+			if pacing > 0 {
+				_ = q.cfg.Sleep(context.Background(), pacing)
+			}
 		}
 		q.waitRate()
 		last = q.cfg.Now()
-		q.send(msg, pacing)
-		q.mu.Lock()
-		q.depth--
-		q.mu.Unlock()
+		q.send(*entry)
+	}
+}
+
+func (q *outbox) next() (*botflota.OutboxEntry, error) {
+	entries, err := q.cfg.Store.NextPending(context.Background(),
+		q.cfg.Scope, q.cfg.Bot, q.cfg.Now(), 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	return &entries[0], nil
+}
+
+func (q *outbox) isClosing() bool {
+	select {
+	case <-q.closing:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -128,6 +197,8 @@ func (q *outbox) waitRate() {
 	if q.cfg.MaxPerMinute <= 0 {
 		return
 	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	now := q.cfg.Now()
 	if q.windowStart.IsZero() || now.Sub(q.windowStart) >= time.Minute {
 		q.windowStart = now
@@ -143,28 +214,68 @@ func (q *outbox) waitRate() {
 	q.count++
 }
 
-func (q *outbox) send(msg botflota.OutgoingMessage, pacing time.Duration) {
+// retryDelay backs off per attempt and stays bounded, so giving up is a
+// matter of minutes, not hours.
+func (q *outbox) retryDelay(attempts int) time.Duration {
+	delay := q.cfg.RetryBase
+	for i := 1; i < attempts && delay < maxRetryDelay; i++ {
+		delay *= 2
+	}
+	if delay > maxRetryDelay {
+		delay = maxRetryDelay
+	}
+	return delay
+}
+
+// send is one delivery attempt; its outcome is recorded on the queue entry,
+// never only in a log (ADR 0011).
+func (q *outbox) send(entry botflota.OutboxEntry) {
 	if q.cfg.Sender == nil {
 		return
+	}
+	msg := botflota.OutgoingMessage{
+		Bot: q.cfg.Bot, RecipientPhone: entry.Recipient, Content: entry.Content,
+		Origin: entry.Origin, Routing: entry.Routing,
+		StoredMessageID: entry.MessageID,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), q.cfg.SendTimeout)
 	defer cancel()
 	providerID, err := q.cfg.Sender(ctx, msg)
-	if err != nil {
-		q.cfg.Log.Error("send failed",
-			"recipient", recipient(msg), "kind", string(botflota.ContentKind(msg.Content)),
-			"queue_delay", pacing, "error", err)
-		if q.cfg.OnError != nil {
-			q.cfg.OnError(msg, err)
+	attempts := entry.Attempts + 1
+	if err == nil {
+		if markErr := q.cfg.Store.MarkSent(context.Background(),
+			entry.ID, providerID, q.cfg.Now()); markErr != nil {
+			q.cfg.Log.Error("record sent reply", "error", markErr)
+		}
+		q.cfg.Log.Info("sent",
+			"recipient", recipient(msg),
+			"kind", string(botflota.ContentKind(msg.Content)),
+			"attempts", attempts)
+		return
+	}
+	if q.cfg.OnError != nil {
+		q.cfg.OnError(msg, err)
+	}
+	if attempts >= q.cfg.MaxAttempts {
+		q.cfg.Log.Error("send failed; giving up",
+			"recipient", recipient(msg),
+			"kind", string(botflota.ContentKind(msg.Content)),
+			"attempts", attempts, "error", err)
+		if markErr := q.cfg.Store.MarkFailed(context.Background(),
+			entry.ID, err.Error(), q.cfg.Now()); markErr != nil {
+			q.cfg.Log.Error("record failed reply", "error", markErr)
 		}
 		return
 	}
-	if providerID != "" && q.cfg.OnSent != nil {
-		q.cfg.OnSent(msg, providerID)
+	next := q.cfg.Now().Add(q.retryDelay(attempts))
+	q.cfg.Log.Warn("send failed; retrying",
+		"recipient", recipient(msg),
+		"kind", string(botflota.ContentKind(msg.Content)),
+		"attempts", attempts, "retry_in", next.Sub(q.cfg.Now()), "error", err)
+	if markErr := q.cfg.Store.MarkRetry(context.Background(),
+		entry.ID, err.Error(), next, q.cfg.Now()); markErr != nil {
+		q.cfg.Log.Error("record retry", "error", markErr)
 	}
-	q.cfg.Log.Info("sent",
-		"recipient", recipient(msg), "kind", string(botflota.ContentKind(msg.Content)),
-		"queue_delay", pacing)
 }
 
 // recipient is the phone number for logs; it never logs a LID.

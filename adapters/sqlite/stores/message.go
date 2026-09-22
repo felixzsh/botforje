@@ -56,18 +56,6 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	return nil
 }
 
-func (s *MessageStore) SetProviderID(ctx context.Context, id int64, providerID string) error {
-	if providerID == "" {
-		return nil
-	}
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE messages SET provider_message_id = ? WHERE id = ?", providerID, id)
-	if err != nil {
-		return fmt.Errorf("sqlite: set provider id: %w", err)
-	}
-	return nil
-}
-
 // HasProviderID reports whether the chat already stored a message with this
 // channel id; an empty id never matches.
 func (s *MessageStore) HasProviderID(

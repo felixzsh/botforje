@@ -158,42 +158,6 @@ func TestMessageProviderIDIsUnique(t *testing.T) {
 	}
 }
 
-// TestMessageSetProviderID covers the live-reply dedup loop: the channel id is
-// filled in after the reply was already stored, and the next echo of that
-// message is then a duplicate.
-func TestMessageSetProviderID(t *testing.T) {
-	ctx := context.Background()
-	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	chat := ensureChat(t, db)
-	message := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Outbound,
-		Content: botflota.TextContent{Body: "reply"}, At: t1,
-		Ingest: botflota.IngestLive,
-	}
-	if err := db.Messages().Append(ctx, message); err != nil {
-		t.Fatalf("Append: %v", err)
-	}
-	if err := db.Messages().SetProviderID(ctx, message.ID, "OUT-1"); err != nil {
-		t.Fatalf("SetProviderID: %v", err)
-	}
-	got, err := db.Messages().History(ctx, chat.ID, 0, 10)
-	if err != nil {
-		t.Fatalf("History: %v", err)
-	}
-	if len(got) != 1 || got[0].ProviderMessageID != "OUT-1" {
-		t.Fatalf("History = %#v", got)
-	}
-	echo := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Outbound,
-		Content: botflota.TextContent{Body: "reply"}, At: t1,
-		ProviderMessageID: "OUT-1", Ingest: botflota.IngestSync,
-		Origin: botflota.OriginUnknown,
-	}
-	if err := db.Messages().Append(ctx, echo); !errors.Is(err, botflota.ErrDuplicate) {
-		t.Fatalf("echo error = %v, want ErrDuplicate", err)
-	}
-}
-
 // TestMessageOldest picks the oldest anchored message: a row without a channel
 // id and a call row cannot anchor an on-demand request, so neither is chosen.
 func TestMessageOldest(t *testing.T) {

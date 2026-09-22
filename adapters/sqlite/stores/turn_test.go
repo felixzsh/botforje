@@ -27,8 +27,12 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 		"escalate": {Cooldown: &botflota.CooldownState{LastRun: t1}},
 	}
 	err := db.Turns().CommitTurn(ctx, botflota.TurnRecord{
+		Scope: "support", Bot: "support-bot",
 		Session: session, ChatID: chat.ID, At: t1,
-		Inbound: inbound, Outbound: []*botflota.Message{outbound},
+		Inbound: inbound,
+		Outbound: []botflota.OutboundRecord{{
+			Message: outbound, Recipient: "5215500000000",
+		}},
 		Guards: guards,
 	})
 	if err != nil {
@@ -48,6 +52,14 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 	}
 	if inbound.ID == 0 || outbound.ID == 0 {
 		t.Fatalf("message ids = %d and %d, want both stored", inbound.ID, outbound.ID)
+	}
+	// The reply is queued with the turn that stored it (ADR 0011).
+	depth, err := db.Outbox().Depth(ctx, "support", "support-bot")
+	if err != nil {
+		t.Fatalf("Depth: %v", err)
+	}
+	if depth != 1 {
+		t.Fatalf("outbox depth = %d, want the queued reply", depth)
 	}
 	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
 	if err != nil {
@@ -79,6 +91,7 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 
 	first := testSession(chat.ID)
 	err := db.Turns().CommitTurn(ctx, botflota.TurnRecord{
+		Scope: "support", Bot: "support-bot",
 		Session: first, ChatID: chat.ID, At: t0,
 		Inbound: &botflota.Message{
 			ChatID: chat.ID, Direction: botflota.Inbound,
@@ -90,25 +103,36 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 		t.Fatalf("first CommitTurn: %v", err)
 	}
 
-	// The reply carries no content, so Append fails after the session saved
-	// and the inbound landed.
+	// The second reply is empty, so Append fails after the session saved,
+	// the inbound landed, and the first reply was queued.
 	advanced := testSession(chat.ID)
 	advanced.ID = first.ID
 	advanced.Node = "menu"
 	err = db.Turns().CommitTurn(ctx, botflota.TurnRecord{
+		Scope: "support", Bot: "support-bot",
 		Session: advanced, ChatID: chat.ID, At: t2,
 		Inbound: &botflota.Message{
 			ChatID: chat.ID, Direction: botflota.Inbound,
 			Content: botflota.TextContent{Body: "again"}, At: t2,
 			ProviderMessageID: "in-2", Ingest: botflota.IngestLive,
 		},
-		Outbound: []*botflota.Message{{ChatID: chat.ID, Direction: botflota.Outbound}},
+		Outbound: []botflota.OutboundRecord{
+			{
+				Message: &botflota.Message{
+					ChatID: chat.ID, Direction: botflota.Outbound,
+					Content: botflota.TextContent{Body: "kept?"}, At: t2,
+					Ingest: botflota.IngestLive,
+				},
+				Recipient: "5215500000000",
+			},
+			{Recipient: "5215500000000"},
+		},
 		Guards: map[string]botflota.GuardState{
 			"escalate": {Cooldown: &botflota.CooldownState{LastRun: t2}},
 		},
 	})
 	if err == nil {
-		t.Fatal("a reply without content must fail the turn")
+		t.Fatal("an empty reply must fail the turn")
 	}
 
 	stored, err := db.Sessions().Latest(ctx, chat.ID)
@@ -134,5 +158,13 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 	}
 	if len(chats[0].Guards) != 0 {
 		t.Fatalf("guards = %#v, want none written", chats[0].Guards)
+	}
+	// The reply queued by the failed turn rolled back with it.
+	depth, err := db.Outbox().Depth(ctx, "support", "support-bot")
+	if err != nil {
+		t.Fatalf("Depth: %v", err)
+	}
+	if depth != 0 {
+		t.Fatalf("outbox depth = %d, want the queued reply rolled back", depth)
 	}
 }

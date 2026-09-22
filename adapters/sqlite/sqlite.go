@@ -117,6 +117,22 @@ var schema = []string{
 		scope           TEXT NOT NULL,
 		PRIMARY KEY (access_token_id, scope)
 	)`,
+	`CREATE TABLE IF NOT EXISTS outbox (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		scope        TEXT NOT NULL,
+		bot          TEXT NOT NULL,
+		message_id   INTEGER NOT NULL
+			REFERENCES messages (id) ON DELETE CASCADE,
+		recipient    TEXT NOT NULL,
+		state        TEXT NOT NULL DEFAULT 'pending',
+		attempts     INTEGER NOT NULL DEFAULT 0,
+		next_attempt TEXT NOT NULL DEFAULT '',
+		error        TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL,
+		updated_at   TEXT NOT NULL
+	)`,
+	`CREATE INDEX IF NOT EXISTS outbox_pending
+		ON outbox (scope, bot, state, id)`,
 }
 
 // DB is an open SQLite database with its schema applied.
@@ -162,6 +178,9 @@ func (d *DB) Messages() *stores.MessageStore { return stores.NewMessageStore(d.D
 
 // Turns returns the store that commits one message turn atomically.
 func (d *DB) Turns() *stores.TurnStore { return stores.NewTurnStore(d.DB) }
+
+// Outbox returns the durable delivery queue the turn writes into.
+func (d *DB) Outbox() *stores.OutboxStore { return stores.NewOutboxStore(d.DB) }
 
 func (d *DB) LinkedAccounts() *stores.LinkedAccountStore {
 	return stores.NewLinkedAccountStore(d.DB)
