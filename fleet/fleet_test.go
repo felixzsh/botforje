@@ -698,6 +698,108 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 	}
 }
 
+// TestEmptyFleetLivesUntilTheInstanceStops: an instance that starts without
+// a paired bot still runs, accepts its first pairing through the fleet,
+// and ends only when its context does (ADR 0022).
+func TestEmptyFleetLivesUntilTheInstanceStops(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	runner, err := New(cfg, Options{
+		Store:    store,
+		Chats:    store,
+		Senders:  store,
+		Messages: store,
+		Turn:     store,
+		Outbox:   store,
+		Skip:     func(_, _ string) bool { return true },
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+
+	// The pairing session of a running instance may start the first bot:
+	// StartBot answers until Run has published the run context.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := runner.StartBot("dev", "alpha")
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("StartBot: %v", err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	waitConnected(t, runner)
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned while the instance was live: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+// TestStoppingTheLastBotKeepsTheFleetRunning: unpairing the last bot stops
+// that bot, not the instance; the fleet keeps serving and a re-pair joins it
+// again without a restart (ADR 0021, ADR 0022).
+func TestStoppingTheLastBotKeepsTheFleetRunning(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	runner, err := New(cfg, Options{
+		Store:    store,
+		Chats:    store,
+		Senders:  store,
+		Messages: store,
+		Turn:     store,
+		Outbox:   store,
+		Skip:     func(_, bot string) bool { return bot == "beta" },
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	waitConnected(t, runner)
+
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("StopBot: %v", err)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned after the last bot stopped: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := runner.StartBot("dev", "alpha"); err != nil {
+		t.Fatalf("re-pair into the running fleet: %v", err)
+	}
+	waitConnected(t, runner)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
 // TestApplyConfigAppliesAtTheNextMessage covers the adoption point of a
 // reload: the next message runs the reloaded action with no restart
 // (ADR 0009).
@@ -801,6 +903,50 @@ func TestStopBotWithoutRunIsANoop(t *testing.T) {
 	if err := runner.StopBot("dev", "ghost"); err != nil {
 		t.Fatalf("StopBot of an unknown bot: %v", err)
 	}
+}
+
+// TestStopBotWaitsForTheQueuedSend: stopping a bot drains what is already
+// queued before the channel disconnects, and StopBot answers only after that
+// shutdown finished, because the credentials go away next (ADR 0011, ADR
+// 0021).
+func TestStopBotWaitsForTheQueuedSend(t *testing.T) {
+	runner, channels := buildFleet(t, "alpha", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runDone := make(chan struct{})
+	go func() { _ = runner.Run(ctx); close(runDone) }()
+	waitConnected(t, runner)
+	alpha := channels["alpha"]
+
+	alpha.incoming <- botflota.IncomingMessage{
+		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+	}
+	<-alpha.entered // the outbox worker is inside the send
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- runner.StopBot("dev", "alpha") }()
+	select {
+	case err := <-stopped:
+		t.Fatalf("StopBot answered while the send was in flight: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if alpha.wasDisconnected() {
+		t.Fatal("the channel disconnected while a queued send was in flight")
+	}
+
+	close(alpha.release)
+	if err := <-stopped; err != nil {
+		t.Fatalf("StopBot: %v", err)
+	}
+	if !alpha.wasDisconnected() {
+		t.Fatal("StopBot answered before the channel disconnected")
+	}
+	if reply := receive(t, alpha.sent); botflota.ContentText(reply.Content) != "hello from alpha" {
+		t.Fatalf("drained reply = %q, want the queued send to finish",
+			botflota.ContentText(reply.Content))
+	}
+	cancel()
+	<-runDone
 }
 
 func receive(t *testing.T, messages <-chan botflota.OutgoingMessage) botflota.OutgoingMessage {

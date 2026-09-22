@@ -82,6 +82,10 @@ type Bot struct {
 	stopOnce sync.Once
 	done     chan struct{}
 	running  atomic.Bool
+	// started records that this bot has had a run goroutine, under
+	// Fleet.mu: StopBot waits on done for one, while a bot built but never
+	// started has no done to wait for.
+	started bool
 }
 
 // New starts nothing and connects nothing. A bot whose pairing is missing is
@@ -231,10 +235,14 @@ func (f *Fleet) buildRuntime(
 	return eng, filter, settings, nil
 }
 
-// Run starts every built bot and waits: it returns when ctx is cancelled or
-// every bot has stopped, with the first bot error if any. Publishing the run
-// context and starting the bots happen under one lock, so a StartBot racing
-// startup never produces two runs of one bot.
+// Run starts every built bot and keeps the fleet alive until ctx is
+// cancelled: the instance ends the fleet, not its bot set, so a fleet that
+// runs no bot still accepts the first pairing and stopping the last bot
+// never shuts the instance down (ADR 0022). Publishing the run context and
+// starting the bots happen under one lock, so a StartBot racing startup
+// never produces two runs of one bot; the context is cleared under that
+// same lock before the final wait, so no bot joins once shutdown began.
+// The first bot error, if any, is returned at the end.
 func (f *Fleet) Run(ctx context.Context) error {
 	bots := f.ordered()
 	f.mu.Lock()
@@ -243,10 +251,15 @@ func (f *Fleet) Run(ctx context.Context) error {
 		f.startLocked(ctx, bot)
 	}
 	f.mu.Unlock()
+
+	<-ctx.Done()
+
+	f.mu.Lock()
+	f.ctx = nil
+	f.mu.Unlock()
 	f.wait.Wait()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.ctx = nil
 	if len(f.errs) > 0 {
 		return f.errs[0]
 	}
@@ -258,11 +271,9 @@ func (f *Fleet) Run(ctx context.Context) error {
 // that is already running is left alone; one that stopped — or whose channel
 // failed — gets a fresh build, because after a re-pair the device store it
 // was built with no longer exists (ADR 0021). A fleet that is not running
-// refuses.
-//
-// ponytail: start-during-shutdown races with Run's final wait; the pairing
-// session finishing exactly as the fleet exits would be the window. If that
-// ever bites, gate StartBot on a done channel closed before wait.Wait returns.
+// refuses, and so does one whose context is already cancelled: Run clears it
+// under this lock before its final wait, so a pairing finishing as the
+// instance exits never joins a fleet that is shutting down.
 func (f *Fleet) StartBot(scope, name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -285,17 +296,19 @@ func (f *Fleet) StartBot(scope, name string) error {
 // StopBot stops one bot and waits for its full shutdown: the outbox drains,
 // the channel disconnects, and only then does the caller get a stopped bot
 // whose credentials may be removed — one phone keeps one connection (ADR
-// 0011, ADR 0021). A bot that is not running is already stopped and answers
-// nil, so the operation is idempotent.
+// 0011, ADR 0021). It waits for the run goroutine itself, not for the
+// running flag the goroutine clears on its way out, so a bot that began
+// stopping is never reported finished early. A bot that never started has
+// no goroutine to wait for and answers nil, so the operation is idempotent.
 func (f *Fleet) StopBot(scope, name string) error {
 	f.mu.Lock()
 	bot, ok := f.bots[scope+"/"+name]
-	if !ok || !bot.running.Load() {
+	if !ok || !bot.started {
 		f.mu.Unlock()
 		return nil
 	}
-	done := bot.done
 	bot.stopOnce.Do(func() { close(bot.stop) })
+	done := bot.done
 	f.mu.Unlock()
 	<-done
 	return nil
@@ -333,6 +346,7 @@ func (f *Fleet) refresh(bot *Bot) error {
 
 // startLocked launches one bot's run goroutine; the caller holds f.mu.
 func (f *Fleet) startLocked(ctx context.Context, bot *Bot) {
+	bot.started = true
 	bot.running.Store(true)
 	f.wait.Add(1)
 	go func() {
