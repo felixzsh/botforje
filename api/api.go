@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/felixzsh/botflota"
@@ -72,8 +73,12 @@ type Server struct {
 	resolver PrincipalResolver
 	log      *slog.Logger
 	limiter  *rateLimiter
-	started  time.Time
-	handler  http.Handler
+	// opsMu guards the per-bot operation locks pairing start, cancel, and
+	// unpair share (ADR 0021, ADR 0039).
+	opsMu   sync.Mutex
+	ops     map[string]*sync.Mutex
+	started time.Time
+	handler http.Handler
 }
 
 func New(opts Options) (*Server, error) {
@@ -129,6 +134,7 @@ func New(opts Options) (*Server, error) {
 		sessions: opts.Sessions, messages: opts.Messages,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
+		ops: map[string]*sync.Mutex{},
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -138,6 +144,23 @@ func (s *Server) Handler() http.Handler { return s.handler }
 
 // config is the active snapshot; a reload replaces it for every handler.
 func (s *Server) config() *config.Config { return s.cfg.Current() }
+
+// lockBot serializes the write operations of one bot — pairing start,
+// cancel, and unpair — so an unpair never overlaps the session that stored
+// the account, and a re-pair starts only after the unpair finished (ADR
+// 0021, ADR 0039). The caller releases the lock through the return value.
+func (s *Server) lockBot(scope, bot string) func() {
+	key := scope + "/" + bot
+	s.opsMu.Lock()
+	lock, ok := s.ops[key]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.ops[key] = lock
+	}
+	s.opsMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()

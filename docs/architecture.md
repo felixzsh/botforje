@@ -425,16 +425,19 @@ remains the authority over the actual window.
 
 Pairing operations travel over the API of a running instance (ADR 0039):
 `POST`, `GET`, and `DELETE` on `.../bots/{bot}/pairing` start, read, and
-cancel a session, and `DELETE .../bots/{bot}/account` cancels a live session,
-stops the bot so its channel disconnects, and removes the credentials. The
-CLI drives those routes while another process owns the instance and works
-locally when it does not; replacing a pairing is an unpair followed by a
-pair, whichever way the instance is running.
+cancel a session, and `DELETE .../bots/{bot}/account` ends a live session
+and waits for its goroutine, stops the bot so its channel disconnects, and
+removes the credentials — one operation under the bot's lock, so the writes
+of one bot never overlap. The CLI drives those routes while another process
+owns the instance and works locally when it does not; replacing a pairing is
+an unpair followed by a pair, whichever way the instance is running.
 
 ## Concurrency
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
+- Pairing start, cancel, and unpair of one bot also run one at a time, under
+  the API's per-bot lock (see the pairing operations above).
 - The engine and the outbox are independent, each serialized; a bot keeps
   reading inbound while its outbox paces earlier replies (ADR 0011). The
   outbox is durable (ADR 0040): replies wait in SQLite, survive a restart,

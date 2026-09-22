@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -55,6 +56,12 @@ type pairingSession struct {
 	// cancel or an expiry arriving before success is reported must not
 	// rewrite the outcome (ADR 0025).
 	saved bool
+	// teardown marks an unpair ending this session: the wait stops, but the
+	// bot is not activated — the link goes away right after (ADR 0021).
+	teardown bool
+	// closed signals the session goroutine finished, so one unpair waits
+	// for its own session without waiting for other bots' sessions.
+	closed chan struct{}
 }
 
 // NewPairManager returns nil when Build is missing, so a caller can treat
@@ -96,7 +103,7 @@ func (m *PairManager) StartPair(
 			State:     botflota.PairPending,
 			StartedAt: now, UpdatedAt: now, ExpiresAt: now.Add(m.opts.Lifetime),
 		},
-		ctx: pairCtx, cancel: cancel,
+		ctx: pairCtx, cancel: cancel, closed: make(chan struct{}),
 	}
 	// The timer exists before the session is visible, so no reader can find
 	// a session without one.
@@ -126,6 +133,7 @@ func (m *PairManager) StartPair(
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		defer close(session.closed)
 		result, err := m.pair(pairCtx, opts)
 		m.finish(key, session, result, err)
 	}()
@@ -181,6 +189,40 @@ func (m *PairManager) CancelPair(ctx context.Context, scope, bot string) error {
 	// reports the success that already happened.
 	m.endLocked(session, botflota.PairCancelled)
 	return nil
+}
+
+// EndPair ends the bot's live session and waits for its goroutine, so an
+// unpair never races the pairing that stores the account: a session that has
+// not stored it aborts and keeps the cancelled outcome; one that has stored
+// it only loses its import wait and still reports the link that exists
+// (ADR 0021, ADR 0025). A bot with no live session answers nil, so the
+// operation is idempotent. The context bounds only the wait — the end itself
+// always applies — so a pairing stuck past the caller's deadline is reported
+// instead of holding the unpair forever.
+func (m *PairManager) EndPair(ctx context.Context, scope, bot string) error {
+	if m == nil {
+		return errors.New("whatsapp: no pairing manager")
+	}
+	key := scope + "/" + bot
+	m.mu.Lock()
+	session, ok := m.sessions[key]
+	if !ok || session.state.Final() {
+		m.mu.Unlock()
+		return nil
+	}
+	session.teardown = true
+	m.endLocked(session, botflota.PairCancelled)
+	if session.saved {
+		session.cancel()
+	}
+	closed := session.closed
+	m.mu.Unlock()
+	select {
+	case <-closed:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("whatsapp: end pairing: %w", ctx.Err())
+	}
 }
 
 func (m *PairManager) setCode(key, code string) {
@@ -245,6 +287,7 @@ func (m *PairManager) finish(
 		m.mu.Unlock()
 		return
 	}
+	teardown := session.teardown
 	state := &session.state
 	state.Code = ""
 	state.UpdatedAt = m.nowLocked()
@@ -270,7 +313,10 @@ func (m *PairManager) finish(
 			"scope", scope, "bot", bot, "error", interrupted)
 	}
 
-	if m.opts.OnPaired != nil {
+	// An unpair ends this wait on purpose and removes the link right after:
+	// activating the bot now would only connect it to be stopped again. The
+	// session still reports the success that already happened.
+	if m.opts.OnPaired != nil && !teardown {
 		activation, cancel := context.WithTimeout(context.Background(),
 			pairActivationBudget)
 		startErr := m.opts.OnPaired(activation, scope, bot)

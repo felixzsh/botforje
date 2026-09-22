@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func deleteAccount(
@@ -15,7 +16,7 @@ func deleteAccount(
 }
 
 // TestAccountDeleteStopsTheBotAndUnpairs covers the whole teardown order: the
-// live pairing session is cancelled, the running bot stops before its
+// live pairing session is ended first, the running bot stops before its
 // credentials go, and the link is removed (ADR 0021, ADR 0039).
 func TestAccountDeleteStopsTheBotAndUnpairs(t *testing.T) {
 	server := testServer(t)
@@ -33,8 +34,8 @@ func TestAccountDeleteStopsTheBotAndUnpairs(t *testing.T) {
 		t.Fatalf("unpaired = %v, want support/demo", unpairer.calls)
 	}
 	pairing := server.pairing.(*fakePairing)
-	if !pairing.cancelled {
-		t.Fatal("the live pairing session was not cancelled")
+	if !pairing.ended {
+		t.Fatal("the live pairing session was not ended before the stop")
 	}
 }
 
@@ -70,5 +71,48 @@ func TestAccountDeleteWithinItsOwnScopeForAScopedToken(t *testing.T) {
 		"/api/v1/scopes/ventas/bots/other/account", testAccessToken)
 	if outOfScope.Code != http.StatusNotFound {
 		t.Fatalf("out-of-scope status = %d, want 404", outOfScope.Code)
+	}
+}
+
+// TestAccountDeleteSerializesWithPairStart: a pairing start waits for the
+// unpair of the same bot and only then sees the account gone — the replace
+// flow behind `bot pair --force` (ADR 0021, ADR 0039).
+func TestAccountDeleteSerializesWithPairStart(t *testing.T) {
+	stopping := make(chan struct{})
+	release := make(chan struct{})
+	server := testServerWithFleet(t, &fakeFleet{
+		onStop: func() { close(stopping); <-release },
+	})
+	account := "/api/v1/scopes/support/bots/demo/account"
+	pairingPath := "/api/v1/scopes/support/bots/demo/pairing"
+
+	deleted := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		deleted <- deleteAccount(t, server, account, testOwnerToken)
+	}()
+	<-stopping // the unpair holds the bot's lock inside StopBot
+
+	started := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		started <- pairCall(t, server, http.MethodPost, pairingPath, "")
+	}()
+	select {
+	case recorder := <-started:
+		t.Fatalf("pairing started during an unpair: %d", recorder.Code)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	if recorder := <-deleted; recorder.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d, want 204", recorder.Code)
+	}
+	select {
+	case recorder := <-started:
+		if recorder.Code != http.StatusAccepted {
+			t.Fatalf("pair after unpair = %d, body = %s",
+				recorder.Code, recorder.Body)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the pairing never started after the unpair finished")
 	}
 }

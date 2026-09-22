@@ -7,11 +7,13 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// handleAccountDelete drops the bot's link to its provider: it cancels a live
-// pairing session so nothing re-saves the account underneath the delete,
-// stops the running bot — StopBot waits for the disconnect, because one
-// phone keeps one connection (ADR 0021) — and only then removes the
-// credentials and the account record (ADR 0039).
+// handleAccountDelete drops the bot's link to its provider as one operation
+// under the bot's lock: the live pairing session ends and its goroutine
+// finishes first — a session that stored the account only loses its import
+// wait and still reports that link — then the running bot stops, because
+// StopBot waits for the disconnect and one phone keeps one connection (ADR
+// 0021), and only then are the credentials and the account record removed
+// (ADR 0039).
 func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.scopeParam(w, r)
 	if !ok {
@@ -21,6 +23,8 @@ func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	unlock := s.lockBot(scope, bot)
+	defer unlock()
 	ctx := r.Context()
 	if _, err := s.accounts.Get(ctx, scope, bot); err != nil {
 		if errors.Is(err, botflota.ErrNotFound) {
@@ -31,13 +35,10 @@ func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "read account", err)
 		return
 	}
-	if err := s.pairing.CancelPair(ctx, scope, bot); err != nil &&
-		!errors.Is(err, botflota.ErrNotFound) {
-		s.fail(w, "cancel pairing", err)
+	if err := s.pairing.EndPair(ctx, scope, bot); err != nil {
+		s.fail(w, "end pairing", err)
 		return
 	}
-	// A pairing that saves its account in this exact window survives this
-	// delete; the next one catches it.
 	if err := s.fleet.StopBot(scope, bot); err != nil {
 		s.fail(w, "stop bot", err)
 		return
