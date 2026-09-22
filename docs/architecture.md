@@ -64,6 +64,8 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
   owns its device store; `adapters/whatsapp/channel` holds the live connection
   and the `Adapter`, and `adapters/whatsapp/ingest` stores what WhatsApp
   reports about the past (ADR 0035, ADR 0037).
+- `instance` — the exclusive lock that makes one process the owner of an
+  instance's data directory (ADR 0039).
 - `cmd/botflota` — argument parsing and assembly.
 - `internal/` — only a shared implementation detail that is not a capability
   and has no owner; nothing lives there today.
@@ -82,6 +84,25 @@ devices, builds the fleet, and gives those live dependencies to `api`. API
 handlers start with the smallest direct operation; a narrow service is
 extracted only when a second real caller needs the same logic. There is no
 generic `control` facade.
+
+## Control plane
+
+One process owns an instance: `fleet run` holds the exclusive lock on
+`data_dir`, and a local command that writes instance state must take the same
+lock first (ADR 0039). Everything that inspects or controls a running instance
+travels through the REST API it serves:
+
+    CLI (operational)  --+
+    dashboard           --+--> REST API --> fleet + store ports --> SQLite
+    host integration    --+
+
+    CLI (offline) ----------> config, stores, device store   (no owner running)
+
+SQLite is state, not an event bus: a read sees the latest committed change and
+no consumer is notified. The API never reads the database on the CLI's behalf,
+and the CLI never falls back to the database while the instance is owned. The
+CLI is a local client that may read the config file to find the API; the
+dashboard and integrations are API-only and never see local files.
 
 ## Domain model
 

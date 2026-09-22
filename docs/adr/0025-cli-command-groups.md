@@ -29,6 +29,15 @@ flags. `fleet run` hosts the fleet and the REST API;
 operational queries such as `fleet status`, `chat list`, and `message list|tail`
 are API clients.
 
+Commands split by where the instance answer comes from (ADR 0039):
+
+- Local: `config init|validate|schema`, `fleet run`, `bot pair`, and
+  `bot unpair` read files and, with the instance lock free, the stores.
+- Through the API: `fleet status`, `bot list`, `chat list|sync`,
+  `contact list`, and `message list|tail`, plus every future control command.
+  While an owner process runs there is no fallback to the database; if the API
+  does not answer, the command reports that instead of partial data.
+
 Process lifecycle belongs to the supervisor, not to Botflota. The CLI has no
 `stop` or `restart`: systemd, Docker, or another supervisor starts, stops, and
 restarts the process. Botflota handles SIGINT and SIGTERM with an ordered

@@ -27,7 +27,10 @@ by the per-bot actor model.
 ## Consequences
 
 - Zero external services; backup is copying files.
-- The single-writer model is acceptable for one process with short writes.
+- The single-writer model is acceptable for one process with short writes:
+  `fleet run` and the offline commands that write take an exclusive lock on
+  `data_dir`, so one owner holds it across processes and not only between
+  actors (ADR 0039).
 - The schema is one list applied on open. Pre-release it is edited in place
   and the development database is recreated (`make dev-reset`); versioned,
   append-only migrations begin at the first release.
