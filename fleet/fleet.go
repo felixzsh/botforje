@@ -246,7 +246,6 @@ func (f *Fleet) StartBot(scope, name string) error {
 	return nil
 }
 
-// start runs one bot actor and records its error, if any.
 func (f *Fleet) start(ctx context.Context, bot *Bot) {
 	f.wait.Add(1)
 	go func() {

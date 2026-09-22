@@ -120,7 +120,6 @@ func lockInstance(cfg *config.Config) (*instance.Lock, error) {
 	return instance.Acquire(dir)
 }
 
-// releaseInstance releases the ownership taken by lockInstance.
 func releaseInstance(lock *instance.Lock, report func(error)) {
 	if err := lock.Release(); err != nil {
 		report(err)

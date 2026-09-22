@@ -32,6 +32,7 @@ type Options struct {
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	Pairing  botflota.PairingRunner
 	// Devices reports local pairing credentials for `bot list`; fleet run
 	// injects it, and a server without it answers from the stored pairing
 	// state (ADR 0039).
@@ -51,6 +52,7 @@ type Server struct {
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
+	pairing  botflota.PairingRunner
 	devices  *whatsapp.Devices
 	senders  botflota.SenderStore
 	contacts botflota.ContactStore
@@ -76,6 +78,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Pairings == nil {
 		return nil, errors.New("api: no pairing store")
+	}
+	if opts.Pairing == nil {
+		return nil, errors.New("api: no pairing runner")
 	}
 	if opts.Senders == nil {
 		return nil, errors.New("api: no sender store")
@@ -105,7 +110,7 @@ func New(opts Options) (*Server, error) {
 	server := &Server{
 		cfg: opts.Config, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
-		devices: opts.Devices,
+		pairing: opts.Pairing, devices: opts.Devices,
 		senders: opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger, started: time.Now(),
@@ -133,6 +138,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/scopes/{scope}/chats/sync", s.handleChatSync)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)
+
+	pairing := "/api/v1/scopes/{scope}/bots/{bot}/pairing"
+	mux.HandleFunc("POST "+pairing, s.handlePairStart)
+	mux.HandleFunc("GET "+pairing, s.handlePairState)
+	mux.HandleFunc("DELETE "+pairing, s.handlePairCancel)
 
 	return s.authenticate(mux)
 }

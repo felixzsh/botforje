@@ -66,8 +66,11 @@ type PairOptions struct {
 	// RenderQR defaults to clearing the terminal and writing a compact QR on
 	// stdout.
 	RenderQR func(code string)
-	Timeout  time.Duration // maximum wait for one QR session
-	Now      func() time.Time
+	// OnSaved, when set, runs once the account is stored, before the history
+	// wait: a live pairing session uses it to stop counting its expiry.
+	OnSaved func()
+	Timeout time.Duration // maximum wait for one QR session
+	Now     func() time.Time
 }
 
 // PairResult is what a successful pairing produced; the command prints it as
@@ -179,6 +182,9 @@ func pairOnce(
 				jid, err := saveAccount(ctx, opts, client)
 				if err != nil {
 					return PairResult{}, false, err
+				}
+				if opts.OnSaved != nil {
+					opts.OnSaved()
 				}
 				confirmLink(client, logger)
 				if historyWaiter != nil {

@@ -78,6 +78,18 @@ func (s *Server) botParam(w http.ResponseWriter, r *http.Request, scope string) 
 	if bot == "" {
 		return "", true
 	}
+	return s.knownBot(w, scope, bot)
+}
+
+// botPathParam is botParam for a path segment, where an empty value cannot
+// happen.
+func (s *Server) botPathParam(
+	w http.ResponseWriter, r *http.Request, scope string,
+) (string, bool) {
+	return s.knownBot(w, scope, r.PathValue("bot"))
+}
+
+func (s *Server) knownBot(w http.ResponseWriter, scope, bot string) (string, bool) {
 	if _, ok := s.cfg.Scopes[scope].Bots[bot]; !ok {
 		writeError(w, http.StatusNotFound, "not_found", "unknown bot")
 		return "", false

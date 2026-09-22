@@ -11,11 +11,11 @@ import (
 )
 
 type botView struct {
-	Scope    string `json:"scope"`
-	Bot      string `json:"bot"`
-	JID      string `json:"jid,omitempty"`
-	Phone    string `json:"phone,omitempty"`
-	Pairing  string `json:"pairing,omitempty"`
+	Scope   string `json:"scope"`
+	Bot     string `json:"bot"`
+	JID     string `json:"jid,omitempty"`
+	Phone   string `json:"phone,omitempty"`
+	Pairing string `json:"pairing,omitempty"`
 	// LastChange is when the pairing state last changed; it is shown only
 	// while it matches the state reported above (ADR 0011).
 	LastChange *time.Time `json:"last_change,omitempty"`

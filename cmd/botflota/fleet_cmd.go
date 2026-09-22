@@ -267,6 +267,7 @@ func serveAPI(
 		Fleet:    runner,
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),
+		Pairing:  pairingManager(cfg, db, devices, runner, logger),
 		Devices:  devices,
 		Senders:  db.Senders(),
 		Contacts: db.Contacts(),
@@ -302,4 +303,47 @@ func whatsappSettings(settings spec.BotSettings) channel.Settings {
 		SimulateTyping:   settings.SimulateTyping != nil && *settings.SimulateTyping,
 		Jitter:           time.Duration(settings.Jitter) * time.Millisecond,
 	}
+}
+
+// pairingManager is the API path of `bot pair`: the session it runs resolves
+// the bot's settings from the config the fleet holds and starts the bot when
+// WhatsApp accepts the scan (ADR 0025).
+func pairingManager(
+	cfg *config.Config, db *sqlite.DB, devices *whatsapp.Devices,
+	runner *fleet.Fleet, logger *slog.Logger,
+) *whatsapp.PairManager {
+	return whatsapp.NewPairManager(whatsapp.PairManagerOptions{
+		Build: func(scope, botName string, fullHistory bool) (whatsapp.PairOptions, error) {
+			scopeCfg, ok := cfg.Scopes[scope]
+			if !ok {
+				return whatsapp.PairOptions{}, fmt.Errorf("unknown scope %q", scope)
+			}
+			bot, ok := scopeCfg.Bots[botName]
+			if !ok {
+				return whatsapp.PairOptions{}, fmt.Errorf(
+					"bot %q not found in scope %q", botName, scope)
+			}
+			return whatsapp.PairOptions{
+				Scope:          scope,
+				Bot:            botName,
+				Devices:        devices,
+				Accounts:       db.LinkedAccounts(),
+				Pairings:       db.Pairings(),
+				Senders:        db.Senders(),
+				Chats:          db.Chats(),
+				Messages:       db.Messages(),
+				History:        historyEnabled(bot.Settings),
+				FullHistory:    fullHistory,
+				Contacts:       db.Contacts(),
+				ImportContacts: contactsEnabled(bot.Settings),
+				Log:            logger,
+				DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
+				DeviceName:     cfg.DeviceName,
+			}, nil
+		},
+		OnPaired: func(_ context.Context, scope, botName string) error {
+			return runner.StartBot(scope, botName)
+		},
+		Log: logger,
+	})
 }

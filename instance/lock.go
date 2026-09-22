@@ -9,15 +9,14 @@ import (
 	"path/filepath"
 )
 
-// FileName is the advisory lock file, kept in data_dir beside the database.
+// FileName is the lock file inside data_dir.
 const FileName = "instance.lock"
 
 // ErrOwned reports that another process already owns the instance. The lock
 // belongs to a live process, so the error can never be stale.
 var ErrOwned = errors.New("another botflota process owns this instance")
 
-// Lock is the exclusive ownership of one instance for the life of the
-// process.
+// Lock is one process's ownership of an instance.
 type Lock struct {
 	file *os.File
 }

@@ -178,3 +178,16 @@ type AccessTokenStore interface {
 	List(ctx context.Context) ([]AccessToken, error)
 	Revoke(ctx context.Context, id int64, at time.Time) error
 }
+
+// PairingRunner drives the live pairing session of one bot, so the CLI and a
+// dashboard link an account through the same path (ADR 0025). StartPair
+// answers ErrBusy while a session for that bot still runs, CurrentPair
+// answers ErrNotFound when there is none, and CancelPair is idempotent once a
+// session is final.
+type PairingRunner interface {
+	StartPair(
+		ctx context.Context, scope, bot string, req PairRequest,
+	) (*PairingSession, error)
+	CurrentPair(ctx context.Context, scope, bot string) (*PairingSession, error)
+	CancelPair(ctx context.Context, scope, bot string) error
+}

@@ -77,6 +77,44 @@ func (f fakePairings) Get(
 
 func (f fakePairings) Set(context.Context, *botflota.PairingStatus) error { return nil }
 
+type fakePairing struct {
+	session   botflota.PairingSession
+	present   bool
+	cancelled bool
+	started   botflota.PairRequest
+}
+
+func (f *fakePairing) StartPair(
+	_ context.Context, scope, bot string, req botflota.PairRequest,
+) (*botflota.PairingSession, error) {
+	if !f.present {
+		return nil, botflota.ErrBusy
+	}
+	f.started = req
+	session := f.session
+	session.Scope, session.Bot = scope, bot
+	return &session, nil
+}
+
+func (f *fakePairing) CurrentPair(
+	_ context.Context, scope, bot string,
+) (*botflota.PairingSession, error) {
+	if !f.present {
+		return nil, botflota.ErrNotFound
+	}
+	session := f.session
+	session.Scope, session.Bot = scope, bot
+	return &session, nil
+}
+
+func (f *fakePairing) CancelPair(context.Context, string, string) error {
+	if !f.present {
+		return botflota.ErrNotFound
+	}
+	f.cancelled = true
+	return nil
+}
+
 type fakeOwnerTokens struct{ token *botflota.OwnerToken }
 
 func (f *fakeOwnerTokens) Get(context.Context) (*botflota.OwnerToken, error) {
@@ -435,6 +473,14 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 			},
 		}},
 		Tokens:   tokens,
+		Pairing: &fakePairing{
+			present: true,
+			session: botflota.PairingSession{
+				Method: "qr", State: botflota.PairWaiting, Code: "qr-code",
+				StartedAt: testTime, UpdatedAt: testTime,
+				ExpiresAt: testTime.Add(time.Hour),
+			},
+		},
 		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
 	})
 	if err != nil {

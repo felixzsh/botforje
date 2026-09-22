@@ -23,6 +23,10 @@ var ErrDuplicate = errors.New("duplicate")
 // answers with the error instead of silently dropping the message (ADR 0036).
 var ErrUnsupportedKind = errors.New("unsupported message content")
 
+// ErrBusy reports an operation that already has a live attempt running, such
+// as a second pairing session for one bot (ADR 0025).
+var ErrBusy = errors.New("already in progress")
+
 // IncomingMessage is one inbound message. SenderPhone is the resolved phone
 // number in plain digits; the JID and any LID stay inside the channel adapter
 // (ADR 0020). SenderDisplayName is a best-effort push name, never an

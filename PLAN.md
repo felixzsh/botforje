@@ -257,9 +257,11 @@ Deliverables:
   account whose passkey step happens on the phone can link without another
   client; a pending step is a reported state, never a wait until the code
   expires (ADR 0028).
-- [ ] Pairing session in the API: start, cancel, and status per bot, carrying the
-  method, the payload (QR or code), the state, and the expiry, so a UI can drive
-  onboarding without shell access.
+- [x] Pairing session in the API: start, cancel, and status per bot, carrying
+  the method, the payload (QR or code), the state, and the expiry, so a UI can
+  drive onboarding without shell access; a session that succeeds activates the
+  bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing stays a
+  local operation until Phase 12.
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).
