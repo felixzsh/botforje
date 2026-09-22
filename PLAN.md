@@ -101,6 +101,9 @@ Deliverables:
 - [x] SQLite setup with the schema applied on open; pure-Go driver, WAL,
   foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
 - [x] Stores: chats, sessions, and messages.
+- [x] Atomic turn: the engine commits the session, the stored messages, the
+  chat activity, the guards, and the queued replies as one transaction, and
+  drops a redelivery before any action runs (ADR 0040).
 - [x] Repository interfaces owned by the domain; SQL stays in the adapter.
 - [x] Tests: schema apply, store round-trips, and session resume after restart.
 - [x] Race testing: `make test-race` (`go test -race ./...`) and use it
@@ -180,6 +183,10 @@ Deliverables:
   the channel adapter, which sees the event first.
 - [x] Outbox: per-bot FIFO with `queue_delay` plus a shared random `jitter`,
   an optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
+- [x] Durable delivery: replies are queued in the same transaction that
+  stores them; a per-bot worker paces them, retries with bounded backoff,
+  records sent or failed, and survives a restart (ADR 0040). A full inbound
+  queue blocks instead of dropping the message.
 - [x] Fleet command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
 - [x] Logging: one structured logger (`log/slog`) with plain, column-aligned
@@ -334,6 +341,11 @@ writing replies.
 
 Deliverables:
 
+- [ ] Reconcile the interim contracts with ADR 0004 and ADR 0030 first: drop
+  `LLMProvider.Classify` (only `SystemOneProvider` decides transitions),
+  build the providers from config — `fleet` injects none today — and either
+  reject or clearly mark the config fields no runtime reads yet (`system_one`,
+  `shared`, `routing` on an `llm` profile, `tools`).
 - [ ] `SystemOneProvider` port and a Jev (TypeSafe) adapter: typed questions
   with confidence, and the deterministic matcher first (ADR 0030).
 - [ ] `shared` and scope catalogs (`system_one`, `llms`): config types,

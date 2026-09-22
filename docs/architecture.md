@@ -10,12 +10,19 @@ Three independent ports sit beside the config engine and persistence:
 - `MessageChannel` — transport port. A channel is one implementation that
   reaches a messaging provider; the provider (WhatsApp) can have several
   channels, such as whatsmeow today or the official Cloud API later.
-- `SystemOneProvider` — System One port for routing, policy, tool selection,
-  and value mapping: typed answers (a choice from a closed set, a score, or a
-  probability) with confidence and no generated text. Jev (TypeSafe) is the
-  first adapter (ADR 0030).
-- `LLMProvider` — model port for reply realization and the tool loop. Cloud
-  and local providers sit behind the same interface.
+- `SystemOneProvider` — **Phase 8, not implemented yet.** System One port for
+  routing, policy, tool selection, and value mapping: typed answers (a choice
+  from a closed set, a score, or a probability) with confidence and no
+  generated text. Jev (TypeSafe) is the first planned adapter (ADR 0030).
+- `LLMProvider` — model port for reply realization and the tool loop. It
+  exists in an interim shape that still classifies transitions, and the fleet
+  injects no implementation yet; Phase 8 replaces `Classify` with the
+  System One port and keeps generation for text only (ADR 0004, ADR 0030).
+
+The other core ports follow the same rule: what exists is small and wired
+(`PairingRunner`, `DevicePresence`, the store ports), and the two that back
+the atomic turn and delivery — `TurnStore` and `OutboxStore` — are why the
+engine writes no rows directly (ADR 0040).
 
 The config engine loads YAML into the domain model; the engine never sees
 YAML. Persistence stores runtime state: device store, chats, sessions, and
@@ -193,25 +200,31 @@ Inbound:
    first) plus the current node last (ADR 0010). Edges with triggers are
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
-5. When the graph routing mode is `always`, or nothing matched and the mode
+5. A redelivery whose provider id the chat already stores stops here, before
+   any action runs (ADR 0040). Steps 6–8 are the Phase 8 target: the fleet
+   injects no model yet, so only the deterministic path runs today.
+6. When the graph routing mode is `always`, or nothing matched and the mode
    is `fallback`, System One decides: one Choice question over the candidate
    edge intents, checked against the graph's confidence threshold. Below it
    the graph takes the default edge or escalates; the LLM never classifies
    (ADR 0030).
-6. A node with tools handles the message through the pipeline (ADR 0033):
+7. A node with tools handles the message through the pipeline (ADR 0033):
    System One decides, the LLM reads free text, and code applies. The node
    stays unless an exit edge is taken. The LLM loop (ADR 0033) is the opt-in
    alternative for calls a pipeline cannot bound.
-7. Tool results feed the next step; a missing required argument is a tool
+8. Tool results feed the next step; a missing required argument is a tool
    error that asks the user, storing the answer in the bound variable.
    Neither model invents a transition; edges are the only exits.
-8. Engine runs the selected transition: exit actions, target node, entry
+9. Engine runs the selected transition: exit actions, target node, entry
    actions. Entry actions produce the prescribed reply, so a bot with no `llm`
    needs no provider (ADR 0032).
-9. Effective policy composes node policy (always) and message policy
+10. Effective policy composes node policy (always) and message policy
    (optional refinement). Reply text is prescribed, LLM-realized, or both
    (anchor plus fallback); a policy check runs before anything is queued.
-10. Results are queued in the bot's outbox and the session is persisted.
+10. The session, the stored messages, the chat activity, the guards, and the
+    queued replies commit as one transaction; a failure rolls all of it back
+    (ADR 0040). The outbox worker then delivers the replies with the pacing
+    below.
 
 Outbound:
 
@@ -254,6 +267,10 @@ Three ways a reply reaches the queue, in order of preference (ADR 0032):
   intent or tone. The reply is still prescribed.
 - Realized: the opt-in generative path; `body` plus `intent` anchors the model
   and doubles as the fallback. Intent-only, with no anchor, is discouraged.
+
+The engine implements all three, but no LLM provider adapter ships yet and
+the fleet injects none, so a running bot answers prescribed today; the other
+two arrive with Phase 8.
 
 ## Tool pipeline
 
@@ -400,7 +417,9 @@ remains the authority over the actual window.
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
 - The engine and the outbox are independent, each serialized; a bot keeps
-  reading inbound while its outbox paces earlier replies (ADR 0011).
+  reading inbound while its outbox paces earlier replies (ADR 0011). The
+  outbox is durable (ADR 0040): replies wait in SQLite, survive a restart,
+  and are retried with bounded backoff before they are given up on.
 - Config hot reload watches the main file and its includes and is
   all-or-nothing; a restart-required change is logged, never silent (ADR 0009).
 - One WhatsApp phone number belongs to one Botflota bot. Multiple linked
@@ -409,7 +428,8 @@ remains the authority over the actual window.
 - The tool loop runs inside the bot actor and is bounded (max tools per
   message, timeout); a slow provider cannot stall other bots.
 - Bounded queues between the channel, the engine, and the outbox provide
-  backpressure.
+  backpressure: a full inbound queue blocks the channel's event handler
+  instead of dropping the user's message (ADR 0040).
 - No shared mutable state between bots; shared services are read-only or
   synchronized.
 - Reconnect uses capped exponential backoff with jitter; a bot that is logged
