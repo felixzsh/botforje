@@ -217,6 +217,9 @@ Deliverables:
   `/etc/botflota/config.yml` (first match wins).
 - [x] `fleet status` is an API client and reports uptime, per-bot connection
   state, outbox depth, and active sessions; a `--json` mode serves scripts.
+- [x] Operational queries read the API: `bot list` asks the running instance
+  for each bot's pairing state, phone, and last change instead of opening the
+  database and the device store (ADR 0039).
 - [x] Message history persistence: the engine appends the inbound message and
   every reply under the chat and the session run that handled them (ADR 0026);
   the pairing history sync is imported separately and inertly (ADR 0035).

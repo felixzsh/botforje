@@ -58,6 +58,8 @@ func (f fakeAccounts) Delete(context.Context, string, string) error { return nil
 
 type fakePairings struct {
 	states map[string]botflota.PairingState
+	// changed is optional: a state without a timestamp reports none.
+	changed map[string]time.Time
 }
 
 func (f fakePairings) Get(
@@ -67,7 +69,10 @@ func (f fakePairings) Get(
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
-	return &botflota.PairingStatus{Scope: scope, Bot: bot, State: state}, nil
+	return &botflota.PairingStatus{
+		Scope: scope, Bot: bot, State: state,
+		LastChange: f.changed[scope+"/"+bot],
+	}, nil
 }
 
 func (f fakePairings) Set(context.Context, *botflota.PairingStatus) error { return nil }
@@ -332,9 +337,12 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 			Scope: "support", Bot: "demo", JID: "5215500000000@s.whatsapp.net",
 		},
 	}}
-	pairings := fakePairings{states: map[string]botflota.PairingState{
-		"support/demo": botflota.PairingPaired,
-	}}
+	pairings := fakePairings{
+		states: map[string]botflota.PairingState{
+			"support/demo": botflota.PairingPaired,
+		},
+		changed: map[string]time.Time{"support/demo": testTime},
+	}
 	sender := botflota.Sender{
 		ID: 7, Scope: "support", Phone: "5215500000000", DisplayName: "Ana",
 	}

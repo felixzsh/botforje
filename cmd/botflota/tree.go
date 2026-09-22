@@ -106,7 +106,9 @@ func cliTree() *commandHelp {
 						name:    "list",
 						summary: "list configured bots and their pairing",
 						long: "Print a table of configured bots with their phone number,\n" +
-							"pairing state, and last change. It does not change stored state.",
+							"pairing state, and last change. The running instance answers\n" +
+							"through the REST API, so fleet run must be up; it does not\n" +
+							"change stored state.",
 						usage: "botflota bot list [options]",
 						examples: []string{
 							"botflota bot list",
@@ -215,9 +217,10 @@ func cliTree() *commandHelp {
 						summary: "list one bot's chats and their senders",
 						long: "Print one row per chat with its sender's phone and name, the\n" +
 							"stored message total split into sync and live, and the first\n" +
-							"and last activity, newest activity first. The bot is named as\n" +
-							"in bot list; add --scope when the name exists in more than one\n" +
-							"scope.",
+							"and last activity, newest activity first. The running instance\n" +
+							"answers through the REST API, so fleet run must be up. The bot\n" +
+							"is named as in bot list; add --scope when the name exists in\n" +
+							"more than one scope.",
 						usage: "botflota chat list [options] <bot>",
 						examples: []string{
 							"botflota chat list support-bot",
@@ -265,8 +268,9 @@ func cliTree() *commandHelp {
 						summary: "print one bot's imported contacts",
 						long: "Print one row per contact, most recently updated first, with\n" +
 							"the address-book name, the push name, and the business name.\n" +
-							"The bot is named as in bot list; add --scope when the name\n" +
-							"exists in more than one scope.",
+							"The running instance answers through the REST API, so fleet run\n" +
+							"must be up. The bot is named as in bot list; add --scope when\n" +
+							"the name exists in more than one scope.",
 						usage: "botflota contact list [options] <bot>",
 						examples: []string{
 							"botflota contact list support-bot",

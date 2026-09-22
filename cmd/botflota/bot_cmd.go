@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -236,6 +235,35 @@ func runUnpair(args []string) int {
 	return 0
 }
 
+// listBots asks the running instance for its bots; `bot list` is an instance
+// query and never opens the database (ADR 0039).
+func listBots(ctx context.Context, client *apiClient) ([]botListEntry, error) {
+	var body struct {
+		Bots []struct {
+			Scope      string     `json:"scope"`
+			Bot        string     `json:"bot"`
+			Phone      string     `json:"phone"`
+			Pairing    string     `json:"pairing"`
+			LastChange *time.Time `json:"last_change"`
+		} `json:"bots"`
+	}
+	if err := client.get(ctx, "/api/v1/bots", &body); err != nil {
+		return nil, err
+	}
+	entries := make([]botListEntry, 0, len(body.Bots))
+	for _, bot := range body.Bots {
+		status := bot.Pairing
+		if status == "" {
+			status = string(botflota.PairingNotPaired)
+		}
+		entries = append(entries, botListEntry{
+			Bot: bot.Bot, Scope: bot.Scope, Phone: bot.Phone,
+			Status: status, LastChange: bot.LastChange,
+		})
+	}
+	return entries, nil
+}
+
 func runBotList(args []string) int {
 	cmd := newBotListCmd()
 	if code := parseArgs(cmd.fs, args); code >= 0 {
@@ -245,61 +273,15 @@ func runBotList(args []string) int {
 	if code != 0 {
 		return code
 	}
-	db, err := openDatabase(cfg)
+	client, err := newAPIClient(cfg)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer db.Close()
-
-	ctx := context.Background()
-	if err := whatsapp.ValidateAccountOwners(ctx, db.LinkedAccounts()); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	devices, err := openDevices(ctx, db, nil, cfg.LogLevelDeps)
+	entries, err := listBots(context.Background(), client)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
-	}
-	entries := make([]botListEntry, 0)
-	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
-		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
-			state := botflota.PairingNotPaired
-			phone := ""
-			account, err := db.LinkedAccounts().Get(ctx, scopeName, botName)
-			switch {
-			case errors.Is(err, botflota.ErrNotFound):
-			case err != nil:
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			default:
-				ready, err := whatsapp.HasLocalDevice(ctx, devices, account)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
-				}
-				if !ready {
-					state = botflota.PairingUnpaired
-				} else {
-					state = botflota.PairingPaired
-					phone = whatsapp.Number(account.JID)
-				}
-			}
-			pairingStatus, err := db.Pairings().Get(ctx, scopeName, botName)
-			if err != nil && !errors.Is(err, botflota.ErrNotFound) {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			entry := botListEntry{
-				Bot: botName, Scope: scopeName, Phone: phone, Status: string(state),
-			}
-			if err == nil && pairingStatus.State == state {
-				lastChange := pairingStatus.LastChange
-				entry.LastChange = &lastChange
-			}
-			entries = append(entries, entry)
-		}
 	}
 	if *cmd.json {
 		encoder := json.NewEncoder(os.Stdout)

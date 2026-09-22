@@ -214,10 +214,10 @@ Deterministic flow (a bot with no `llm`):
 
 - [ ] `bot pair` prints a QR, pairing succeeds, and the device credentials are
   written under `data_dir`.
-- [ ] `bot list` reports the bot as `paired` with its phone in the `PHONE`
-  column.
 - [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
+- [ ] With the fleet running, `bot list` reports the bot as `paired` with its
+  phone in the `PHONE` column.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
   senders in the sync, and none of it generated a reply.
 - [ ] The contact names arrive and name those senders.

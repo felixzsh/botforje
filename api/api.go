@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
 )
@@ -25,12 +26,16 @@ type Fleet interface {
 }
 
 // Options are the dependencies fleet run injects; every field is required
-// except Log.
+// except Log and Devices.
 type Options struct {
 	Config   *config.Config
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	// Devices reports local pairing credentials for `bot list`; fleet run
+	// injects it, and a server without it answers from the stored pairing
+	// state (ADR 0039).
+	Devices  *whatsapp.Devices
 	Senders  botflota.SenderStore
 	Contacts botflota.ContactStore
 	Chats    botflota.ChatStore
@@ -46,6 +51,7 @@ type Server struct {
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
+	devices  *whatsapp.Devices
 	senders  botflota.SenderStore
 	contacts botflota.ContactStore
 	chats    botflota.ChatStore
@@ -99,6 +105,7 @@ func New(opts Options) (*Server, error) {
 	server := &Server{
 		cfg: opts.Config, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
+		devices: opts.Devices,
 		senders: opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger, started: time.Now(),

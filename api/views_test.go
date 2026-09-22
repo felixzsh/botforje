@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
@@ -48,11 +49,13 @@ func TestBotsEndpoint(t *testing.T) {
 	}
 	var body struct {
 		Bots []struct {
-			Scope   string `json:"scope"`
-			Bot     string `json:"bot"`
-			JID     string `json:"jid"`
-			Pairing string `json:"pairing"`
-			State   string `json:"state"`
+			Scope      string    `json:"scope"`
+			Bot        string    `json:"bot"`
+			JID        string    `json:"jid"`
+			Phone      string    `json:"phone"`
+			Pairing    string    `json:"pairing"`
+			LastChange time.Time `json:"last_change"`
+			State      string    `json:"state"`
 		} `json:"bots"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -64,8 +67,16 @@ func TestBotsEndpoint(t *testing.T) {
 	bot := body.Bots[0]
 	if bot.Scope != "support" || bot.Bot != "demo" ||
 		bot.JID != "5215500000000@s.whatsapp.net" ||
+		bot.Phone != "5215500000000" ||
 		bot.Pairing != string(botflota.PairingPaired) || bot.State != "connected" {
 		t.Fatalf("bot = %#v", bot)
+	}
+	if !bot.LastChange.Equal(testTime) {
+		t.Fatalf("last_change = %v, want %v", bot.LastChange, testTime)
+	}
+	if body.Bots[1].Pairing != string(botflota.PairingNotPaired) ||
+		body.Bots[1].Phone != "" {
+		t.Fatalf("unpaired bot = %#v, want not paired with no phone", body.Bots[1])
 	}
 }
 

@@ -151,7 +151,8 @@ func runFleet(args []string) int {
 			logger.Error("--new-owner-token needs the API; port is 0")
 			return 2
 		}
-	} else if err := serveAPI(ctx, stop, cfg, runner, db, logger, *cmd.newOwnerToken); err != nil {
+	} else if err := serveAPI(ctx, stop, cfg, runner, db, devices, logger,
+		*cmd.newOwnerToken); err != nil {
 		logger.Error("start api", "error", err)
 		return 1
 	}
@@ -239,7 +240,8 @@ func runFleetStatus(args []string) int {
 // it.
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
-	runner *fleet.Fleet, db *sqlite.DB, logger *slog.Logger, rotate bool,
+	runner *fleet.Fleet, db *sqlite.DB, devices *whatsapp.Devices,
+	logger *slog.Logger, rotate bool,
 ) error {
 	dataDir, err := cfg.DataDirPath()
 	if err != nil {
@@ -265,6 +267,7 @@ func serveAPI(
 		Fleet:    runner,
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),
+		Devices:  devices,
 		Senders:  db.Senders(),
 		Contacts: db.Contacts(),
 		Chats:    db.Chats(),

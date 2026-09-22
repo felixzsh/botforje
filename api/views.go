@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
 )
 
@@ -13,10 +14,14 @@ type botView struct {
 	Scope    string `json:"scope"`
 	Bot      string `json:"bot"`
 	JID      string `json:"jid,omitempty"`
+	Phone    string `json:"phone,omitempty"`
 	Pairing  string `json:"pairing,omitempty"`
-	State    string `json:"state,omitempty"`
-	Outbox   int    `json:"outbox"`
-	Sessions int    `json:"sessions"`
+	// LastChange is when the pairing state last changed; it is shown only
+	// while it matches the state reported above (ADR 0011).
+	LastChange *time.Time `json:"last_change,omitempty"`
+	State      string     `json:"state,omitempty"`
+	Outbox     int        `json:"outbox"`
+	Sessions   int        `json:"sessions"`
 }
 
 type senderView struct {
@@ -97,20 +102,60 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 		case err == nil:
 			view.JID = account.JID
 		case errors.Is(err, botflota.ErrNotFound):
+			account = nil
 		default:
 			return nil, err
 		}
-		pairing, err := s.pairings.Get(ctx, scope, bot)
+		stored, err := s.pairings.Get(ctx, scope, bot)
 		switch {
 		case err == nil:
-			view.Pairing = string(pairing.State)
 		case errors.Is(err, botflota.ErrNotFound):
+			stored = nil
 		default:
 			return nil, err
+		}
+		state, err := s.pairingState(ctx, account, stored)
+		if err != nil {
+			return nil, err
+		}
+		view.Pairing = string(state)
+		if state == botflota.PairingPaired && account != nil {
+			view.Phone = whatsapp.Number(account.JID)
+		}
+		if stored != nil && stored.State == state && !stored.LastChange.IsZero() {
+			changed := stored.LastChange
+			view.LastChange = &changed
 		}
 		bots = append(bots, view)
 	}
 	return bots, nil
+}
+
+// pairingState prefers the live device check when fleet run injected the
+// device store; without it the stored pairing state is the instance's view.
+// The phone number of a bot is shown only while it is paired, so an unpaired
+// link reports no number (ADR 0011, ADR 0039).
+func (s *Server) pairingState(
+	ctx context.Context, account *botflota.LinkedAccount,
+	stored *botflota.PairingStatus,
+) (botflota.PairingState, error) {
+	if account == nil {
+		return botflota.PairingNotPaired, nil
+	}
+	if s.devices != nil {
+		ready, err := whatsapp.HasLocalDevice(ctx, s.devices, account)
+		if err != nil {
+			return "", err
+		}
+		if !ready {
+			return botflota.PairingUnpaired, nil
+		}
+		return botflota.PairingPaired, nil
+	}
+	if stored == nil {
+		return botflota.PairingNotPaired, nil
+	}
+	return stored.State, nil
 }
 
 func (s *Server) activeSessions(ctx context.Context, scope, bot string) (int, error) {
