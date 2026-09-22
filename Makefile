@@ -6,7 +6,6 @@ DEV_CONFIG ?= .dev-data/config.yml
 DEV_DATA ?= .dev-data
 ARGS ?=
 LINE_MAX := 100
-GO_DIRS := $(wildcard cmd/*) $(wildcard adapters/*) config engine fleet instance spec
 
 .DEFAULT_GOAL := help
 .PHONY: help build run dev dev-reset test test-race vet fmt fmt-check \
@@ -39,10 +38,10 @@ vet: ## Run go vet
 	$(GO) vet ./...
 
 fmt: ## Format the source
-	gofmt -w *.go $(GO_DIRS)
+	gofmt -w $$(git ls-files '*.go')
 
 fmt-check: ## Fail if any file is not gofmt'd
-	@out=$$(gofmt -l *.go $(GO_DIRS)); \
+	@out=$$(gofmt -l $$(git ls-files '*.go')); \
 	if [ -n "$$out" ]; then echo "not formatted:"; echo "$$out"; exit 1; fi
 
 lines-check: ## Fail if a tracked file has a line longer than LINE_MAX

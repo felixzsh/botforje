@@ -472,7 +472,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 				},
 			},
 		}},
-		Tokens:   tokens,
+		Tokens: tokens,
 		Pairing: &fakePairing{
 			present: true,
 			session: botflota.PairingSession{
