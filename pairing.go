@@ -24,6 +24,7 @@ type PairRequest struct {
 // (ADR 0020).
 type PairingResult struct {
 	Phone     string
+	Chunks    int
 	Chats     int
 	Messages  int
 	Duplicate int

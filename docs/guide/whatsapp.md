@@ -37,9 +37,13 @@ replacing one. And a fresh registration is the only way to change what the
 registration carries — the requested history window above all — because WhatsApp
 reads it once, at linking time.
 
-Both `bot pair` and `bot unpair` refuse to run while another botflota process
-owns the instance, so stop the fleet first: one phone number keeps one
-companion connection at a time.
+`bot unpair` refuses to run while another botflota process owns the instance,
+so stop the fleet first. `bot pair` adapts instead: with the fleet running it
+pairs through the instance's API — the QR comes from the pairing session and
+the bot joins the fleet as soon as WhatsApp accepts the scan — and with the
+fleet stopped it pairs locally under the same lock. One phone number keeps one
+companion connection at a time, which is why replacing a pairing (`--force`)
+needs the fleet stopped.
 
 Botflota allows one bot per WhatsApp phone number. WhatsApp may list several
 linked devices, but assigning the same number to two bots can duplicate replies.

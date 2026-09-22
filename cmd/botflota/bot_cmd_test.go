@@ -12,6 +12,7 @@ import (
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
+	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -120,3 +121,80 @@ func TestListBotsReadsTheAPI(t *testing.T) {
 }
 
 var testBotListTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
+
+// TestPairThroughAPI covers `bot pair` under a live instance: it drives the
+// pairing session over HTTP and never opens the database (ADR 0039).
+func TestPairThroughAPI(t *testing.T) {
+	bots := `{"bots":[{"scope":"dev","bot":"alpha","phone":"","pairing":"not paired"}]}`
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
+				_, _ = w.Write([]byte(bots))
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
+					`"phone":"5215500000001","chunks":9,"chats":2,` +
+					`"messages":30,"duplicate":1,"skipped":0,"contacts":4,` +
+					`"elapsed_seconds":65}}`))
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+	clearAPIEnv(t)
+	t.Setenv("BOTFLOTA_API_URL", server.URL)
+	t.Setenv("BOTFLOTA_TOKEN", "tok")
+	cfg := &config.Config{DataDir: t.TempDir()}
+
+	var out bytes.Buffer
+	importContacts := true
+	settings := &spec.BotSettings{ImportContacts: &importContacts}
+	code := pairThroughAPI(&out, cfg, "dev", "alpha", settings, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	printed := out.String()
+	for _, want := range []string{
+		`bot "alpha" (scope "dev") is paired as 5215500000001`,
+		"history: 2 chats, 30 messages (1 duplicate, 0 skipped) in 1m5s",
+		"contacts: 4 imported",
+	} {
+		if !strings.Contains(printed, want) {
+			t.Errorf("output %q is missing %q", printed, want)
+		}
+	}
+}
+
+// TestPairThroughAPIReportsAPairedBot covers the idempotent answer: a bot the
+// instance already knows is reported, not paired again.
+func TestPairThroughAPIReportsAPairedBot(t *testing.T) {
+	bots := `{"bots":[{"scope":"dev","bot":"alpha",` +
+		`"phone":"5215500000009","pairing":"paired"}]}`
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/bots" {
+				t.Errorf("path = %s, want only the bots list", r.URL.Path)
+			}
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, _ = w.Write([]byte(bots))
+		}))
+	defer server.Close()
+	clearAPIEnv(t)
+	t.Setenv("BOTFLOTA_API_URL", server.URL)
+	t.Setenv("BOTFLOTA_TOKEN", "tok")
+
+	var out bytes.Buffer
+	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
+		"dev", "alpha", nil, false)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(),
+		"is already paired as 5215500000009") {
+		t.Fatalf("output = %q", out.String())
+	}
+}

@@ -3,16 +3,20 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/instance"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -103,6 +107,10 @@ func runPair(args []string) int {
 	}
 	lock, err := lockInstance(cfg)
 	if err != nil {
+		if errors.Is(err, instance.ErrOwned) {
+			return pairThroughAPI(os.Stdout, cfg, scopeName, name,
+				botSpec.Settings, *cmd.importHistory)
+		}
 		reportOwned(err, "pairing (one device cannot be connected twice)")
 		return 1
 	}
@@ -184,6 +192,130 @@ func printPairImport(w io.Writer, settings *spec.BotSettings, result whatsapp.Pa
 	}
 	if contactsEnabled(settings) {
 		fmt.Fprintf(w, "contacts: %d imported\n", result.Contacts)
+	}
+}
+
+// pairPollInterval is how often the CLI reads the session of a pairing it is
+// showing; QR codes rotate on their own, so a missed one is never final.
+const pairPollInterval = 500 * time.Millisecond
+
+// pairThroughAPI pairs by driving the running instance's session: the same
+// path a dashboard uses, with the QR rendered here (ADR 0025, ADR 0039).
+func pairThroughAPI(
+	w io.Writer, cfg *config.Config, scopeName, botName string,
+	settings *spec.BotSettings, fullHistory bool,
+) int {
+	client, err := newAPIClient(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx := context.Background()
+	entries, err := listBots(ctx, client)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintln(os.Stderr,
+			"bot pair needs the running instance; stop the fleet to pair locally")
+		return 1
+	}
+	for _, entry := range entries {
+		if entry.Scope == scopeName && entry.Bot == botName &&
+			entry.Status == string(botflota.PairingPaired) {
+			fmt.Fprintf(w, "bot %q (scope %q) is already paired as %s; "+
+				"stop the fleet and run bot pair to replace it\n",
+				botName, scopeName, dash(entry.Phone))
+			return 0
+		}
+	}
+	session, err := startPairing(ctx, client, scopeName, botName, fullHistory)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	lastCode := ""
+	for {
+		switch session.State {
+		case string(botflota.PairSucceeded):
+			fmt.Fprintf(w, "bot %q (scope %q) is paired as %s\n",
+				botName, scopeName, dash(session.Result.Phone))
+			printPairImport(w, settings, importTotalsOf(session))
+			return 0
+		case string(botflota.PairFailed):
+			fmt.Fprintln(os.Stderr, "pairing failed: "+session.Error)
+			return 1
+		case string(botflota.PairCancelled):
+			fmt.Fprintln(os.Stderr, "the pairing session was cancelled")
+			return 1
+		case string(botflota.PairExpired):
+			fmt.Fprintln(os.Stderr, "the pairing session expired; run bot pair again")
+			return 1
+		}
+		if session.Code != "" && session.Code != lastCode {
+			whatsapp.RenderQR(session.Code)
+			lastCode = session.Code
+		}
+		time.Sleep(pairPollInterval)
+		session, err = currentPairing(ctx, client, scopeName, botName)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	}
+}
+
+type pairRequestBody struct {
+	FullHistory bool `json:"full_history"`
+}
+
+type pairSessionView struct {
+	State  string `json:"state"`
+	Code   string `json:"code"`
+	Error  string `json:"error"`
+	Result struct {
+		Phone         string  `json:"phone"`
+		Chunks        int     `json:"chunks"`
+		Chats         int     `json:"chats"`
+		Messages      int     `json:"messages"`
+		Duplicate     int     `json:"duplicate"`
+		Skipped       int     `json:"skipped"`
+		Contacts      int     `json:"contacts"`
+		ElapsedSecond float64 `json:"elapsed_seconds"`
+	} `json:"result"`
+}
+
+func pairPath(scope, bot string) string {
+	return "/api/v1/scopes/" + url.PathEscape(scope) + "/bots/" +
+		url.PathEscape(bot) + "/pairing"
+}
+
+func startPairing(
+	ctx context.Context, client *apiClient, scope, bot string, fullHistory bool,
+) (pairSessionView, error) {
+	var session pairSessionView
+	err := client.postJSON(ctx, pairPath(scope, bot),
+		pairRequestBody{FullHistory: fullHistory}, &session, apiTimeout)
+	return session, err
+}
+
+func currentPairing(
+	ctx context.Context, client *apiClient, scope, bot string,
+) (pairSessionView, error) {
+	var session pairSessionView
+	err := client.get(ctx, pairPath(scope, bot), &session)
+	return session, err
+}
+
+func importTotalsOf(session pairSessionView) whatsapp.PairResult {
+	return whatsapp.PairResult{
+		History: ingest.ImportTotals{
+			Chunks:        session.Result.Chunks,
+			Conversations: session.Result.Chats,
+			Imported:      session.Result.Messages,
+			Duplicate:     session.Result.Duplicate,
+			Skipped:       session.Result.Skipped,
+		},
+		Contacts: session.Result.Contacts,
+		Elapsed:  time.Duration(session.Result.ElapsedSecond * float64(time.Second)),
 	}
 }
 

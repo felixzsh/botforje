@@ -266,6 +266,10 @@ func renderPairingQR(code string, w io.Writer) {
 	renderQR(code, w)
 }
 
+// RenderQR clears the terminal and writes the current pairing code for a
+// client that shows the QR of a session it does not run itself (ADR 0025).
+func RenderQR(code string) { renderPairingQR(code, os.Stdout) }
+
 // confirmLink waits for the server to drop the pairing socket, then brings
 // the companion online: the phone reports a failed link if it never comes
 // online, and exiting right after pairing caused exactly that.

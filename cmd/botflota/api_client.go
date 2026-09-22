@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -77,7 +78,7 @@ func (c *apiClient) get(ctx context.Context, path string, out any) error {
 }
 
 func (c *apiClient) getRaw(ctx context.Context, path string) ([]byte, error) {
-	return c.do(ctx, http.MethodGet, path, apiTimeout)
+	return c.do(ctx, http.MethodGet, path, nil, apiTimeout)
 }
 
 // post's timeout bounds the whole call, because some operations wait on the
@@ -85,27 +86,47 @@ func (c *apiClient) getRaw(ctx context.Context, path string) ([]byte, error) {
 func (c *apiClient) post(
 	ctx context.Context, path string, out any, timeout time.Duration,
 ) error {
-	body, err := c.do(ctx, http.MethodPost, path, timeout)
+	return c.postJSON(ctx, path, nil, out, timeout)
+}
+
+// postJSON sends a JSON payload and decodes the response; a nil payload
+// sends no body.
+func (c *apiClient) postJSON(
+	ctx context.Context, path string, payload, out any, timeout time.Duration,
+) error {
+	var body []byte
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = encoded
+	}
+	result, err := c.do(ctx, http.MethodPost, path, body, timeout)
 	if err != nil {
 		return err
 	}
 	if out == nil {
 		return nil
 	}
-	return json.Unmarshal(body, out)
+	return json.Unmarshal(result, out)
 }
 
 func (c *apiClient) do(
-	ctx context.Context, method, path string, timeout time.Duration,
+	ctx context.Context, method, path string, body []byte, timeout time.Duration,
 ) ([]byte, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	request, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
+	request, err := http.NewRequestWithContext(ctx, method, c.base+path,
+		bytes.NewReader(body))
 	if err != nil {
 		return nil, err
+	}
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
 	}
 	request.Header.Set("Authorization", "Bearer "+c.token)
 	response, err := c.http.Do(request)
@@ -114,14 +135,14 @@ func (c *apiClient) do(
 			"call the API at %s (is fleet run up?): %w", c.base, err)
 	}
 	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
+	answer, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
-	if response.StatusCode != http.StatusOK {
-		return nil, apiError(response.StatusCode, body)
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, apiError(response.StatusCode, answer)
 	}
-	return body, nil
+	return answer, nil
 }
 
 func apiError(status int, body []byte) error {

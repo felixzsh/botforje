@@ -121,11 +121,13 @@ func cliTree() *commandHelp {
 						name:    "pair",
 						summary: "pair a bot by scanning a QR code",
 						long: "Link a bot to WhatsApp by scanning a QR code. The command\n" +
-							"rejects a phone number already owned by another bot, and refuses\n" +
-							"to run while the API answers, because one device cannot be\n" +
-							"connected twice. An already paired bot is reported and left\n" +
-							"alone; --force discards that pairing and registers again, which\n" +
-							"is also the only way to change what the registration carries.\n" +
+							"rejects a phone number already owned by another bot. While the\n" +
+							"instance runs it pairs through the API of fleet run, so the bot\n" +
+							"joins the fleet as soon as the scan is accepted; with the fleet\n" +
+							"stopped it pairs locally under the instance lock. An already\n" +
+							"paired bot is reported and left alone; replacing a pairing is a\n" +
+							"local operation with --force, which registers again and is also\n" +
+							"the only way to change what the registration carries.\n" +
 							"Whatever WhatsApp delivers while the pairing connection is alive\n" +
 							"is stored; --import-history also asks for the full history window\n" +
 							"and waits for it, which is what brings the older chats. Without\n" +
@@ -133,8 +135,8 @@ func cliTree() *commandHelp {
 							"older messages per chat.\n" +
 							"The command answers with what it stored: the chats and messages\n" +
 							"the history sync brought, and the contacts the address book\n" +
-							"added. --verbose prints the structured log at the configured\n" +
-							"log_level instead of staying quiet.",
+							"added. --verbose prints the structured log of a local pairing;\n" +
+							"a pairing through the instance logs to fleet run.",
 						usage: "botflota bot pair [options] <bot>",
 						examples: []string{
 							"botflota bot pair support-bot",

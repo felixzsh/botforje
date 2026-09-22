@@ -262,6 +262,10 @@ Deliverables:
   drive onboarding without shell access; a session that succeeds activates the
   bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing stays a
   local operation until Phase 12.
+- [x] `bot pair` follows instance ownership (ADR 0039): it drives the running
+  instance's pairing session through the API — rendering its QR and polling
+  until WhatsApp answers — and pairs locally under the lock when the fleet is
+  stopped. No path falls back to the database beneath a live instance.
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).

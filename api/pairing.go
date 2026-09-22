@@ -22,6 +22,7 @@ type pairingView struct {
 	Error     string    `json:"error,omitempty"`
 	Result    *struct {
 		Phone         string  `json:"phone"`
+		Chunks        int     `json:"chunks"`
 		Chats         int     `json:"chats"`
 		Messages      int     `json:"messages"`
 		Duplicate     int     `json:"duplicate"`
@@ -45,6 +46,7 @@ func pairingViewOf(session *botflota.PairingSession) pairingView {
 	if session.State == botflota.PairSucceeded {
 		view.Result = &struct {
 			Phone         string  `json:"phone"`
+			Chunks        int     `json:"chunks"`
 			Chats         int     `json:"chats"`
 			Messages      int     `json:"messages"`
 			Duplicate     int     `json:"duplicate"`
@@ -52,7 +54,8 @@ func pairingViewOf(session *botflota.PairingSession) pairingView {
 			Contacts      int     `json:"contacts"`
 			ElapsedSecond float64 `json:"elapsed_seconds"`
 		}{
-			Phone: session.Result.Phone, Chats: session.Result.Chats,
+			Phone: session.Result.Phone, Chunks: session.Result.Chunks,
+			Chats:     session.Result.Chats,
 			Messages:  session.Result.Messages,
 			Duplicate: session.Result.Duplicate,
 			Skipped:   session.Result.Skipped, Contacts: session.Result.Contacts,

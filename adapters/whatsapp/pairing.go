@@ -237,6 +237,7 @@ func (m *PairManager) nowLocked() time.Time { return m.opts.Now().UTC() }
 func pairingResult(result PairResult) botflota.PairingResult {
 	return botflota.PairingResult{
 		Phone:     Number(result.JID),
+		Chunks:    result.History.Chunks,
 		Chats:     result.History.Conversations,
 		Messages:  result.History.Imported,
 		Duplicate: result.History.Duplicate,
