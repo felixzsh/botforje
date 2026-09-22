@@ -426,11 +426,12 @@ remains the authority over the actual window.
 Pairing operations travel over the API of a running instance (ADR 0039):
 `POST`, `GET`, and `DELETE` on `.../bots/{bot}/pairing` start, read, and
 cancel a session, and `DELETE .../bots/{bot}/account` ends a live session
-and waits for its goroutine, stops the bot so its channel disconnects, and
-removes the credentials — one operation under the bot's lock, so the writes
-of one bot never overlap. The CLI drives those routes while another process
-owns the instance and works locally when it does not; replacing a pairing is
-an unpair followed by a pair, whichever way the instance is running.
+and waits for its goroutine, stops the bot so its channel disconnects,
+removes the credentials, and fails the replies its queue still owes — one
+operation under the bot's lock, so the writes of one bot never overlap. The
+CLI drives those routes while another process owns the instance and works
+locally when it does not; replacing a pairing is an unpair followed by a
+pair, whichever way the instance is running.
 
 ## Concurrency
 
@@ -441,7 +442,9 @@ an unpair followed by a pair, whichever way the instance is running.
 - The engine and the outbox are independent, each serialized; a bot keeps
   reading inbound while its outbox paces earlier replies (ADR 0011). The
   outbox is durable (ADR 0040): replies wait in SQLite, survive a restart,
-  and are retried with bounded backoff before they are given up on.
+  and are retried with bounded backoff before they are given up on; the
+  oldest pending reply heads the queue and a scheduled retry blocks the
+  ones behind it, and unlinking a bot fails what its link still owes.
 - Config hot reload watches the main file and its includes and is
   all-or-nothing; a restart-required change is logged, never silent (ADR 0009).
 - One WhatsApp phone number belongs to one Botflota bot. Multiple linked

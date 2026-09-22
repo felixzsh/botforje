@@ -272,3 +272,64 @@ func TestOutboxGivesUpAfterMaxAttempts(t *testing.T) {
 		t.Fatalf("OnError calls = %d, want one per attempt", failures)
 	}
 }
+
+// waitAttempts waits until the sender has recorded at least want attempts.
+func waitAttempts(t *testing.T, sender *recordingSender, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for sender.attempts() < want {
+		if time.Now().After(deadline) {
+			t.Fatalf("attempts = %d, want %d", sender.attempts(), want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestOutboxRetryHeadBlocksTheRepliesBehindIt: a reply waiting for its
+// retry stays at the head of the queue, so a reply queued afterwards never
+// overtakes it (FIFO, ADR 0011).
+func TestOutboxRetryHeadBlocksTheRepliesBehindIt(t *testing.T) {
+	store := newStore()
+	seedReply(store, 1)
+	sender := &recordingSender{failures: 1}
+	cfg := workerConfig(store, sender.send)
+	cfg.RetryBase = 20 * time.Millisecond
+	queue := newOutbox(cfg)
+
+	waitAttempts(t, sender, 1)
+	seedReply(store, 2) // arrives while reply 1 waits for its retry
+
+	waitDepthZero(t, store)
+	queue.Close()
+	queue.Wait()
+
+	want := []string{"reply 1", "reply 1", "reply 2"}
+	if got := sender.bodies(); !slices.Equal(got, want) {
+		t.Fatalf("sent = %q, want the retry before the reply behind it", got)
+	}
+}
+
+// TestOutboxCloseKeepsScheduledRepliesPending: stopping during a retry
+// neither waits the schedule out nor lets the reply behind it jump the
+// queue — both stay pending for the same account's next run (ADR 0040).
+func TestOutboxCloseKeepsScheduledRepliesPending(t *testing.T) {
+	store := newStore()
+	seedReply(store, 1)
+	sender := &recordingSender{failures: 1}
+	cfg := workerConfig(store, sender.send)
+	cfg.RetryBase = time.Minute
+	queue := newOutbox(cfg)
+
+	waitAttempts(t, sender, 1)
+	seedReply(store, 2)
+	queue.Close()
+	queue.Wait() // must not wait out the one-minute retry
+
+	if got := sender.bodies(); len(got) != 1 {
+		t.Fatalf("sent = %q, want only the first attempt", got)
+	}
+	depth, err := store.Depth(context.Background(), "dev", "alpha")
+	if err != nil || depth != 2 {
+		t.Fatalf("depth = %d, %v, want both replies still pending", depth, err)
+	}
+}

@@ -31,6 +31,11 @@ that nobody reads.
   one minute, gives up after a bounded number of attempts (a `failed` row
   stays for diagnosis), and records a successful delivery as `sent` with the
   channel's id on the stored message.
+- The queue is strictly FIFO: the oldest pending reply heads it and waits
+  out its retry there, so a later reply never overtakes it, and a shutdown
+  leaves a scheduled retry to the same account's next run. Unlinking or
+  replacing a link fails its queued replies with the reason, so a new
+  account never sends the old link's replies.
 - Inbound applies backpressure: a full channel queue blocks the whatsmeow
   event handler until the bot actor takes the message; it never discards
   (ADR 0011 promised bounded queues, not drops).

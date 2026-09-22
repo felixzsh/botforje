@@ -69,6 +69,9 @@ type PairOptions struct {
 	// OnSaved, when set, runs once the account is stored, before the history
 	// wait: a live pairing session uses it to stop counting its expiry.
 	OnSaved func()
+	// Outbox fails the queued replies of the link Force replaces, so none
+	// of them leaves from the account that comes after (ADR 0040).
+	Outbox  botflota.OutboxStore
 	Timeout time.Duration // maximum wait for one QR session
 	Now     func() time.Time
 }
@@ -122,8 +125,8 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	applyDeviceName(opts.DeviceName)
 	configureHistorySync(opts.FullHistory)
 	if account != nil {
-		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
-			PairingNow(opts.Now)); err != nil {
+		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings,
+			opts.Outbox, account, PairingNow(opts.Now)); err != nil {
 			return PairResult{}, err
 		}
 	}
@@ -234,14 +237,26 @@ func waitForPairingRetry(ctx context.Context) error {
 	}
 }
 
+// removePairing drops the queued replies the old link still owes, then the
+// device, the account record, and the pairing status: the replies end
+// failed before the link goes, so none of them can leave from the account
+// that replaces it (ADR 0040).
 func removePairing(
 	ctx context.Context,
 	devices *Devices,
 	accounts botflota.LinkedAccountStore,
 	pairings botflota.PairingStore,
+	outbox botflota.OutboxStore,
 	account *botflota.LinkedAccount,
 	changedAt time.Time,
 ) error {
+	if outbox == nil {
+		return errors.New("whatsapp: no outbox store")
+	}
+	if _, err := outbox.FailPending(ctx, account.Scope, account.Bot,
+		unlinkedReason, changedAt); err != nil {
+		return fmt.Errorf("whatsapp: fail queued replies: %w", err)
+	}
 	if err := devices.delete(ctx, account); err != nil {
 		return err
 	}
@@ -251,6 +266,10 @@ func removePairing(
 	return UpdatePairingStatus(ctx, pairings, account.Scope, account.Bot,
 		botflota.PairingNotPaired, changedAt)
 }
+
+// unlinkedReason is what a reply queued for a removed link records instead
+// of ever being sent (ADR 0040).
+const unlinkedReason = "account unlinked"
 
 // renderQR writes a compact half-block QR: full blocks are roughly twice as
 // wide and often do not fit a terminal, making the code impossible to scan.

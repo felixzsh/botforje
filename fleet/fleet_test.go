@@ -373,7 +373,7 @@ type queuedReply struct {
 }
 
 func (s *memStore) NextPending(
-	_ context.Context, scope, bot string, now time.Time, limit int,
+	_ context.Context, scope, bot string, limit int,
 ) ([]botflota.OutboxEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -385,11 +385,8 @@ func (s *memStore) NextPending(
 		if queued.scope != scope || queued.bot != bot || queued.sent || queued.failed {
 			continue
 		}
-		if !queued.nextAttempt.IsZero() && queued.nextAttempt.After(now) {
-			continue
-		}
 		entry := queued.entry
-		entry.Attempts = queued.entry.Attempts
+		entry.NextAttempt = queued.nextAttempt
 		entries = append(entries, entry)
 	}
 	return entries, nil
@@ -464,6 +461,23 @@ func (s *memStore) Depth(_ context.Context, scope, bot string) (int, error) {
 		}
 	}
 	return depth, nil
+}
+
+func (s *memStore) FailPending(
+	_ context.Context, scope, bot, _ string, _ time.Time,
+) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	failed := 0
+	for i := range s.outbox {
+		queued := &s.outbox[i]
+		if queued.scope == scope && queued.bot == bot &&
+			!queued.sent && !queued.failed {
+			queued.failed = true
+			failed++
+		}
+	}
+	return failed, nil
 }
 
 func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {

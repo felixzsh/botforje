@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
@@ -107,6 +108,7 @@ func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 	if err := Unpair(ctx, UnpairOptions{
 		Scope: account.Scope, Bot: account.Bot, Devices: devices,
 		Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+		Outbox: db.Outbox(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +116,80 @@ func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("account after unpair = %v, want not found", err)
+	}
+}
+
+// fakeOutbox records the FailPending the unlink makes.
+type fakeOutbox struct {
+	calls      int
+	scope, bot string
+	reason     string
+}
+
+func (f *fakeOutbox) NextPending(
+	context.Context, string, string, int,
+) ([]botflota.OutboxEntry, error) {
+	return nil, nil
+}
+
+func (f *fakeOutbox) MarkSent(
+	context.Context, int64, string, time.Time,
+) error {
+	return nil
+}
+
+func (f *fakeOutbox) MarkRetry(
+	context.Context, int64, string, time.Time, time.Time,
+) error {
+	return nil
+}
+
+func (f *fakeOutbox) MarkFailed(
+	context.Context, int64, string, time.Time,
+) error {
+	return nil
+}
+
+func (f *fakeOutbox) Depth(context.Context, string, string) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeOutbox) FailPending(
+	_ context.Context, scope, bot, reason string, _ time.Time,
+) (int, error) {
+	f.calls++
+	f.scope, f.bot, f.reason = scope, bot, reason
+	return 1, nil
+}
+
+// TestUnpairFailsTheQueuedReplies: unlinking ends what the link still owes
+// in the same operation, so a later pairing never sends those replies from
+// a different account (ADR 0040).
+func TestUnpairFailsTheQueuedReplies(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	account := &botflota.LinkedAccount{
+		Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+	}
+	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbox := &fakeOutbox{}
+	if err := Unpair(ctx, UnpairOptions{
+		Scope: account.Scope, Bot: account.Bot, Devices: devices,
+		Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+		Outbox: outbox,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if outbox.calls != 1 || outbox.scope != "dev" || outbox.bot != "botsito" ||
+		outbox.reason != unlinkedReason {
+		t.Fatalf("fail pending = %d %s/%s %q, want the unlinked replies",
+			outbox.calls, outbox.scope, outbox.bot, outbox.reason)
 	}
 }
 

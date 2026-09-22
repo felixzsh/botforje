@@ -281,6 +281,7 @@ func serveAPI(
 	pairings := pairingManager(source, db, devices, runner, logger)
 	owner := whatsapp.AccountOwner{
 		Devices: devices, Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+		Outbox: db.Outbox(),
 	}
 	budgets := cfg.RateBudgets()
 	server, err := api.New(api.Options{
@@ -371,6 +372,7 @@ func pairingManager(
 				FullHistory:    fullHistory,
 				Contacts:       db.Contacts(),
 				ImportContacts: contactsEnabled(bot.Settings),
+				Outbox:         db.Outbox(),
 				Log:            logger,
 				DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
 				DeviceName:     cfg.DeviceName,

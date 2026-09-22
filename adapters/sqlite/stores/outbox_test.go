@@ -53,7 +53,7 @@ func TestOutboxQueuesWithTheTurnAndCompletes(t *testing.T) {
 	if depth != 1 {
 		t.Fatalf("depth = %d, want the queued reply", depth)
 	}
-	entries, err := db.Outbox().NextPending(ctx, "support", "support-bot", t1, 10)
+	entries, err := db.Outbox().NextPending(ctx, "support", "support-bot", 10)
 	if err != nil {
 		t.Fatalf("NextPending: %v", err)
 	}
@@ -65,8 +65,12 @@ func TestOutboxQueuesWithTheTurnAndCompletes(t *testing.T) {
 		botflota.ContentText(entry.Content) != "hola!" {
 		t.Fatalf("entry = %#v, want the stored reply", entry)
 	}
+	if !entry.NextAttempt.IsZero() {
+		t.Fatalf("next attempt = %s, want a reply that is due now",
+			entry.NextAttempt)
+	}
 	if other, err := db.Outbox().NextPending(
-		ctx, "support", "other-bot", t1, 10); err != nil || len(other) != 0 {
+		ctx, "support", "other-bot", 10); err != nil || len(other) != 0 {
 		t.Fatalf("another bot saw %v, %v, want nothing", other, err)
 	}
 
@@ -98,14 +102,15 @@ func TestOutboxQueuesWithTheTurnAndCompletes(t *testing.T) {
 }
 
 // TestOutboxSchedulesRetriesAndFailsForGood covers the retry states: a
-// scheduled reply is not due yet, comes back with its attempt counted, and
-// once failed neither the queue nor a later update touches it again.
+// scheduled reply stays at the head of the queue with its next attempt
+// recorded — it never leaves past the reply behind it — and once failed
+// neither the queue nor a later update touches it again (ADR 0011).
 func TestOutboxSchedulesRetriesAndFailsForGood(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	queueOneReply(t, db, chat)
-	entries, err := db.Outbox().NextPending(ctx, "support", "support-bot", t1, 1)
+	entries, err := db.Outbox().NextPending(ctx, "support", "support-bot", 1)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("NextPending = %v, %v", entries, err)
 	}
@@ -114,16 +119,17 @@ func TestOutboxSchedulesRetriesAndFailsForGood(t *testing.T) {
 	if err := db.Outbox().MarkRetry(ctx, id, "rejected", t2, t1); err != nil {
 		t.Fatalf("MarkRetry: %v", err)
 	}
-	if due, err := db.Outbox().NextPending(
-		ctx, "support", "support-bot", t1, 1); err != nil || len(due) != 0 {
-		t.Fatalf("a scheduled reply is due: %v, %v", due, err)
+	scheduled, err := db.Outbox().NextPending(ctx, "support", "support-bot", 1)
+	if err != nil || len(scheduled) != 1 {
+		t.Fatalf("a scheduled reply left the queue: %v, %v", scheduled, err)
 	}
-	again, err := db.Outbox().NextPending(ctx, "support", "support-bot", t2, 1)
-	if err != nil || len(again) != 1 {
-		t.Fatalf("NextPending after the retry time = %v, %v", again, err)
+	if !scheduled[0].NextAttempt.Equal(t2) {
+		t.Fatalf("next attempt = %s, want the scheduled retry at %s",
+			scheduled[0].NextAttempt, t2)
 	}
-	if again[0].Attempts != 1 {
-		t.Fatalf("attempts = %d, want the failed one counted", again[0].Attempts)
+	if scheduled[0].Attempts != 1 {
+		t.Fatalf("attempts = %d, want the failed one counted",
+			scheduled[0].Attempts)
 	}
 
 	if err := db.Outbox().MarkFailed(ctx, id, "gave up", t2); err != nil {
@@ -134,8 +140,7 @@ func TestOutboxSchedulesRetriesAndFailsForGood(t *testing.T) {
 		t.Fatalf("depth after giving up = %d, %v, want 0", depth, err)
 	}
 	if due, err := db.Outbox().NextPending(
-		ctx, "support", "support-bot", t2.Add(time.Hour), 1); err != nil ||
-		len(due) != 0 {
+		ctx, "support", "support-bot", 1); err != nil || len(due) != 0 {
 		t.Fatalf("a failed reply came back: %v, %v", due, err)
 	}
 	if err := db.Outbox().MarkRetry(
@@ -143,5 +148,33 @@ func TestOutboxSchedulesRetriesAndFailsForGood(t *testing.T) {
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("MarkRetry after failed = %v, want ErrNotFound", err)
+	}
+}
+
+// TestFailPendingEndsEveryQueuedReply: unlinking a bot ends its queue in
+// one step and reports the count, so a later pairing has nothing to send
+// from the old link (ADR 0040).
+func TestFailPendingEndsEveryQueuedReply(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	queueOneReply(t, db, chat)
+
+	ended, err := db.Outbox().FailPending(ctx, "support", "support-bot",
+		"account unlinked", t2)
+	if err != nil || ended != 1 {
+		t.Fatalf("FailPending = %d, %v, want the one queued reply", ended, err)
+	}
+	if depth, err := db.Outbox().Depth(ctx, "support", "support-bot"); err != nil ||
+		depth != 0 {
+		t.Fatalf("depth = %d, %v, want nothing waiting", depth, err)
+	}
+	if pending, err := db.Outbox().NextPending(
+		ctx, "support", "support-bot", 10); err != nil || len(pending) != 0 {
+		t.Fatalf("pending = %v, %v, want none", pending, err)
+	}
+	if ended, err := db.Outbox().FailPending(ctx, "support", "support-bot",
+		"account unlinked", t2); err != nil || ended != 0 {
+		t.Fatalf("second FailPending = %d, %v, want nothing left", ended, err)
 	}
 }

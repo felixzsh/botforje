@@ -153,6 +153,7 @@ func runPair(args []string) int {
 		FullHistory:    *cmd.importHistory,
 		Contacts:       db.Contacts(),
 		ImportContacts: contactsEnabled(botSpec.Settings),
+		Outbox:         db.Outbox(),
 		Log:            logger,
 		DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
 		Force:          *cmd.force,
@@ -373,6 +374,7 @@ func runUnpair(args []string) int {
 	if err := whatsapp.Unpair(context.Background(), whatsapp.UnpairOptions{
 		Scope: scopeName, Bot: name, Devices: devices,
 		Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+		Outbox: db.Outbox(),
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

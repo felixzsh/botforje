@@ -212,25 +212,34 @@ type OutboxEntry struct {
 	Attempts  int
 	Recipient string
 	MessageID int64
-	Content   SendableContent
-	Origin    MessageOrigin
-	Routing   RoutingMethod
+	// NextAttempt is when a retried reply becomes due; zero means due now.
+	NextAttempt time.Time
+	Content     SendableContent
+	Origin      MessageOrigin
+	Routing     RoutingMethod
 }
 
-// OutboxStore is the durable per-bot delivery queue. NextPending returns the
-// oldest due replies in order (those with no delay, or whose retry time has
-// passed); a reply ends as sent or failed, and a retry schedules the next
-// attempt without changing its pending state. Depth counts everything still
-// waiting, scheduled or not (ADR 0011).
+// OutboxStore is the durable per-bot delivery queue. NextPending returns
+// the oldest pending replies in stored order, due or scheduled: the head
+// blocks the ones behind it (FIFO, ADR 0011), and a caller waits until
+// NextAttempt instead of sending past it. A reply ends as sent or failed,
+// a retry schedules the next attempt without changing its pending state,
+// and FailPending ends every queued reply of one bot at once — unlinking
+// does that so its replies never leave from the account that replaces it
+// (ADR 0040). Depth counts everything still waiting, scheduled or not
+// (ADR 0011).
 type OutboxStore interface {
 	NextPending(
-		ctx context.Context, scope, bot string, now time.Time, limit int,
+		ctx context.Context, scope, bot string, limit int,
 	) ([]OutboxEntry, error)
 	MarkSent(ctx context.Context, id int64, providerID string, at time.Time) error
 	MarkRetry(
 		ctx context.Context, id int64, reason string, nextAttempt, at time.Time,
 	) error
 	MarkFailed(ctx context.Context, id int64, reason string, at time.Time) error
+	FailPending(
+		ctx context.Context, scope, bot, reason string, at time.Time,
+	) (int, error)
 	Depth(ctx context.Context, scope, bot string) (int, error)
 }
 

@@ -107,8 +107,9 @@ func (q *outbox) Wake() {
 	}
 }
 
-// Close stops the worker after it drains what is already queued, so shutdown
-// keeps the promise of ADR 0011.
+// Close stops the worker once what is due has gone out: a scheduled retry
+// waits for the queue's next run with the same account, and while it heads
+// the queue nothing behind it moves (ADR 0011, ADR 0040).
 func (q *outbox) Close() { q.closeOnce.Do(func() { close(q.closing) }) }
 
 func (q *outbox) Wait() { <-q.done }
@@ -152,6 +153,24 @@ func (q *outbox) run() {
 			}
 			continue
 		}
+		// The head waits out its retry and everything behind it waits
+		// with it: the queue is FIFO, and a shutdown leaves the schedule
+		// to the next run of the same account (ADR 0011, ADR 0040).
+		if wait := q.retryWait(entry); wait > 0 {
+			if q.isClosing() {
+				return
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-q.wake:
+				timer.Stop()
+			case <-q.closing:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			continue
+		}
 		if !last.IsZero() {
 			pacing := q.cfg.Delay + q.jitter()
 			if pacing > 0 {
@@ -166,7 +185,7 @@ func (q *outbox) run() {
 
 func (q *outbox) next() (*botflota.OutboxEntry, error) {
 	entries, err := q.cfg.Store.NextPending(context.Background(),
-		q.cfg.Scope, q.cfg.Bot, q.cfg.Now(), 1)
+		q.cfg.Scope, q.cfg.Bot, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +193,15 @@ func (q *outbox) next() (*botflota.OutboxEntry, error) {
 		return nil, nil
 	}
 	return &entries[0], nil
+}
+
+// retryWait reports how long the head of the queue still waits; a scheduled
+// reply blocks every later one until it is sent or given up on.
+func (q *outbox) retryWait(entry *botflota.OutboxEntry) time.Duration {
+	if entry.NextAttempt.IsZero() {
+		return 0
+	}
+	return entry.NextAttempt.Sub(q.cfg.Now())
 }
 
 func (q *outbox) isClosing() bool {

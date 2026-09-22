@@ -89,6 +89,10 @@ type UnpairOptions struct {
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	// Outbox fails the queued replies the link still owes; unlinking
+	// requires it, so a later pairing never sends the old replies (ADR
+	// 0040).
+	Outbox botflota.OutboxStore
 }
 
 // ValidateAccountOwners rejects more than one bot using the same phone number.
@@ -204,8 +208,8 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if err != nil {
 		return err
 	}
-	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
-		PairingNow(nil))
+	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings,
+		opts.Outbox, account, PairingNow(nil))
 }
 
 func ensurePhoneAvailable(
@@ -292,17 +296,19 @@ type AccountOwner struct {
 	*Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	Outbox   botflota.OutboxStore
 }
 
 // UnpairAccount removes the local credentials, the account record, and the
-// stored pairing state of one bot (ADR 0021). The caller stops the running
-// bot first, so nothing holds the connection while the credentials go.
+// stored pairing state of one bot, and fails the replies its link still
+// owes (ADR 0021, ADR 0040). The caller stops the running bot first, so
+// nothing holds the connection while the credentials go.
 func (o AccountOwner) UnpairAccount(
 	ctx context.Context, scope, bot string,
 ) error {
 	return Unpair(ctx, UnpairOptions{
 		Scope: scope, Bot: bot, Devices: o.Devices,
-		Accounts: o.Accounts, Pairings: o.Pairings,
+		Accounts: o.Accounts, Pairings: o.Pairings, Outbox: o.Outbox,
 	})
 }
 
