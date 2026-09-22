@@ -36,21 +36,27 @@ func TestRateLimitIsPerCredential(t *testing.T) {
 	}
 }
 
+// status is one request's HTTP status, keeping the budget tests readable.
+func status(t *testing.T, server *Server, path, token string) int {
+	t.Helper()
+	return get(t, server.Handler(), path, token).Code
+}
+
 func TestRateLimitWindowResets(t *testing.T) {
 	server := testServer(t)
 	server.limiter.credential = 1
 
-	if recorder := get(t, server.Handler(), "/api/v1/status", testOwnerToken); recorder.Code != http.StatusOK {
-		t.Fatalf("first request = %d, want 200", recorder.Code)
+	if got := status(t, server, "/api/v1/status", testOwnerToken); got != http.StatusOK {
+		t.Fatalf("first request = %d, want 200", got)
 	}
-	if recorder := get(t, server.Handler(), "/api/v1/status", testOwnerToken); recorder.Code != http.StatusTooManyRequests {
-		t.Fatalf("second request = %d, want 429", recorder.Code)
+	if got := status(t, server, "/api/v1/status", testOwnerToken); got != http.StatusTooManyRequests {
+		t.Fatalf("second request = %d, want 429", got)
 	}
 
 	epoch := server.limiter.now()
 	server.limiter.now = func() time.Time { return epoch.Add(2 * time.Minute) }
-	if recorder := get(t, server.Handler(), "/api/v1/status", testOwnerToken); recorder.Code != http.StatusOK {
-		t.Fatalf("request after the window = %d, want 200", recorder.Code)
+	if got := status(t, server, "/api/v1/status", testOwnerToken); got != http.StatusOK {
+		t.Fatalf("request after the window = %d, want 200", got)
 	}
 }
 
@@ -61,15 +67,15 @@ func TestRateLimitBoundsFailedAttempts(t *testing.T) {
 	server.limiter.failedAttempt = 2
 
 	for _, key := range []string{"", "wrong"} {
-		if recorder := get(t, server.Handler(), "/api/v1/status", key); recorder.Code != http.StatusUnauthorized {
-			t.Fatalf("attempt with key %q = %d, want 401", key, recorder.Code)
+		if got := status(t, server, "/api/v1/status", key); got != http.StatusUnauthorized {
+			t.Fatalf("attempt with key %q = %d, want 401", key, got)
 		}
 	}
 	over := get(t, server.Handler(), "/api/v1/status", "wrong")
 	if over.Code != http.StatusTooManyRequests {
 		t.Fatalf("third failed attempt = %d, want 429", over.Code)
 	}
-	if recorder := get(t, server.Handler(), "/api/v1/status", testOwnerToken); recorder.Code != http.StatusOK {
-		t.Fatalf("valid credential = %d, want 200 outside the failed budget", recorder.Code)
+	if got := status(t, server, "/api/v1/status", testOwnerToken); got != http.StatusOK {
+		t.Fatalf("valid credential = %d, want 200 outside the failed budget", got)
 	}
 }

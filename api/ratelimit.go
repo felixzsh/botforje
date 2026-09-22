@@ -29,10 +29,10 @@ type limitWindow struct {
 // rateLimiter counts fixed windows per key. The zero value is not usable;
 // newRateLimiter builds one.
 type rateLimiter struct {
-	mu          sync.Mutex
-	now         func() time.Time
-	windows     map[string]limitWindow
-	credential  int
+	mu            sync.Mutex
+	now           func() time.Time
+	windows       map[string]limitWindow
+	credential    int
 	failedAttempt int
 }
 
