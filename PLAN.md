@@ -287,12 +287,15 @@ Deliverables:
   and request header values, reject it in every other string, keep the
   placeholder when serializing, and reveal the value only to the consumer that
   sends it.
-- [ ] Hot reload (ADR 0009): watch the main file and its includes, replace the
-  config atomically only after full validation, apply safe changes immediately,
-  and log a restart-required warning for the rest. No pending queue or
-  maintenance mode.
+- [x] Hot reload (ADR 0009): a one-second mtime watch over the main file and
+  its includes replaces one shared snapshot for the fleet and the API only
+  after full validation. An invalid edit logs and changes nothing; a safe
+  change rebuilds each bot's engine and filter at its next message; a
+  restart-required change (global settings, the set of scopes and bots, and
+  the channel settings) is named in a warning and kept out. No pending queue
+  or maintenance mode.
 - [x] Tests: API handlers and auth.
-- [ ] Tests: config discovery and reload behavior (validation fallback, live
+- [x] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).
 - [x] History anchors for every message kind (ADR 0035, ADR 0036): a chat whose
   synced entries carry no text still needs an anchor for `chat sync`. Every 1:1

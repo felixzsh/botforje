@@ -53,6 +53,7 @@ type Fleet struct {
 	// ctx is set by Run and cleared when it returns; a bot may start only
 	// while it is set (ADR 0022).
 	ctx  context.Context
+	gen  int64 // bumped by ApplyConfig; bots compare against it
 	errs []error
 	wait sync.WaitGroup
 }
@@ -73,6 +74,10 @@ type Bot struct {
 	filter  Filter
 	onError func(error)
 	log     *slog.Logger
+	fleet   *Fleet
+	// gen is the config generation engine and filter were built from; only
+	// the run goroutine touches these three (ADR 0009).
+	gen int64
 }
 
 // New starts nothing and connects nothing. A bot whose pairing is missing is
@@ -130,31 +135,14 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 // buildBot constructs one configured bot's engine, channel, and outbox from
 // the config the fleet was built with; it starts nothing.
 func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
-	scope, ok := f.cfg.Scopes[scopeName]
-	if !ok {
-		return nil, fmt.Errorf("fleet: unknown scope %q", scopeName)
-	}
-	bot, ok := scope.Bots[botName]
-	if !ok {
-		return nil, fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
-	}
-	graph, ok := scope.Graphs[bot.Graph]
-	if !ok {
-		return nil, fmt.Errorf(
-			"fleet: bot %q references unknown graph %q", botName, bot.Graph)
+	cfg := f.cfg
+	eng, filter, settings, err := f.buildRuntime(cfg, scopeName, botName)
+	if err != nil {
+		return nil, err
 	}
 	opts := f.opts
 	seeds := opts.Rand
-	settings := settingsOf(bot.Settings)
 	botLog := opts.Log.With("scope", scopeName, "bot", botName)
-	eng := engine.New(engine.Options{
-		Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
-		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
-		Messages:   opts.Messages,
-		HTTPClient: opts.HTTPClient, Now: opts.Now,
-		Rand: rand.New(rand.NewSource(seeds.Int63())), DefaultTimeout: opts.DefaultTimeout,
-		Log: botLog,
-	})
 	channel, err := opts.NewChannel(BotSpec{
 		Scope: scopeName, Name: botName, Settings: settings,
 	})
@@ -187,11 +175,7 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	})
 	return &Bot{
 		scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
-		filter: Filter{
-			IgnoreGroups: ignoreGroups(settings),
-			Allowed:      settings.AllowedSenders,
-			Ignored:      settings.IgnoredSenders,
-		},
+		filter: filter, fleet: f, gen: f.gen,
 		log: botLog,
 		onError: func(err error) {
 			if opts.OnError != nil {
@@ -199,6 +183,47 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 			}
 		},
 	}, nil
+}
+
+// buildRuntime resolves one bot's engine and filter against cfg: both adopt a
+// replaced config at the bot's next message, unlike the channel and outbox
+// (ADR 0009).
+func (f *Fleet) buildRuntime(
+	cfg *config.Config, scopeName, botName string,
+) (*engine.Engine, Filter, spec.BotSettings, error) {
+	zero := spec.BotSettings{}
+	scope, ok := cfg.Scopes[scopeName]
+	if !ok {
+		return nil, Filter{}, zero, fmt.Errorf("fleet: unknown scope %q", scopeName)
+	}
+	bot, ok := scope.Bots[botName]
+	if !ok {
+		return nil, Filter{}, zero,
+			fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
+	}
+	graph, ok := scope.Graphs[bot.Graph]
+	if !ok {
+		return nil, Filter{}, zero, fmt.Errorf(
+			"fleet: bot %q references unknown graph %q", botName, bot.Graph)
+	}
+	opts := f.opts
+	settings := settingsOf(bot.Settings)
+	botLog := opts.Log.With("scope", scopeName, "bot", botName)
+	eng := engine.New(engine.Options{
+		Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
+		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
+		Messages:   opts.Messages,
+		HTTPClient: opts.HTTPClient, Now: opts.Now,
+		Rand:           rand.New(rand.NewSource(opts.Rand.Int63())),
+		DefaultTimeout: opts.DefaultTimeout,
+		Log:            botLog,
+	})
+	filter := Filter{
+		IgnoreGroups: ignoreGroups(settings),
+		Allowed:      settings.AllowedSenders,
+		Ignored:      settings.IgnoredSenders,
+	}
+	return eng, filter, settings, nil
 }
 
 // Run starts every built bot and waits: it returns when ctx is cancelled or
@@ -243,6 +268,36 @@ func (f *Fleet) StartBot(scope, name string) error {
 	}
 	f.bots[key] = bot
 	f.start(f.ctx, bot)
+	return nil
+}
+
+// ApplyConfig adopts a validated configuration; each bot rebuilds its engine
+// and filter at its next message, which is where a bot can adopt a change
+// (ADR 0009).
+func (f *Fleet) ApplyConfig(cfg *config.Config) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cfg = cfg
+	f.gen++
+}
+
+// refresh rebuilds one bot's engine and filter when a new config was applied.
+// Only the bot's run goroutine touches them afterwards, so no lock guards
+// those fields.
+func (f *Fleet) refresh(bot *Bot) error {
+	f.mu.Lock()
+	if bot.gen == f.gen {
+		f.mu.Unlock()
+		return nil
+	}
+	cfg, gen := f.cfg, f.gen
+	f.mu.Unlock()
+
+	eng, filter, _, err := f.buildRuntime(cfg, bot.scope, bot.name)
+	if err != nil {
+		return err
+	}
+	bot.engine, bot.filter, bot.gen = eng, filter, gen
 	return nil
 }
 
@@ -336,6 +391,9 @@ func (b *Bot) run(ctx context.Context) error {
 				"group", msg.IsGroup,
 				"kind", string(botflota.ContentKind(msg.Content)),
 				"body", botflota.ContentText(msg.Content))
+			if err := b.fleet.refresh(b); err != nil {
+				b.log.Warn("apply config change", "error", err)
+			}
 			if !b.filter.Allow(msg) {
 				b.log.Debug("message filtered", "sender", msg.SenderPhone)
 				continue

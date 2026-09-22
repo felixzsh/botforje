@@ -88,7 +88,7 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 		}
 	}
 	bots := make([]botView, 0)
-	for _, bot := range config.SortedKeys(s.cfg.Scopes[scope].Bots) {
+	for _, bot := range config.SortedKeys(s.config().Scopes[scope].Bots) {
 		view := live[bot]
 		view.Scope = scope
 		view.Bot = bot

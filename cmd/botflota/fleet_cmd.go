@@ -48,6 +48,7 @@ func runFleet(args []string) int {
 		return code
 	}
 	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
+	source := config.NewSource(cfg)
 
 	lock, err := lockInstance(cfg)
 	if err != nil {
@@ -145,13 +146,18 @@ func runFleet(args []string) int {
 		<-ctx.Done()
 		logger.Info("shutdown requested")
 	}()
+	if watchFile, err := configPath(*cmd.config); err != nil {
+		logger.Warn("config watch unavailable", "error", err)
+	} else {
+		go watchConfig(ctx, watchFile, source, runner, logger)
+	}
 
 	if cfg.Port == 0 {
 		if *cmd.newOwnerToken {
 			logger.Error("--new-owner-token needs the API; port is 0")
 			return 2
 		}
-	} else if err := serveAPI(ctx, stop, cfg, runner, db, devices, logger,
+	} else if err := serveAPI(ctx, stop, cfg, source, runner, db, devices, logger,
 		*cmd.newOwnerToken); err != nil {
 		logger.Error("start api", "error", err)
 		return 1
@@ -240,8 +246,8 @@ func runFleetStatus(args []string) int {
 // it.
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
-	runner *fleet.Fleet, db *sqlite.DB, devices *whatsapp.Devices,
-	logger *slog.Logger, rotate bool,
+	source *config.Source, runner *fleet.Fleet, db *sqlite.DB,
+	devices *whatsapp.Devices, logger *slog.Logger, rotate bool,
 ) error {
 	dataDir, err := cfg.DataDirPath()
 	if err != nil {
@@ -263,7 +269,7 @@ func serveAPI(
 			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
 	server, err := api.New(api.Options{
-		Config:   cfg,
+		Config:   source,
 		Fleet:    runner,
 		Accounts: db.LinkedAccounts(),
 		Pairings: db.Pairings(),

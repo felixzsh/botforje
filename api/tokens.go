@@ -57,7 +57,7 @@ func (s *Server) handleTokensCreate(w http.ResponseWriter, r *http.Request) {
 				"duplicate scope "+scope)
 			return
 		}
-		if _, ok := s.cfg.Scopes[scope]; !ok {
+		if _, ok := s.config().Scopes[scope]; !ok {
 			writeError(w, http.StatusBadRequest, "invalid_request",
 				"unknown scope "+scope)
 			return

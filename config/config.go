@@ -27,7 +27,12 @@ type Config struct {
 
 	origin map[string]string `yaml:"-" json:"-"`
 	source string            `yaml:"-" json:"-"`
+	files  []string          `yaml:"-"`
 }
+
+// Files lists the main config and every include Load read, so a watcher knows
+// what to watch (ADR 0009).
+func (c *Config) Files() []string { return c.files }
 
 // fragment is an included file: scopes only, no global settings (ADR 0016).
 type fragment struct {

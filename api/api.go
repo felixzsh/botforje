@@ -26,9 +26,10 @@ type Fleet interface {
 }
 
 // Options are the dependencies fleet run injects; every field is required
-// except Log and Devices.
+// except Log and Devices. Config is the shared snapshot a reload replaces
+// (ADR 0009).
 type Options struct {
-	Config   *config.Config
+	Config   *config.Source
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
@@ -48,7 +49,7 @@ type Options struct {
 }
 
 type Server struct {
-	cfg      *config.Config
+	cfg      *config.Source
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
@@ -121,6 +122,9 @@ func New(opts Options) (*Server, error) {
 
 func (s *Server) Handler() http.Handler { return s.handler }
 
+// config is the active snapshot; a reload replaces it for every handler.
+func (s *Server) config() *config.Config { return s.cfg.Current() }
+
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -168,12 +172,12 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 // Listen binds here, so a bad address fails at startup instead of inside the
 // serving goroutine.
 func (s *Server) Listen() (net.Listener, error) {
-	address := s.cfg.Address
+	address := s.config().Address
 	if address == "" {
 		address = "127.0.0.1"
 	}
 	listener, err := net.Listen("tcp",
-		net.JoinHostPort(address, strconv.Itoa(s.cfg.Port)))
+		net.JoinHostPort(address, strconv.Itoa(s.config().Port)))
 	if err != nil {
 		return nil, fmt.Errorf("api: listen: %w", err)
 	}

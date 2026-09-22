@@ -11,6 +11,7 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/spec"
 )
 
 var t0 = time.Date(2026, 9, 14, 10, 0, 0, 0, time.UTC)
@@ -524,6 +525,45 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+// TestApplyConfigAppliesAtTheNextMessage covers the adoption point of a
+// reload: the next message runs the reloaded action with no restart
+// (ADR 0009).
+func TestApplyConfigAppliesAtTheNextMessage(t *testing.T) {
+	runner, channels, _ := buildFleetWithStore(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+
+	channels["alpha"].incoming <- botflota.IncomingMessage{
+		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+	}
+	first := receive(t, channels["alpha"].sent)
+	if got := botflota.ContentText(first.Content); got != "hello from alpha" {
+		t.Fatalf("first reply = %q", got)
+	}
+
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	scope := cfg.Scopes["dev"]
+	scope.Actions["greet"] = spec.Action{Steps: []spec.Step{
+		{Message: &spec.Message{Body: spec.Text{"reloaded"}}},
+	}}
+	cfg.Scopes["dev"] = scope
+	runner.ApplyConfig(cfg)
+
+	channels["alpha"].incoming <- botflota.IncomingMessage{
+		Bot: "alpha", SenderPhone: "other",
+		Content: botflota.TextContent{Body: "hi"},
+	}
+	if reply := receive(t, channels["alpha"].sent); botflota.ContentText(reply.Content) != "reloaded" {
+		t.Fatalf("second reply = %q, want the reloaded action",
+			botflota.ContentText(reply.Content))
 	}
 }
 

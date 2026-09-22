@@ -40,7 +40,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBots(w http.ResponseWriter, r *http.Request) {
 	principal := principalFrom(r.Context())
 	bots := make([]botView, 0)
-	for _, scope := range config.SortedKeys(s.cfg.Scopes) {
+	for _, scope := range config.SortedKeys(s.config().Scopes) {
 		if !principal.Allows(scope) {
 			continue
 		}
@@ -281,7 +281,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden", "instance owner required")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.cfg)
+	writeJSON(w, http.StatusOK, s.config())
 }
 
 func (s *Server) handleScopeConfig(w http.ResponseWriter, r *http.Request) {
@@ -291,6 +291,6 @@ func (s *Server) handleScopeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"scope":  scope,
-		"config": s.cfg.Scopes[scope],
+		"config": s.config().Scopes[scope],
 	})
 }

@@ -65,7 +65,7 @@ func (s *Server) scopeParam(w http.ResponseWriter, r *http.Request) (string, boo
 		writeError(w, http.StatusNotFound, "not_found", "unknown scope")
 		return "", false
 	}
-	if _, ok := s.cfg.Scopes[scope]; !ok {
+	if _, ok := s.config().Scopes[scope]; !ok {
 		writeError(w, http.StatusNotFound, "not_found", "unknown scope")
 		return "", false
 	}
@@ -90,7 +90,7 @@ func (s *Server) botPathParam(
 }
 
 func (s *Server) knownBot(w http.ResponseWriter, scope, bot string) (string, bool) {
-	if _, ok := s.cfg.Scopes[scope].Bots[bot]; !ok {
+	if _, ok := s.config().Scopes[scope].Bots[bot]; !ok {
 		writeError(w, http.StatusNotFound, "not_found", "unknown bot")
 		return "", false
 	}

@@ -419,7 +419,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 		},
 	}}
 	server, err := New(Options{
-		Config:   cfg,
+		Config:   config.NewSource(cfg),
 		Fleet:    live,
 		Accounts: accounts,
 		Pairings: pairings,
@@ -617,7 +617,7 @@ func TestNewRequiresDependencies(t *testing.T) {
 		opts Options
 	}{
 		{"config", Options{}},
-		{"fleet", Options{Config: &config.Config{}}},
+		{"fleet", Options{Config: config.NewSource(&config.Config{})}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

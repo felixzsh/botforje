@@ -40,6 +40,7 @@ func (l Loader) Load(path string) (*Config, error) {
 	if err := state.loadMain(abs, cfg); err != nil {
 		return nil, err
 	}
+	cfg.files = state.paths()
 	if misses := expandValue(reflect.ValueOf(cfg).Elem(), l.lookup); len(misses) > 0 {
 		sort.Strings(misses)
 		return nil, fmt.Errorf("%s: missing environment variable(s): %s",
@@ -83,6 +84,15 @@ func (s *includeState) runIncludes(from string, includes []string, cfg *Config) 
 		}
 	}
 	return nil
+}
+
+func (s *includeState) paths() []string {
+	paths := make([]string, 0, len(s.loaded))
+	for path := range s.loaded {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
 }
 
 func (s *includeState) loadFragment(path string, cfg *Config) error {
