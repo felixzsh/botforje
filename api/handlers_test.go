@@ -83,8 +83,13 @@ func TestChatSyncRejectsAnUnknownChat(t *testing.T) {
 	}
 }
 
-func TestChatSyncReportsAPhoneFailure(t *testing.T) {
-	live := &fakeSyncFleet{err: fmt.Errorf("the phone did not answer")}
+// TestChatSyncHidesUpstreamFailure: the caller learns that the sync failed,
+// not why — the detail names the phone, the device, or the provider and
+// belongs in the server's log (ROADMAP Phase 13).
+func TestChatSyncHidesUpstreamFailure(t *testing.T) {
+	live := &fakeSyncFleet{
+		err: fmt.Errorf("whatsapp: device store rejected 5215500000000"),
+	}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
 		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
@@ -92,8 +97,12 @@ func TestChatSyncReportsAPhoneFailure(t *testing.T) {
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", recorder.Code)
 	}
-	if !strings.Contains(recorder.Body.String(), "did not answer") {
-		t.Fatalf("body = %s, want the phone error", recorder.Body)
+	body := recorder.Body.String()
+	if strings.Contains(body, "device store") || strings.Contains(body, "5215500000000") {
+		t.Fatalf("upstream detail leaked to the caller: %s", body)
+	}
+	if !strings.Contains(body, "sync_failed") {
+		t.Fatalf("body = %s, want the public error code", body)
 	}
 }
 

@@ -25,6 +25,11 @@ const (
 type Principal struct {
 	Kind   Kind
 	Scopes map[string]bool
+	// Key is an opaque identity of the credential, used to budget one
+	// credential at a time. Resolvers should set it from the credential they
+	// verified; an empty key keeps that principal off the per-credential
+	// budget, while failed attempts stay bounded per source address.
+	Key string
 }
 
 // Allows covers both reading and changing a scope.

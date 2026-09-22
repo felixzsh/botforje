@@ -182,7 +182,12 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 	phone := r.URL.Query().Get("sender")
 	result, err := syncer.HistorySync(r.Context(), scope, bot, phone, count, timeout)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "sync_failed", err.Error())
+		// The upstream failure names the phone, the device, or the provider;
+		// the caller gets the shape, the log gets the detail.
+		s.log.Error("api request failed", "operation", "history sync",
+			"scope", scope, "bot", bot, "error", err)
+		writeError(w, http.StatusBadGateway, "sync_failed",
+			"the history request to the phone failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

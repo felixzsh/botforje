@@ -61,6 +61,7 @@ type Server struct {
 	tokens   botflota.AccessTokenStore
 	resolver PrincipalResolver
 	log      *slog.Logger
+	limiter  *rateLimiter
 	started  time.Time
 	handler  http.Handler
 }
@@ -112,7 +113,8 @@ func New(opts Options) (*Server, error) {
 		pairing: opts.Pairing, presence: opts.Presence,
 		senders: opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
-		tokens: opts.Tokens, resolver: opts.Resolver, log: logger, started: time.Now(),
+		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
+		limiter: newRateLimiter(), started: time.Now(),
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -152,6 +154,25 @@ func (s *Server) routes() http.Handler {
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, err := s.resolver.Resolve(r)
+		if err == nil && principal != nil {
+			// One budget per credential: a token cannot drown the instance,
+			// and every other credential keeps its own allowance.
+			if principal.Key != "" {
+				if ok, retry := s.limiter.allow("credential:"+principal.Key,
+					s.limiter.credential); !ok {
+					writeRateLimited(w, retry)
+					return
+				}
+			}
+		} else if ok, retry := s.limiter.allow(
+			"unauthenticated:"+requestAddress(r), s.limiter.failedAttempt,
+		); !ok {
+			// An attempt with no usable credential accounts for nothing but
+			// its source, so guessing is bounded per address and one
+			// source's failures never spend another's budget.
+			writeRateLimited(w, retry)
+			return
+		}
 		switch {
 		case errors.Is(err, ErrUnauthenticated):
 			w.Header().Set("WWW-Authenticate", "Bearer")
