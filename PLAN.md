@@ -227,8 +227,8 @@ Deliverables:
   the `PUSH_NAME` contact names, widen each chat's activity to the imported
   range, and expose `chat sync` to page older messages on demand.
 - [x] Message history commands: list or tail one chat with
-  `message list|tail <bot> <sender> [--limit n] [--follow]`, served through the
-  API when it exists.
+  `message list|tail <bot> <sender> [--limit n] [--follow]`, served through
+  the REST API.
 - [x] Sender profiles: record each sender's push name and first/last seen from
   the first allowed message, keyed by (scope, phone) and shared by the scope's
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
@@ -302,7 +302,7 @@ Deliverables:
   apart; `contact list` and the scope `contacts` route read it. A control-only
   conversation shell registers no sender and no chat.
 - [ ] `chat sync --all` (ADR 0035): after those anchors exist, request one
-  bounded page per known chat over a single stopped-fleet connection, in
+  bounded page per known chat over the running fleet's connection, in
   sequence and never in parallel, skipping chats without an anchor and
   reporting answered, timed-out, and skipped counts in the summary.
 

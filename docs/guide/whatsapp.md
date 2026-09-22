@@ -222,7 +222,7 @@ Deterministic flow (a bot with no `llm`):
 - [ ] The contact names arrive and name those senders.
 - [ ] `chat list <bot>` lists those senders with the stored total split into
   `SYNC` and `LIVE`, and the first and last activity.
-- [ ] With the fleet stopped, `chat sync <bot> <sender>` pages one request of
+- [ ] With the fleet running, `chat sync <bot> <sender>` pages one request of
   older messages back from the phone, or reports that it did not answer.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
