@@ -23,5 +23,6 @@ Botflota checks each configured bot's local pairing before building the fleet:
 
 - A bot can remain in the configuration while its pairing is completed later.
 - The warning points to `bot pair`; its invocation details come from the usage.
-- Pairing a skipped bot requires restarting the fleet; runtime reload is
-  deferred to the reload phase.
+- A bot paired while the fleet runs joins it immediately: the pairing session
+  activates it through the fleet, so no restart is needed (ADR 0039). A bot
+  paired while the fleet is stopped is built at the next start, as before.

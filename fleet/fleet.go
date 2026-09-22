@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -43,7 +44,17 @@ type Options struct {
 }
 
 type Fleet struct {
-	bots []*Bot
+	// mu guards the bot registry, the run context, and the recorded errors;
+	// a built *Bot is immutable afterwards.
+	mu   sync.Mutex
+	bots map[string]*Bot
+	cfg  *config.Config
+	opts Options
+	// ctx is set by Run and cleared when it returns; a bot may start only
+	// while it is set (ADR 0022).
+	ctx  context.Context
+	errs []error
+	wait sync.WaitGroup
 }
 
 type BotStatus struct {
@@ -64,7 +75,8 @@ type Bot struct {
 	log     *slog.Logger
 }
 
-// New starts nothing and connects nothing.
+// New starts nothing and connects nothing. A bot whose pairing is missing is
+// skipped (ADR 0022) and can join later with StartBot.
 func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if cfg == nil {
 		return nil, errors.New("fleet: nil config")
@@ -84,120 +96,192 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.NewChannel == nil {
 		return nil, errors.New("fleet: no channel factory")
 	}
-	seeds := opts.Rand
-	if seeds == nil {
-		seeds = rand.New(rand.NewSource(time.Now().UnixNano()))
+	if opts.Rand == nil {
+		opts.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
-	baseLog := opts.Log
-	if baseLog == nil {
-		baseLog = botflota.DiscardLogger()
+	if opts.Log == nil {
+		opts.Log = botflota.DiscardLogger()
 	}
-	fleet := &Fleet{}
+	fleet := &Fleet{cfg: cfg, opts: opts, bots: make(map[string]*Bot)}
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		for _, botName := range config.SortedKeys(scope.Bots) {
-			bot := scope.Bots[botName]
-			graph, ok := scope.Graphs[bot.Graph]
+			bot, ok := scope.Bots[botName]
 			if !ok {
-				return nil, fmt.Errorf("fleet: bot %q references unknown graph %q",
-					botName, bot.Graph)
+				continue
+			}
+			if _, ok := scope.Graphs[bot.Graph]; !ok {
+				return nil, fmt.Errorf(
+					"fleet: bot %q references unknown graph %q", botName, bot.Graph)
 			}
 			if opts.Skip != nil && opts.Skip(scopeName, botName) {
 				continue
 			}
-			settings := settingsOf(bot.Settings)
-			botLog := baseLog.With("scope", scopeName, "bot", botName)
-			eng := engine.New(engine.Options{
-				Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
-				Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
-				Messages:   opts.Messages,
-				HTTPClient: opts.HTTPClient, Now: opts.Now,
-				Rand: rand.New(rand.NewSource(seeds.Int63())), DefaultTimeout: opts.DefaultTimeout,
-				Log: botLog,
-			})
-			channel, err := opts.NewChannel(BotSpec{
-				Scope: scopeName, Name: botName, Settings: settings,
-			})
+			built, err := fleet.buildBot(scopeName, botName)
 			if err != nil {
-				return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)
+				return nil, err
 			}
-			queue := newOutbox(outboxConfig{
-				Sender:       channel.Send,
-				Delay:        time.Duration(settings.QueueDelay) * time.Millisecond,
-				Jitter:       time.Duration(settings.Jitter) * time.Millisecond,
-				MaxPerMinute: settings.MaxMsgPerMinute,
-				Now:          opts.Now,
-				Rand:         rand.New(rand.NewSource(seeds.Int63())),
-				Log:          botLog,
-				OnError: func(_ botflota.OutgoingMessage, err error) {
-					if opts.OnError != nil {
-						opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
-					}
-				},
-				OnSent: func(msg botflota.OutgoingMessage, providerID string) {
-					if msg.StoredMessageID == 0 {
-						return
-					}
-					if err := opts.Messages.SetProviderID(
-						context.Background(), msg.StoredMessageID, providerID,
-					); err != nil {
-						botLog.Warn("record outbound provider id", "error", err)
-					}
-				},
-			})
-			fleet.bots = append(fleet.bots, &Bot{
-				scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
-				filter: Filter{
-					IgnoreGroups: ignoreGroups(settings),
-					Allowed:      settings.AllowedSenders,
-					Ignored:      settings.IgnoredSenders,
-				},
-				log: botLog,
-				onError: func(err error) {
-					if opts.OnError != nil {
-						opts.OnError(scopeName, botName, err)
-					}
-				},
-			})
+			fleet.bots[scopeName+"/"+botName] = built
 		}
 	}
 	return fleet, nil
 }
 
-func (f *Fleet) Run(ctx context.Context) error {
-	var wait sync.WaitGroup
-	errs := make(chan error, len(f.bots))
-	for _, bot := range f.bots {
-		wait.Add(1)
-		go func(b *Bot) {
-			defer wait.Done()
-			if err := b.run(ctx); err != nil {
-				errs <- fmt.Errorf("%s/%s: %w", b.scope, b.name, err)
+// buildBot constructs one configured bot's engine, channel, and outbox from
+// the config the fleet was built with; it starts nothing.
+func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
+	scope, ok := f.cfg.Scopes[scopeName]
+	if !ok {
+		return nil, fmt.Errorf("fleet: unknown scope %q", scopeName)
+	}
+	bot, ok := scope.Bots[botName]
+	if !ok {
+		return nil, fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
+	}
+	graph, ok := scope.Graphs[bot.Graph]
+	if !ok {
+		return nil, fmt.Errorf(
+			"fleet: bot %q references unknown graph %q", botName, bot.Graph)
+	}
+	opts := f.opts
+	seeds := opts.Rand
+	settings := settingsOf(bot.Settings)
+	botLog := opts.Log.With("scope", scopeName, "bot", botName)
+	eng := engine.New(engine.Options{
+		Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
+		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
+		Messages:   opts.Messages,
+		HTTPClient: opts.HTTPClient, Now: opts.Now,
+		Rand: rand.New(rand.NewSource(seeds.Int63())), DefaultTimeout: opts.DefaultTimeout,
+		Log: botLog,
+	})
+	channel, err := opts.NewChannel(BotSpec{
+		Scope: scopeName, Name: botName, Settings: settings,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)
+	}
+	queue := newOutbox(outboxConfig{
+		Sender:       channel.Send,
+		Delay:        time.Duration(settings.QueueDelay) * time.Millisecond,
+		Jitter:       time.Duration(settings.Jitter) * time.Millisecond,
+		MaxPerMinute: settings.MaxMsgPerMinute,
+		Now:          opts.Now,
+		Rand:         rand.New(rand.NewSource(seeds.Int63())),
+		Log:          botLog,
+		OnError: func(_ botflota.OutgoingMessage, err error) {
+			if opts.OnError != nil {
+				opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
 			}
-		}(bot)
+		},
+		OnSent: func(msg botflota.OutgoingMessage, providerID string) {
+			if msg.StoredMessageID == 0 {
+				return
+			}
+			if err := opts.Messages.SetProviderID(
+				context.Background(), msg.StoredMessageID, providerID,
+			); err != nil {
+				botLog.Warn("record outbound provider id", "error", err)
+			}
+		},
+	})
+	return &Bot{
+		scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
+		filter: Filter{
+			IgnoreGroups: ignoreGroups(settings),
+			Allowed:      settings.AllowedSenders,
+			Ignored:      settings.IgnoredSenders,
+		},
+		log: botLog,
+		onError: func(err error) {
+			if opts.OnError != nil {
+				opts.OnError(scopeName, botName, err)
+			}
+		},
+	}, nil
+}
+
+// Run starts every built bot and waits: it returns when ctx is cancelled or
+// every bot has stopped, with the first bot error if any.
+func (f *Fleet) Run(ctx context.Context) error {
+	f.mu.Lock()
+	f.ctx = ctx
+	f.mu.Unlock()
+	for _, bot := range f.ordered() {
+		f.start(ctx, bot)
 	}
-	done := make(chan struct{})
-	go func() { wait.Wait(); close(done) }()
-	select {
-	case <-ctx.Done():
-	case <-done:
+	f.wait.Wait()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ctx = nil
+	if len(f.errs) > 0 {
+		return f.errs[0]
 	}
-	wait.Wait()
-	close(errs)
-	var first error
-	for err := range errs {
-		if first == nil {
-			first = err
+	return nil
+}
+
+// Start builds and runs one configured bot now: how a bot paired through the
+// running instance joins the fleet without a restart (ADR 0022). A bot that
+// is already running is left alone, and a fleet that is not running refuses.
+//
+// ponytail: start-during-shutdown races with Run's final wait; the pairing
+// session finishing exactly as the fleet exits would be the window. If that
+// ever bites, gate StartBot on a done channel closed before wait.Wait returns.
+func (f *Fleet) StartBot(scope, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ctx == nil || f.ctx.Err() != nil {
+		return errors.New("fleet: not running")
+	}
+	key := scope + "/" + name
+	if _, ok := f.bots[key]; ok {
+		return nil
+	}
+	bot, err := f.buildBot(scope, name)
+	if err != nil {
+		return err
+	}
+	f.bots[key] = bot
+	f.start(f.ctx, bot)
+	return nil
+}
+
+// start runs one bot actor and records its error, if any.
+func (f *Fleet) start(ctx context.Context, bot *Bot) {
+	f.wait.Add(1)
+	go func() {
+		defer f.wait.Done()
+		if err := bot.run(ctx); err != nil {
+			f.mu.Lock()
+			f.errs = append(f.errs, fmt.Errorf("%s/%s: %w", bot.scope, bot.name, err))
+			f.mu.Unlock()
 		}
+	}()
+}
+
+// ordered copies the built bots sorted by scope and name, so a caller walks
+// them without holding the fleet lock.
+func (f *Fleet) ordered() []*Bot {
+	f.mu.Lock()
+	bots := make([]*Bot, 0, len(f.bots))
+	for _, bot := range f.bots {
+		bots = append(bots, bot)
 	}
-	return first
+	f.mu.Unlock()
+	sort.Slice(bots, func(i, j int) bool {
+		if bots[i].scope != bots[j].scope {
+			return bots[i].scope < bots[j].scope
+		}
+		return bots[i].name < bots[j].name
+	})
+	return bots
 }
 
 func (f *Fleet) HistorySync(
 	ctx context.Context, scope, bot, phone string,
 	count int, timeout time.Duration,
 ) (botflota.HistoryResult, error) {
-	for _, candidate := range f.bots {
+	for _, candidate := range f.ordered() {
 		if candidate.scope != scope || candidate.name != bot {
 			continue
 		}
@@ -212,8 +296,9 @@ func (f *Fleet) HistorySync(
 }
 
 func (f *Fleet) Status() []BotStatus {
-	statuses := make([]BotStatus, 0, len(f.bots))
-	for _, bot := range f.bots {
+	bots := f.ordered()
+	statuses := make([]BotStatus, 0, len(bots))
+	for _, bot := range bots {
 		status := BotStatus{Scope: bot.scope, Bot: bot.name, OutboxDepth: bot.outbox.Depth()}
 		if reporter, ok := bot.channel.(botflota.StateReporter); ok {
 			status.State = reporter.ChannelState()

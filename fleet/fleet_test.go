@@ -468,6 +468,65 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 	}
 }
 
+// TestStartBotJoinsTheRunningFleet covers a bot paired after startup joining
+// the fleet without a restart: the pairing session of the running instance
+// activates it (ADR 0022).
+func TestStartBotJoinsTheRunningFleet(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	runner, err := New(cfg, Options{
+		Store:    store,
+		Chats:    store,
+		Senders:  store,
+		Messages: store,
+		Skip:     func(_, bot string) bool { return bot == "beta" },
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := runner.StartBot("dev", "beta"); err == nil {
+		t.Fatal("a fleet that is not running must refuse StartBot")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+
+	// StartBot answers until Run has published the run context.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := runner.StartBot("dev", "beta")
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("StartBot: %v", err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	waitConnected(t, runner)
+	if statuses := runner.Status(); len(statuses) != 2 ||
+		statuses[0].Bot != "alpha" || statuses[1].Bot != "beta" {
+		t.Fatalf("statuses = %#v, want alpha and beta", statuses)
+	}
+	if err := runner.StartBot("dev", "beta"); err != nil {
+		t.Fatalf("starting a running bot again = %v, want a no-op", err)
+	}
+	if err := runner.StartBot("dev", "ghost"); err == nil {
+		t.Fatal("an unknown bot must report an error")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
 func waitConnected(t *testing.T, runner *Fleet) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
