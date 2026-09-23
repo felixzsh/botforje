@@ -221,8 +221,8 @@ Inbound:
    actions. Entry actions produce the prescribed reply, so a bot with no `llm`
    needs no provider (ADR 0032).
 10. Effective policy composes node policy (always) and message policy
-   (optional refinement). Reply text is prescribed, LLM-realized, or both
-   (anchor plus fallback); a policy check runs before anything is queued.
+    (optional refinement). Reply text is prescribed, LLM-realized, or both
+    (anchor plus fallback); a policy check runs before anything is queued.
 11. The session, the stored messages, the chat activity, the guards, and the
     queued replies commit as one transaction; a failure rolls all of it back
     (ADR 0040). The sender profile and chat created in step 2 sit outside
