@@ -191,7 +191,8 @@ Inbound:
    (ADR 0020, ADR 0036).
 2. The fleet routes the event to the bot; the bot's filter drops it (groups,
    allow/ignore lists) or passes it to the engine, which upserts the sender
-   profile before routing (ADR 0029).
+   profile before routing (ADR 0029). The dedup check in step 5 reads that
+   sender and chat first, so only a message about to run writes them.
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -201,8 +202,9 @@ Inbound:
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
 5. A redelivery whose provider id the chat already stores stops here, before
-   any action runs (ADR 0040). Steps 6–8 are the Phase 8 target: the fleet
-   injects no model yet, so only the deterministic path runs today.
+   any action runs and before the sender or chat is written (ADR 0040).
+   Steps 6–8 are the Phase 8 target: the fleet injects no model yet, so only
+   the deterministic path runs today.
 6. When the graph routing mode is `always`, or nothing matched and the mode
    is `fallback`, System One decides: one Choice question over the candidate
    edge intents, checked against the graph's confidence threshold. Below it
@@ -221,10 +223,11 @@ Inbound:
 10. Effective policy composes node policy (always) and message policy
    (optional refinement). Reply text is prescribed, LLM-realized, or both
    (anchor plus fallback); a policy check runs before anything is queued.
-10. The session, the stored messages, the chat activity, the guards, and the
+11. The session, the stored messages, the chat activity, the guards, and the
     queued replies commit as one transaction; a failure rolls all of it back
-    (ADR 0040). The outbox worker then delivers the replies with the pacing
-    below.
+    (ADR 0040). The sender profile and chat created in step 2 sit outside
+    that transaction, so a failed turn can leave those two rows and nothing
+    else. The outbox worker then delivers the replies with the pacing below.
 
 Outbound:
 

@@ -18,9 +18,10 @@ that nobody reads.
   `TurnStore`. The SQLite adapter runs the session save, the inbound message,
   every reply, the chat activity, the guard state, and the queued replies in
   one transaction. Either the whole turn lands or none of it does.
-- Deduplicate first: before routing, the engine drops a message whose
-  provider id the chat already stores, so a redelivery never repeats an
-  action or an HTTP side effect.
+- Deduplicate first: before loading or routing, the engine drops a message
+  whose provider id the chat already stores, reading the sender and chat
+  without writing them, so a redelivery never repeats an action or an HTTP
+  side effect and never moves `last_seen`.
 - Queue with the turn: every reply is inserted into the `outbox` table in
   the same transaction that stores its message row. Delivery is
   at-least-once: a crash between sending and marking resends on restart, and
@@ -46,8 +47,11 @@ that nobody reads.
 
 ## Consequences
 
-- A failed turn leaves no partial state, so history and sessions can be
-  trusted without reconciliation.
+- A failed turn leaves no partial state among what it commits, so history
+  and sessions can be trusted without reconciliation. The sender profile and
+  the chat are prepared before that transaction, outside it: a failed turn
+  can leave a sender and an empty chat, never a half-written session,
+  message, guard, or queued reply.
 - Replies survive restarts, `fleet status` reports the queue's real depth,
   and a permanently failing reply becomes a visible `failed` row instead of
   a log line that scrolls away.

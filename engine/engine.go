@@ -112,18 +112,21 @@ func (e *Engine) Handle(
 	if e.turn == nil {
 		return nil, errors.New("engine: no turn store")
 	}
-	now := e.now()
-	chat, sender, session, created, err := e.load(ctx, msg, now)
-	if err != nil {
-		return nil, err
-	}
-	seen, err := e.seenBefore(ctx, chat.ID, msg.ProviderMessageID)
+	// Dedup runs before load: a redelivery reads the sender and chat but
+	// never writes them, so it cannot move last_seen or create the rows it
+	// is about to ignore (ADR 0040).
+	seen, err := e.storedBefore(ctx, msg)
 	if err != nil {
 		return nil, err
 	}
 	if seen {
 		e.log.Debug("duplicate message ignored", "id", msg.ProviderMessageID)
 		return nil, nil
+	}
+	now := e.now()
+	chat, sender, session, created, err := e.load(ctx, msg, now)
+	if err != nil {
+		return nil, err
 	}
 	r := &run{
 		ctx:     ctx,
@@ -166,16 +169,36 @@ func (e *Engine) Handle(
 	return r.out, nil
 }
 
-// seenBefore reports a message the chat already stores. The engine checks it
-// before routing, so a redelivery never re-runs an action or an HTTP side
-// effect (ADR 0026).
-func (e *Engine) seenBefore(
-	ctx context.Context, chatID int64, providerID string,
+// storedBefore reports a message the chat already stores. It reads the
+// sender and chat without creating or updating them: the engine checks
+// before load, so a redelivery never re-runs an action or an HTTP side
+// effect and never moves last_seen (ADR 0026, ADR 0040). A chat that does
+// not exist yet has no stored message, so the missing rows answer no.
+func (e *Engine) storedBefore(
+	ctx context.Context, msg botflota.IncomingMessage,
 ) (bool, error) {
-	if providerID == "" {
+	if msg.ProviderMessageID == "" {
 		return false, nil
 	}
-	seen, err := e.messages.HasProviderID(ctx, chatID, providerID)
+	if e.senders == nil {
+		// Nothing can be stored; load reports the missing store.
+		return false, nil
+	}
+	sender, err := e.senders.Get(ctx, e.scope, msg.SenderPhone)
+	if errors.Is(err, botflota.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("engine: sender lookup: %w", err)
+	}
+	chat, err := e.chats.ForSender(ctx, e.scope, e.bot, sender.ID)
+	if errors.Is(err, botflota.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("engine: chat lookup: %w", err)
+	}
+	seen, err := e.messages.HasProviderID(ctx, chat.ID, msg.ProviderMessageID)
 	if err != nil {
 		return false, fmt.Errorf("engine: dedup: %w", err)
 	}

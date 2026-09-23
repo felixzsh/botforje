@@ -750,3 +750,49 @@ func TestDuplicateMessageStopsBeforeTheTurn(t *testing.T) {
 			len(store.messages), stored)
 	}
 }
+
+// TestDuplicateMessageWritesNothing: the dedup check runs before load, so a
+// redelivery creates no sender or chat row and does not move last_seen or
+// the display name of the sender it is about to ignore (ADR 0040).
+func TestDuplicateMessageWritesNothing(t *testing.T) {
+	store := newMemStore()
+	eng := fixtureEngine(t, store)
+	message := botflota.IncomingMessage{
+		Bot: "support-bot", SenderPhone: "5215500000000",
+		SenderDisplayName: "Ana", ProviderMessageID: "dup-2", At: t0,
+		Content: botflota.TextContent{Body: "1"},
+	}
+	if _, err := eng.Handle(context.Background(), message); err != nil {
+		t.Fatalf("first Handle: %v", err)
+	}
+	if _, err := store.Get(context.Background(), "support", message.SenderPhone); err != nil {
+		t.Fatalf("get sender: %v", err)
+	}
+	chats, messages := len(store.chats), len(store.messages)
+
+	redelivery := message
+	redelivery.At = t0.Add(time.Hour)
+	redelivery.SenderDisplayName = "Renamed"
+	replies, err := eng.Handle(context.Background(), redelivery)
+	if err != nil {
+		t.Fatalf("redelivery Handle: %v", err)
+	}
+	if replies != nil {
+		t.Fatalf("duplicate replies = %#v, want none", replies)
+	}
+	again, err := store.Get(context.Background(), "support", message.SenderPhone)
+	if err != nil {
+		t.Fatalf("get sender again: %v", err)
+	}
+	if !again.LastSeen.Equal(t0) {
+		t.Fatalf("last_seen = %v, want it untouched by the redelivery", again.LastSeen)
+	}
+	if again.DisplayName != "Ana" {
+		t.Fatalf("display name = %q, want it untouched by the redelivery",
+			again.DisplayName)
+	}
+	if len(store.chats) != chats || len(store.messages) != messages {
+		t.Fatalf("rows = %d chats, %d messages, want %d and %d",
+			len(store.chats), len(store.messages), chats, messages)
+	}
+}
