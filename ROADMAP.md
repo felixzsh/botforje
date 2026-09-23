@@ -46,14 +46,15 @@ These shape every phase and become ADRs when the phase that owns them starts.
   every route, never in the UI.
 - The API is the complete control plane for scope operations: every
   host- or user-initiated capability on scope-owned configuration, bots, and
-  data is available through the API, authorized by scope and role. The
-  dashboard and integrations use the same API; they never bypass it.
+  data is available through the API, authorized by owner or scope; both
+  authorities read and write inside their reach. The dashboard and
+  integrations use the same API; they never bypass it.
 - One process may run bots across many scopes. A bot's lifecycle operation or
   ordinary runtime error must not stop its peers; the host's supervisor owns
   process lifecycle.
 - The owner can operate on every scope and manage instance-level settings.
-  Scoped authority is limited to its authorized scopes and role; instance-wide
-  settings and process lifecycle are outside that authority. A request to
+  Scoped authority covers reads and writes inside its authorized scopes;
+  instance-wide settings and process lifecycle are outside it. A request to
   restart the process is owner-only and delegates to the host's supervisor.
 - Botflota knows nothing about whoever hosts it: it knows trusted issuers,
   scoped credentials, and webhooks, and the host's account system lives outside
@@ -174,16 +175,13 @@ and cannot prove another exists.
 
 Deliverables:
 
-- [ ] ADR: authority model. A credential yields a principal with an authority
-  (`instance` or one or more scopes), a role, and an expiry. Every route
-  resolves a target scope, and authorization is one check against that
-  principal.
+- [ ] ADR: authority model. A credential yields a principal with an authority:
+  `instance` (owner) or one or more scopes, plus an expiry; these two are the
+  complete model and no roles are planned. Every route resolves a target
+  scope, and authorization is one check against that principal.
 - [ ] It replaces the resolver Phase 7 and Phase 10 introduced, not the route
   shapes those phases settled.
 - [ ] ADR: delegated sign-in (see below).
-- [ ] Roles, kept small: `viewer` reads, `operator` also controls
-  conversations and bot operations, `admin` also manages configuration and
-  tokens inside the scope. Instance authority additionally has `owner`.
 - [x] Scoped access tokens: mint, list, revoke, hashed at rest, optional
   expiry, usable by scripts and by server-to-server callers. (Landed with the
   authorization base in Phase 7.)
@@ -196,8 +194,8 @@ Deliverables:
 - [ ] Event streams and rate limits are per credential and filtered by
   authority on the server.
 - [ ] Audit log per scope; instance-level entries only for instance authority.
-- [ ] Tests: one authorization matrix over every route by role and authority,
-  plus a stream leak test.
+- [ ] Tests: one authorization matrix over every route by authority, plus a
+  stream leak test.
 
 #### Delegated sign-in (recommended shape)
 
@@ -205,8 +203,8 @@ Deliverables:
   each issuer with its key source (JWKS URL or static public key), audience,
   clock skew, and claim mapping (default: a `scope` claim, or a `scopes`
   list).
-- The issuer signs a short-lived token with subject, audience, scope, role,
-  and expiry; a role may not exceed what the issuer is allowed to grant.
+- The issuer signs a short-lived token with subject, audience, scope, and
+  expiry; it may not widen the scopes the issuer is allowed to grant.
 - The browser lands on Botflota with the token, Botflota verifies the
   signature offline, rejects reuse, sets the session cookie, and redirects to
   the dashboard. The token is never stored server side and never stays in the

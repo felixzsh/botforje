@@ -375,9 +375,10 @@ connection and reports the batch counts. Errors use one shape,
 
 One middleware resolves the credential to a `Principal` through a small
 `PrincipalResolver` port (`Auth` is the built-in implementation), and handlers
-authorize against it (ROADMAP Phase 10, Phase 13). Two authorities exist: the instance
-owner (the owner token) sees every scope, instance settings, and credential
-management; a scoped access token sees only its scopes. A scoped principal
+authorize against it (ROADMAP Phase 10, Phase 13). Exactly two authorities
+exist, with no roles: the instance owner (the owner token) sees every scope,
+instance settings, and credential management; a scoped access token reads and
+changes the resources of its own scopes and nothing else. A scoped principal
 requesting another scope receives 404, never 403, so it cannot infer that the
 scope exists (ROADMAP Phase 13).
 

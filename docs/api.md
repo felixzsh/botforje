@@ -17,20 +17,22 @@ instance's files or database.
 A scope capability is complete only when its API operation enforces authority
 on the server and has tests for allowed and out-of-scope access. The API's
 coverage does not mean every credential can perform every operation: the
-principal's role and authorized scopes determine what it may do.
+principal's authority and its authorized scopes determine what it may do.
 
 ## Authority
 
-- A scoped principal may be authorized for one or more scopes. Every request
-  that addresses a scope checks that it is in the principal's authority; an
-  out-of-scope target is indistinguishable from an unknown one.
+There are exactly two authorities — `owner` and `scoped` — and no roles; the
+pair is the complete model, now and as planned.
+
+- A scoped access token authorizes reads and writes of the resources of its
+  authorized scopes. It is not a read-only credential: inside those scopes it
+  may pair and unpair bots and drive their conversations through the
+  scope-addressed routes. Every request that addresses a scope checks that it
+  is in the principal's authority; an out-of-scope target is
+  indistinguishable from an unknown one.
 - The instance owner may operate on every scope and manage instance-level
   settings, shared resources, credentials, and other instance-wide state.
-- The owner may read and publish YAML for any scope, regardless of scoped
-  roles.
-- Scoped roles limit operations inside the authorized scopes. The planned
-  model has `viewer`, `operator`, and `admin`; instance authority has `owner`
-  (ROADMAP Phase 13).
+  The owner may read and publish YAML for any scope.
 
 Scope isolation is enforced by the API, not by hiding controls in the UI. A
 credential authorized for several scopes can use them all, but cannot list,
@@ -38,8 +40,8 @@ read, infer, or operate on any other scope.
 
 ## Configuration and scope operations
 
-YAML remains the source of behavior. The target API lets an authorized scope
-administrator read and publish that scope's configuration, including bots,
+YAML remains the source of behavior. The target API lets an authorized scoped
+principal read and publish that scope's configuration, including bots,
 graphs, actions, and settings, with the same validation as configuration-file
 loading. Publication is atomic, rejects stale versions, and reloads valid
 changes; changes the running instance cannot safely apply are reported as
@@ -72,9 +74,9 @@ pairing cancellation, and unpairing while the fleet is running. The owner-only
 routes expose instance configuration and manage access tokens. The CLI uses
 the API for operational commands while the instance is running.
 
-The full target is not implemented yet: scoped roles and browser sessions,
-scope configuration publication, the complete set of bot and conversation
-controls, and the embedded dashboard arrive in later roadmap phases. In
+The full target is not implemented yet: browser sessions, scope configuration
+publication, the complete set of bot and conversation controls, and the
+embedded dashboard arrive in later roadmap phases. In
 particular, the current reload contract still classifies changes to the bot
 set as requiring an instance restart (ADR 0009); per-bot configuration changes
 must not be described as live until that behavior changes.
