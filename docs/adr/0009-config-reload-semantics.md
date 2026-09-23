@@ -47,6 +47,11 @@ sessions expire or the process restarts with compatible persisted sessions.
 - A single manual write that changes several scopes is validated as one
   candidate, then its safe scopes activate independently. A sequence of
   separate file writes is not a transaction.
+- Direct file edits are outside Botflota's write locks. Use one editor per
+  config file, save by replacing the file atomically, and prefer one include
+  fragment per scope so edits to different scopes do not contend. The watcher
+  validates the final file contents it reads; it cannot merge overlapping
+  edits or prevent one editor overwriting another.
 - Invalid or pending changes remain visible in logs and never replace the
   active snapshot. A later valid edit or an expired session is retried.
 - Tests cover include discovery, scope isolation, active-session compatibility,

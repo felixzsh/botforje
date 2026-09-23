@@ -52,6 +52,25 @@ Instance-wide configuration and shared resources are owner operations. Scope
 configuration does not become a second source of truth in the API or dashboard:
 the API validates and publishes YAML fragments.
 
+### Publication concurrency (planned)
+
+The API writer is not implemented yet. When added, each scope publication will
+carry the version the editor read. The server serializes commits to that
+scope's fragment and atomically replaces it only if the expected version still
+matches. A stale edit gets a conflict and must be reloaded and reconciled by
+the caller; the server does not queue or silently retry it. A token does not
+limit itself to one in-flight request, so authorization is not a concurrency
+control.
+
+Publications to different scope fragments may proceed independently. Their
+validated results merge into the active instance snapshot without dropping
+another scope's update. Re-publishing identical content is a no-op. The API
+uses the same load, validate, compatibility, and scope activation pipeline as
+the file watcher; it does not edit a separate in-memory YAML source.
+
+The UI keeps drafts client-side. On a conflict it reloads the latest scope
+version and asks the user to reconcile before saving again.
+
 Bot operations address one `(scope, bot)` at a time. Pairing and unpairing
 already work through the API while the instance runs; unpairing stops only that
 bot, lets a send already in progress finish, and fails the rest of its queued
@@ -82,3 +101,9 @@ embedded dashboard remain planned. Scope publication is a Phase 7 deliverable;
 the later dashboard consumes it. Scope and bot membership changes and channel
 settings currently remain pending until restart; a graph topology change waits
 for active sessions in its scope to expire (ADR 0009).
+
+For direct manual edits, Botflota cannot lock out independent editors that
+write files themselves. Use one editor per file and atomic file replacement;
+separate per-scope include fragments let editors work on different scopes
+without writing the same file. Use the API publication path for version-checked
+conflict detection when it becomes available.

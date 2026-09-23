@@ -258,7 +258,10 @@ Deliverables:
 - [ ] Scope config publication API: an owner can publish any scope and a
   scoped token only its scopes. It writes canonical YAML atomically, validates
   with the normal loader, and invokes the same activation pipeline as a manual
-  edit; drafts and edit forms stay client-side.
+  edit; drafts and edit forms stay client-side. Each publication carries the
+  version it was based on; serialize commits per scope, reject stale versions
+  with a conflict instead of queueing or overwriting, and make identical
+  publishes no-ops. Different scope fragments must merge without lost updates.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port
