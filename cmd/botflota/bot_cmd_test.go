@@ -300,3 +300,85 @@ func TestPairThroughAPIForceReplacesTheLink(t *testing.T) {
 		t.Fatalf("output = %q", out.String())
 	}
 }
+
+// TestPairThroughAPIForceRemovesResidualLink: an account row without local
+// credentials lists as unpaired, but POST /pairing still refuses it, so
+// --force has to drop that residual link before the new session (ADR 0039).
+func TestPairThroughAPIForceRemovesResidualLink(t *testing.T) {
+	bots := `{"bots":[{"scope":"dev","bot":"alpha","pairing":"unpaired"}]}`
+	deletes := 0
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
+				_, _ = w.Write([]byte(bots))
+			case r.Method == http.MethodDelete &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/account":
+				deletes++
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
+					`"phone":"5215500000001"}}`))
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+	clearAPIEnv(t)
+	t.Setenv("BOTFLOTA_API_URL", server.URL)
+	t.Setenv("BOTFLOTA_TOKEN", "tok")
+
+	var out bytes.Buffer
+	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
+		"dev", "alpha", nil, false, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if deletes != 1 {
+		t.Fatalf("account deletes = %d, want the residual link removed", deletes)
+	}
+	if !strings.Contains(out.String(), "is paired as 5215500000001") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+// TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete: a fresh bot has no
+// account row, so --force goes straight to the session instead of asking the
+// instance to remove a link that is not there.
+func TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete(t *testing.T) {
+	bots := `{"bots":[{"scope":"dev","bot":"alpha","pairing":"not paired"}]}`
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
+				_, _ = w.Write([]byte(bots))
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
+					`"phone":"5215500000001"}}`))
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+	clearAPIEnv(t)
+	t.Setenv("BOTFLOTA_API_URL", server.URL)
+	t.Setenv("BOTFLOTA_TOKEN", "tok")
+
+	var out bytes.Buffer
+	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
+		"dev", "alpha", nil, false, true)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "is paired as 5215500000001") {
+		t.Fatalf("output = %q", out.String())
+	}
+}

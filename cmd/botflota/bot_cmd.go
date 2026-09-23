@@ -222,20 +222,27 @@ func pairThroughAPI(
 		return 1
 	}
 	for _, entry := range entries {
-		if entry.Scope != scopeName || entry.Bot != botName ||
-			entry.Status != string(botflota.PairingPaired) {
+		if entry.Scope != scopeName || entry.Bot != botName {
 			continue
 		}
 		if !force {
-			fmt.Fprintf(w, "bot %q (scope %q) is already paired as %s; "+
-				"run bot pair --force to replace it\n",
-				botName, scopeName, dash(entry.Phone))
-			return 0
+			if entry.Status == string(botflota.PairingPaired) {
+				fmt.Fprintf(w, "bot %q (scope %q) is already paired as %s; "+
+					"run bot pair --force to replace it\n",
+					botName, scopeName, dash(entry.Phone))
+				return 0
+			}
+			break
 		}
-		if err := client.delete(ctx, accountPath(scopeName, botName),
-			unpairTimeout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
+		// Every account row the instance still holds blocks a new session,
+		// paired or residual without local credentials, so --force removes
+		// it whichever way bot list reports it (ADR 0039).
+		if entry.Status != string(botflota.PairingNotPaired) {
+			if err := client.delete(ctx, accountPath(scopeName, botName),
+				unpairTimeout); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
 		}
 		break
 	}
