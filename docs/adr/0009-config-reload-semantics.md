@@ -21,7 +21,8 @@ Every reload runs the full pipeline: load, includes, interpolation, and
 semantic validation.
 
 - If loading or validation fails, the active runtime stays unchanged and the
-  error is logged. No partial document is applied.
+  error is logged. No partial document is applied, and the watcher never
+  rewrites or rolls back the edited files.
 - Scope changes are compared independently. A safe change advances only the
   affected scope's runtime snapshot; bots in other scopes are not rebuilt.
   Bots in the changed scope adopt the new engine and filter between messages,
@@ -52,6 +53,9 @@ sessions expire or the process restarts with compatible persisted sessions.
   fragment per scope so edits to different scopes do not contend. The watcher
   validates the final file contents it reads; it cannot merge overlapping
   edits or prevent one editor overwriting another.
+- A future API publication validates before writing and leaves files untouched
+  on failure. This does not coordinate an API write with a manual editor; the
+  API version check protects only publications made through that API.
 - Invalid or pending changes remain visible in logs and never replace the
   active snapshot. A later valid edit or an expired session is retried.
 - Tests cover include discovery, scope isolation, active-session compatibility,

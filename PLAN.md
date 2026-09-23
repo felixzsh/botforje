@@ -262,6 +262,11 @@ Deliverables:
   version it was based on; serialize commits per scope, reject stale versions
   with a conflict instead of queueing or overwriting, and make identical
   publishes no-ops. Different scope fragments must merge without lost updates.
+  Validate before disk writes and leave files untouched on failure. Return
+  detailed validation errors to the owner and for the caller's authorized
+  scope; return a generic error for invalid configuration outside that scope
+  or for instance-wide failures. Document that direct file edits are not
+  version-checked or serialized with API publications.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port

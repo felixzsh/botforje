@@ -62,6 +62,12 @@ the caller; the server does not queue or silently retry it. A token does not
 limit itself to one in-flight request, so authorization is not a concurrency
 control.
 
+The API validates the complete candidate before writing. If the proposed
+publication is invalid, it changes no files. A scoped caller receives details
+for validation errors in its own scope; if loading is blocked by invalid
+configuration outside its authority or by an instance-wide error, it receives
+only a generic failure. The owner can inspect the full diagnostic.
+
 Publications to different scope fragments may proceed independently. Their
 validated results merge into the active instance snapshot without dropping
 another scope's update. Re-publishing identical content is a no-op. The API
@@ -106,4 +112,7 @@ For direct manual edits, Botflota cannot lock out independent editors that
 write files themselves. Use one editor per file and atomic file replacement;
 separate per-scope include fragments let editors work on different scopes
 without writing the same file. Use the API publication path for version-checked
-conflict detection when it becomes available.
+conflict detection when it becomes available. An invalid manual edit is left
+on disk; the watcher keeps the last valid active snapshot, logs the cause for
+the owner, and never rolls files back. The owner can inspect and correct the
+file directly or run `config validate` for detailed diagnostics.
