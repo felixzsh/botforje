@@ -154,4 +154,14 @@ func TestSessionCountActive(t *testing.T) {
 	} else if count != 0 {
 		t.Fatalf("CountActive other = %d, want 0", count)
 	}
+	invalid, err := db.Sessions().HasActiveSessionOutsideNodes(
+		ctx, chat.Scope, chat.Bot, []string{"menu"}, t1)
+	if err != nil || !invalid {
+		t.Fatalf("invalid active node = %v, %v; want true", invalid, err)
+	}
+	invalid, err = db.Sessions().HasActiveSessionOutsideNodes(
+		ctx, chat.Scope, chat.Bot, []string{"menu", "purchase"}, t1)
+	if err != nil || invalid {
+		t.Fatalf("valid active node = %v, %v; want false", invalid, err)
+	}
 }

@@ -3,7 +3,11 @@
 // declarative objects themselves live in spec (ADR 0034).
 package config
 
-import "github.com/felixzsh/botflota/spec"
+import (
+	"slices"
+
+	"github.com/felixzsh/botflota/spec"
+)
 
 // SchemaVersion is the only config version this build understands.
 const SchemaVersion = 1
@@ -48,9 +52,10 @@ type Config struct {
 	Include   []string              `yaml:"include" json:"include,omitempty"`
 	Scopes    map[string]spec.Scope `yaml:"scopes" json:"scopes"`
 
-	origin map[string]string `yaml:"-" json:"-"`
-	source string            `yaml:"-" json:"-"`
-	files  []string          `yaml:"-"`
+	origin     map[string]string `yaml:"-" json:"-"`
+	source     string            `yaml:"-" json:"-"`
+	files      []string          `yaml:"-"`
+	watchPaths []string          `yaml:"-"`
 }
 
 // RateBudgets resolves the per-minute budgets: the defaults unless
@@ -74,7 +79,11 @@ func (c *Config) RateBudgets() RateBudgets {
 
 // Files lists the main config and every include Load read, so a watcher knows
 // what to watch (ADR 0009).
-func (c *Config) Files() []string { return c.files }
+func (c *Config) Files() []string { return slices.Clone(c.files) }
+
+// WatchPaths includes loaded files and include directories, so a watcher also
+// notices a new file matching a glob or directory include.
+func (c *Config) WatchPaths() []string { return slices.Clone(c.watchPaths) }
 
 // fragment is an included file: scopes only, no global settings (ADR 0016).
 type fragment struct {

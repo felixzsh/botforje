@@ -453,8 +453,11 @@ pair, whichever way the instance is running.
   and are retried with bounded backoff before they are given up on; the
   oldest pending reply heads the queue and a scheduled retry blocks the
   ones behind it, and unlinking a bot fails what its link still owes.
-- Config hot reload watches the main file and its includes and is
-  all-or-nothing; a restart-required change is logged, never silent (ADR 0009).
+- Config reload validates a whole YAML candidate, then advances only safe
+  changed scope snapshots; unchanged scopes keep their actors and channels.
+  Saved YAML and active runtime may differ while graph sessions or restart-
+  required settings are pending. Include changes use the same pipeline
+  (ADR 0009).
 - One WhatsApp phone number belongs to one Botflota bot. Multiple linked
   companion devices for the same number would receive the same traffic and can
   produce duplicate replies.

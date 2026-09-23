@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/felixzsh/botflota"
@@ -116,4 +117,28 @@ func (s *SessionStore) CountActive(
 		return 0, fmt.Errorf("sqlite: count active sessions: %w", err)
 	}
 	return count, nil
+}
+
+func (s *SessionStore) HasActiveSessionOutsideNodes(
+	ctx context.Context, scope, bot string, nodes []string, at time.Time,
+) (bool, error) {
+	query := `SELECT EXISTS (
+		SELECT 1 FROM sessions
+		JOIN chats ON chats.id = sessions.chat_id
+		WHERE chats.scope = ? AND chats.bot = ?
+		AND (sessions.expires_at = '' OR sessions.expires_at > ?)`
+	args := []any{scope, bot, formatTime(at)}
+	if len(nodes) > 0 {
+		query += " AND sessions.node NOT IN (" + strings.TrimSuffix(
+			strings.Repeat("?,", len(nodes)), ",") + ")"
+		for _, node := range nodes {
+			args = append(args, node)
+		}
+	}
+	query += ")"
+	var found bool
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&found); err != nil {
+		return false, fmt.Errorf("sqlite: inspect active session nodes: %w", err)
+	}
+	return found, nil
 }

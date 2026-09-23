@@ -120,3 +120,15 @@ func TestReloadOutcomeAppliesASafeChange(t *testing.T) {
 		t.Fatal("next = nil")
 	}
 }
+
+func TestFilesStampTracksNewIncludeFiles(t *testing.T) {
+	dir := t.TempDir()
+	before := filesStamp([]string{dir})
+	if err := os.WriteFile(filepath.Join(dir, "new-scope.yml"),
+		[]byte("scopes: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if after := filesStamp([]string{dir}); after == before {
+		t.Fatal("directory stamp did not change after adding an include file")
+	}
+}

@@ -255,6 +255,10 @@ Deliverables:
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
   (`shared`, `system_one`) surface without reworking handlers.
+- [ ] Scope config publication API: an owner can publish any scope and a
+  scoped token only its scopes. It writes canonical YAML atomically, validates
+  with the normal loader, and invokes the same activation pipeline as a manual
+  edit; drafts and edit forms stay client-side.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port
@@ -304,13 +308,27 @@ Deliverables:
   and request header values, reject it in every other string, keep the
   placeholder when serializing, and reveal the value only to the consumer that
   sends it.
-- [x] Hot reload (ADR 0009): a one-second mtime watch over the main file and
-  its includes replaces one shared snapshot for the fleet and the API only
-  after full validation. An invalid edit logs and changes nothing; a safe
-  change rebuilds each bot's engine and filter at its next message; a
-  restart-required change (global settings, the set of scopes and bots, and
-  the channel settings) is named in a warning and kept out. No pending queue
-  or maintenance mode.
+- [x] Config watch baseline (ADR 0009): poll the main YAML and its loaded
+  includes; load, interpolate, and validate a complete candidate before use.
+  Invalid edits keep the active configuration.
+- [ ] Scope-isolated activation (ADR 0009): distinguish saved YAML from active
+  runtime snapshots; calculate effective changed scopes and advance only
+  those snapshots. An unchanged scope's actors, channels, filters, and queues
+  remain untouched. A candidate changing several scopes is validated as one
+  document and activated only where safe.
+- [ ] Runtime compatibility: defer graph topology or initial-context changes
+  while affected bots have active sessions, retry while the saved candidate
+  remains, and skip at startup rather than silently resume a session whose
+  current node was removed. Preserve unrelated scopes when another scope is
+  pending; keep global, scope-set, bot-set, and channel-setting changes
+  explicitly restart-required.
+- [ ] Include watching: detect content changes, include-list changes, and new
+  files matching directory or glob includes. Retry corrected invalid files
+  and pending session-safe changes without requiring an unrelated edit.
+- [ ] Tests: invalid candidate rollback; one-scope edit leaves other runtime
+  generations untouched; multi-scope candidate; active-session deferral and
+  expiry; startup with a removed current node; changed/new includes; pending
+  restart settings.
 - [x] Tests: API handlers and auth.
 - [x] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).

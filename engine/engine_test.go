@@ -195,6 +195,13 @@ func (s *memStore) CountActive(
 	return count, nil
 }
 
+func (s *memStore) HasActiveSessionOutsideNodes(
+	ctx context.Context, scope, bot string, nodes []string, at time.Time,
+) (bool, error) {
+	count, err := s.CountActive(ctx, scope, bot, at)
+	return count > 0 && len(nodes) == 0, err
+}
+
 func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	s.nextMsg++
 	message.ID = s.nextMsg

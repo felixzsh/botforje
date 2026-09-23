@@ -2,19 +2,76 @@ package config
 
 import (
 	"fmt"
+	"reflect"
+	"slices"
 
 	"github.com/felixzsh/botflota/spec"
 )
 
-// RequiresRestart names the changes a running fleet cannot adopt, so a reload
-// keeps them out and says why instead of applying half a document (ADR 0009):
-// global settings, the set of scopes and bots, and the bot settings baked
-// into a live channel and outbox. Graphs, actions, catalogs, and the bot
-// filters adopt at the next message.
-func RequiresRestart(current, next *Config) []string {
-	reasons := globalChanges(current, next)
-	reasons = append(reasons, botSetChanges(current, next)...)
-	return append(reasons, channelSettingsChanges(current, next)...)
+// ReloadPlan separates instance changes from scope changes. ScopeReasons
+// identifies a scope whose actor set or channel cannot be changed live.
+type ReloadPlan struct {
+	Scopes       []string
+	ScopeReasons map[string][]string
+	Global       []string
+}
+
+// PlanReload compares the active configuration with a fully loaded candidate.
+// Callers may activate safe scopes while leaving other scopes pending.
+func PlanReload(current, next *Config) ReloadPlan {
+	plan := ReloadPlan{ScopeReasons: map[string][]string{}}
+	plan.Global = globalChanges(current, next)
+
+	names := map[string]bool{}
+	for name := range current.Scopes {
+		names[name] = true
+	}
+	for name := range next.Scopes {
+		names[name] = true
+	}
+	for _, name := range SortedKeys(names) {
+		was, had := current.Scopes[name]
+		now, has := next.Scopes[name]
+		if had == has && reflect.DeepEqual(was, now) {
+			continue
+		}
+		plan.Scopes = append(plan.Scopes, name)
+		if !had {
+			plan.ScopeReasons[name] = []string{fmt.Sprintf("scope %q added", name)}
+			continue
+		}
+		if !has {
+			plan.ScopeReasons[name] = []string{fmt.Sprintf("scope %q removed", name)}
+			continue
+		}
+		plan.ScopeReasons[name] = scopeRuntimeChanges(was, now, name)
+	}
+	return plan
+}
+
+func scopeRuntimeChanges(was, now spec.Scope, name string) []string {
+	var reasons []string
+	for _, bot := range SortedKeys(was.Bots) {
+		if _, ok := now.Bots[bot]; !ok {
+			reasons = append(reasons,
+				fmt.Sprintf("bot %q of scope %q removed", bot, name))
+		}
+	}
+	for _, bot := range SortedKeys(now.Bots) {
+		if _, ok := was.Bots[bot]; !ok {
+			reasons = append(reasons,
+				fmt.Sprintf("bot %q of scope %q added", bot, name))
+		}
+	}
+	for _, bot := range SortedKeys(now.Bots) {
+		old, ok := was.Bots[bot]
+		if !ok || channelSettingsEqual(old.Settings, now.Bots[bot].Settings) {
+			continue
+		}
+		reasons = append(reasons,
+			fmt.Sprintf("channel settings of bot %q in scope %q", bot, name))
+	}
+	return reasons
 }
 
 func globalChanges(current, next *Config) []string {
@@ -24,74 +81,15 @@ func globalChanges(current, next *Config) []string {
 		{"port", fmt.Sprint(current.Port), fmt.Sprint(next.Port)},
 		{"log_level", current.LogLevel, next.LogLevel},
 		{"log_level_deps", current.LogLevelDeps, next.LogLevelDeps},
-		{
-			"default_timeout",
-			fmt.Sprint(current.DefaultTimeout), fmt.Sprint(next.DefaultTimeout),
-		},
+		{"default_timeout", fmt.Sprint(current.DefaultTimeout),
+			fmt.Sprint(next.DefaultTimeout)},
 		{"data_dir", current.DataDir, next.DataDir},
 		{"device_name", current.DeviceName, next.DeviceName},
-		{
-			"rate_limit", fmt.Sprint(current.RateBudgets()),
-			fmt.Sprint(next.RateBudgets()),
-		},
+		{"rate_limit", fmt.Sprint(current.RateBudgets()),
+			fmt.Sprint(next.RateBudgets())},
 	} {
 		if change.was != change.now {
 			reasons = append(reasons, "global setting "+change.name)
-		}
-	}
-	return reasons
-}
-
-func botSetChanges(current, next *Config) []string {
-	var reasons []string
-	for _, scopeName := range SortedKeys(current.Scopes) {
-		if _, ok := next.Scopes[scopeName]; !ok {
-			reasons = append(reasons, fmt.Sprintf("scope %q removed", scopeName))
-		}
-	}
-	for _, scopeName := range SortedKeys(next.Scopes) {
-		now := next.Scopes[scopeName]
-		was, existed := current.Scopes[scopeName]
-		if !existed {
-			reasons = append(reasons, fmt.Sprintf("scope %q added", scopeName))
-			continue
-		}
-		for _, botName := range SortedKeys(was.Bots) {
-			if _, ok := now.Bots[botName]; !ok {
-				reasons = append(reasons,
-					fmt.Sprintf("bot %q of scope %q removed", botName, scopeName))
-			}
-		}
-		for _, botName := range SortedKeys(now.Bots) {
-			if _, ok := was.Bots[botName]; !ok {
-				reasons = append(reasons,
-					fmt.Sprintf("bot %q of scope %q added", botName, scopeName))
-			}
-		}
-	}
-	return reasons
-}
-
-// channelSettingsChanges reports bots whose settings are wired into the live
-// channel and outbox at build time. Only the filter fields adopt live
-// (ADR 0009).
-func channelSettingsChanges(current, next *Config) []string {
-	var reasons []string
-	for _, scopeName := range SortedKeys(next.Scopes) {
-		wasScope, existed := current.Scopes[scopeName]
-		if !existed {
-			continue
-		}
-		for _, botName := range SortedKeys(next.Scopes[scopeName].Bots) {
-			wasBot, existed := wasScope.Bots[botName]
-			if !existed {
-				continue // reported as an added bot
-			}
-			if !channelSettingsEqual(wasBot.Settings, next.Scopes[scopeName].Bots[botName].Settings) {
-				reasons = append(reasons,
-					fmt.Sprintf("channel settings of bot %q in scope %q",
-						botName, scopeName))
-			}
 		}
 	}
 	return reasons
@@ -122,4 +120,27 @@ func optionalBoolEqual(was, now *bool) bool {
 		return was == now
 	}
 	return *was == *now
+}
+
+// WithScopes copies selected scopes and the candidate's file watch metadata
+// into an active snapshot without publishing pending instance-level changes.
+func WithScopes(current, next *Config, scopes []string) *Config {
+	active := *current
+	active.Schema = next.Schema
+	active.Version = next.Version
+	active.Include = slices.Clone(next.Include)
+	active.Scopes = make(map[string]spec.Scope, len(current.Scopes)+len(scopes))
+	for name, scope := range current.Scopes {
+		active.Scopes[name] = scope
+	}
+	for _, name := range scopes {
+		if scope, ok := next.Scopes[name]; ok {
+			active.Scopes[name] = scope
+		} else {
+			delete(active.Scopes, name)
+		}
+	}
+	active.files = slices.Clone(next.files)
+	active.watchPaths = slices.Clone(next.watchPaths)
+	return &active
 }

@@ -332,6 +332,12 @@ func (f fakeSessions) CountActive(
 	return f.active[scope+"/"+bot], nil
 }
 
+func (fakeSessions) HasActiveSessionOutsideNodes(
+	context.Context, string, string, []string, time.Time,
+) (bool, error) {
+	return false, nil
+}
+
 type fakeMessages struct{ messages map[int64][]botflota.Message }
 
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }

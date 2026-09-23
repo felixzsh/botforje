@@ -2,8 +2,9 @@ package config
 
 import "sync/atomic"
 
-// Source is the active configuration, shared by the fleet and the API so one
-// reload replaces the snapshot for every reader (ADR 0009).
+// Source is the active configuration shared by the fleet and API. A reload
+// replaces only the scopes it activates; saved but pending YAML stays outside
+// this snapshot (ADR 0009).
 type Source struct {
 	current atomic.Pointer[Config]
 }

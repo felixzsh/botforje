@@ -153,6 +153,9 @@ type SessionStore interface {
 	Save(ctx context.Context, session *Session) error
 	Delete(ctx context.Context, chatID int64) error
 	CountActive(ctx context.Context, scope, bot string, at time.Time) (int, error)
+	HasActiveSessionOutsideNodes(
+		ctx context.Context, scope, bot string, nodes []string, at time.Time,
+	) (bool, error)
 }
 
 // MessageStore records message history (ADR 0026). Append reports

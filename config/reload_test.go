@@ -1,13 +1,14 @@
 package config
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
 	"github.com/felixzsh/botflota/spec"
 )
 
-func TestRequiresRestartClassifiesChanges(t *testing.T) {
+func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 	enabled := true
 	base := func() *Config {
 		return &Config{
@@ -73,9 +74,39 @@ func TestRequiresRestartClassifiesChanges(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			current, next := base(), base()
 			tc.change(next)
-			if got := RequiresRestart(current, next); !slices.Equal(got, tc.want) {
-				t.Fatalf("reasons = %v, want %v", got, tc.want)
+			plan := PlanReload(current, next)
+			reasons := append([]string(nil), plan.Global...)
+			for _, scope := range plan.Scopes {
+				reasons = append(reasons, plan.ScopeReasons[scope]...)
+			}
+			if !slices.Equal(reasons, tc.want) {
+				t.Fatalf("reasons = %v, want %v", reasons, tc.want)
 			}
 		})
+	}
+}
+
+func TestPlanReloadChangesOnlyTheEditedScope(t *testing.T) {
+	current := &Config{Scopes: map[string]spec.Scope{
+		"a": {Actions: map[string]spec.Action{"greet": {
+			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"hi"}}}},
+		}}},
+		"b": {Actions: map[string]spec.Action{"greet": {
+			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"hello"}}}},
+		}}},
+	}}
+	next := &Config{Scopes: map[string]spec.Scope{
+		"a": {Actions: map[string]spec.Action{"greet": {
+			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"changed"}}}},
+		}}},
+		"b": current.Scopes["b"],
+	}}
+	plan := PlanReload(current, next)
+	if !slices.Equal(plan.Scopes, []string{"a"}) {
+		t.Fatalf("changed scopes = %v, want [a]", plan.Scopes)
+	}
+	active := WithScopes(current, next, plan.Scopes)
+	if !reflect.DeepEqual(active.Scopes["b"], current.Scopes["b"]) {
+		t.Fatal("unchanged scope b was changed in the active snapshot")
 	}
 }

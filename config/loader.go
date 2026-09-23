@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -41,6 +42,10 @@ func (l Loader) Load(path string) (*Config, error) {
 		return nil, err
 	}
 	cfg.files = state.paths()
+	cfg.watchPaths = slices.Clone(cfg.files)
+	cfg.watchPaths = append(cfg.watchPaths, state.watchDirs...)
+	sort.Strings(cfg.watchPaths)
+	cfg.watchPaths = slices.Compact(cfg.watchPaths)
 	if misses := expandValue(reflect.ValueOf(cfg).Elem(), l.lookup); len(misses) > 0 {
 		sort.Strings(misses)
 		return nil, fmt.Errorf("%s: missing environment variable(s): %s",
@@ -52,7 +57,8 @@ func (l Loader) Load(path string) (*Config, error) {
 // includeState tracks loaded files so diamond includes merge once and cycles
 // terminate (ADR 0016).
 type includeState struct {
-	loaded map[string]bool
+	loaded    map[string]bool
+	watchDirs []string
 }
 
 func (s *includeState) loadMain(path string, cfg *Config) error {
@@ -70,6 +76,7 @@ func (s *includeState) loadMain(path string, cfg *Config) error {
 func (s *includeState) runIncludes(from string, includes []string, cfg *Config) error {
 	dir := filepath.Dir(from)
 	for _, inc := range includes {
+		s.watchDirs = append(s.watchDirs, includeWatchDir(dir, inc))
 		files, err := resolveInclude(dir, inc)
 		if err != nil {
 			return fmt.Errorf("%s: include %q: %w", from, inc, err)
@@ -84,6 +91,21 @@ func (s *includeState) runIncludes(from string, includes []string, cfg *Config) 
 		}
 	}
 	return nil
+}
+
+func includeWatchDir(from, entry string) string {
+	pattern := entry
+	if !filepath.IsAbs(pattern) {
+		pattern = filepath.Join(from, entry)
+	}
+	if wildcard := strings.IndexAny(pattern, "*?["); wildcard >= 0 {
+		pattern = pattern[:wildcard]
+		return filepath.Clean(filepath.Dir(pattern))
+	}
+	if info, err := os.Stat(pattern); err == nil && info.IsDir() {
+		return filepath.Clean(pattern)
+	}
+	return filepath.Clean(filepath.Dir(pattern))
 }
 
 func (s *includeState) paths() []string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -314,6 +315,24 @@ func (s *memStore) CountActive(
 		}
 	}
 	return count, nil
+}
+
+func (s *memStore) HasActiveSessionOutsideNodes(
+	ctx context.Context, scope, bot string, nodes []string, at time.Time,
+) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, chat := range s.chats {
+		if chat.Scope != scope || chat.Bot != bot {
+			continue
+		}
+		if session, ok := s.sessions[chat.ID]; ok && !session.Expired(at) {
+			if !slices.Contains(nodes, session.Node) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
@@ -873,7 +892,11 @@ func TestApplyConfigAppliesAtTheNextMessage(t *testing.T) {
 		{Message: &spec.Message{Body: spec.Text{"reloaded"}}},
 	}}
 	cfg.Scopes["dev"] = scope
-	runner.ApplyConfig(cfg)
+	applied, pending, err := runner.ApplyConfig(
+		context.Background(), cfg, []string{"dev"}, nil)
+	if err != nil || len(pending) > 0 || len(applied) != 1 {
+		t.Fatalf("ApplyConfig = %v, %v, %v", applied, pending, err)
+	}
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
 		Bot: "alpha", SenderPhone: "other",
@@ -882,6 +905,155 @@ func TestApplyConfigAppliesAtTheNextMessage(t *testing.T) {
 	if reply := receive(t, channels["alpha"].sent); botflota.ContentText(reply.Content) != "reloaded" {
 		t.Fatalf("second reply = %q, want the reloaded action",
 			botflota.ContentText(reply.Content))
+	}
+}
+
+func TestApplyConfigDefersGraphTopologyWithLiveSession(t *testing.T) {
+	runner, channels, _ := buildFleetWithStore(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+
+	channels["alpha"].incoming <- botflota.IncomingMessage{
+		Bot: "alpha", SenderPhone: "active",
+		Content: botflota.TextContent{Body: "hi"},
+	}
+	receive(t, channels["alpha"].sent)
+
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	scope := cfg.Scopes["dev"]
+	graph := scope.Graphs["menu"]
+	graph.Nodes["menu"] = spec.Node{Edges: []spec.Edge{{
+		Intent: "continue", Goto: "next",
+	}}}
+	graph.Nodes["next"] = spec.Node{}
+	scope.Graphs["menu"] = graph
+	cfg.Scopes["dev"] = scope
+
+	applied, pending, err := runner.ApplyConfig(ctx, cfg, []string{"dev"}, nil)
+	if err != nil {
+		t.Fatalf("ApplyConfig: %v", err)
+	}
+	if len(applied) != 0 || len(pending["dev"]) == 0 {
+		t.Fatalf("ApplyConfig = %v, %v; want dev pending", applied, pending)
+	}
+	runner.mu.Lock()
+	gen := runner.scopeGen["dev"]
+	runner.mu.Unlock()
+	if gen != 0 {
+		t.Fatalf("scope generation = %d, want unchanged", gen)
+	}
+	cancel()
+}
+
+func TestApplyConfigLeavesOtherScopeRuntimeUntouched(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	other := cfg.Scopes["dev"]
+	other.Bots = map[string]spec.Bot{"gamma": other.Bots["alpha"]}
+	cfg.Scopes["other"] = other
+	store := newStore()
+	channels := map[string]*fakeChannel{}
+	runner, err := New(cfg, Options{
+		Store: store, Chats: store, Senders: store, Messages: store,
+		Turn: store, Outbox: store, DefaultTimeout: time.Minute,
+		Now: func() time.Time { return t0 },
+		NewChannel: func(bot BotSpec) (botflota.MessageChannel, error) {
+			channel := newFakeChannel()
+			channels[bot.Scope+"/"+bot.Name] = channel
+			return channel, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+
+	for _, target := range []struct{ scope, bot string }{
+		{"dev", "alpha"}, {"other", "gamma"},
+	} {
+		channels[target.scope+"/"+target.bot].incoming <- botflota.IncomingMessage{
+			Bot: target.bot, SenderPhone: "before-" + target.bot,
+			Content: botflota.TextContent{Body: "hi"},
+		}
+		receive(t, channels[target.scope+"/"+target.bot].sent)
+	}
+
+	candidate, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load candidate: %v", err)
+	}
+	candidate.Scopes["other"] = other
+	changed := candidate.Scopes["dev"]
+	changed.Actions["greet"] = spec.Action{Steps: []spec.Step{
+		{Message: &spec.Message{Body: spec.Text{"changed in dev"}}},
+	}}
+	candidate.Scopes["dev"] = changed
+
+	applied, pending, err := runner.ApplyConfig(ctx, candidate, []string{"dev"}, nil)
+	if err != nil || len(pending) != 0 || !slices.Equal(applied, []string{"dev"}) {
+		t.Fatalf("ApplyConfig = %v, %v, %v", applied, pending, err)
+	}
+	runner.mu.Lock()
+	devGen, otherGen := runner.scopeGen["dev"], runner.scopeGen["other"]
+	runner.mu.Unlock()
+	if devGen != 1 || otherGen != 0 {
+		t.Fatalf("scope generations = dev:%d other:%d", devGen, otherGen)
+	}
+
+	channels["other/gamma"].incoming <- botflota.IncomingMessage{
+		Bot: "gamma", SenderPhone: "after-gamma",
+		Content: botflota.TextContent{Body: "hi"},
+	}
+	got := botflota.ContentText(receive(t, channels["other/gamma"].sent).Content)
+	if got != "hello from gamma" {
+		t.Fatalf("other scope reply = %q, want unchanged config", got)
+	}
+	cancel()
+}
+
+func TestNewSkipsBotWithSessionAtRemovedNode(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	store.chats["active"] = &botflota.Chat{
+		ID: 1, Scope: "dev", Bot: "alpha",
+	}
+	store.sessions[1] = &botflota.Session{
+		ChatID: 1, Node: "removed", ExpiresAt: time.Now().Add(time.Hour),
+	}
+	runner, err := New(cfg, Options{
+		Store: store, Chats: store, Senders: store, Messages: store,
+		Turn: store, Outbox: store,
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	foundPeer := false
+	for _, bot := range runner.Status() {
+		if bot.Scope == "dev" && bot.Bot == "alpha" {
+			t.Fatal("bot with a session at a removed node was initialized")
+		}
+		if bot.Scope == "dev" && bot.Bot == "beta" {
+			foundPeer = true
+		}
+	}
+	if !foundPeer {
+		t.Fatal("an unrelated bot was not initialized")
 	}
 }
 

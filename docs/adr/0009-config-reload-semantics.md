@@ -5,43 +5,49 @@ Status: Accepted (2026-09)
 ## Context
 
 A running fleet should adopt configuration changes without dropping WhatsApp
-sessions, and it must never lose the last known-good configuration. Operators
-edit YAML by hand, so reload cannot depend on a command they must remember.
-Hot reload is a first-class capability, not an operation to trigger.
-
-Two kinds of change exist: those a running bot can adopt at the next message or
-session, and those that change the shape of what is already running.
+connections, and it must never lose the last known-good runtime. YAML is the
+persisted source of behavior; the active runtime is a separate snapshot.
 
 ## Decision
 
-The fleet watches the main config file and every file reached through
-`include`, and reloads automatically when one changes. Watching is the
-mechanism; the CLI needs no `reload` command.
+The fleet watches the main config, included files, and include directories.
+Every detected change uses one pipeline: load the complete document, resolve
+includes and secrets, validate it, compare it with active configuration, check
+runtime compatibility, then publish safe changes. Manual edits and future API
+publication use this same pipeline; the API does not create a second source of
+behavior.
 
 Every reload runs the full pipeline: load, includes, interpolation, and
 semantic validation.
 
-- If validation fails, the previous configuration stays in effect and the
-  error is logged. No partial configuration is ever applied.
-- A change a bot can adopt safely at the next message or session is applied
-  immediately to every bot, without a restart and without touching connected
-  WhatsApp sessions.
-- A change that cannot be applied to a running bot — a global setting, a
-  removed bot, or a removed or structurally changed node or edge an active
-  session depends on — is not applied and is never kept silent. The fleet logs
-  a warning that a restart is required and names the change.
+- If loading or validation fails, the active runtime stays unchanged and the
+  error is logged. No partial document is applied.
+- Scope changes are compared independently. A safe change advances only the
+  affected scope's runtime snapshot; bots in other scopes are not rebuilt.
+  Bots in the changed scope adopt the new engine and filter between messages,
+  without reconnecting their channels or interrupting a turn.
+- A change to `shared`, when implemented, affects each scope whose resolved
+  model definition changes, not every scope merely because it shares a file.
+- Global settings, scope or bot membership, and channel/outbox settings remain
+  saved but inactive until restart. Their warning names the affected setting
+  or scope; unrelated safe scopes may still activate.
+- A graph topology or initial-context shape change waits while a bot has an
+  unexpired session. It is retried while the changed YAML remains present.
+  Startup also skips a bot whose active session points to a node absent from
+  the loaded graph; it never resets that session silently.
 
-Global settings and the set of bots require a restart; the running fleet keeps
-serving with the old values until then.
+The active snapshot can therefore differ from the saved YAML. A process restart
+activates restart-required settings; a pending graph edit activates when its
+sessions expire or the process restarts with compatible persisted sessions.
 
 ## Consequences
 
-- Safe changes reach production as soon as the file is saved; incompatible
-  ones are explicit and never silent.
-- Editing an included file triggers a reload too, so a multi-file config
-  behaves like one document.
-- Validation is all-or-nothing, so a broken edit cannot take the fleet down.
-- A pending queue, per-graph maintenance mode, and session draining are
-  deliberately out of scope for the MVP; a restart covers them.
-- Tests must cover validation fallback, live application, and the
-  restart-required warning.
+- API config publication, when added, writes YAML and invokes this same
+  pipeline; drafts remain a client concern.
+- A single manual write that changes several scopes is validated as one
+  candidate, then its safe scopes activate independently. A sequence of
+  separate file writes is not a transaction.
+- Invalid or pending changes remain visible in logs and never replace the
+  active snapshot. A later valid edit or an expired session is retried.
+- Tests cover include discovery, scope isolation, active-session compatibility,
+  validation fallback, and restart-required changes.

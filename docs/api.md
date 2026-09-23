@@ -45,7 +45,7 @@ principal read and publish that scope's configuration, including bots,
 graphs, actions, and settings, with the same validation as configuration-file
 loading. Publication is atomic, rejects stale versions, and reloads valid
 changes; changes the running instance cannot safely apply are reported as
-restart-required rather than presented as live (ROADMAP Phases 14–15; ADRs
+restart-required rather than presented as live (PLAN Phase 7; ADRs
 0002, 0009, and 0016).
 
 Instance-wide configuration and shared resources are owner operations. Scope
@@ -71,12 +71,14 @@ process restart must say so explicitly.
 Today, the API has owner and scoped bearer tokens, checks scope access on
 scope-addressed routes, reads scope configuration, and supports pairing,
 pairing cancellation, and unpairing while the fleet is running. The owner-only
-routes expose instance configuration and manage access tokens. The CLI uses
-the API for operational commands while the instance is running.
+routes expose instance configuration and manage access tokens. It does not yet
+write configuration. YAML edits currently enter through files; the watcher
+loads and validates them and activates only safe changed scopes (ADR 0009).
+The CLI uses the API for operational commands while the instance is running.
 
 The full target is not implemented yet: browser sessions, scope configuration
 publication, the complete set of bot and conversation controls, and the
-embedded dashboard arrive in later roadmap phases. In
-particular, the current reload contract still classifies changes to the bot
-set as requiring an instance restart (ADR 0009); per-bot configuration changes
-must not be described as live until that behavior changes.
+embedded dashboard remain planned. Scope publication is a Phase 7 deliverable;
+the later dashboard consumes it. Scope and bot membership changes and channel
+settings currently remain pending until restart; a graph topology change waits
+for active sessions in its scope to expire (ADR 0009).

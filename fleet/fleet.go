@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"reflect"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -49,16 +51,17 @@ type Options struct {
 type Fleet struct {
 	// mu guards the bot registry, the run context, and the recorded errors;
 	// a built *Bot is immutable afterwards.
-	mu   sync.Mutex
-	bots map[string]*Bot
-	cfg  *config.Config
-	opts Options
+	mu      sync.Mutex
+	applyMu sync.Mutex
+	bots    map[string]*Bot
+	cfg     *config.Config
+	opts    Options
 	// ctx is set by Run and cleared when it returns; a bot may start only
 	// while it is set (ADR 0022).
-	ctx  context.Context
-	gen  int64 // bumped by ApplyConfig; bots compare against it
-	errs []error
-	wait sync.WaitGroup
+	ctx      context.Context
+	scopeGen map[string]int64
+	errs     []error
+	wait     sync.WaitGroup
 }
 
 type Bot struct {
@@ -85,7 +88,8 @@ type Bot struct {
 	// started records that this bot has had a run goroutine, under
 	// Fleet.mu: StopBot waits on done for one, while a bot built but never
 	// started has no done to wait for.
-	started bool
+	started   bool
+	runtimeMu sync.Mutex
 }
 
 // New starts nothing and connects nothing. A bot whose pairing is missing is
@@ -121,7 +125,10 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.Log == nil {
 		opts.Log = botflota.DiscardLogger()
 	}
-	fleet := &Fleet{cfg: cfg, opts: opts, bots: make(map[string]*Bot)}
+	fleet := &Fleet{
+		cfg: cfg, opts: opts, bots: make(map[string]*Bot),
+		scopeGen: make(map[string]int64),
+	}
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		for _, botName := range config.SortedKeys(scope.Bots) {
@@ -134,6 +141,17 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 					"fleet: bot %q references unknown graph %q", botName, bot.Graph)
 			}
 			if opts.Skip != nil && opts.Skip(scopeName, botName) {
+				continue
+			}
+			invalid, err := fleet.hasInvalidActiveSession(
+				context.Background(), scopeName, botName, scope.Graphs[bot.Graph])
+			if err != nil {
+				return nil, fmt.Errorf(
+					"fleet: inspect sessions for %s/%s: %w", scopeName, botName, err)
+			}
+			if invalid {
+				opts.Log.Warn("bot not initialized; an active session references a removed node",
+					"scope", scopeName, "bot", botName)
 				continue
 			}
 			built, err := fleet.buildBot(scopeName, botName)
@@ -183,7 +201,7 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	})
 	return &Bot{
 		scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
-		filter: filter, fleet: f, gen: f.gen,
+		filter: filter, fleet: f, gen: f.scopeGen[scopeName],
 		stop: make(chan struct{}), done: make(chan struct{}),
 		log: botLog,
 		onError: func(err error) {
@@ -276,10 +294,23 @@ func (f *Fleet) Run(ctx context.Context) error {
 // under this lock before its final wait, so a pairing finishing as the
 // instance exits never joins a fleet that is shutting down.
 func (f *Fleet) StartBot(scope, name string) error {
+	f.applyMu.Lock()
+	defer f.applyMu.Unlock()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.ctx == nil || f.ctx.Err() != nil {
 		return errors.New("fleet: not running")
+	}
+	botSpec, ok := f.cfg.Scopes[scope].Bots[name]
+	if !ok {
+		return fmt.Errorf("fleet: unknown bot %s/%s", scope, name)
+	}
+	if invalid, err := f.hasInvalidActiveSession(
+		f.ctx, scope, name, f.cfg.Scopes[scope].Graphs[botSpec.Graph]); err != nil {
+		return err
+	} else if invalid {
+		return fmt.Errorf("fleet: active session for %s/%s references a removed node",
+			scope, name)
 	}
 	key := scope + "/" + name
 	if bot, ok := f.bots[key]; ok && bot.running.Load() {
@@ -292,6 +323,20 @@ func (f *Fleet) StartBot(scope, name string) error {
 	f.bots[key] = bot
 	f.startLocked(f.ctx, bot)
 	return nil
+}
+
+func (f *Fleet) hasInvalidActiveSession(
+	ctx context.Context, scope, bot string, graph spec.Graph,
+) (bool, error) {
+	return f.opts.Store.HasActiveSessionOutsideNodes(
+		ctx, scope, bot, config.SortedKeys(graph.Nodes), f.now())
+}
+
+func (f *Fleet) now() time.Time {
+	if f.opts.Now != nil {
+		return f.opts.Now()
+	}
+	return time.Now()
 }
 
 // StopBot stops one bot and waits for its full shutdown: the outbox drains,
@@ -328,14 +373,95 @@ func (f *Fleet) stopBot(scope, name string, discard bool) error {
 	return nil
 }
 
-// ApplyConfig adopts a validated configuration; each bot rebuilds its engine
-// and filter at its next message, which is where a bot can adopt a change
-// (ADR 0009).
-func (f *Fleet) ApplyConfig(cfg *config.Config) {
+// ApplyConfig adopts only safe changed scopes. A topology change waits until
+// every affected bot has no live session; other scopes remain untouched.
+func (f *Fleet) ApplyConfig(
+	ctx context.Context, cfg *config.Config, scopes []string, source *config.Source,
+) ([]string, map[string][]string, error) {
+	f.applyMu.Lock()
+	defer f.applyMu.Unlock()
+	f.mu.Lock()
+	plan := config.PlanReload(f.cfg, cfg)
+	actors := make([]*Bot, 0)
+	for _, bot := range f.orderedLocked() {
+		if slices.Contains(scopes, bot.scope) &&
+			len(plan.ScopeReasons[bot.scope]) == 0 {
+			actors = append(actors, bot)
+		}
+	}
+	f.mu.Unlock()
+	for _, bot := range actors {
+		bot.runtimeMu.Lock()
+	}
+	defer func() {
+		for i := len(actors) - 1; i >= 0; i-- {
+			actors[i].runtimeMu.Unlock()
+		}
+	}()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.cfg = cfg
-	f.gen++
+	applied := make([]string, 0, len(scopes))
+	pending := make(map[string][]string)
+	plan = config.PlanReload(f.cfg, cfg)
+	for _, scope := range scopes {
+		was, existed := f.cfg.Scopes[scope]
+		now, exists := cfg.Scopes[scope]
+		if !existed || !exists {
+			pending[scope] = []string{"scope set changed"}
+			continue
+		}
+		reasons := plan.ScopeReasons[scope]
+		if len(reasons) > 0 {
+			pending[scope] = reasons
+			continue
+		}
+		for _, bot := range config.SortedKeys(was.Bots) {
+			oldBot, nextBot := was.Bots[bot], now.Bots[bot]
+			if oldBot.Graph == nextBot.Graph && !graphTopologyChanged(
+				was.Graphs[oldBot.Graph], now.Graphs[nextBot.Graph]) {
+				continue
+			}
+			count, err := f.opts.Store.CountActive(ctx, scope, bot, f.now())
+			if err != nil {
+				return nil, nil, fmt.Errorf(
+					"fleet: count active sessions for %s/%s: %w", scope, bot, err)
+			}
+			if count > 0 {
+				reasons = append(reasons,
+					fmt.Sprintf("graph topology of bot %q has active sessions", bot))
+			}
+		}
+		if len(reasons) > 0 {
+			pending[scope] = reasons
+			continue
+		}
+		applied = append(applied, scope)
+	}
+	if len(applied) > 0 {
+		f.cfg = config.WithScopes(f.cfg, cfg, applied)
+		for _, scope := range applied {
+			f.scopeGen[scope]++
+		}
+	}
+	if source != nil {
+		source.Replace(config.WithScopes(source.Current(), cfg, applied))
+	}
+	return applied, pending, nil
+}
+
+func (f *Fleet) orderedLocked() []*Bot {
+	bots := make([]*Bot, 0, len(f.bots))
+	for _, bot := range f.bots {
+		bots = append(bots, bot)
+	}
+	sort.Slice(bots, func(i, j int) bool {
+		if bots[i].scope != bots[j].scope {
+			return bots[i].scope < bots[j].scope
+		}
+		return bots[i].name < bots[j].name
+	})
+	return bots
 }
 
 // refresh rebuilds one bot's engine and filter when a new config was applied.
@@ -343,11 +469,11 @@ func (f *Fleet) ApplyConfig(cfg *config.Config) {
 // those fields.
 func (f *Fleet) refresh(bot *Bot) error {
 	f.mu.Lock()
-	if bot.gen == f.gen {
+	if bot.gen == f.scopeGen[bot.scope] {
 		f.mu.Unlock()
 		return nil
 	}
-	cfg, gen := f.cfg, f.gen
+	cfg, gen := f.cfg, f.scopeGen[bot.scope]
 	f.mu.Unlock()
 
 	eng, filter, _, err := f.buildRuntime(cfg, bot.scope, bot.name)
@@ -356,6 +482,34 @@ func (f *Fleet) refresh(bot *Bot) error {
 	}
 	bot.engine, bot.filter, bot.gen = eng, filter, gen
 	return nil
+}
+
+func graphTopologyChanged(was, now spec.Graph) bool {
+	if was.Root != now.Root || was.Fallback != now.Fallback ||
+		!sameKeys(was.Nodes, now.Nodes) ||
+		!reflect.DeepEqual(was.InitialContext, now.InitialContext) {
+		return true
+	}
+	for name, oldNode := range was.Nodes {
+		next := now.Nodes[name]
+		if !reflect.DeepEqual(oldNode.InitialContext, next.InitialContext) ||
+			!reflect.DeepEqual(oldNode.Edges, next.Edges) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameKeys[V any](was, now map[string]V) bool {
+	if len(was) != len(now) {
+		return false
+	}
+	for key := range was {
+		if _, ok := now[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // startLocked launches one bot's run goroutine; the caller holds f.mu.
@@ -458,30 +612,34 @@ func (b *Bot) run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			b.log.Debug("message received",
-				"sender", msg.SenderPhone, "id", msg.ProviderMessageID,
-				"group", msg.IsGroup,
-				"kind", string(botflota.ContentKind(msg.Content)),
-				"body", botflota.ContentText(msg.Content))
-			if err := b.fleet.refresh(b); err != nil {
-				b.log.Warn("apply config change", "error", err)
-			}
-			if !b.filter.Allow(msg) {
-				b.log.Debug("message filtered", "sender", msg.SenderPhone)
-				continue
-			}
-			replies, err := b.engine.Handle(ctx, msg)
-			if err != nil {
-				b.log.Error("engine failed", "sender", msg.SenderPhone, "error", err)
-				b.onError(err)
-				continue
-			}
-			// The replies are committed with their turn; the wake only asks
-			// the worker to deliver them now.
-			if len(replies) > 0 {
-				b.outbox.Wake()
-			}
+			b.handleMessage(ctx, msg)
 		}
+	}
+}
+
+func (b *Bot) handleMessage(ctx context.Context, msg botflota.IncomingMessage) {
+	b.runtimeMu.Lock()
+	defer b.runtimeMu.Unlock()
+	b.log.Debug("message received",
+		"sender", msg.SenderPhone, "id", msg.ProviderMessageID,
+		"group", msg.IsGroup,
+		"kind", string(botflota.ContentKind(msg.Content)),
+		"body", botflota.ContentText(msg.Content))
+	if err := b.fleet.refresh(b); err != nil {
+		b.log.Warn("apply config change", "error", err)
+	}
+	if !b.filter.Allow(msg) {
+		b.log.Debug("message filtered", "sender", msg.SenderPhone)
+		return
+	}
+	replies, err := b.engine.Handle(ctx, msg)
+	if err != nil {
+		b.log.Error("engine failed", "sender", msg.SenderPhone, "error", err)
+		b.onError(err)
+		return
+	}
+	if len(replies) > 0 {
+		b.outbox.Wake()
 	}
 }
 

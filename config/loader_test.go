@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,25 @@ func TestLoadExample(t *testing.T) {
 	}
 	if len(cfg.Scopes["support"].Actions) == 0 {
 		t.Fatal("expected actions under the support scope")
+	}
+}
+
+func TestWatchPathsIncludeTheBaseOfGlobIncludes(t *testing.T) {
+	dir := t.TempDir()
+	parts := filepath.Join(dir, "parts")
+	if err := os.MkdirAll(filepath.Join(parts, "one"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTemp(t, filepath.Join(parts, "one"), "scope.yml",
+		"scopes:\n  support: {}\n")
+	main := writeTemp(t, dir, "config.yml",
+		"version: 1\ninclude: [parts/*/*.yml]\nscopes: {}\n")
+	cfg, err := testLoader().Load(main)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !slices.Contains(cfg.WatchPaths(), parts) {
+		t.Fatalf("WatchPaths = %v, want glob base %q", cfg.WatchPaths(), parts)
 	}
 }
 
