@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/felixzsh/botflota"
@@ -55,7 +56,11 @@ type outbox struct {
 	// closing is closed by Close; an empty queue then ends the worker.
 	closing   chan struct{}
 	done      chan struct{}
+	startOnce sync.Once
 	closeOnce sync.Once
+	discard   atomic.Bool
+	paceCtx   context.Context
+	cancel    context.CancelFunc
 
 	// windowStart and count pace max_messages_per_minute (ADR 0011).
 	mu          sync.Mutex
@@ -88,14 +93,22 @@ func newOutbox(cfg outboxConfig) *outbox {
 	if cfg.Log == nil {
 		cfg.Log = botflota.DiscardLogger()
 	}
+	paceCtx, cancel := context.WithCancel(context.Background())
 	q := &outbox{
 		cfg:     cfg,
 		wake:    make(chan struct{}, 1),
 		closing: make(chan struct{}),
 		done:    make(chan struct{}),
+		paceCtx: paceCtx,
+		cancel:  cancel,
 	}
-	go q.run()
 	return q
+}
+
+// Start begins delivery after the channel has connected. Calling it more
+// than once is harmless.
+func (q *outbox) Start() {
+	q.startOnce.Do(func() { go q.run() })
 }
 
 // Wake asks the worker to read the queue now; a queued reply does not wait
@@ -107,12 +120,30 @@ func (q *outbox) Wake() {
 	}
 }
 
-// Close stops the worker once what is due has gone out: a scheduled retry
-// waits for the queue's next run with the same account, and while it heads
-// the queue nothing behind it moves (ADR 0011, ADR 0040).
-func (q *outbox) Close() { q.closeOnce.Do(func() { close(q.closing) }) }
+// Close drains due replies if delivery started. A scheduled retry remains for
+// the next run with the same account; closing an unstarted worker sends none.
+func (q *outbox) Close() {
+	q.closeOnce.Do(func() {
+		close(q.closing)
+		q.startOnce.Do(func() {
+			q.cancel()
+			close(q.done)
+		})
+	})
+}
 
-func (q *outbox) Wait() { <-q.done }
+// Discard stops after any send already in progress. Unpair uses it to leave
+// queued replies for FailPending instead of delivering them from a new link.
+func (q *outbox) Discard() {
+	q.discard.Store(true)
+	q.cancel()
+	q.Close()
+}
+
+func (q *outbox) Wait() {
+	<-q.done
+	q.cancel()
+}
 
 // Depth reports the replies still waiting. It reads the queue directly: a
 // status question deserves the stored truth, and the driver bounds the query
@@ -128,12 +159,19 @@ func (q *outbox) Depth() int {
 
 func (q *outbox) run() {
 	defer close(q.done)
+	defer q.cancel()
 	ticker := time.NewTicker(q.cfg.Poll)
 	defer ticker.Stop()
 	var last time.Time
 	for {
+		if q.discard.Load() {
+			return
+		}
 		entry, err := q.next()
 		if err != nil {
+			if q.discard.Load() {
+				return
+			}
 			q.cfg.Log.Error("outbox read failed", "error", err)
 			select {
 			case <-q.closing:
@@ -152,6 +190,9 @@ func (q *outbox) run() {
 			case <-ticker.C:
 			}
 			continue
+		}
+		if q.discard.Load() {
+			return
 		}
 		// The head waits out its retry and everything behind it waits
 		// with it: the queue is FIFO, and a shutdown leaves the schedule
@@ -174,17 +215,20 @@ func (q *outbox) run() {
 		if !last.IsZero() {
 			pacing := q.cfg.Delay + q.jitter()
 			if pacing > 0 {
-				_ = q.cfg.Sleep(context.Background(), pacing)
+				_ = q.cfg.Sleep(q.paceCtx, pacing)
 			}
 		}
 		q.waitRate()
+		if q.discard.Load() {
+			return
+		}
 		last = q.cfg.Now()
 		q.send(*entry)
 	}
 }
 
 func (q *outbox) next() (*botflota.OutboxEntry, error) {
-	entries, err := q.cfg.Store.NextPending(context.Background(),
+	entries, err := q.cfg.Store.NextPending(q.paceCtx,
 		q.cfg.Scope, q.cfg.Bot, 1)
 	if err != nil {
 		return nil, err
@@ -235,7 +279,7 @@ func (q *outbox) waitRate() {
 	if q.count >= q.cfg.MaxPerMinute {
 		wait := q.windowStart.Add(time.Minute).Sub(now)
 		q.cfg.Log.Debug("rate limited", "wait", wait)
-		_ = q.cfg.Sleep(context.Background(), wait)
+		_ = q.cfg.Sleep(q.paceCtx, wait)
 		q.windowStart = q.cfg.Now()
 		q.count = 0
 	}

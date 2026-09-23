@@ -24,9 +24,15 @@ type fakeChannel struct {
 	entered chan struct{}
 	once    sync.Once
 
+	connectEntered chan struct{}
+	connectRelease chan struct{}
+	connectErr     error
+	connectOnce    sync.Once
+
 	mu           sync.Mutex
 	connected    bool
 	disconnected bool
+	sendCalls    int
 }
 
 func newFakeChannel() *fakeChannel {
@@ -36,7 +42,20 @@ func newFakeChannel() *fakeChannel {
 	}
 }
 
-func (c *fakeChannel) Connect(context.Context) error {
+func (c *fakeChannel) Connect(ctx context.Context) error {
+	if c.connectEntered != nil {
+		c.connectOnce.Do(func() { close(c.connectEntered) })
+	}
+	if c.connectRelease != nil {
+		select {
+		case <-c.connectRelease:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if c.connectErr != nil {
+		return c.connectErr
+	}
 	c.mu.Lock()
 	c.connected = true
 	c.mu.Unlock()
@@ -52,8 +71,15 @@ func (c *fakeChannel) Disconnect(context.Context) error {
 }
 
 func (c *fakeChannel) Send(_ context.Context, msg botflota.OutgoingMessage) (string, error) {
+	c.mu.Lock()
+	c.sendCalls++
+	connected := c.connected
+	c.mu.Unlock()
 	if c.entered != nil {
 		c.once.Do(func() { close(c.entered) })
+	}
+	if !connected {
+		return "", errors.New("not connected")
 	}
 	if c.release != nil {
 		<-c.release
@@ -77,6 +103,12 @@ func (c *fakeChannel) wasDisconnected() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.disconnected
+}
+
+func (c *fakeChannel) sendCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sendCalls
 }
 
 type memStore struct {

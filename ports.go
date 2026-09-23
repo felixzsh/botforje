@@ -279,11 +279,11 @@ type AccessTokenStore interface {
 
 // PairingRunner drives the live pairing session of one bot, so the CLI and a
 // dashboard link an account through the same path (ADR 0025). StartPair
-// answers ErrBusy while a session for that bot still runs, CurrentPair
-// answers ErrNotFound when there is none, CancelPair is idempotent once a
-// session is final, and EndPair ends the live session and waits for its
-// goroutine, so an unpair never races the pairing that stores the account
-// (ADR 0021).
+// answers ErrBusy while a session goroutine for that bot is unfinished,
+// CurrentPair answers ErrNotFound when there is none, CancelPair is
+// idempotent once a session is final, and EndPair waits for any published
+// session's goroutine even after its state is final, so an unpair never races
+// its writes (ADR 0021).
 type PairingRunner interface {
 	StartPair(
 		ctx context.Context, scope, bot string, req PairRequest,

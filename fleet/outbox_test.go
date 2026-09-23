@@ -94,6 +94,7 @@ func TestOutboxSendsQueuedRepliesInOrder(t *testing.T) {
 	}
 	sender := &recordingSender{}
 	queue := newOutbox(workerConfig(store, sender.send))
+	queue.Start()
 
 	waitDepthZero(t, store)
 	queue.Close()
@@ -113,6 +114,7 @@ func TestOutboxDrainsAfterClose(t *testing.T) {
 	seedReply(store, 2)
 	sender := &recordingSender{}
 	queue := newOutbox(workerConfig(store, sender.send))
+	queue.Start()
 	queue.Close()
 
 	done := make(chan struct{})
@@ -169,6 +171,7 @@ func TestOutboxPacingWaitsBetweenReplies(t *testing.T) {
 	cfg.Now = clk.Now
 	cfg.Sleep = clk.Sleep
 	queue := newOutbox(cfg)
+	queue.Start()
 
 	waitDepthZero(t, store)
 	queue.Close()
@@ -194,6 +197,7 @@ func TestOutboxRateLimitWaitsTheWindow(t *testing.T) {
 	cfg.Now = clk.Now
 	cfg.Sleep = clk.Sleep
 	queue := newOutbox(cfg)
+	queue.Start()
 
 	waitDepthZero(t, store)
 	queue.Close()
@@ -218,6 +222,7 @@ func TestOutboxRetriesThenSends(t *testing.T) {
 	cfg.MaxAttempts = 5
 	cfg.RetryBase = time.Millisecond
 	queue := newOutbox(cfg)
+	queue.Start()
 
 	waitDepthZero(t, store)
 	queue.Close()
@@ -251,6 +256,7 @@ func TestOutboxGivesUpAfterMaxAttempts(t *testing.T) {
 		mu.Unlock()
 	}
 	queue := newOutbox(cfg)
+	queue.Start()
 
 	waitDepthZero(t, store)
 	queue.Close()
@@ -295,6 +301,7 @@ func TestOutboxRetryHeadBlocksTheRepliesBehindIt(t *testing.T) {
 	cfg := workerConfig(store, sender.send)
 	cfg.RetryBase = 20 * time.Millisecond
 	queue := newOutbox(cfg)
+	queue.Start()
 
 	waitAttempts(t, sender, 1)
 	seedReply(store, 2) // arrives while reply 1 waits for its retry
@@ -319,6 +326,7 @@ func TestOutboxCloseKeepsScheduledRepliesPending(t *testing.T) {
 	cfg := workerConfig(store, sender.send)
 	cfg.RetryBase = time.Minute
 	queue := newOutbox(cfg)
+	queue.Start()
 
 	waitAttempts(t, sender, 1)
 	seedReply(store, 2)

@@ -35,7 +35,8 @@ that nobody reads.
   out its retry there, so a later reply never overtakes it, and a shutdown
   leaves a scheduled retry to the same account's next run. Unlinking or
   replacing a link fails its queued replies with the reason, so a new
-  account never sends the old link's replies.
+  account never sends the old link's replies. Unlink finishes only a send
+  already in progress; it does not drain the remaining queue.
 - Inbound applies backpressure: a full channel queue blocks the whatsmeow
   event handler until the bot actor takes the message; it never discards
   (ADR 0011 promised bounded queues, not drops).

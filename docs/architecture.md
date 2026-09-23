@@ -470,10 +470,12 @@ pair, whichever way the instance is running.
 
 Botflota runs in the foreground and owns no service management. It shuts down
 in order on SIGINT or SIGTERM, draining each bot's outbox before disconnecting
-(ADR 0011). Starting, stopping, and restarting the process belong to systemd,
-Docker, or another supervisor. Botflota neither detects nor invokes one. The
-CLI has no `stop` or `restart`; `fleet status` reads the API, and config hot
-reload is automatic (ADR 0009, ADR 0025).
+(ADR 0011). Unpair finishes a send already in progress and fails the remaining
+queued replies before removing the account (ADR 0040). Starting, stopping, and
+restarting the process belong to systemd, Docker, or another supervisor.
+Botflota neither detects nor invokes one. The CLI has no `stop` or `restart`;
+`fleet status` reads the API, and config hot reload is automatic (ADR 0009,
+ADR 0025).
 
 ## Logging
 

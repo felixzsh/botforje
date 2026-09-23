@@ -52,7 +52,8 @@ the API validates and publishes YAML fragments.
 
 Bot operations address one `(scope, bot)` at a time. Pairing and unpairing
 already work through the API while the instance runs; unpairing stops only that
-bot and ends replies queued for its old account. The target adds the remaining
+bot, lets a send already in progress finish, and fails the rest of its queued
+replies before the account is removed. The target adds the remaining
 scope operations, including bot controls and complete configuration editing,
 without stopping peer bots. Ordinary errors in one bot must remain local to
 that bot.

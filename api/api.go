@@ -22,9 +22,9 @@ import (
 
 type Fleet interface {
 	Status() []botflota.BotStatus
-	// StopBot waits for one bot to drain and disconnect, so its credentials
-	// may be replaced underneath (ADR 0021).
-	StopBot(scope, bot string) error
+	// StopBotForUnpair lets a send already in progress finish, but leaves
+	// the rest of the queue for the unpair operation to fail (ADR 0040).
+	StopBotForUnpair(scope, bot string) error
 }
 
 // Options are the dependencies fleet run injects; every field is required

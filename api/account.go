@@ -10,10 +10,10 @@ import (
 // handleAccountDelete drops the bot's link to its provider as one operation
 // under the bot's lock: the live pairing session ends and its goroutine
 // finishes first — a session that stored the account only loses its import
-// wait and still reports that link — then the running bot stops, because
-// StopBot waits for the disconnect and one phone keeps one connection (ADR
-// 0021), and only then are the credentials and the account record removed
-// (ADR 0039).
+// wait and still reports that link — then the running bot stops, allowing an
+// in-flight send to finish before disconnecting while pending replies remain
+// for failure, and only then are the credentials and account removed (ADRs
+// 0021, 0039, 0040).
 func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.scopeParam(w, r)
 	if !ok {
@@ -39,7 +39,7 @@ func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "end pairing", err)
 		return
 	}
-	if err := s.fleet.StopBot(scope, bot); err != nil {
+	if err := s.fleet.StopBotForUnpair(scope, bot); err != nil {
 		s.fail(w, "stop bot", err)
 		return
 	}

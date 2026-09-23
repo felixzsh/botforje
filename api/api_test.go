@@ -39,7 +39,7 @@ type fakeFleet struct {
 
 func (f *fakeFleet) Status() []botflota.BotStatus { return f.statuses }
 
-func (f *fakeFleet) StopBot(scope, bot string) error {
+func (f *fakeFleet) StopBotForUnpair(scope, bot string) error {
 	if f.onStop != nil {
 		f.onStop()
 	}

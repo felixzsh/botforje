@@ -147,7 +147,8 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 }
 
 // buildBot constructs one configured bot's engine, channel, and outbox from
-// the config the fleet was built with; it starts nothing.
+// the config the fleet was built with; it does not connect the channel or
+// start the outbox worker.
 func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	cfg := f.cfg
 	eng, filter, settings, err := f.buildRuntime(cfg, scopeName, botName)
@@ -301,11 +302,24 @@ func (f *Fleet) StartBot(scope, name string) error {
 // stopping is never reported finished early. A bot that never started has
 // no goroutine to wait for and answers nil, so the operation is idempotent.
 func (f *Fleet) StopBot(scope, name string) error {
+	return f.stopBot(scope, name, false)
+}
+
+// StopBotForUnpair lets an in-flight send finish but does not drain later
+// replies; the account removal marks those replies failed (ADR 0040).
+func (f *Fleet) StopBotForUnpair(scope, name string) error {
+	return f.stopBot(scope, name, true)
+}
+
+func (f *Fleet) stopBot(scope, name string, discard bool) error {
 	f.mu.Lock()
 	bot, ok := f.bots[scope+"/"+name]
 	if !ok || !bot.started {
 		f.mu.Unlock()
 		return nil
+	}
+	if discard {
+		bot.outbox.Discard()
 	}
 	bot.stopOnce.Do(func() { close(bot.stop) })
 	done := bot.done
@@ -418,13 +432,8 @@ func (f *Fleet) Status() []botflota.BotStatus {
 }
 
 func (b *Bot) run(ctx context.Context) error {
-	if err := b.channel.Connect(ctx); err != nil {
-		b.log.Error("channel connect failed", "error", err)
-		return err
-	}
-	b.log.Info("bot started")
 	defer func() {
-		// Stop accepting, let queued messages go out, then disconnect.
+		// Cleanup also runs when the initial channel connection fails.
 		b.outbox.Close()
 		b.outbox.Wait()
 		if err := b.channel.Disconnect(context.Background()); err != nil {
@@ -432,6 +441,12 @@ func (b *Bot) run(ctx context.Context) error {
 		}
 		b.log.Info("bot stopped")
 	}()
+	if err := b.channel.Connect(ctx); err != nil {
+		b.log.Error("channel connect failed", "error", err)
+		return err
+	}
+	b.log.Info("bot started")
+	b.outbox.Start()
 	incoming := b.channel.Incoming()
 	for {
 		select {

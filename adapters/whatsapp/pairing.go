@@ -36,9 +36,8 @@ type PairManager struct {
 	pair     func(context.Context, PairOptions) (PairResult, error)
 	mu       sync.Mutex
 	sessions map[string]*pairingSession
-	// closed stops new sessions; wg waits for the running ones.
+	// closed stops new sessions.
 	closed bool
-	wg     sync.WaitGroup
 }
 
 // errPairingClosed reports StartPair after Close.
@@ -119,20 +118,24 @@ func (m *PairManager) StartPair(
 		cancel()
 		return nil, errPairingClosed
 	}
-	if current, ok := m.sessions[key]; ok && !current.state.Final() {
-		m.mu.Unlock()
-		session.timer.Stop()
-		cancel()
-		return nil, botflota.ErrBusy
+	if current, ok := m.sessions[key]; ok {
+		select {
+		case <-current.closed:
+		default:
+			m.mu.Unlock()
+			session.timer.Stop()
+			cancel()
+			return nil, botflota.ErrBusy
+		}
 	}
 	m.sessions[key] = session
+	// Publish before releasing the same lock Close uses to set m.closed;
+	// Close waits this session even before its goroutine is launched.
 	m.mu.Unlock()
 
 	opts.RenderQR = func(code string) { m.setCode(key, code) }
 	opts.OnSaved = func() { m.markSaved(key, session) }
-	m.wg.Add(1)
 	go func() {
-		defer m.wg.Done()
 		defer close(session.closed)
 		result, err := m.pair(pairCtx, opts)
 		m.finish(key, session, result, err)
@@ -149,16 +152,19 @@ func (m *PairManager) Close() {
 	}
 	m.mu.Lock()
 	m.closed = true
+	closed := make([]<-chan struct{}, 0, len(m.sessions))
 	for _, session := range m.sessions {
-		if session.state.Final() {
-			continue
+		closed = append(closed, session.closed)
+		if !session.state.Final() {
+			m.endLocked(session, botflota.PairCancelled)
+			// A saved pairing keeps its outcome; only its wait has to end.
+			session.cancel()
 		}
-		m.endLocked(session, botflota.PairCancelled)
-		// A saved pairing keeps its outcome; only its wait has to end.
-		session.cancel()
 	}
 	m.mu.Unlock()
-	m.wg.Wait()
+	for _, done := range closed {
+		<-done
+	}
 }
 
 func (m *PairManager) CurrentPair(
@@ -206,14 +212,16 @@ func (m *PairManager) EndPair(ctx context.Context, scope, bot string) error {
 	key := scope + "/" + bot
 	m.mu.Lock()
 	session, ok := m.sessions[key]
-	if !ok || session.state.Final() {
+	if !ok {
 		m.mu.Unlock()
 		return nil
 	}
 	session.teardown = true
-	m.endLocked(session, botflota.PairCancelled)
-	if session.saved {
-		session.cancel()
+	if !session.state.Final() {
+		m.endLocked(session, botflota.PairCancelled)
+		if session.saved {
+			session.cancel()
+		}
 	}
 	closed := session.closed
 	m.mu.Unlock()
