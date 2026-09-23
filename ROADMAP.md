@@ -39,10 +39,22 @@ phase below builds on.
 
 These shape every phase and become ADRs when the phase that owns them starts.
 
-- One binary, two audiences: an instance view (every scope) and a scoped view
-  (one scope) that cannot prove another scope exists.
+- One binary, two audiences: the host's instance view can access every scope;
+  a scoped view reaches one or more authorized scopes and cannot prove another
+  scope exists.
 - Scope is the isolation boundary. Isolation is enforced on the server for
   every route, never in the UI.
+- The API is the complete control plane for scope operations: every
+  host- or user-initiated capability on scope-owned configuration, bots, and
+  data is available through the API, authorized by scope and role. The
+  dashboard and integrations use the same API; they never bypass it.
+- One process may run bots across many scopes. A bot's lifecycle operation or
+  ordinary runtime error must not stop its peers; the host's supervisor owns
+  process lifecycle.
+- The owner can operate on every scope and manage instance-level settings.
+  Scoped authority is limited to its authorized scopes and role; instance-wide
+  settings and process lifecycle are outside that authority. A request to
+  restart the process is owner-only and delegates to the host's supervisor.
 - Botflota knows nothing about whoever hosts it: it knows trusted issuers,
   scoped credentials, and webhooks, and the host's account system lives outside
   this repository.
@@ -111,7 +123,8 @@ Deliverables:
 - [ ] Fleet overview: per-bot connection state, uptime, outbox depth, active
   sessions, and last error.
 - [ ] Scope list and per-scope bot list. The scope is part of every URL and
-  page title, so the scoped view of Phase 13 is the same pages with one scope.
+  page title, so the scoped view of Phase 13 is the same pages limited to the
+  scopes authorized for that principal.
 - [ ] Live conversation view: inbound and outbound timeline per chat,
   streaming, with the session and its visited nodes beside it.
 - [ ] Chat and message search over history, with the indexes those reads need
@@ -142,6 +155,8 @@ Deliverables:
   visited nodes.
 - [ ] Bot actions: reconnect, re-pair, unpair, and stop, each with an audit
   entry and a confirmation step for destructive ones.
+- [ ] Conversation and bot controls are API operations addressed to their
+  scope-owned resources; acting on one chat or bot never stops peer bots.
 - [ ] Outbox view with queued and failed messages, retry, and cancel.
 - [ ] Audit log: actor, action, scope, target, and time for every human
   action; messages written by a human are marked as such.
@@ -153,21 +168,22 @@ with no bot reply in between and a complete audit trail.
 
 ### Phase 13 — Authority and scoped credentials
 
-Goal: one instance natively serves two audiences — the host, who sees
-everything, and a scoped principal, who sees exactly one scope and cannot
-prove another exists.
+Goal: one instance natively serves two audiences — the host, who sees the
+whole instance, and a scoped principal, who sees one or more authorized scopes
+and cannot prove another exists.
 
 Deliverables:
 
 - [ ] ADR: authority model. A credential yields a principal with an authority
-  (`instance` or one scope), a role, and an expiry. Every route resolves a
-  target scope, and authorization is one check against that principal.
+  (`instance` or one or more scopes), a role, and an expiry. Every route
+  resolves a target scope, and authorization is one check against that
+  principal.
 - [ ] It replaces the resolver Phase 7 and Phase 10 introduced, not the route
   shapes those phases settled.
 - [ ] ADR: delegated sign-in (see below).
 - [ ] Roles, kept small: `viewer` reads, `operator` also controls
-  conversations, `admin` also manages configuration and tokens inside the
-  scope. Instance authority additionally has `owner`.
+  conversations and bot operations, `admin` also manages configuration and
+  tokens inside the scope. Instance authority additionally has `owner`.
 - [x] Scoped access tokens: mint, list, revoke, hashed at rest, optional
   expiry, usable by scripts and by server-to-server callers. (Landed with the
   authorization base in Phase 7.)
@@ -200,24 +216,26 @@ Deliverables:
 - Rationale: no callback, no shared session state, no vendor vocabulary, and a
   token minted for one instance is useless on another.
 
-Gate: the same binary serves an instance dashboard that sees every scope and a
-scope dashboard that sees one, and the isolation test suite passes with no
-route exempt.
+Gate: the same binary serves an instance dashboard that sees every scope and
+a scoped dashboard that sees only its one or more authorized scopes; the
+isolation test suite passes with no route exempt.
 
 ### Phase 14 — Scoped surface and host integration
 
-Goal: a scoped user lands in Botflota and sees only their scope, while the
-system that authenticated them stays something Botflota knows nothing about.
+Goal: a scoped user lands in Botflota and sees only their authorized scopes,
+while the system that authenticated them stays something Botflota knows
+nothing about.
 
 Deliverables:
 
-- [ ] Scope projection of the dashboard: the same pages with no scope switcher
-  and no instance settings, and a header that shows the scope name.
+- [ ] Scope projection of the dashboard: the same pages, navigation limited
+  to the credential's authorized scopes, no instance settings, and the active
+  scope shown in the header.
 - [ ] Scope provisioning: apply a scope config document to the running
   instance (validate, write one include fragment per scope, reload, keep the
   previous state on any error), so a scope is created without hand-editing the
-  main file. Reuses include fragments (ADR 0016) and reload classes
-  (ADR 0009).
+  main file. Applying it affects only that scope and keeps peer bots running.
+  Reuses include fragments (ADR 0016) and reload classes (ADR 0009).
 - [ ] Instance identity: `instance_id`, version, and build info in responses
   and events, so a caller with several instances can tell them apart.
 - [ ] Signed outbound webhooks with retries and backoff: bot connected,
@@ -231,9 +249,10 @@ Deliverables:
 - [ ] Tests: a stub issuer signs a token, a browser lands in the scoped
   dashboard, and webhooks are delivered with retry and signature checks.
 
-Gate: an external harness acting as an issuer creates a scope, signs a
-sign-in token, lands a browser, sees only that scope, and receives usage
-webhooks, with no code for any particular host inside Botflota.
+Gate: an external harness acting as an issuer creates scopes, signs a
+sign-in token, lands a browser, sees only the token's authorized scopes, and
+receives usage webhooks; scope provisioning leaves peer bots running, with no
+code for any particular host inside Botflota.
 
 ### Phase 15 — Behavior editor and YAML publishing
 
@@ -256,6 +275,9 @@ Deliverables:
   incompatible ones are kept and reported as restart-required.
 - [ ] Editors for bots, graphs, nodes, edges, actions, steps, guards, llms,
   and scope settings, with a YAML view beside the form.
+- [ ] Scope publication starts, stops, or rebuilds only affected bot actors;
+  peer bots remain live. Revisit the current restart classification in ADR
+  0009 when implementing this; instance-wide settings stay owner-only.
 - [ ] Graph editor: topology view with node and edge editing, and
   reachability and reference errors shown in place.
 - [ ] Simulator: run a scripted conversation against the draft graph on the

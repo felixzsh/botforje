@@ -351,6 +351,10 @@ configured maximum.
 
 ## REST API
 
+The API's scope-coverage and authority contract, including current status and
+the target, lives in [`api.md`](api.md); this section describes the current
+composition and mechanics.
+
 `fleet run` hosts the API in the same process when `port` is set; `port: 0`
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;

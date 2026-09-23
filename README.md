@@ -2,13 +2,17 @@
 
 Declarative WhatsApp bot framework written in Go. Define bots, conversation
 graphs, and actions in YAML; one instance runs a fleet of WhatsApp accounts
-through the native Multi-Device protocol, with no browser automation.
+across scopes through the native Multi-Device protocol, with no browser
+automation.
 
 ## Principles
 
 - Declarative first: behavior lives in YAML; changing a bot never means
   changing the runtime.
-- One runtime: a single binary, no mandatory auxiliary processes.
+- One runtime: a single Go process runs the fleet across scopes, with no
+  browser process per bot or mandatory auxiliary process (ADR 0001).
+- Per-bot operations: pairing or unpairing one bot does not stop its peers;
+  process lifecycle belongs to the host's supervisor (ADR 0039).
 - The graph is the core: models drive and enrich conversations but never
   replace the state machine. A System One model routes and replies are
   prescribed by default; a generative LLM is opt-in. That AI layer is the
