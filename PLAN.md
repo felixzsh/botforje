@@ -259,9 +259,17 @@ Deliverables:
   scoped token only its scopes. It writes canonical YAML atomically, validates
   with the normal loader, and invokes the same activation pipeline as a manual
   edit; drafts and edit forms stay client-side. Each publication carries the
-  version it was based on; serialize commits per scope, reject stale versions
-  with a conflict instead of queueing or overwriting, and make identical
-  publishes no-ops. Different scope fragments must merge without lost updates.
+  logical scope version it was based on. Resolve every existing entity to its
+  source file, edit only those definitions, place new ones in a deterministic
+  API-managed scope fragment, and never rewrite the hand-maintained main file.
+  Stage all affected files and publish them as one recoverable all-or-nothing
+  change. Serialize overlapping file commits; rebase a scope edit over API
+  changes to other scopes in the same file, but reject a stale edit to that
+  same scope with a conflict. Identical publishes are no-ops; do not queue or
+  silently overwrite stale edits. Preserve unrelated scopes and definitions.
+  Tests cover scopes spread across nested includes, two concurrent scopes in
+  one physical file, same-scope conflicts, API-managed new definitions, and
+  rollback after a multi-file publication failure.
   Validate before disk writes and leave files untouched on failure. Return
   detailed validation errors to the owner and for the caller's authorized
   scope; return a generic error for invalid configuration outside that scope

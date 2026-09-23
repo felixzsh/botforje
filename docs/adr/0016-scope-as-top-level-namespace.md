@@ -43,7 +43,8 @@ Includes:
 - Any file may `include` others; included files use the same `scopes` shape and
   may not set global settings.
 - Several files may contribute to the same scope; a duplicate `(scope, type,
-  name)` is an error.
+  name)` is an error. Distinct entities in one scope may therefore have
+  different source files; the loader records the defining file for each one.
 - Include paths resolve relative to the including file.
 - A file already loaded is skipped, which allows diamond includes and breaks
   cycles.
@@ -55,3 +56,6 @@ Includes:
 - Sessions are isolated per scope; two scopes never share conversation state.
 - One file per scope, or several fragments per scope, both work and match a
   folder layout without the folder defining the namespace.
+- A scope is the logical unit exposed by the API. Its storage layout stays
+  internal; API publication uses entity origins for edits and a managed
+  fragment for new definitions (ADR 0002).

@@ -52,14 +52,26 @@ Instance-wide configuration and shared resources are owner operations. Scope
 configuration does not become a second source of truth in the API or dashboard:
 the API validates and publishes YAML fragments.
 
-### Publication concurrency (planned)
+### Source files and publication concurrency (planned)
 
-The API writer is not implemented yet. When added, each scope publication will
-carry the version the editor read. The server serializes commits to that
-scope's fragment and atomically replaces it only if the expected version still
-matches. A stale edit gets a conflict and must be reloaded and reconciled by
-the caller; the server does not queue or silently retry it. A token does not
-limit itself to one in-flight request, so authorization is not a concurrency
+The API writer is not implemented yet. The API treats a scope as one logical
+document, independent of how its entities are distributed across the main YAML
+and nested includes. The loader already records the source file for each
+entity. The writer must use that origin map to update or remove existing
+definitions in their source files, preserving unrelated entities and scopes.
+New definitions go to a deterministic API-managed scope fragment; the API
+never rewrites the hand-maintained main file just to add an entity.
+
+Each publication carries the logical scope version the editor read. At commit,
+the server reloads the latest include tree, applies the requested scope change
+to its source files, validates the complete candidate, and publishes every
+affected file as one recoverable all-or-nothing change. It serializes writes to
+overlapping files. If another API publication changed only a different scope
+in a shared file, the server rebases the requested scope onto that latest
+file content so neither update is lost. If the target scope itself changed
+since it was read, the caller gets a conflict and must reload and reconcile;
+the server does not queue or silently retry stale edits. A token does not limit
+itself to one in-flight request, so authorization is not a concurrency
 control.
 
 The API validates the complete candidate before writing. If the proposed
@@ -68,11 +80,11 @@ for validation errors in its own scope; if loading is blocked by invalid
 configuration outside its authority or by an instance-wide error, it receives
 only a generic failure. The owner can inspect the full diagnostic.
 
-Publications to different scope fragments may proceed independently. Their
-validated results merge into the active instance snapshot without dropping
-another scope's update. Re-publishing identical content is a no-op. The API
-uses the same load, validate, compatibility, and scope activation pipeline as
-the file watcher; it does not edit a separate in-memory YAML source.
+Publications to different scopes merge into the active instance snapshot
+without dropping another scope's update, even when their definitions share a
+physical file. Re-publishing identical content is a no-op. The API uses the
+same load, validate, compatibility, and scope activation pipeline as the file
+watcher; it does not edit a separate in-memory YAML source.
 
 The UI keeps drafts client-side. On a conflict it reloads the latest scope
 version and asks the user to reconcile before saving again.
