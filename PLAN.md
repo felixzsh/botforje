@@ -101,6 +101,9 @@ Deliverables:
 - [x] SQLite setup with the schema applied on open; pure-Go driver, WAL,
   foreign keys, busy timeout, and synchronous=NORMAL (ADR 0006).
 - [x] Stores: chats, sessions, and messages.
+- [x] Atomic turn: the engine commits the session, the stored messages, the
+  chat activity, the guards, and the queued replies as one transaction, and
+  drops a redelivery before any action runs (ADR 0040).
 - [x] Repository interfaces owned by the domain; SQL stays in the adapter.
 - [x] Tests: schema apply, store round-trips, and session resume after restart.
 - [x] Race testing: `make test-race` (`go test -race ./...`) and use it
@@ -180,6 +183,10 @@ Deliverables:
   the channel adapter, which sees the event first.
 - [x] Outbox: per-bot FIFO with `queue_delay` plus a shared random `jitter`,
   an optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
+- [x] Durable delivery: replies are queued in the same transaction that
+  stores them; a per-bot worker paces them, retries with bounded backoff,
+  records sent or failed, and survives a restart (ADR 0040). A full inbound
+  queue blocks instead of dropping the message.
 - [x] Fleet command: start all bots, graceful shutdown on SIGINT/SIGTERM, and
   status reporting.
 - [x] Logging: one structured logger (`log/slog`) with plain, column-aligned
@@ -260,12 +267,17 @@ Deliverables:
 - [x] Pairing session in the API: start, cancel, and status per bot, carrying
   the method, the payload (QR or code), the state, and the expiry, so a UI can
   drive onboarding without shell access; a session that succeeds activates the
-  bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing stays a
-  local operation until Phase 12.
+  bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing is an
+  unpair plus a new session, both through the API.
 - [x] `bot pair` follows instance ownership (ADR 0039): it drives the running
   instance's pairing session through the API — rendering its QR and polling
   until WhatsApp answers — and pairs locally under the lock when the fleet is
   stopped. No path falls back to the database beneath a live instance.
+- [x] Account lifecycle in the API: `DELETE .../bots/{bot}/account` cancels a
+  live pairing session, stops the running bot so its channel disconnects, and
+  removes the credentials; `bot unpair` drives it while the instance is owned
+  and works locally when it is not, and `bot pair --force` replaces through
+  the same path (ADR 0021, ADR 0039).
 - [ ] Account states beyond pairing: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).
@@ -281,6 +293,11 @@ Deliverables:
   principal requesting another scope gets 404, never 403. This advances the
   scoped tokens of ROADMAP Phase 13 because the route shape depends on the
   principal.
+- [x] Request budgets and opaque public errors: instance settings
+  (`rate_limit`, defaults 600 and 60 per minute, `0` turns one off) budget
+  each credential and each source of failed attempts (429 with
+  `Retry-After`); upstream failures are answered by code and never by
+  detail, and the pairing `code` stays out of every log (ADR 0025).
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [x] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
@@ -334,6 +351,11 @@ writing replies.
 
 Deliverables:
 
+- [ ] Reconcile the interim contracts with ADR 0004 and ADR 0030 first: drop
+  `LLMProvider.Classify` (only `SystemOneProvider` decides transitions),
+  build the providers from config — `fleet` injects none today — and either
+  reject or clearly mark the config fields no runtime reads yet (`system_one`,
+  `shared`, `routing` on an `llm` profile, `tools`).
 - [ ] `SystemOneProvider` port and a Jev (TypeSafe) adapter: typed questions
   with confidence, and the deterministic matcher first (ADR 0030).
 - [ ] `shared` and scope catalogs (`system_one`, `llms`): config types,

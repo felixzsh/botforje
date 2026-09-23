@@ -10,7 +10,7 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-type MessageStore struct{ db *sql.DB }
+type MessageStore struct{ db dbtx }
 
 func NewMessageStore(db *sql.DB) *MessageStore { return &MessageStore{db: db} }
 
@@ -56,16 +56,23 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	return nil
 }
 
-func (s *MessageStore) SetProviderID(ctx context.Context, id int64, providerID string) error {
+// HasProviderID reports whether the chat already stored a message with this
+// channel id; an empty id never matches.
+func (s *MessageStore) HasProviderID(
+	ctx context.Context, chatID int64, providerID string,
+) (bool, error) {
 	if providerID == "" {
-		return nil
+		return false, nil
 	}
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE messages SET provider_message_id = ? WHERE id = ?", providerID, id)
+	var exists bool
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM messages
+		 WHERE chat_id = ? AND provider_message_id = ?)`,
+		chatID, providerID).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("sqlite: set provider id: %w", err)
+		return false, fmt.Errorf("sqlite: find provider id: %w", err)
 	}
-	return nil
+	return exists, nil
 }
 
 // Call rows are excluded: a call is not a position in the chat's own message

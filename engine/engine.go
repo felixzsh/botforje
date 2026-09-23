@@ -18,7 +18,7 @@ import (
 )
 
 // Options configures an Engine. Bot, Graph, Actions, Store, Chats, Senders,
-// and Messages are required.
+// Messages, and Turn are required.
 type Options struct {
 	Bot            string
 	Scope          string
@@ -28,6 +28,7 @@ type Options struct {
 	Chats          botflota.ChatStore
 	Senders        botflota.SenderStore
 	Messages       botflota.MessageStore
+	Turn           botflota.TurnStore
 	LLM            botflota.LLMProvider
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -47,6 +48,7 @@ type Engine struct {
 	chats          botflota.ChatStore
 	senders        botflota.SenderStore
 	messages       botflota.MessageStore
+	turn           botflota.TurnStore
 	llm            botflota.LLMProvider
 	hasLLM         bool
 	http           *http.Client
@@ -66,6 +68,7 @@ func New(opts Options) *Engine {
 		chats:          opts.Chats,
 		senders:        opts.Senders,
 		messages:       opts.Messages,
+		turn:           opts.Turn,
 		llm:            opts.LLM,
 		hasLLM:         opts.LLM != nil,
 		http:           opts.HTTPClient,
@@ -106,6 +109,20 @@ func (e *Engine) Handle(
 	if e.messages == nil {
 		return nil, errors.New("engine: no message store")
 	}
+	if e.turn == nil {
+		return nil, errors.New("engine: no turn store")
+	}
+	// Dedup runs before load: a redelivery reads the sender and chat but
+	// never writes them, so it cannot move last_seen or create the rows it
+	// is about to ignore (ADR 0040).
+	seen, err := e.storedBefore(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+	if seen {
+		e.log.Debug("duplicate message ignored", "id", msg.ProviderMessageID)
+		return nil, nil
+	}
 	now := e.now()
 	chat, sender, session, created, err := e.load(ctx, msg, now)
 	if err != nil {
@@ -145,61 +162,102 @@ func (e *Engine) Handle(
 	session.NodeContext = r.tctx.Values(botflota.RootNode)
 	session.UpdatedAt = now
 	session.ExpiresAt = e.expiry(now)
-	if err := e.store.Save(ctx, session); err != nil {
+	if err := e.commitTurn(ctx, chat, session, msg, r.routing, r.out,
+		now, r.guardsDirty); err != nil {
 		return nil, err
-	}
-	if err := e.recordMessages(ctx, chat.ID, session.ID, msg, r.routing, r.out, now); err != nil {
-		return nil, err
-	}
-	if err := e.chats.RecordMessage(ctx, chat.ID, now); err != nil {
-		return nil, err
-	}
-	if r.guardsDirty {
-		if err := e.chats.SaveGuards(ctx, chat.ID, chat.Guards); err != nil {
-			return nil, err
-		}
 	}
 	return r.out, nil
 }
 
-// recordMessages needs the session saved first, so the records can carry its
-// id.
-func (e *Engine) recordMessages(
+// storedBefore reports a message the chat already stores. It reads the
+// sender and chat without creating or updating them: the engine checks
+// before load, so a redelivery never re-runs an action or an HTTP side
+// effect and never moves last_seen (ADR 0026, ADR 0040). A chat that does
+// not exist yet has no stored message, so the missing rows answer no.
+func (e *Engine) storedBefore(
+	ctx context.Context, msg botflota.IncomingMessage,
+) (bool, error) {
+	if msg.ProviderMessageID == "" {
+		return false, nil
+	}
+	if e.senders == nil {
+		// Nothing can be stored; load reports the missing store.
+		return false, nil
+	}
+	sender, err := e.senders.Get(ctx, e.scope, msg.SenderPhone)
+	if errors.Is(err, botflota.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("engine: sender lookup: %w", err)
+	}
+	chat, err := e.chats.ForSender(ctx, e.scope, e.bot, sender.ID)
+	if errors.Is(err, botflota.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("engine: chat lookup: %w", err)
+	}
+	seen, err := e.messages.HasProviderID(ctx, chat.ID, msg.ProviderMessageID)
+	if err != nil {
+		return false, fmt.Errorf("engine: dedup: %w", err)
+	}
+	return seen, nil
+}
+
+// commitTurn lands the whole turn in one unit: the session, the inbound
+// message, every reply, the chat activity, and the guard state. The engine
+// never writes those shapes directly, so a failure can never leave the
+// session advanced with lost replies (ADR 0026, ADR 0027).
+func (e *Engine) commitTurn(
 	ctx context.Context,
-	chatID, sessionID int64,
+	chat *botflota.Chat,
+	session *botflota.Session,
 	msg botflota.IncomingMessage,
 	routing botflota.RoutingMethod,
 	out []botflota.OutgoingMessage,
 	now time.Time,
+	guardsDirty bool,
 ) error {
-	inbound := &botflota.Message{
-		ChatID:            chatID,
-		SessionID:         sessionID,
-		Direction:         botflota.Inbound,
-		Content:           msg.Content,
-		At:                msg.At,
-		ProviderMessageID: msg.ProviderMessageID,
-		Ingest:            botflota.IngestLive,
-		Routing:           routing,
-	}
-	if err := e.messages.Append(ctx, inbound); err != nil {
-		return fmt.Errorf("engine: record inbound: %w", err)
+	turn := botflota.TurnRecord{
+		Scope:   e.scope,
+		Bot:     e.bot,
+		Session: session,
+		ChatID:  chat.ID,
+		At:      now,
+		Inbound: &botflota.Message{
+			ChatID:            chat.ID,
+			Direction:         botflota.Inbound,
+			Content:           msg.Content,
+			At:                msg.At,
+			ProviderMessageID: msg.ProviderMessageID,
+			Ingest:            botflota.IngestLive,
+			Routing:           routing,
+		},
+		Outbound: make([]botflota.OutboundRecord, 0, len(out)),
 	}
 	for i := range out {
-		sent := &botflota.Message{
-			ChatID:    chatID,
-			SessionID: sessionID,
-			Direction: botflota.Outbound,
-			Content:   out[i].Content,
-			At:        now,
-			Ingest:    botflota.IngestLive,
-			Origin:    out[i].Origin,
-			Routing:   out[i].Routing,
-		}
-		if err := e.messages.Append(ctx, sent); err != nil {
-			return fmt.Errorf("engine: record outbound: %w", err)
-		}
-		out[i].StoredMessageID = sent.ID
+		turn.Outbound = append(turn.Outbound, botflota.OutboundRecord{
+			Recipient: out[i].RecipientPhone,
+			Message: &botflota.Message{
+				ChatID:    chat.ID,
+				Direction: botflota.Outbound,
+				Content:   out[i].Content,
+				At:        now,
+				Ingest:    botflota.IngestLive,
+				Origin:    out[i].Origin,
+				Routing:   out[i].Routing,
+			},
+		})
+	}
+	if guardsDirty {
+		turn.Guards = chat.Guards
+	}
+	if err := e.turn.CommitTurn(ctx, turn); err != nil {
+		return fmt.Errorf("engine: commit turn: %w", err)
+	}
+	for i := range out {
+		out[i].StoredMessageID = turn.Outbound[i].Message.ID
 	}
 	return nil
 }

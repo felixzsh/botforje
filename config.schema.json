@@ -141,6 +141,10 @@
           "type": "string",
           "description": "DeviceName is the companion name WhatsApp shows in Linked devices. It is\nsent only when a bot registers a new pairing; an existing link keeps the\nname it was registered with. Empty uses the built-in default."
         },
+        "rate_limit": {
+          "$ref": "#/$defs/RateLimitSettings",
+          "description": "RateLimit bounds the API per fixed minute; an omitted block uses the\nbuilt-in budgets, and changing it requires a restart."
+        },
         "include": {
           "items": {
             "type": "string"
@@ -487,6 +491,19 @@
         "window"
       ],
       "description": "RateLimit allows at most `limit` runs per sender in `window` seconds and runs the `on_blocked` steps when the sender exceeds it."
+    },
+    "RateLimitSettings": {
+      "properties": {
+        "credential_per_minute": {
+          "type": "integer"
+        },
+        "failed_per_minute": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "RateLimitSettings are the API's per-minute request budgets."
     },
     "Request": {
       "properties": {

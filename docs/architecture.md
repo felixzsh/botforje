@@ -10,12 +10,19 @@ Three independent ports sit beside the config engine and persistence:
 - `MessageChannel` — transport port. A channel is one implementation that
   reaches a messaging provider; the provider (WhatsApp) can have several
   channels, such as whatsmeow today or the official Cloud API later.
-- `SystemOneProvider` — System One port for routing, policy, tool selection,
-  and value mapping: typed answers (a choice from a closed set, a score, or a
-  probability) with confidence and no generated text. Jev (TypeSafe) is the
-  first adapter (ADR 0030).
-- `LLMProvider` — model port for reply realization and the tool loop. Cloud
-  and local providers sit behind the same interface.
+- `SystemOneProvider` — **Phase 8, not implemented yet.** System One port for
+  routing, policy, tool selection, and value mapping: typed answers (a choice
+  from a closed set, a score, or a probability) with confidence and no
+  generated text. Jev (TypeSafe) is the first planned adapter (ADR 0030).
+- `LLMProvider` — model port for reply realization and the tool loop. It
+  exists in an interim shape that still classifies transitions, and the fleet
+  injects no implementation yet; Phase 8 replaces `Classify` with the
+  System One port and keeps generation for text only (ADR 0004, ADR 0030).
+
+The other core ports follow the same rule: what exists is small and wired
+(`PairingRunner`, `DevicePresence`, the store ports), and the two that back
+the atomic turn and delivery — `TurnStore` and `OutboxStore` — are why the
+engine writes no rows directly (ADR 0040).
 
 The config engine loads YAML into the domain model; the engine never sees
 YAML. Persistence stores runtime state: device store, chats, sessions, and
@@ -184,7 +191,8 @@ Inbound:
    (ADR 0020, ADR 0036).
 2. The fleet routes the event to the bot; the bot's filter drops it (groups,
    allow/ignore lists) or passes it to the engine, which upserts the sender
-   profile before routing (ADR 0029).
+   profile before routing (ADR 0029). The dedup check in step 5 reads that
+   sender and chat first, so only a message about to run writes them.
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -193,25 +201,33 @@ Inbound:
    first) plus the current node last (ADR 0010). Edges with triggers are
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
-5. When the graph routing mode is `always`, or nothing matched and the mode
+5. A redelivery whose provider id the chat already stores stops here, before
+   any action runs and before the sender or chat is written (ADR 0040).
+   Steps 6–8 are the Phase 8 target: the fleet injects no model yet, so only
+   the deterministic path runs today.
+6. When the graph routing mode is `always`, or nothing matched and the mode
    is `fallback`, System One decides: one Choice question over the candidate
    edge intents, checked against the graph's confidence threshold. Below it
    the graph takes the default edge or escalates; the LLM never classifies
    (ADR 0030).
-6. A node with tools handles the message through the pipeline (ADR 0033):
+7. A node with tools handles the message through the pipeline (ADR 0033):
    System One decides, the LLM reads free text, and code applies. The node
    stays unless an exit edge is taken. The LLM loop (ADR 0033) is the opt-in
    alternative for calls a pipeline cannot bound.
-7. Tool results feed the next step; a missing required argument is a tool
+8. Tool results feed the next step; a missing required argument is a tool
    error that asks the user, storing the answer in the bound variable.
    Neither model invents a transition; edges are the only exits.
-8. Engine runs the selected transition: exit actions, target node, entry
+9. Engine runs the selected transition: exit actions, target node, entry
    actions. Entry actions produce the prescribed reply, so a bot with no `llm`
    needs no provider (ADR 0032).
-9. Effective policy composes node policy (always) and message policy
-   (optional refinement). Reply text is prescribed, LLM-realized, or both
-   (anchor plus fallback); a policy check runs before anything is queued.
-10. Results are queued in the bot's outbox and the session is persisted.
+10. Effective policy composes node policy (always) and message policy
+    (optional refinement). Reply text is prescribed, LLM-realized, or both
+    (anchor plus fallback); a policy check runs before anything is queued.
+11. The session, the stored messages, the chat activity, the guards, and the
+    queued replies commit as one transaction; a failure rolls all of it back
+    (ADR 0040). The sender profile and chat created in step 2 sit outside
+    that transaction, so a failed turn can leave those two rows and nothing
+    else. The outbox worker then delivers the replies with the pacing below.
 
 Outbound:
 
@@ -254,6 +270,10 @@ Three ways a reply reaches the queue, in order of preference (ADR 0032):
   intent or tone. The reply is still prescribed.
 - Realized: the opt-in generative path; `body` plus `intent` anchors the model
   and doubles as the fallback. Intent-only, with no anchor, is discouraged.
+
+The engine implements all three, but no LLM provider adapter ships yet and
+the fleet injects none, so a running bot answers prescribed today; the other
+two arrive with Phase 8.
 
 ## Tool pipeline
 
@@ -334,6 +354,10 @@ configured maximum.
 
 ## REST API
 
+The API's scope-coverage and authority contract, including current status and
+the target, lives in [`api.md`](api.md); this section describes the current
+composition and mechanics.
+
 `fleet run` hosts the API in the same process when `port` is set; `port: 0`
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
@@ -351,9 +375,10 @@ connection and reports the batch counts. Errors use one shape,
 
 One middleware resolves the credential to a `Principal` through a small
 `PrincipalResolver` port (`Auth` is the built-in implementation), and handlers
-authorize against it (ROADMAP Phase 10, Phase 13). Two authorities exist: the instance
-owner (the owner token) sees every scope, instance settings, and credential
-management; a scoped access token sees only its scopes. A scoped principal
+authorize against it (ROADMAP Phase 10, Phase 13). Exactly two authorities
+exist, with no roles: the instance owner (the owner token) sees every scope,
+instance settings, and credential management; a scoped access token reads and
+changes the resources of its own scopes and nothing else. A scoped principal
 requesting another scope receives 404, never 403, so it cannot infer that the
 scope exists (ROADMAP Phase 13).
 
@@ -367,6 +392,17 @@ the dashboard (Phase 11); the resolver is the seam they replace. `config`
 serves the typed model with secrets masked (ADR 0014). Handlers stay small and
 direct; a narrow service is extracted only when a second real caller shares
 the operation.
+
+Requests are budgeted in fixed one-minute windows: one allowance per
+credential, keyed from the credential's own hash, and a separate allowance
+per source address for attempts that carry no usable credential, so guessing
+is bounded without one source spending another's budget. A refusal is the
+standard error shape with code `rate_limited` and a `Retry-After` header.
+The budgets are instance settings (`rate_limit`): the defaults are 600 per
+credential and 60 failed attempts per minute, and `0` turns one off.
+Public errors never carry upstream detail — the caller gets a stable code
+and the log gets the reason — and the pairing session's `code` reaches only
+the response that asks for it, never a log (ADR 0025).
 
 ## Pairing
 
@@ -395,12 +431,28 @@ gap, or a long wait budget of its own runs out; without it, only the default
 recent window arrives and `chat sync` pages older messages per chat. The phone
 remains the authority over the actual window.
 
+Pairing operations travel over the API of a running instance (ADR 0039):
+`POST`, `GET`, and `DELETE` on `.../bots/{bot}/pairing` start, read, and
+cancel a session, and `DELETE .../bots/{bot}/account` ends a live session
+and waits for its goroutine, stops the bot so its channel disconnects,
+removes the credentials, and fails the replies its queue still owes — one
+operation under the bot's lock, so the writes of one bot never overlap. The
+CLI drives those routes while another process owns the instance and works
+locally when it does not; replacing a pairing is an unpair followed by a
+pair, whichever way the instance is running.
+
 ## Concurrency
 
 - One actor per bot: inbound events and sessions for a bot are serialized;
   different bots run concurrently.
+- Pairing start, cancel, and unpair of one bot also run one at a time, under
+  the API's per-bot lock (see the pairing operations above).
 - The engine and the outbox are independent, each serialized; a bot keeps
-  reading inbound while its outbox paces earlier replies (ADR 0011).
+  reading inbound while its outbox paces earlier replies (ADR 0011). The
+  outbox is durable (ADR 0040): replies wait in SQLite, survive a restart,
+  and are retried with bounded backoff before they are given up on; the
+  oldest pending reply heads the queue and a scheduled retry blocks the
+  ones behind it, and unlinking a bot fails what its link still owes.
 - Config hot reload watches the main file and its includes and is
   all-or-nothing; a restart-required change is logged, never silent (ADR 0009).
 - One WhatsApp phone number belongs to one Botflota bot. Multiple linked
@@ -409,7 +461,8 @@ remains the authority over the actual window.
 - The tool loop runs inside the bot actor and is bounded (max tools per
   message, timeout); a slow provider cannot stall other bots.
 - Bounded queues between the channel, the engine, and the outbox provide
-  backpressure.
+  backpressure: a full inbound queue blocks the channel's event handler
+  instead of dropping the user's message (ADR 0040).
 - No shared mutable state between bots; shared services are read-only or
   synchronized.
 - Reconnect uses capped exponential backoff with jitter; a bot that is logged
@@ -421,10 +474,12 @@ remains the authority over the actual window.
 
 Botflota runs in the foreground and owns no service management. It shuts down
 in order on SIGINT or SIGTERM, draining each bot's outbox before disconnecting
-(ADR 0011). Starting, stopping, and restarting the process belong to systemd,
-Docker, or another supervisor. Botflota neither detects nor invokes one. The
-CLI has no `stop` or `restart`; `fleet status` reads the API, and config hot
-reload is automatic (ADR 0009, ADR 0025).
+(ADR 0011). Unpair finishes a send already in progress and fails the remaining
+queued replies before removing the account (ADR 0040). Starting, stopping, and
+restarting the process belong to systemd, Docker, or another supervisor.
+Botflota neither detects nor invokes one. The CLI has no `stop` or `restart`;
+`fleet status` reads the API, and config hot reload is automatic (ADR 0009,
+ADR 0025).
 
 ## Logging
 

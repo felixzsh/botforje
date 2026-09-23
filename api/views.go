@@ -6,14 +6,12 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
-	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
 )
 
 type botView struct {
 	Scope   string `json:"scope"`
 	Bot     string `json:"bot"`
-	JID     string `json:"jid,omitempty"`
 	Phone   string `json:"phone,omitempty"`
 	Pairing string `json:"pairing,omitempty"`
 	// LastChange is when the pairing state last changed; it is shown only
@@ -100,7 +98,6 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 		account, err := s.accounts.Get(ctx, scope, bot)
 		switch {
 		case err == nil:
-			view.JID = account.JID
 		case errors.Is(err, botflota.ErrNotFound):
 			account = nil
 		default:
@@ -120,7 +117,7 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 		}
 		view.Pairing = string(state)
 		if state == botflota.PairingPaired && account != nil {
-			view.Phone = whatsapp.Number(account.JID)
+			view.Phone = account.Phone()
 		}
 		if stored != nil && stored.State == state && !stored.LastChange.IsZero() {
 			changed := stored.LastChange
@@ -131,10 +128,10 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 	return bots, nil
 }
 
-// pairingState prefers the live device check when fleet run injected the
-// device store; without it the stored pairing state is the instance's view.
-// The phone number of a bot is shown only while it is paired, so an unpaired
-// link reports no number (ADR 0011, ADR 0039).
+// pairingState prefers the live credential check when fleet run injected one;
+// without it the stored pairing state is the instance's view. The phone number
+// of a bot is shown only while it is paired, so an unpaired link reports no
+// number (ADR 0011, ADR 0039).
 func (s *Server) pairingState(
 	ctx context.Context, account *botflota.LinkedAccount,
 	stored *botflota.PairingStatus,
@@ -142,8 +139,8 @@ func (s *Server) pairingState(
 	if account == nil {
 		return botflota.PairingNotPaired, nil
 	}
-	if s.devices != nil {
-		ready, err := whatsapp.HasLocalDevice(ctx, s.devices, account)
+	if s.presence != nil {
+		ready, err := s.presence.HasCredentials(ctx, account)
 		if err != nil {
 			return "", err
 		}

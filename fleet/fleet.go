@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/felixzsh/botflota"
@@ -25,12 +26,14 @@ type BotSpec struct {
 	Settings spec.BotSettings
 }
 
-// Store, Chats, Senders, Messages, and NewChannel are required.
+// Store, Chats, Senders, Messages, Turn, Outbox, and NewChannel are required.
 type Options struct {
 	Store      botflota.SessionStore
 	Chats      botflota.ChatStore
 	Senders    botflota.SenderStore
 	Messages   botflota.MessageStore
+	Turn       botflota.TurnStore
+	Outbox     botflota.OutboxStore
 	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
 	// Skip is for recoverable runtime conditions such as a missing local
 	// pairing; a skipped bot never gets a channel.
@@ -58,13 +61,6 @@ type Fleet struct {
 	wait sync.WaitGroup
 }
 
-type BotStatus struct {
-	Scope       string
-	Bot         string
-	State       string
-	OutboxDepth int
-}
-
 type Bot struct {
 	scope   string
 	name    string
@@ -78,6 +74,18 @@ type Bot struct {
 	// gen is the config generation engine and filter were built from; only
 	// the run goroutine touches these three (ADR 0009).
 	gen int64
+	// stop asks the run goroutine to exit; done closes once it has drained
+	// the outbox and disconnected, which is the moment its credentials may
+	// be replaced (ADR 0011, ADR 0021). running is what the lifecycle
+	// methods read, stored and cleared by the goroutine itself.
+	stop     chan struct{}
+	stopOnce sync.Once
+	done     chan struct{}
+	running  atomic.Bool
+	// started records that this bot has had a run goroutine, under
+	// Fleet.mu: StopBot waits on done for one, while a bot built but never
+	// started has no done to wait for.
+	started bool
 }
 
 // New starts nothing and connects nothing. A bot whose pairing is missing is
@@ -97,6 +105,12 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	}
 	if opts.Messages == nil {
 		return nil, errors.New("fleet: no message store")
+	}
+	if opts.Turn == nil {
+		return nil, errors.New("fleet: no turn store")
+	}
+	if opts.Outbox == nil {
+		return nil, errors.New("fleet: no outbox store")
 	}
 	if opts.NewChannel == nil {
 		return nil, errors.New("fleet: no channel factory")
@@ -133,7 +147,8 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 }
 
 // buildBot constructs one configured bot's engine, channel, and outbox from
-// the config the fleet was built with; it starts nothing.
+// the config the fleet was built with; it does not connect the channel or
+// start the outbox worker.
 func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	cfg := f.cfg
 	eng, filter, settings, err := f.buildRuntime(cfg, scopeName, botName)
@@ -150,6 +165,9 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 		return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)
 	}
 	queue := newOutbox(outboxConfig{
+		Store:        opts.Outbox,
+		Scope:        scopeName,
+		Bot:          botName,
 		Sender:       channel.Send,
 		Delay:        time.Duration(settings.QueueDelay) * time.Millisecond,
 		Jitter:       time.Duration(settings.Jitter) * time.Millisecond,
@@ -162,20 +180,11 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 				opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
 			}
 		},
-		OnSent: func(msg botflota.OutgoingMessage, providerID string) {
-			if msg.StoredMessageID == 0 {
-				return
-			}
-			if err := opts.Messages.SetProviderID(
-				context.Background(), msg.StoredMessageID, providerID,
-			); err != nil {
-				botLog.Warn("record outbound provider id", "error", err)
-			}
-		},
 	})
 	return &Bot{
 		scope: scopeName, name: botName, channel: channel, engine: eng, outbox: queue,
 		filter: filter, fleet: f, gen: f.gen,
+		stop: make(chan struct{}), done: make(chan struct{}),
 		log: botLog,
 		onError: func(err error) {
 			if opts.OnError != nil {
@@ -213,6 +222,7 @@ func (f *Fleet) buildRuntime(
 		Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
 		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
 		Messages:   opts.Messages,
+		Turn:       opts.Turn,
 		HTTPClient: opts.HTTPClient, Now: opts.Now,
 		Rand:           rand.New(rand.NewSource(opts.Rand.Int63())),
 		DefaultTimeout: opts.DefaultTimeout,
@@ -226,32 +236,45 @@ func (f *Fleet) buildRuntime(
 	return eng, filter, settings, nil
 }
 
-// Run starts every built bot and waits: it returns when ctx is cancelled or
-// every bot has stopped, with the first bot error if any.
+// Run starts every built bot and keeps the fleet alive until ctx is
+// cancelled: the instance ends the fleet, not its bot set, so a fleet that
+// runs no bot still accepts the first pairing and stopping the last bot
+// never shuts the instance down (ADR 0022). Publishing the run context and
+// starting the bots happen under one lock, so a StartBot racing startup
+// never produces two runs of one bot; the context is cleared under that
+// same lock before the final wait, so no bot joins once shutdown began.
+// The first bot error, if any, is returned at the end.
 func (f *Fleet) Run(ctx context.Context) error {
+	bots := f.ordered()
 	f.mu.Lock()
 	f.ctx = ctx
-	f.mu.Unlock()
-	for _, bot := range f.ordered() {
-		f.start(ctx, bot)
+	for _, bot := range bots {
+		f.startLocked(ctx, bot)
 	}
+	f.mu.Unlock()
+
+	<-ctx.Done()
+
+	f.mu.Lock()
+	f.ctx = nil
+	f.mu.Unlock()
 	f.wait.Wait()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.ctx = nil
 	if len(f.errs) > 0 {
 		return f.errs[0]
 	}
 	return nil
 }
 
-// Start builds and runs one configured bot now: how a bot paired through the
-// running instance joins the fleet without a restart (ADR 0022). A bot that
-// is already running is left alone, and a fleet that is not running refuses.
-//
-// ponytail: start-during-shutdown races with Run's final wait; the pairing
-// session finishing exactly as the fleet exits would be the window. If that
-// ever bites, gate StartBot on a done channel closed before wait.Wait returns.
+// StartBot builds and runs one configured bot now: how a bot paired through
+// the running instance joins the fleet without a restart (ADR 0022). A bot
+// that is already running is left alone; one that stopped — or whose channel
+// failed — gets a fresh build, because after a re-pair the device store it
+// was built with no longer exists (ADR 0021). A fleet that is not running
+// refuses, and so does one whose context is already cancelled: Run clears it
+// under this lock before its final wait, so a pairing finishing as the
+// instance exits never joins a fleet that is shutting down.
 func (f *Fleet) StartBot(scope, name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -259,7 +282,7 @@ func (f *Fleet) StartBot(scope, name string) error {
 		return errors.New("fleet: not running")
 	}
 	key := scope + "/" + name
-	if _, ok := f.bots[key]; ok {
+	if bot, ok := f.bots[key]; ok && bot.running.Load() {
 		return nil
 	}
 	bot, err := f.buildBot(scope, name)
@@ -267,7 +290,41 @@ func (f *Fleet) StartBot(scope, name string) error {
 		return err
 	}
 	f.bots[key] = bot
-	f.start(f.ctx, bot)
+	f.startLocked(f.ctx, bot)
+	return nil
+}
+
+// StopBot stops one bot and waits for its full shutdown: the outbox drains,
+// the channel disconnects, and only then does the caller get a stopped bot
+// whose credentials may be removed — one phone keeps one connection (ADR
+// 0011, ADR 0021). It waits for the run goroutine itself, not for the
+// running flag the goroutine clears on its way out, so a bot that began
+// stopping is never reported finished early. A bot that never started has
+// no goroutine to wait for and answers nil, so the operation is idempotent.
+func (f *Fleet) StopBot(scope, name string) error {
+	return f.stopBot(scope, name, false)
+}
+
+// StopBotForUnpair lets an in-flight send finish but does not drain later
+// replies; the account removal marks those replies failed (ADR 0040).
+func (f *Fleet) StopBotForUnpair(scope, name string) error {
+	return f.stopBot(scope, name, true)
+}
+
+func (f *Fleet) stopBot(scope, name string, discard bool) error {
+	f.mu.Lock()
+	bot, ok := f.bots[scope+"/"+name]
+	if !ok || !bot.started {
+		f.mu.Unlock()
+		return nil
+	}
+	if discard {
+		bot.outbox.Discard()
+	}
+	bot.stopOnce.Do(func() { close(bot.stop) })
+	done := bot.done
+	f.mu.Unlock()
+	<-done
 	return nil
 }
 
@@ -301,15 +358,21 @@ func (f *Fleet) refresh(bot *Bot) error {
 	return nil
 }
 
-func (f *Fleet) start(ctx context.Context, bot *Bot) {
+// startLocked launches one bot's run goroutine; the caller holds f.mu.
+func (f *Fleet) startLocked(ctx context.Context, bot *Bot) {
+	bot.started = true
+	bot.running.Store(true)
 	f.wait.Add(1)
 	go func() {
 		defer f.wait.Done()
-		if err := bot.run(ctx); err != nil {
-			f.mu.Lock()
+		defer close(bot.done)
+		err := bot.run(ctx)
+		f.mu.Lock()
+		bot.running.Store(false)
+		if err != nil {
 			f.errs = append(f.errs, fmt.Errorf("%s/%s: %w", bot.scope, bot.name, err))
-			f.mu.Unlock()
 		}
+		f.mu.Unlock()
 	}()
 }
 
@@ -349,12 +412,18 @@ func (f *Fleet) HistorySync(
 	return botflota.HistoryResult{}, fmt.Errorf("fleet: unknown bot %s/%s", scope, bot)
 }
 
-func (f *Fleet) Status() []BotStatus {
+func (f *Fleet) Status() []botflota.BotStatus {
 	bots := f.ordered()
-	statuses := make([]BotStatus, 0, len(bots))
+	statuses := make([]botflota.BotStatus, 0, len(bots))
 	for _, bot := range bots {
-		status := BotStatus{Scope: bot.scope, Bot: bot.name, OutboxDepth: bot.outbox.Depth()}
-		if reporter, ok := bot.channel.(botflota.StateReporter); ok {
+		status := botflota.BotStatus{
+			Scope: bot.scope, Bot: bot.name, OutboxDepth: bot.outbox.Depth(),
+		}
+		if !bot.running.Load() {
+			// Never started, stopped on purpose, or its channel failed: the
+			// channel's own view would claim otherwise.
+			status.State = "stopped"
+		} else if reporter, ok := bot.channel.(botflota.StateReporter); ok {
 			status.State = reporter.ChannelState()
 		}
 		statuses = append(statuses, status)
@@ -363,13 +432,8 @@ func (f *Fleet) Status() []BotStatus {
 }
 
 func (b *Bot) run(ctx context.Context) error {
-	if err := b.channel.Connect(ctx); err != nil {
-		b.log.Error("channel connect failed", "error", err)
-		return err
-	}
-	b.log.Info("bot started")
 	defer func() {
-		// Stop accepting, let queued messages go out, then disconnect.
+		// Cleanup also runs when the initial channel connection fails.
 		b.outbox.Close()
 		b.outbox.Wait()
 		if err := b.channel.Disconnect(context.Background()); err != nil {
@@ -377,10 +441,18 @@ func (b *Bot) run(ctx context.Context) error {
 		}
 		b.log.Info("bot stopped")
 	}()
+	if err := b.channel.Connect(ctx); err != nil {
+		b.log.Error("channel connect failed", "error", err)
+		return err
+	}
+	b.log.Info("bot started")
+	b.outbox.Start()
 	incoming := b.channel.Incoming()
 	for {
 		select {
 		case <-ctx.Done():
+			return nil
+		case <-b.stop:
 			return nil
 		case msg, ok := <-incoming:
 			if !ok {
@@ -404,11 +476,10 @@ func (b *Bot) run(ctx context.Context) error {
 				b.onError(err)
 				continue
 			}
-			for _, reply := range replies {
-				if err := b.outbox.Push(ctx, reply); err != nil {
-					b.log.Debug("enqueue reply failed", "error", err)
-					return err
-				}
+			// The replies are committed with their turn; the wake only asks
+			// the worker to deliver them now.
+			if len(replies) > 0 {
+				b.outbox.Wake()
 			}
 		}
 	}

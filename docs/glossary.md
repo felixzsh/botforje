@@ -98,5 +98,5 @@
   every scope, instance settings, and credential management.
 - Access token — an opaque random credential for the API, stored hashed,
   optionally expiring, and revocable. A scoped access token names the scopes
-  it may use and sees nothing else; a scoped principal requesting another
-  scope gets 404, never 403.
+  it may use and both reads and changes them; it sees nothing else, and a
+  scoped principal requesting another scope gets 404, never 403.

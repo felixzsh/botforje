@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -79,8 +80,11 @@ func (a *Auth) Resolve(r *http.Request) (*Principal, error) {
 		return nil, ErrUnauthenticated
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
+	// The budget key derives from the credential's own hash: enough to tell
+	// one token from another without storing or exposing the token.
+	key := hex.EncodeToString(sum[:16])
 	if subtle.ConstantTimeCompare(sum[:], a.ownerHash) == 1 {
-		return &Principal{Kind: KindOwner}, nil
+		return &Principal{Kind: KindOwner, Key: key}, nil
 	}
 	if a.tokens == nil {
 		return nil, ErrUnauthenticated
@@ -99,7 +103,7 @@ func (a *Auth) Resolve(r *http.Request) (*Principal, error) {
 	for _, scope := range access.Scopes {
 		scopes[scope] = true
 	}
-	return &Principal{Kind: KindScoped, Scopes: scopes}, nil
+	return &Principal{Kind: KindScoped, Scopes: scopes, Key: key}, nil
 }
 
 func newToken() (string, error) {

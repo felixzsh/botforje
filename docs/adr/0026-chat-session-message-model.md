@@ -54,8 +54,10 @@ the bounded state is a session. The word still describes dialogue in prose.
   point. Session runs are kept as history and can be pruned later if needed.
 - The engine resolves a chat (get-or-create) and then the chat's newest
   session; an expired session starts a new run instead of overwriting.
-- The store ports mirror the tables: `ChatStore`, `SessionStore`, and
-  `MessageStore` (root package `botflota`).
+- The store ports map to the model: `ChatStore`, `SessionStore`, and
+  `MessageStore` (root package `botflota`) read and write their own tables,
+  while `TurnStore` mirrors no table — it commits one turn's writes as a
+  single transaction (ADR 0040).
 - Message recording happens in the engine as messages flow: the inbound
   message and every reply are appended under the chat and the session run that
   handled them. Listing and tailing a chat arrive with the CLI and API.

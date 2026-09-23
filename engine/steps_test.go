@@ -37,7 +37,8 @@ func TestRequestStepCapturesResult(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, HTTPClient: server.Client(),
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		HTTPClient: server.Client(),
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"got 7 status 200"}; !slices.Equal(got, want) {
@@ -56,7 +57,7 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
@@ -80,7 +81,7 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"Your order is confirmed."}; !slices.Equal(got, want) {
@@ -102,7 +103,7 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", SenderPhone: "5215500000000", At: t0,
@@ -135,7 +136,7 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", SenderPhone: "5215500000000", At: t0,
@@ -164,7 +165,7 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", SenderPhone: "52155", At: t0,
@@ -188,7 +189,7 @@ func TestLocationStep(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(),
 		botflota.IncomingMessage{SenderPhone: "s", Content: botflota.TextContent{Body: "hi"}})
@@ -225,7 +226,7 @@ func TestMediaContactPollSteps(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(),
 		botflota.IncomingMessage{SenderPhone: "s", Content: botflota.TextContent{Body: "hi"}})
@@ -283,7 +284,7 @@ func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *engine.E
 	store := newMemStore()
 	return newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
 		HTTPClient: &http.Client{Transport: transport},
 	})
 }

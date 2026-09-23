@@ -30,6 +30,10 @@ func globalChanges(current, next *Config) []string {
 		},
 		{"data_dir", current.DataDir, next.DataDir},
 		{"device_name", current.DeviceName, next.DeviceName},
+		{
+			"rate_limit", fmt.Sprint(current.RateBudgets()),
+			fmt.Sprint(next.RateBudgets()),
+		},
 	} {
 		if change.was != change.now {
 			reasons = append(reasons, "global setting "+change.name)

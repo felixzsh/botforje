@@ -78,8 +78,11 @@ func watchConfig(
 			logger.Warn("config saved, but a restart is required",
 				"reasons", reasons)
 		default:
-			source.Replace(next)
+			// The fleet adopts first and the snapshot publishes to readers
+			// afterwards, so a reader never sees a config the fleet has not
+			// taken yet (ADR 0009).
 			runner.ApplyConfig(next)
+			source.Replace(next)
 			logger.Info("config reloaded")
 		}
 	}

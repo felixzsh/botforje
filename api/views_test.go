@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -51,7 +52,6 @@ func TestBotsEndpoint(t *testing.T) {
 		Bots []struct {
 			Scope      string    `json:"scope"`
 			Bot        string    `json:"bot"`
-			JID        string    `json:"jid"`
 			Phone      string    `json:"phone"`
 			Pairing    string    `json:"pairing"`
 			LastChange time.Time `json:"last_change"`
@@ -66,7 +66,6 @@ func TestBotsEndpoint(t *testing.T) {
 	}
 	bot := body.Bots[0]
 	if bot.Scope != "support" || bot.Bot != "demo" ||
-		bot.JID != "5215500000000@s.whatsapp.net" ||
 		bot.Phone != "5215500000000" ||
 		bot.Pairing != string(botflota.PairingPaired) || bot.State != "connected" {
 		t.Fatalf("bot = %#v", bot)
@@ -77,6 +76,50 @@ func TestBotsEndpoint(t *testing.T) {
 	if body.Bots[1].Pairing != string(botflota.PairingNotPaired) ||
 		body.Bots[1].Phone != "" {
 		t.Fatalf("unpaired bot = %#v, want not paired with no phone", body.Bots[1])
+	}
+}
+
+// fakePresence reports local credentials per account, so the bots view can be
+// checked without the device store.
+type fakePresence struct{ present map[string]bool }
+
+func (f fakePresence) HasCredentials(
+	_ context.Context, account *botflota.LinkedAccount,
+) (bool, error) {
+	return f.present[account.Scope+"/"+account.Bot], nil
+}
+
+// TestBotsEndpointPrefersLivePresence proves the live credential check wins
+// over the stored state: a stored "paired" account whose local credentials are
+// gone reports unpaired and hides its phone (ADR 0011, ADR 0039).
+func TestBotsEndpointPrefersLivePresence(t *testing.T) {
+	server := testServer(t)
+	server.presence = fakePresence{present: map[string]bool{
+		"support/demo": false,
+	}}
+	recorder := get(t, server.Handler(), "/api/v1/bots", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Bots []struct {
+			Phone      string     `json:"phone"`
+			Pairing    string     `json:"pairing"`
+			LastChange *time.Time `json:"last_change"`
+		} `json:"bots"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Bots) != 2 {
+		t.Fatalf("bots = %#v, want two", body.Bots)
+	}
+	bot := body.Bots[0]
+	if bot.Pairing != string(botflota.PairingUnpaired) || bot.Phone != "" {
+		t.Fatalf("bot = %#v, want unpaired with no phone", bot)
+	}
+	if bot.LastChange != nil {
+		t.Fatalf("last_change = %v, want none for a state that changed", bot.LastChange)
 	}
 }
 

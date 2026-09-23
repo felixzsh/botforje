@@ -19,8 +19,9 @@ replace its own pairing with `bot pair --force`.
 `unpair` and `bot pair --force` run the same removal: the linked-account row,
 the pairing status, and the channel's device row with everything that hangs off
 it — its keys, sessions, app-state cache, hidden-user map, contact cache, and
-message secrets. Botflota's own senders, chats, sessions, messages, and imported
-contacts are never touched.
+message secrets. The bot's queued replies end failed with the reason, so a
+re-pair never sends them from another account. Botflota's own senders, chats,
+sessions, messages, and imported contacts are never touched.
 
 The phone keeps listing the removed companion until it is unlinked there, so a
 re-pair adds a linked device instead of replacing one. A fresh registration is

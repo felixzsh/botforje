@@ -1,6 +1,7 @@
 package botflota
 
 import (
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,20 @@ type LinkedAccount struct {
 	Scope string
 	Bot   string
 	JID   string
+}
+
+// Phone is the plain phone number the stored identity addresses, without the
+// device or server suffix; the addressing itself never leaves the channel
+// (ADR 0020).
+func (a LinkedAccount) Phone() string {
+	number := a.JID
+	if at := strings.IndexByte(number, '@'); at >= 0 {
+		number = number[:at]
+	}
+	if colon := strings.IndexByte(number, ':'); colon >= 0 {
+		number = number[:colon]
+	}
+	return number
 }
 
 // Sender is one person's durable profile in a scope (ADR 0029). DisplayName

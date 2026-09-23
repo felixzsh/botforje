@@ -120,7 +120,7 @@ func TestClearPairing(t *testing.T) {
 	}
 
 	if err := removePairing(ctx, devices, db.LinkedAccounts(), db.Pairings(),
-		account, t0); err != nil {
+		db.Outbox(), account, t0); err != nil {
 		t.Fatal(err)
 	}
 	got, err := devices.Load(ctx, account)

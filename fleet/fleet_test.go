@@ -24,9 +24,15 @@ type fakeChannel struct {
 	entered chan struct{}
 	once    sync.Once
 
+	connectEntered chan struct{}
+	connectRelease chan struct{}
+	connectErr     error
+	connectOnce    sync.Once
+
 	mu           sync.Mutex
 	connected    bool
 	disconnected bool
+	sendCalls    int
 }
 
 func newFakeChannel() *fakeChannel {
@@ -36,7 +42,20 @@ func newFakeChannel() *fakeChannel {
 	}
 }
 
-func (c *fakeChannel) Connect(context.Context) error {
+func (c *fakeChannel) Connect(ctx context.Context) error {
+	if c.connectEntered != nil {
+		c.connectOnce.Do(func() { close(c.connectEntered) })
+	}
+	if c.connectRelease != nil {
+		select {
+		case <-c.connectRelease:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if c.connectErr != nil {
+		return c.connectErr
+	}
 	c.mu.Lock()
 	c.connected = true
 	c.mu.Unlock()
@@ -52,8 +71,15 @@ func (c *fakeChannel) Disconnect(context.Context) error {
 }
 
 func (c *fakeChannel) Send(_ context.Context, msg botflota.OutgoingMessage) (string, error) {
+	c.mu.Lock()
+	c.sendCalls++
+	connected := c.connected
+	c.mu.Unlock()
 	if c.entered != nil {
 		c.once.Do(func() { close(c.entered) })
+	}
+	if !connected {
+		return "", errors.New("not connected")
 	}
 	if c.release != nil {
 		<-c.release
@@ -79,16 +105,24 @@ func (c *fakeChannel) wasDisconnected() bool {
 	return c.disconnected
 }
 
+func (c *fakeChannel) sendCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sendCalls
+}
+
 type memStore struct {
 	mu         sync.Mutex
 	senders    map[string]*botflota.Sender
 	chats      map[string]*botflota.Chat
 	sessions   map[int64]*botflota.Session
 	messages   []*botflota.Message
+	outbox     []queuedReply
 	nextSender int64
 	nextChat   int64
 	nextSess   int64
 	nextMsg    int64
+	nextOut    int64
 }
 
 func newStore() *memStore {
@@ -291,16 +325,191 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 	return nil
 }
 
-func (s *memStore) SetProviderID(_ context.Context, id int64, providerID string) error {
+func (s *memStore) HasProviderID(
+	_ context.Context, chatID int64, providerID string,
+) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if providerID == "" {
+		return false, nil
+	}
 	for _, message := range s.messages {
-		if message.ID == id {
-			message.ProviderMessageID = providerID
-			return nil
+		if message.ChatID == chatID && message.ProviderMessageID == providerID {
+			return true, nil
 		}
 	}
-	return botflota.ErrNotFound
+	return false, nil
+}
+
+// CommitTurn applies the turn in order, the way SQLite applies it in one
+// transaction, and queues every reply: the engine fake cannot fail halfway,
+// and the durable queue itself is proven by the SQLite stores. The queue the
+// SQLite adapter writes is emulated here so the worker can be driven in tests.
+func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) error {
+	if turn.Session == nil {
+		return errors.New("memstore: turn has no session")
+	}
+	if turn.Inbound == nil {
+		return errors.New("memstore: turn has no inbound message")
+	}
+	if err := s.Save(ctx, turn.Session); err != nil {
+		return err
+	}
+	turn.Inbound.SessionID = turn.Session.ID
+	if err := s.Append(ctx, turn.Inbound); err != nil {
+		return err
+	}
+	for i := range turn.Outbound {
+		outbound := turn.Outbound[i]
+		if outbound.Message == nil {
+			return errors.New("memstore: turn has an empty reply")
+		}
+		if outbound.Recipient == "" {
+			return errors.New("memstore: reply has no recipient")
+		}
+		outbound.Message.SessionID = turn.Session.ID
+		if err := s.Append(ctx, outbound.Message); err != nil {
+			return err
+		}
+		content, ok := outbound.Message.Content.(botflota.SendableContent)
+		if !ok {
+			return errors.New("memstore: reply is not sendable")
+		}
+		s.nextOut++
+		s.outbox = append(s.outbox, queuedReply{
+			scope: turn.Scope, bot: turn.Bot,
+			entry: botflota.OutboxEntry{
+				ID: s.nextOut, Recipient: outbound.Recipient,
+				MessageID: outbound.Message.ID, Content: content,
+				Origin:  outbound.Message.Origin,
+				Routing: outbound.Message.Routing,
+			},
+		})
+	}
+	if err := s.RecordMessage(ctx, turn.ChatID, turn.At); err != nil {
+		return err
+	}
+	if turn.Guards != nil {
+		return s.SaveGuards(ctx, turn.ChatID, turn.Guards)
+	}
+	return nil
+}
+
+// queuedReply mirrors one outbox row for the worker tests.
+type queuedReply struct {
+	scope, bot  string
+	entry       botflota.OutboxEntry
+	nextAttempt time.Time
+	sent        bool
+	failed      bool
+}
+
+func (s *memStore) NextPending(
+	_ context.Context, scope, bot string, limit int,
+) ([]botflota.OutboxEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var entries []botflota.OutboxEntry
+	for _, queued := range s.outbox {
+		if len(entries) >= limit {
+			break
+		}
+		if queued.scope != scope || queued.bot != bot || queued.sent || queued.failed {
+			continue
+		}
+		entry := queued.entry
+		entry.NextAttempt = queued.nextAttempt
+		entries = append(entries, entry)
+	}
+	return entries, nil
+}
+
+func (s *memStore) findQueued(id int64) *queuedReply {
+	for i := range s.outbox {
+		if s.outbox[i].entry.ID == id {
+			return &s.outbox[i]
+		}
+	}
+	return nil
+}
+
+func (s *memStore) MarkSent(
+	_ context.Context, id int64, providerID string, _ time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	if queued == nil || queued.sent || queued.failed {
+		return botflota.ErrNotFound
+	}
+	queued.sent = true
+	queued.entry.Attempts++
+	if providerID != "" {
+		for _, message := range s.messages {
+			if message.ID == queued.entry.MessageID {
+				message.ProviderMessageID = providerID
+				break
+			}
+		}
+	}
+	return nil
+}
+
+func (s *memStore) MarkRetry(
+	_ context.Context, id int64, _ string, nextAttempt, _ time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	if queued == nil || queued.sent || queued.failed {
+		return botflota.ErrNotFound
+	}
+	queued.entry.Attempts++
+	queued.nextAttempt = nextAttempt
+	return nil
+}
+
+func (s *memStore) MarkFailed(
+	_ context.Context, id int64, _ string, _ time.Time,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	if queued == nil || queued.sent || queued.failed {
+		return botflota.ErrNotFound
+	}
+	queued.failed = true
+	queued.entry.Attempts++
+	return nil
+}
+
+func (s *memStore) Depth(_ context.Context, scope, bot string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	depth := 0
+	for _, queued := range s.outbox {
+		if queued.scope == scope && queued.bot == bot && !queued.sent && !queued.failed {
+			depth++
+		}
+	}
+	return depth, nil
+}
+
+func (s *memStore) FailPending(
+	_ context.Context, scope, bot, _ string, _ time.Time,
+) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	failed := 0
+	for i := range s.outbox {
+		queued := &s.outbox[i]
+		if queued.scope == scope && queued.bot == bot &&
+			!queued.sent && !queued.failed {
+			queued.failed = true
+			failed++
+		}
+	}
+	return failed, nil
 }
 
 func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
@@ -367,6 +576,8 @@ func buildFleetWithStore(
 		Chats:          store,
 		Senders:        store,
 		Messages:       store,
+		Turn:           store,
+		Outbox:         store,
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
@@ -409,7 +620,8 @@ func TestHistorySyncRoutesToTheChannelThatSupportsIt(t *testing.T) {
 	store := newStore()
 	channel := &syncChannel{fakeChannel: *newFakeChannel()}
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Outbox:     store,
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) { return channel, nil },
 	})
 	if err != nil {
@@ -452,6 +664,8 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 		Chats:    store,
 		Senders:  store,
 		Messages: store,
+		Turn:     store,
+		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
 			created = append(created, spec.Name)
@@ -483,6 +697,8 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 		Chats:    store,
 		Senders:  store,
 		Messages: store,
+		Turn:     store,
+		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil
@@ -522,6 +738,108 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 	if err := runner.StartBot("dev", "ghost"); err == nil {
 		t.Fatal("an unknown bot must report an error")
 	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+// TestEmptyFleetLivesUntilTheInstanceStops: an instance that starts without
+// a paired bot still runs, accepts its first pairing through the fleet,
+// and ends only when its context does (ADR 0022).
+func TestEmptyFleetLivesUntilTheInstanceStops(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	runner, err := New(cfg, Options{
+		Store:    store,
+		Chats:    store,
+		Senders:  store,
+		Messages: store,
+		Turn:     store,
+		Outbox:   store,
+		Skip:     func(_, _ string) bool { return true },
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+
+	// The pairing session of a running instance may start the first bot:
+	// StartBot answers until Run has published the run context.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := runner.StartBot("dev", "alpha")
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("StartBot: %v", err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	waitConnected(t, runner)
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned while the instance was live: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+// TestStoppingTheLastBotKeepsTheFleetRunning: unpairing the last bot stops
+// that bot, not the instance; the fleet keeps serving and a re-pair joins it
+// again without a restart (ADR 0021, ADR 0022).
+func TestStoppingTheLastBotKeepsTheFleetRunning(t *testing.T) {
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	store := newStore()
+	runner, err := New(cfg, Options{
+		Store:    store,
+		Chats:    store,
+		Senders:  store,
+		Messages: store,
+		Turn:     store,
+		Outbox:   store,
+		Skip:     func(_, bot string) bool { return bot == "beta" },
+		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+			return newFakeChannel(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	waitConnected(t, runner)
+
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("StopBot: %v", err)
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("Run returned after the last bot stopped: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := runner.StartBot("dev", "alpha"); err != nil {
+		t.Fatalf("re-pair into the running fleet: %v", err)
+	}
+	waitConnected(t, runner)
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("Run: %v", err)
@@ -583,6 +901,98 @@ func waitConnected(t *testing.T, runner *Fleet) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("bots did not connect in time")
+}
+
+// TestStopBotStopsAndStartBotRebuilds covers the lifecycle the account
+// operations need: a stopped bot drains, disconnects, and reports stopped,
+// and a later start builds a fresh channel — after a re-pair the device
+// store it was built with is gone (ADR 0021, ADR 0022).
+func TestStopBotStopsAndStartBotRebuilds(t *testing.T) {
+	runner, channels := buildFleet(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runner.Run(ctx)
+	waitConnected(t, runner)
+	first := channels["alpha"]
+
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("StopBot: %v", err)
+	}
+	if !first.wasDisconnected() {
+		t.Fatal("the stopped bot did not disconnect its channel")
+	}
+	for _, status := range runner.Status() {
+		if status.Bot == "alpha" && status.State != "stopped" {
+			t.Fatalf("stopped bot reports %q", status.State)
+		}
+	}
+	// A second stop is a no-op, not a double close.
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("second StopBot: %v", err)
+	}
+
+	if err := runner.StartBot("dev", "alpha"); err != nil {
+		t.Fatalf("StartBot: %v", err)
+	}
+	if channels["alpha"] == first {
+		t.Fatal("the restarted bot reused its old channel")
+	}
+	waitConnected(t, runner)
+}
+
+// TestStopBotWithoutRunIsANoop: a bot that never started is already stopped.
+func TestStopBotWithoutRunIsANoop(t *testing.T) {
+	runner, _ := buildFleet(t, "", nil)
+	if err := runner.StopBot("dev", "alpha"); err != nil {
+		t.Fatalf("StopBot before Run: %v", err)
+	}
+	if err := runner.StopBot("dev", "ghost"); err != nil {
+		t.Fatalf("StopBot of an unknown bot: %v", err)
+	}
+}
+
+// TestStopBotWaitsForTheQueuedSend: stopping a bot drains what is already
+// queued before the channel disconnects, and StopBot answers only after that
+// shutdown finished, because the credentials go away next (ADR 0011, ADR
+// 0021).
+func TestStopBotWaitsForTheQueuedSend(t *testing.T) {
+	runner, channels := buildFleet(t, "alpha", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runDone := make(chan struct{})
+	go func() { _ = runner.Run(ctx); close(runDone) }()
+	waitConnected(t, runner)
+	alpha := channels["alpha"]
+
+	alpha.incoming <- botflota.IncomingMessage{
+		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+	}
+	<-alpha.entered // the outbox worker is inside the send
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- runner.StopBot("dev", "alpha") }()
+	select {
+	case err := <-stopped:
+		t.Fatalf("StopBot answered while the send was in flight: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if alpha.wasDisconnected() {
+		t.Fatal("the channel disconnected while a queued send was in flight")
+	}
+
+	close(alpha.release)
+	if err := <-stopped; err != nil {
+		t.Fatalf("StopBot: %v", err)
+	}
+	if !alpha.wasDisconnected() {
+		t.Fatal("StopBot answered before the channel disconnected")
+	}
+	if reply := receive(t, alpha.sent); botflota.ContentText(reply.Content) != "hello from alpha" {
+		t.Fatalf("drained reply = %q, want the queued send to finish",
+			botflota.ContentText(reply.Content))
+	}
+	cancel()
+	<-runDone
 }
 
 func receive(t *testing.T, messages <-chan botflota.OutgoingMessage) botflota.OutgoingMessage {

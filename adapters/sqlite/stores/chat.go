@@ -10,7 +10,7 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-type ChatStore struct{ db *sql.DB }
+type ChatStore struct{ db dbtx }
 
 func NewChatStore(db *sql.DB) *ChatStore { return &ChatStore{db: db} }
 

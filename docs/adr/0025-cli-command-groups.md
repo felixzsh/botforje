@@ -31,12 +31,16 @@ are API clients.
 
 Commands split by where the instance answer comes from (ADR 0039):
 
-- Local: `config init|validate|schema`, `fleet run`, `bot pair`, and
-  `bot unpair` read files and, with the instance lock free, the stores.
+- Local: `config init|validate|schema` and `fleet run` read the files under
+  `config_dir`.
 - Through the API: `fleet status`, `bot list`, `chat list|sync`,
   `contact list`, and `message list|tail`, plus every future control command.
   While an owner process runs there is no fallback to the database; if the API
   does not answer, the command reports that instead of partial data.
+- Both: `bot pair` and `bot unpair` drive the running instance's pairing
+  session or account routes through the API while an owner process runs, and
+  work on the stores directly under the instance lock when it does not. No
+  path falls back to the database beneath a live instance.
 
 Process lifecycle belongs to the supervisor, not to Botflota. The CLI has no
 `stop` or `restart`: systemd, Docker, or another supervisor starts, stops, and
@@ -49,9 +53,9 @@ Vocabulary:
 - Action commands use a verb (`init`, `validate`, `pair`, `unpair`).
 - Query commands use a noun (`schema`, `status`, `messages`); the long-running
   process command is `fleet`.
-- Device pairing is `pair`; removing the local pairing is `unpair`. `link` and
-  `unlink` are rejected because `unpair` is local and does not unlink the
-  companion in WhatsApp.
+- Device pairing is `pair`; removing the pairing Botflota holds is `unpair`.
+  `link` and `unlink` are rejected because `unpair` removes only Botflota's
+  local record and does not unlink the companion in WhatsApp.
 - `auth` is reserved for authentication (owner token, access tokens, sessions)
   and never names channel pairing.
 

@@ -82,6 +82,36 @@ func TestOnMessageIgnoresOwnAndNonText(t *testing.T) {
 	}
 }
 
+// TestOnMessageWaitsWhenQueueIsFull proves backpressure instead of a drop:
+// with a full queue the event handler blocks until the consumer takes a
+// message, and never discards the inbound one (ADR 0011).
+func TestOnMessageWaitsWhenQueueIsFull(t *testing.T) {
+	a := newTestAdapter()
+	a.incoming = make(chan botflota.IncomingMessage, 1)
+	a.onMessage(textEvent("5215500000000", "1", "first"))
+
+	delivered := make(chan struct{})
+	go func() {
+		a.onMessage(textEvent("5215500000001", "2", "second"))
+		close(delivered)
+	}()
+
+	select {
+	case <-delivered:
+		t.Fatal("second message was dropped while the queue was full")
+	case <-time.After(50 * time.Millisecond):
+	}
+	<-a.incoming // the consumer takes one entry and frees a slot
+	select {
+	case <-delivered:
+	case <-time.After(time.Second):
+		t.Fatal("second message never reached the queue")
+	}
+	if message := <-a.incoming; botflota.ContentText(message.Content) != "second" {
+		t.Fatalf("message = %#v, want the blocked one", message)
+	}
+}
+
 func TestOnHistoryWithoutImporterIsInert(t *testing.T) {
 	a := newTestAdapter()
 	a.onHistory(&events.HistorySync{Data: &waHistorySync.HistorySync{}})

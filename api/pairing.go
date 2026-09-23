@@ -65,8 +65,9 @@ func pairingViewOf(session *botflota.PairingSession) pairingView {
 	return view
 }
 
-// handlePairStart refuses a bot that is already paired: replacing a pairing
-// is a local, stopped-fleet operation until Phase 12 controls arrive.
+// handlePairStart refuses a bot that is already paired: replacing one is an
+// unpair plus a new session (ADR 0039). The bot's lock keeps it from
+// overlapping that unpair.
 func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.scopeParam(w, r)
 	if !ok {
@@ -82,9 +83,11 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
 		return
 	}
+	unlock := s.lockBot(scope, bot)
+	defer unlock()
 	if _, err := s.accounts.Get(r.Context(), scope, bot); err == nil {
 		writeError(w, http.StatusConflict, "already_paired",
-			"bot is already paired; replace it with bot pair while the fleet is stopped")
+			"bot is already paired; unpair the account before pairing it again")
 		return
 	} else if !errors.Is(err, botflota.ErrNotFound) {
 		s.fail(w, "read account", err)
@@ -133,6 +136,8 @@ func (s *Server) handlePairCancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	unlock := s.lockBot(scope, bot)
+	defer unlock()
 	err := s.pairing.CancelPair(r.Context(), scope, bot)
 	if errors.Is(err, botflota.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "no pairing session for that bot")

@@ -123,6 +123,10 @@ func source(record slog.Record) string {
 }
 
 func writeAttr(builder *strings.Builder, group string, attr slog.Attr) {
+	// Resolving first runs a LogValueuer, so a value that masks itself in
+	// logs (the pairing code, ADR 0025) never reaches the raw formatting
+	// below.
+	attr.Value = attr.Value.Resolve()
 	if attr.Equal(slog.Attr{}) {
 		return
 	}

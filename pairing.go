@@ -1,6 +1,9 @@
 package botflota
 
-import "time"
+import (
+	"log/slog"
+	"time"
+)
 
 // PairState is one live pairing session's lifecycle (ADR 0025).
 type PairState string
@@ -54,4 +57,22 @@ func (s PairingSession) Final() bool {
 		return true
 	}
 	return false
+}
+
+// LogValue logs the session without its payload: the code is the credential
+// that links the account, so it may reach the response that asks for it and
+// the QR on screen, never a log line (ADR 0025).
+func (s PairingSession) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("scope", s.Scope),
+		slog.String("bot", s.Bot),
+		slog.String("method", s.Method),
+		slog.String("state", string(s.State)),
+		slog.Bool("code_present", s.Code != ""),
+		slog.Time("started_at", s.StartedAt),
+		slog.Time("updated_at", s.UpdatedAt),
+		slog.Time("expires_at", s.ExpiresAt),
+		slog.String("error", s.Error),
+		slog.Any("result", s.Result),
+	)
 }

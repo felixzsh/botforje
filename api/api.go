@@ -13,20 +13,22 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/felixzsh/botflota"
-	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
-	"github.com/felixzsh/botflota/fleet"
 )
 
 type Fleet interface {
-	Status() []fleet.BotStatus
+	Status() []botflota.BotStatus
+	// StopBotForUnpair lets a send already in progress finish, but leaves
+	// the rest of the queue for the unpair operation to fail (ADR 0040).
+	StopBotForUnpair(scope, bot string) error
 }
 
 // Options are the dependencies fleet run injects; every field is required
-// except Log and Devices. Config is the shared snapshot a reload replaces
+// except Log and Presence. Config is the shared snapshot a reload replaces
 // (ADR 0009).
 type Options struct {
 	Config   *config.Source
@@ -34,10 +36,13 @@ type Options struct {
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
 	Pairing  botflota.PairingRunner
-	// Devices reports local pairing credentials for `bot list`; fleet run
+	// Presence reports local pairing credentials for the bots view; fleet run
 	// injects it, and a server without it answers from the stored pairing
 	// state (ADR 0039).
-	Devices  *whatsapp.Devices
+	Presence botflota.DevicePresence
+	// Unpairer drops a bot's link; the handler stops the running bot before
+	// asking for it (ADR 0021, ADR 0039).
+	Unpairer botflota.AccountUnpairer
 	Senders  botflota.SenderStore
 	Contacts botflota.ContactStore
 	Chats    botflota.ChatStore
@@ -45,7 +50,10 @@ type Options struct {
 	Messages botflota.MessageStore
 	Tokens   botflota.AccessTokenStore
 	Resolver PrincipalResolver
-	Log      *slog.Logger
+	// RateBudgets are the per-minute request budgets; nil uses the built-in
+	// defaults and an explicit zero turns a budget off (config: rate_limit).
+	RateBudgets *config.RateBudgets
+	Log         *slog.Logger
 }
 
 type Server struct {
@@ -54,7 +62,8 @@ type Server struct {
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
 	pairing  botflota.PairingRunner
-	devices  *whatsapp.Devices
+	presence botflota.DevicePresence
+	unpairer botflota.AccountUnpairer
 	senders  botflota.SenderStore
 	contacts botflota.ContactStore
 	chats    botflota.ChatStore
@@ -63,8 +72,13 @@ type Server struct {
 	tokens   botflota.AccessTokenStore
 	resolver PrincipalResolver
 	log      *slog.Logger
-	started  time.Time
-	handler  http.Handler
+	limiter  *rateLimiter
+	// opsMu guards the per-bot operation locks pairing start, cancel, and
+	// unpair share (ADR 0021, ADR 0039).
+	opsMu   sync.Mutex
+	ops     map[string]*sync.Mutex
+	started time.Time
+	handler http.Handler
 }
 
 func New(opts Options) (*Server, error) {
@@ -82,6 +96,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Pairing == nil {
 		return nil, errors.New("api: no pairing runner")
+	}
+	if opts.Unpairer == nil {
+		return nil, errors.New("api: no account unpairer")
 	}
 	if opts.Senders == nil {
 		return nil, errors.New("api: no sender store")
@@ -111,10 +128,13 @@ func New(opts Options) (*Server, error) {
 	server := &Server{
 		cfg: opts.Config, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
-		pairing: opts.Pairing, devices: opts.Devices,
-		senders: opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
+		pairing: opts.Pairing, presence: opts.Presence,
+		unpairer: opts.Unpairer,
+		senders:  opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages,
-		tokens: opts.Tokens, resolver: opts.Resolver, log: logger, started: time.Now(),
+		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
+		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
+		ops: map[string]*sync.Mutex{},
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -124,6 +144,23 @@ func (s *Server) Handler() http.Handler { return s.handler }
 
 // config is the active snapshot; a reload replaces it for every handler.
 func (s *Server) config() *config.Config { return s.cfg.Current() }
+
+// lockBot serializes the write operations of one bot — pairing start,
+// cancel, and unpair — so an unpair never overlaps the session that stored
+// the account, and a re-pair starts only after the unpair finished (ADR
+// 0021, ADR 0039). The caller releases the lock through the return value.
+func (s *Server) lockBot(scope, bot string) func() {
+	key := scope + "/" + bot
+	s.opsMu.Lock()
+	lock, ok := s.ops[key]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.ops[key] = lock
+	}
+	s.opsMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
@@ -148,12 +185,34 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+pairing, s.handlePairState)
 	mux.HandleFunc("DELETE "+pairing, s.handlePairCancel)
 
+	account := "/api/v1/scopes/{scope}/bots/{bot}/account"
+	mux.HandleFunc("DELETE "+account, s.handleAccountDelete)
+
 	return s.authenticate(mux)
 }
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, err := s.resolver.Resolve(r)
+		if err == nil && principal != nil {
+			// One budget per credential: a token cannot drown the instance,
+			// and every other credential keeps its own allowance.
+			if principal.Key != "" {
+				if ok, retry := s.limiter.allow("credential:"+principal.Key,
+					s.limiter.credential); !ok {
+					writeRateLimited(w, retry)
+					return
+				}
+			}
+		} else if ok, retry := s.limiter.allow(
+			"unauthenticated:"+requestAddress(r), s.limiter.failedAttempt,
+		); !ok {
+			// An attempt with no usable credential accounts for nothing but
+			// its source, so guessing is bounded per address and one
+			// source's failures never spend another's budget.
+			writeRateLimited(w, retry)
+			return
+		}
 		switch {
 		case errors.Is(err, ErrUnauthenticated):
 			w.Header().Set("WWW-Authenticate", "Bearer")

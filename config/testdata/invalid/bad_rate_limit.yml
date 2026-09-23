@@ -1,0 +1,3 @@
+version: 1
+rate_limit:
+  credential_per_minute: -1

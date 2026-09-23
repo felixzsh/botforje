@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/store"
@@ -90,6 +89,10 @@ type UnpairOptions struct {
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
+	// Outbox fails the queued replies the link still owes; unlinking
+	// requires it, so a later pairing never sends the old replies (ADR
+	// 0040).
+	Outbox botflota.OutboxStore
 }
 
 // ValidateAccountOwners rejects more than one bot using the same phone number.
@@ -205,8 +208,8 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if err != nil {
 		return err
 	}
-	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings, account,
-		PairingNow(nil))
+	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings,
+		opts.Outbox, account, PairingNow(nil))
 }
 
 func ensurePhoneAvailable(
@@ -275,14 +278,38 @@ func PairingNow(now func() time.Time) time.Time {
 // Number strips the device suffix and the server from a stored account JID
 // for display: the JID itself stays internal (ADR 0020).
 func Number(jid string) string {
-	number := jid
-	if at := strings.IndexByte(number, '@'); at >= 0 {
-		number = number[:at]
-	}
-	if colon := strings.IndexByte(number, ':'); colon >= 0 {
-		number = number[:colon]
-	}
-	return number
+	return botflota.LinkedAccount{JID: jid}.Phone()
+}
+
+// HasCredentials implements botflota.DevicePresence for the live device
+// store, so a consumer asks for presence without receiving the store.
+func (d *Devices) HasCredentials(
+	ctx context.Context, account *botflota.LinkedAccount,
+) (bool, error) {
+	return HasLocalDevice(ctx, d, account)
+}
+
+// AccountOwner is the account lifecycle the control plane asks for: presence
+// through its Devices, and dropping the whole link (ADR 0039). fleet run
+// composes it once from the stores it already holds.
+type AccountOwner struct {
+	*Devices
+	Accounts botflota.LinkedAccountStore
+	Pairings botflota.PairingStore
+	Outbox   botflota.OutboxStore
+}
+
+// UnpairAccount removes the local credentials, the account record, and the
+// stored pairing state of one bot, and fails the replies its link still
+// owes (ADR 0021, ADR 0040). The caller stops the running bot first, so
+// nothing holds the connection while the credentials go.
+func (o AccountOwner) UnpairAccount(
+	ctx context.Context, scope, bot string,
+) error {
+	return Unpair(ctx, UnpairOptions{
+		Scope: scope, Bot: bot, Devices: o.Devices,
+		Accounts: o.Accounts, Pairings: o.Pairings, Outbox: o.Outbox,
+	})
 }
 
 // DevicePhone is the paired account's own number, which call-log routing uses

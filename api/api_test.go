@@ -17,7 +17,6 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/config"
-	"github.com/felixzsh/botflota/fleet"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -30,15 +29,52 @@ const (
 
 var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
-type fakeFleet struct{ statuses []fleet.BotStatus }
+type fakeFleet struct {
+	statuses []botflota.BotStatus
+	stopped  []string
+	// onStop, when set, runs inside StopBot, so a test can hold an unpair
+	// open while it checks the operation lock.
+	onStop func()
+}
 
-func (f fakeFleet) Status() []fleet.BotStatus { return f.statuses }
+func (f *fakeFleet) Status() []botflota.BotStatus { return f.statuses }
+
+func (f *fakeFleet) StopBotForUnpair(scope, bot string) error {
+	if f.onStop != nil {
+		f.onStop()
+	}
+	f.stopped = append(f.stopped, scope+"/"+bot)
+	return nil
+}
+
+// fakeUnpairer records the links the handler dropped; with the account store
+// it also removes the record, the way the real unpairer does.
+type fakeUnpairer struct {
+	calls    []string
+	err      error
+	accounts *fakeAccounts
+}
+
+func (f *fakeUnpairer) UnpairAccount(
+	ctx context.Context, scope, bot string,
+) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.calls = append(f.calls, scope+"/"+bot)
+	if f.accounts != nil {
+		if err := f.accounts.Delete(ctx, scope, bot); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 type fakeAccounts struct {
 	accounts map[string]botflota.LinkedAccount
 }
 
-func (f fakeAccounts) Get(
+func (f *fakeAccounts) Get(
 	_ context.Context, scope, bot string,
 ) (*botflota.LinkedAccount, error) {
 	account, ok := f.accounts[scope+"/"+bot]
@@ -48,13 +84,18 @@ func (f fakeAccounts) Get(
 	return &account, nil
 }
 
-func (f fakeAccounts) List(context.Context) ([]botflota.LinkedAccount, error) {
+func (f *fakeAccounts) List(context.Context) ([]botflota.LinkedAccount, error) {
 	return nil, nil
 }
 
-func (f fakeAccounts) Put(context.Context, *botflota.LinkedAccount) error { return nil }
+func (f *fakeAccounts) Put(context.Context, *botflota.LinkedAccount) error {
+	return nil
+}
 
-func (f fakeAccounts) Delete(context.Context, string, string) error { return nil }
+func (f *fakeAccounts) Delete(_ context.Context, scope, bot string) error {
+	delete(f.accounts, scope+"/"+bot)
+	return nil
+}
 
 type fakePairings struct {
 	states map[string]botflota.PairingState
@@ -81,6 +122,7 @@ type fakePairing struct {
 	session   botflota.PairingSession
 	present   bool
 	cancelled bool
+	ended     bool
 	started   botflota.PairRequest
 }
 
@@ -112,6 +154,11 @@ func (f *fakePairing) CancelPair(context.Context, string, string) error {
 		return botflota.ErrNotFound
 	}
 	f.cancelled = true
+	return nil
+}
+
+func (f *fakePairing) EndPair(context.Context, string, string) error {
+	f.ended = true
 	return nil
 }
 
@@ -289,7 +336,11 @@ type fakeMessages struct{ messages map[int64][]botflota.Message }
 
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
 
-func (f fakeMessages) SetProviderID(context.Context, int64, string) error { return nil }
+func (f fakeMessages) HasProviderID(
+	context.Context, int64, string,
+) (bool, error) {
+	return false, nil
+}
 
 func (f fakeMessages) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
 	var oldest *botflota.Message
@@ -335,7 +386,7 @@ func hashOf(key string) []byte {
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	return testServerWithFleet(t, fakeFleet{statuses: []fleet.BotStatus{
+	return testServerWithFleet(t, &fakeFleet{statuses: []botflota.BotStatus{
 		{Scope: "support", Bot: "demo", State: "connected", OutboxDepth: 2},
 		{Scope: "ventas", Bot: "other", State: "connected", OutboxDepth: 1},
 	}})
@@ -421,7 +472,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 	server, err := New(Options{
 		Config:   config.NewSource(cfg),
 		Fleet:    live,
-		Accounts: accounts,
+		Accounts: &accounts,
 		Pairings: pairings,
 		Senders: fakeSenders{senders: map[string]botflota.Sender{
 			"support/" + sender.Phone: sender,
@@ -481,6 +532,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 				ExpiresAt: testTime.Add(time.Hour),
 			},
 		},
+		Unpairer: &fakeUnpairer{accounts: &accounts},
 		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
 	})
 	if err != nil {
@@ -618,6 +670,13 @@ func TestNewRequiresDependencies(t *testing.T) {
 	}{
 		{"config", Options{}},
 		{"fleet", Options{Config: config.NewSource(&config.Config{})}},
+		{"account unpairer", Options{
+			Config:   config.NewSource(&config.Config{}),
+			Fleet:    &fakeFleet{},
+			Accounts: &fakeAccounts{},
+			Pairings: fakePairings{},
+			Pairing:  &fakePairing{},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
