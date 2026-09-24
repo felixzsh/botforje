@@ -18,6 +18,9 @@ which document owns what, read `README.md`.
 - Read the document that owns a topic before changing it, and update that
   document instead of repeating content elsewhere. Cross-reference files or
   sections.
+- For a change that needs a strong decision — one that will shape, restrict,
+  or constrain the project from there on — read `docs/adr/` first; if no
+  ADR covers it, stop and invite the decision before implementing.
 - ADRs describe only current decisions, with no superseded or retired files
   kept as history. When a decision changes, update or replace its canonical ADR
   and delete the obsolete one after moving any rationale still worth keeping;

@@ -33,7 +33,8 @@ the reasoning behind the design.
 - Prefer explicitness over magic.
 - Leave the codebase at least as maintainable as you found it.
 - Discuss architectural changes before implementing them, and record settled
-  decisions (including config DSL changes) as ADRs.
+  decisions (including config DSL changes) as ADRs; `AGENTS.md`, "Working
+  rules", says when to stop and decide first.
 
 ## Never
 
