@@ -19,6 +19,12 @@ device_name: "Botflota"           # Name in the phone's Linked devices; brand it
 rate_limit:                        # API budgets per fixed minute
   credential_per_minute: 600       # One budget per token; 0 = unlimited
   failed_per_minute: 60            # Attempts with no valid credential; 0 = unlimited
+# true: a scope belongs to at most one active access token. Minting refuses
+# a scope another active token already holds, and startup fails while an
+# overlap is already stored. false (the default): any number of access
+# tokens may share a scope. The owner token always covers every scope.
+# Restart to apply.
+exclusive_scopes: false
 
 
 # Multi-file organization: every file uses the `scopes` shape, and

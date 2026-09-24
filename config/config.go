@@ -44,9 +44,16 @@ type Config struct {
 	DeviceName string `yaml:"device_name" json:"device_name,omitempty"`
 	// RateLimit bounds the API per fixed minute; an omitted block uses the
 	// built-in budgets, and changing it requires a restart.
-	RateLimit *RateLimitSettings    `yaml:"rate_limit" json:"rate_limit,omitempty"`
-	Include   []string              `yaml:"include" json:"include,omitempty"`
-	Scopes    map[string]spec.Scope `yaml:"scopes" json:"scopes"`
+	RateLimit *RateLimitSettings `yaml:"rate_limit" json:"rate_limit,omitempty"`
+	// ExclusiveScopes makes a scope grant exclusive: minting an access token
+	// then refuses a scope another active token already holds, and startup
+	// refuses to run while a scope is already granted to several active
+	// tokens, so a scope belongs to at most one active token. The default
+	// false lets any number of tokens share a scope; the owner token covers
+	// every scope either way. Changing it requires a restart.
+	ExclusiveScopes bool                  `yaml:"exclusive_scopes" json:"exclusive_scopes,omitempty"`
+	Include         []string              `yaml:"include" json:"include,omitempty"`
+	Scopes          map[string]spec.Scope `yaml:"scopes" json:"scopes"`
 
 	origin     map[string]string `yaml:"-" json:"-"`
 	source     string            `yaml:"-" json:"-"`

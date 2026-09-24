@@ -68,6 +68,9 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 			off := 0
 			c.RateLimit = &RateLimitSettings{CredentialPerMinute: &off}
 		}, []string{"global setting rate_limit"}},
+		{"exclusive scopes", func(c *Config) {
+			c.ExclusiveScopes = true
+		}, []string{"global setting exclusive_scopes"}},
 	}
 
 	for _, tc := range cases {

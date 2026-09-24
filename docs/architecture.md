@@ -390,8 +390,12 @@ The owner token is created on first run, stored as a hash in SQLite, and
 written once to `owner.token` under `data_dir` with mode 0600 for the CLI;
 `fleet run --new-owner-token` regenerates it. Scoped access tokens are minted
 by the owner with `POST /api/v1/tokens`, stored hashed with optional expiry,
-listed without hashes, and revoked with `DELETE /api/v1/tokens/{id}`. Every
-request carries `Authorization: Bearer`. Browser sessions and CSRF arrive with
+listed without hashes, and revoked with `DELETE /api/v1/tokens/{id}`. A mint
+grants the scopes the owner names: several tokens may share a scope unless
+the instance sets `exclusive_scopes`, which makes the mint refuse a scope
+another active token already holds and the server refuse to start on an
+overlap already stored (restart to apply; `docs/api.md`). Every request
+carries `Authorization: Bearer`. Browser sessions and CSRF arrive with
 the dashboard (Phase 11); the resolver is the seam they replace. `config`
 serves the typed model with secrets masked (ADR 0014). Handlers stay small and
 direct; a narrow service is extracted only when a second real caller shares

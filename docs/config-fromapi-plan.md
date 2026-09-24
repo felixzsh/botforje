@@ -16,7 +16,9 @@ this work.
   no publication API; saved valid YAML and active runtime may differ (ADR 0009).
 - The owner can address any scope. A scoped token can authorize one or more
   scopes, but cannot create scopes, change its own authority, or edit owner
-  policy. Out-of-scope targets must look unknown (404; `docs/api.md`).
+  policy. Out-of-scope targets must look unknown (404; `docs/api.md`). Scope
+  grants are shareable by default and exclusive only where the instance sets
+  `exclusive_scopes` (`docs/api.md`).
 - YAML map keys remain identities, not display labels (ADR 0016). Optional
   `display_name` is editable; when absent or empty, an interface shows the
   key. A label edit must preserve references, sessions, guards, linked
@@ -118,14 +120,16 @@ authorized scoped principal can later edit with the normal publication API.
 Creating a scope must not automatically add it to any credential.
 
 A scoped token may authorize multiple scopes and must be granted a new scope
-by a separate owner credential operation. A host-facing flow can request
-creation from its own backend; the owner credential never reaches a scoped
-user or the dashboard. Once group limits are designed in Phase 18, a host may
-create an empty group with limits and add scopes on demand. If it wants
-ready-to-use scopes, it may request owner provisioning of an initial number
-within the group's capacity, with generated keys and optional initial labels.
-Neither creating a credential nor setting `max_scopes` implicitly creates
-that many scopes.
+by a separate owner credential operation. That grant obeys the instance's
+`exclusive_scopes` setting: where it is set, the operation refuses a scope
+another active token already holds (`docs/api.md`). A host-facing flow can
+request creation from its own backend; the owner credential never reaches a
+scoped user or the dashboard. Once group limits are designed in Phase 18, a
+host may create an empty group with limits and add scopes on demand. If it
+wants ready-to-use scopes, it may request owner provisioning of an initial
+number within the group's capacity, with generated keys and optional initial
+labels. Neither creating a credential nor setting `max_scopes` implicitly
+creates that many scopes.
 
 Settle the provisioning route, collision handling, duplicate-request behavior,
 and failure boundaries before implementation. Reuse the publication validation

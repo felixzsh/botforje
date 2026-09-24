@@ -75,8 +75,12 @@ type Server struct {
 	limiter  *rateLimiter
 	// opsMu guards the per-bot operation locks pairing start, cancel, and
 	// unpair share (ADR 0021, ADR 0039).
-	opsMu   sync.Mutex
-	ops     map[string]*sync.Mutex
+	opsMu sync.Mutex
+	ops   map[string]*sync.Mutex
+	// mintMu pairs the exclusive-scope check with the insert it guards, so
+	// two concurrent mints cannot both pass a check the other then breaks
+	// (config: exclusive_scopes; ADR 0039: one process owns the instance).
+	mintMu  sync.Mutex
 	started time.Time
 	handler http.Handler
 }
@@ -120,6 +124,12 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Resolver == nil {
 		return nil, errors.New("api: no principal resolver")
+	}
+	if opts.Config.Current().ExclusiveScopes {
+		// Startup is not a request, so the check runs on its own context.
+		if err := checkExclusiveScopes(context.Background(), opts.Tokens); err != nil {
+			return nil, err
+		}
 	}
 	logger := opts.Log
 	if logger == nil {

@@ -313,10 +313,12 @@ Deliverables:
   instead of every handler.
 - [x] Authorization base: one `Principal` per request (owner or scoped),
   scope-addressed routes, and scoped access tokens minted with the owner
-  token, hashed at rest, optionally expiring, and revocable. A scoped
-  principal requesting another scope gets 404, never 403. This advances the
-  scoped tokens of ROADMAP Phase 13 because the route shape depends on the
-  principal.
+  token, hashed at rest, optionally expiring, and revocable. Scope grants are
+  shareable between tokens by default and exclusive where the instance sets
+  `exclusive_scopes`, which also refuses startup on an overlap already stored
+  (`docs/api.md`). A scoped principal requesting another scope gets 404, never
+  403. This advances the scoped tokens of ROADMAP Phase 13 because the route
+  shape depends on the principal.
 - [x] Request budgets and opaque public errors: instance settings
   (`rate_limit`, defaults 600 and 60 per minute, `0` turns one off) budget
   each credential and each source of failed attempts (429 with
