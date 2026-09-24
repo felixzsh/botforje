@@ -9,9 +9,6 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// SchemaVersion is the only config version this build understands.
-const SchemaVersion = 1
-
 // Built-in per-minute budgets of the API, used when rate_limit is absent.
 const (
 	DefaultCredentialPerMinute = 600
@@ -35,7 +32,6 @@ type RateBudgets struct {
 // Config is the root document: instance settings plus the scopes it runs.
 type Config struct {
 	Schema         string `yaml:"$schema" json:"$schema,omitempty"`
-	Version        int    `yaml:"version" json:"version"` // must be 1
 	Address        string `yaml:"address" json:"address,omitempty"`
 	Port           int    `yaml:"port" json:"port,omitempty"`
 	LogLevel       string `yaml:"log_level" json:"log_level,omitempty"`

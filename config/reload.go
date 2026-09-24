@@ -127,7 +127,6 @@ func optionalBoolEqual(was, now *bool) bool {
 func WithScopes(current, next *Config, scopes []string) *Config {
 	active := *current
 	active.Schema = next.Schema
-	active.Version = next.Version
 	active.Include = slices.Clone(next.Include)
 	active.Scopes = make(map[string]spec.Scope, len(current.Scopes)+len(scopes))
 	for name, scope := range current.Scopes {

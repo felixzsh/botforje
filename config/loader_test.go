@@ -53,7 +53,7 @@ func TestWatchPathsIncludeTheBaseOfGlobIncludes(t *testing.T) {
 	writeTemp(t, filepath.Join(parts, "one"), "scope.yml",
 		"scopes:\n  support: {}\n")
 	main := writeTemp(t, dir, "config.yml",
-		"version: 1\ninclude: [parts/*/*.yml]\nscopes: {}\n")
+		"include: [parts/*/*.yml]\nscopes: {}\n")
 	cfg, err := testLoader().Load(main)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -64,8 +64,7 @@ func TestWatchPathsIncludeTheBaseOfGlobIncludes(t *testing.T) {
 }
 
 func TestInterpolationMissing(t *testing.T) {
-	path := writeTemp(t, t.TempDir(), "config.yml", `version: 1
-scopes:
+	path := writeTemp(t, t.TempDir(), "config.yml", `scopes:
   default:
     llms:
       a:
@@ -79,7 +78,7 @@ scopes:
 }
 
 func TestStrictUnknownField(t *testing.T) {
-	path := writeTemp(t, t.TempDir(), "config.yml", "version: 1\nnope: true\n")
+	path := writeTemp(t, t.TempDir(), "config.yml", "nope: true\n")
 	if _, err := testLoader().Load(path); err == nil {
 		t.Fatal("want an error for the unknown field")
 	}
@@ -87,8 +86,7 @@ func TestStrictUnknownField(t *testing.T) {
 
 func TestSameNameAcrossScopes(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTemp(t, dir, "config.yml", `version: 1
-scopes:
+	path := writeTemp(t, dir, "config.yml", `scopes:
   client-a:
     actions:
       pricing:
@@ -129,8 +127,7 @@ func TestIncludeDuplicate(t *testing.T) {
       dup:
         steps: [{message: {body: "x"}}]
 `)
-	main := writeTemp(t, dir, "config.yml", `version: 1
-include:
+	main := writeTemp(t, dir, "config.yml", `include:
   - ./frag.yml
 scopes:
   default:
@@ -201,8 +198,7 @@ func TestIncludeFileAndDir(t *testing.T) {
 }
 
 func TestSecretRefKeepsPlaceholder(t *testing.T) {
-	path := writeTemp(t, t.TempDir(), "config.yml", `version: 1
-scopes:
+	path := writeTemp(t, t.TempDir(), "config.yml", `scopes:
   default:
     llms:
       primary:
@@ -282,7 +278,7 @@ func TestSecretRefOutsideSecretFieldRejected(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			path := writeTemp(t, t.TempDir(), "config.yml",
-				"version: 1\nscopes:\n  default:\n"+tc.body)
+				"scopes:\n  default:\n"+tc.body)
 			cfg, err := testLoader().Load(path)
 			if err != nil {
 				t.Fatalf("load: %v", err)
@@ -308,8 +304,7 @@ func TestSecretRefOutsideSecretFieldRejected(t *testing.T) {
 // TestSecretRefMissingVariable checks that a malformed or unset reference in a
 // secret field fails at load instead of being sent literally.
 func TestSecretRefMissingVariable(t *testing.T) {
-	path := writeTemp(t, t.TempDir(), "config.yml", `version: 1
-scopes:
+	path := writeTemp(t, t.TempDir(), "config.yml", `scopes:
   default:
     actions:
       call:

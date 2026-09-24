@@ -115,10 +115,6 @@
         "$schema": {
           "type": "string"
         },
-        "version": {
-          "type": "integer",
-          "description": "must be 1"
-        },
         "address": {
           "type": "string"
         },
@@ -161,7 +157,6 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "version",
         "scopes"
       ],
       "description": "Config is the root document: instance settings plus the scopes it runs."

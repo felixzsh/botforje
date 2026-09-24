@@ -1,3 +1,2 @@
-version: 1
 include:
   - ./does-not-exist/*.yml

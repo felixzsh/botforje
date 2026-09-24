@@ -42,9 +42,6 @@ func Validate(cfg *Config) []ValidationError {
 		})
 	}
 
-	if cfg.Version != SchemaVersion {
-		add("", "config", "unsupported version %d (want %d)", cfg.Version, SchemaVersion)
-	}
 	switch cfg.LogLevel {
 	case "", "debug", "info", "warn", "error":
 	default:

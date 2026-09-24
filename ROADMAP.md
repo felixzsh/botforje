@@ -21,7 +21,7 @@ lead to the MVP (0 to 9); this file owns Phase 10 onward. The MVP scope is in
 
 When Phase 9 closes, a clean machine and one config file give:
 
-- `config validate` over a settled config v1, with a generated schema for
+- `config validate` over a settled config baseline, with a generated schema for
   editors.
 - A fleet of WhatsApp accounts paired with `bot pair` and run with
   `fleet run`, answering from YAML graphs deterministically, with System One routing

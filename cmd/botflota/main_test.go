@@ -10,7 +10,7 @@ import (
 func TestFirstExisting(t *testing.T) {
 	dir := t.TempDir()
 	existing := filepath.Join(dir, "config.yml")
-	if err := os.WriteFile(existing, []byte("version: 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(existing, []byte("scopes: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	missing := filepath.Join(dir, "nope.yml")
@@ -25,7 +25,7 @@ func TestFirstExisting(t *testing.T) {
 
 func TestDiscoverConfigEnvWins(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "custom.yml")
-	if err := os.WriteFile(path, []byte("version: 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("scopes: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("BOTFLOTA_CONFIG", path)
@@ -47,7 +47,7 @@ func TestDiscoverConfigUsesXDG(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("version: 1\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("scopes: {}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	found, err := discoverConfig()

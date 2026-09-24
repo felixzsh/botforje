@@ -5,7 +5,6 @@
 # Copy this to ~/.config/botflota/config.yml and customize.
 
 $schema: "../../config.schema.json"
-version: 1
 
 # Instance settings (global; only valid in the main file)
 address: "127.0.0.1"              # REST API bind address

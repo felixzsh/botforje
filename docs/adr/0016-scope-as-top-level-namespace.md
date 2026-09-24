@@ -18,7 +18,6 @@ catalog the host provides (ADR 0031). Each scope holds its own `system_one`,
 `llms`, `actions`, `graphs`, and `bots`.
 
 ```yaml
-version: 1
 address: "127.0.0.1"
 scopes:
   client-a:

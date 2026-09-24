@@ -10,8 +10,7 @@ import (
 	"github.com/felixzsh/botflota/config"
 )
 
-const reloadConfig = `version: 1
-port: 3000
+const reloadConfig = `port: 3000
 scopes:
   support:
     graphs:

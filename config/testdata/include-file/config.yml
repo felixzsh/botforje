@@ -1,4 +1,3 @@
-version: 1
 include:
   - ./fragment.yml
 scopes:

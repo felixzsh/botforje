@@ -46,15 +46,15 @@ Gate: the spike proves pairing and messaging work; conventions are written.
 
 Out of scope: any product code.
 
-### Phase 1 — Config engine, config v1, and `config validate`
+### Phase 1 — Config engine, config baseline, and `config validate`
 
-Goal: settle the config v1 baseline and turn YAML into a validated typed model
-with precise errors. The baseline keeps evolving through the MVP; v1 freezes at
-release.
+Goal: settle the config baseline and turn YAML into a validated typed model
+with precise errors. The baseline keeps evolving through the MVP and freezes
+at release.
 
 Deliverables:
 
-- [x] Design task first: settle the config v1 baseline (node `goal`/`policy`/`tools`,
+- [x] Design task first: settle the config baseline (node `goal`/`policy`/`tools`,
   action `inputs`/`bind`, edge `intent`/`triggers`, message modes, scope,
   graph `routing`, `llms`). Align `config/examples/reference.yml` and the draft
   `config.schema.json` with it.
@@ -496,8 +496,9 @@ and additional channels, each with its own phase, order, and open decisions.
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
-conventions are in `AGENTS.md`. The config v1 baseline settles in Phase 1 and
-keeps evolving until the MVP release.
+conventions are in `AGENTS.md`. The config baseline settles in Phase 1 and
+keeps evolving until the MVP release. The file carries no version field; the
+binary's version identifies the format it implements (ADR 0041).
 The operational CLI is a client of the REST API, authenticated with the owner
 token or a scoped access token, and `config init` is non-interactive (Phase 7,
 ADR 0025).

@@ -1,4 +1,3 @@
-version: 1
 log_level_deps: "verbose"
 scopes:
   default:

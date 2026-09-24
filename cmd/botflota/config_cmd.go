@@ -16,7 +16,6 @@ var minimalConfig = []byte(`# Botflota configuration. Validate it with botflota 
 # Secrets stay out of this file: a model api_key or a request header may
 # reference an environment variable as ${ENV_VAR}.
 $schema: "config.schema.json"
-version: 1
 
 # A scope isolates its bots, graphs, actions, and model profiles; one scope
 # per audience, product, or environment.

@@ -7,7 +7,7 @@ import (
 
 func TestDataDirPathRelativeToConfig(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTemp(t, dir, "dev.yml", "version: 1\ndata_dir: \"../.dev-data\"\n")
+	path := writeTemp(t, dir, "dev.yml", "data_dir: \"../.dev-data\"\n")
 	cfg, err := (Loader{}).Load(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -23,7 +23,7 @@ func TestDataDirPathRelativeToConfig(t *testing.T) {
 
 func TestDataDirPathAbsolute(t *testing.T) {
 	dir := t.TempDir()
-	path := writeTemp(t, dir, "dev.yml", "version: 1\ndata_dir: \"/var/lib/botflota\"\n")
+	path := writeTemp(t, dir, "dev.yml", "data_dir: \"/var/lib/botflota\"\n")
 	cfg, err := (Loader{}).Load(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
