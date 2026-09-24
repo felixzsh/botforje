@@ -262,9 +262,9 @@ Deliverables:
   leave scope/entity keys unchanged; absent labels remain absent in YAML.
   Each publication carries the logical scope version it was based on. Resolve
   every existing entity to its source file, edit only those definitions, and
-  place new ones in a deterministic API-managed scope fragment. Before
-  implementation, settle how an entity in the hand-maintained main file can
-  be edited without violating ADR 0002.
+  place new ones in a deterministic API-managed scope fragment. The main file
+  is editable when it contains the authorized scope or needs an include entry;
+  preserve global settings and unrelated scopes (ADR 0002).
   Stage all affected files and publish them as one recoverable all-or-nothing
   change. Serialize overlapping file commits; rebase a scope edit over API
   changes to other scopes in the same file, but reject a stale edit to that

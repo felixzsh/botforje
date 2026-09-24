@@ -84,9 +84,13 @@ The API writer is not implemented yet. The API treats a scope as one logical
 document, independent of how its entities are distributed across the main YAML
 and nested includes. The loader already records the source file for each
 entity. The writer must use that origin map to update or remove existing
-definitions in their source files, preserving unrelated entities and scopes.
-New definitions go to a deterministic API-managed scope fragment; the API
-never rewrites the hand-maintained main file just to add an entity.
+definitions in their source files, including the main file when it contains
+the authorized target scope. It may change only that scope and necessary
+include registrations; global settings and unrelated scopes are preserved.
+New definitions go to a deterministic API-managed scope fragment. If needed,
+the API may update the main file's include list to make the fragment reachable.
+Keeping scopes in separate include files is a user choice and a maintainability
+recommendation, never a restriction on API edits.
 
 Each publication carries the logical scope version the editor read. At commit,
 the server reloads the latest include tree, applies the requested scope change

@@ -48,21 +48,23 @@ this work.
 ### 1. Publish existing scopes (Phase 7)
 
 Keep Phase 7's `PLAN.md` publication deliverable open until its tests pass.
-First settle the contradiction between ADR 0002 and the plan: existing
-entities must be edited in their defining file, potentially the main file,
-while the current decision forbids rewriting that file. Decide the canonical
-rule in ADR 0002 before implementing. If the main file can be changed, confine
-edits to the addressed scope and any required include registration; never
-change global settings or unrelated scopes. Formatting and comments are not
-part of the config contract. Update `docs/api.md` and `PLAN.md` accordingly.
+ADR 0002 now permits the API to edit the main file. Use source origins to edit
+existing definitions wherever they live, including an authorized scope in the
+main file. The API may change only the target scope and required include
+registrations; it must preserve global settings and unrelated scopes. New
+definitions still go to a deterministic managed fragment, and the main
+include list may be updated to reach it. Separate include files remain a
+recommended user organization, not a prerequisite for API editing. Formatting
+and comments are not part of the config contract.
 
 - `GET /api/v1/scopes/{scope}/config` should return the **saved** logical scope,
   its opaque version, and the active version/status. An editor must never
   base a write on an older active snapshot while valid YAML is pending.
 - A version-checked `PUT /api/v1/scopes/{scope}/config` replaces that scope's
   logical document. The scope key comes from the URL. Existing entities stay
-  in their source files; new ones go to a deterministic managed fragment.
-  The server handles includes without exposing file paths to scoped callers.
+  in their source files, including the main file when that is their origin;
+  new ones go to a deterministic managed fragment. The server handles include
+  registration without exposing file paths to scoped callers.
 - The typed config includes optional `display_name` on scopes, bots, graphs,
   actions, nodes, and LLM profiles. Future System One/shared profiles use the
   same rule. A `PUT` that edits a label retains every map key; references
@@ -195,7 +197,8 @@ Phase 7 publication:
 - Owner, authorized multi-scope token, and out-of-scope token: reads and
   writes obey authority, with 404 and no existence or policy disclosure.
 - Scope split across the main file and nested includes: edit, add, and remove
-  definitions without altering unrelated scopes or instance settings.
+  definitions, including scopes defined directly in the main file; preserve
+  unrelated scopes, global settings, and includes.
 - Two concurrent scopes in one file both survive; two stale writes to the
   same scope conflict. An identical write leaves files and runtime unchanged.
 - Missing/empty and explicit `display_name`: round-trip without changing keys,
