@@ -32,6 +32,15 @@ scopes:
 - `display_name` is an optional, editable label on scopes and their entities.
   Interfaces show it when non-empty and otherwise show the map key. Changing the
   label never changes the key, references, or persisted runtime identity.
+- A UI-created child entity uses its initial submitted name as its map key.
+  Later UI renames change `display_name`, not the key. Scope provisioning is
+  the exception: its owner operation generates the scope key and may set an
+  initial `display_name`.
+- Effective display labels are unique within their UI namespace: scopes across
+  the instance, each entity category within a scope, nodes within a graph, and
+  model catalogs within their owner. Different categories or scopes may reuse
+  a label. Validation compares `display_name` when non-empty and otherwise the
+  key; creation and rename must enforce this server-side.
 - Renaming a map key changes identity. A manual edit that changes a key is not
   inferred as a rename; preserving identity across a key change needs an
   explicit operation with its own migration semantics.

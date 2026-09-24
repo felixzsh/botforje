@@ -23,6 +23,22 @@ this work.
   accounts, and token authorization. The API must not materialize the fallback
   in saved YAML. Manual key changes are deletion plus creation, not inferred
   renames. The watcher never writes IDs into manual files.
+- Creation and rename have different semantics. When the editor creates a
+  bot, graph, action, node, or model profile, its submitted initial name is
+  used verbatim as the YAML map key; no random key or `display_name` is
+  generated. A later rename keeps that key and writes the new visible label to
+  `display_name`. Scope provisioning is the deliberate exception: the owner
+  API generates the stable scope key, and the requested initial visible name
+  becomes `display_name`.
+- Visible labels must be unique in their UI namespace: scopes across the
+  instance; each entity category within a scope; nodes within their graph;
+  and each catalog within its owner (`scope` or `shared`). Same labels in
+  different entity categories or different scopes are allowed. Compare the
+  effective label (`display_name` when non-empty, otherwise the key), so a
+  missing label cannot collide with an explicitly named entity unnoticed.
+  Enforce this in config validation and on every API create/rename; UI checks
+  are only early feedback. Case and whitespace normalization for comparisons
+  remains an implementation detail to settle before the API contract freezes.
 - No config revision history or general rollback. An opaque logical scope
   version/ETag prevents stale API writes; it is not a schema version or an
   archive of previous documents.
@@ -52,6 +68,22 @@ part of the config contract. Update `docs/api.md` and `PLAN.md` accordingly.
   same rule. A `PUT` that edits a label retains every map key; references
   continue to use keys. GET leaves absent labels absent; presentation may
   fall back to the key without changing the document or its ETag.
+- For child-entity creation, the UI's initial `name` is the key. Reject a key
+  collision within its map rather than silently changing or suffixing it. Do
+  not persist a separate `display_name` until a later rename. A rename checks
+  that its new effective label is unique in the relevant namespace, then
+  writes `display_name` only; references and stored runtime identity remain
+  key-based. Scope creation keeps the generated-key exception described in
+  Phase 14.
+
+For example, creating a bot named `Sales assistant` inserts a map entry under
+that exact key and leaves `display_name` absent. Renaming it later to
+`Regional sales` keeps the `Sales assistant` key and sets
+`display_name: Regional sales`. References such as `bot.graph` and graph
+`goto` values always contain keys. A key collision or duplicate effective
+label rejects the whole publication; never auto-slug, overwrite, or silently
+add a numeric suffix. Scope creation instead generates a key and stores the
+requested initial label as `display_name`.
 - The loader validates the complete candidate before disk writes. Resolve
   source files and serialize overlapping commits; rebase a write to scope A
   over a concurrent write to scope B in the same physical file. Reject a
@@ -180,12 +212,17 @@ Phase 14 provisioning and Phase 18 policy, respectively:
 
 - Owner provisioning creates a unique scope key without implicitly granting
   token access; a scoped token cannot create a scope. Manual authors can keep
-  their own keys.
+  their own keys. For owner-provisioned scopes, the initial requested label is
+  stored as `display_name`; child entities use their submitted initial names
+  as keys.
 - Owner group starts empty, optional initial provisioning stays within its
   budget, and later provisioning updates membership without granting token
   access automatically. Concurrent writes across two scopes cannot exceed
   one aggregate ceiling; scoped and direct API attempts to alter owner
   policy fail. Lowering limits and manual edits follow the settled ADR.
+- Duplicate effective labels are rejected by the server within each stated
+  namespace; equal labels across categories or scopes remain valid. Test
+  create, rename, fallback-to-key, and collisions, including direct API calls.
 
 When implementation begins, request build permission before checks. Use the
 Make targets, add concurrency tests where appropriate, and mark phase

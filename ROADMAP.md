@@ -274,8 +274,11 @@ Deliverables:
   incompatible ones are kept and reported as restart-required.
 - [ ] Editors for bots, graphs, nodes, edges, actions, steps, guards, llms,
   and scope settings, with a YAML view beside the form. Optional `display_name`
-  labels are editable without changing entity keys; when absent, the UI shows
-  each key. Cover System One profiles when that catalog is implemented.
+  labels are editable without changing entity keys; a child entity's initial
+  UI name becomes its key, and later renames set `display_name`. Scope creation
+  uses the generated-key provisioning operation. Enforce unique effective
+  labels within each UI namespace on the server; when absent, the UI shows the
+  key. Cover System One profiles when that catalog is implemented.
 - [ ] Scope publication starts, stops, or rebuilds only affected bot actors;
   peer bots remain live. Revisit the current restart classification in ADR
   0009 when implementing this; instance-wide settings stay owner-only.

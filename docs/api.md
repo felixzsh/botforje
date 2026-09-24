@@ -62,7 +62,17 @@ field without renaming the key. API read models must distinguish the stored
 optional field from its presentation fallback rather than writing the fallback
 into YAML. Changing a key is not a display rename and must not be inferred as
 one during reload. Future scope provisioning generates a unique scope key;
-manual YAML authors choose their own.
+manual YAML authors choose their own. For UI-created child entities, the
+submitted initial name is the YAML key; later renames update only
+`display_name`. Scope creation is the exception: its owner API generates the
+key and can store the requested initial label as `display_name`.
+
+The server validates label uniqueness independently of the UI: effective
+labels must be unique among scopes instance-wide, among members of each entity
+category in a scope, among nodes in a graph, and within each model catalog.
+Equal labels across different categories or scopes are allowed. The precise
+case/whitespace comparison rule remains to be settled before implementing the
+API.
 
 Instance-wide configuration and shared resources are owner operations. Scope
 configuration does not become a second source of truth in the API or dashboard:
