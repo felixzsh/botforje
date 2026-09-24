@@ -258,10 +258,13 @@ Deliverables:
 - [ ] Scope config publication API: an owner can publish any scope and a
   scoped token only its scopes. It writes canonical YAML atomically, validates
   with the normal loader, and invokes the same activation pipeline as a manual
-  edit; drafts and edit forms stay client-side. Each publication carries the
-  logical scope version it was based on. Resolve every existing entity to its
-  source file, edit only those definitions, place new ones in a deterministic
-  API-managed scope fragment, and never rewrite the hand-maintained main file.
+  edit; drafts and edit forms stay client-side. Optional `display_name` edits
+  leave scope/entity keys unchanged; absent labels remain absent in YAML.
+  Each publication carries the logical scope version it was based on. Resolve
+  every existing entity to its source file, edit only those definitions, and
+  place new ones in a deterministic API-managed scope fragment. Before
+  implementation, settle how an entity in the hand-maintained main file can
+  be edited without violating ADR 0002.
   Stage all affected files and publish them as one recoverable all-or-nothing
   change. Serialize overlapping file commits; rebase a scope edit over API
   changes to other scopes in the same file, but reject a stale edit to that
@@ -274,7 +277,8 @@ Deliverables:
   detailed validation errors to the owner and for the caller's authorized
   scope; return a generic error for invalid configuration outside that scope
   or for instance-wide failures. Document that direct file edits are not
-  version-checked or serialized with API publications.
+  version-checked or serialized with API publications. The implementation
+  sequence and open source-file decision are in `docs/config-fromapi-plan.md`.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port

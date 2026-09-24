@@ -38,6 +38,13 @@ Scope isolation is enforced by the API, not by hiding controls in the UI. A
 credential authorized for several scopes can use them all, but cannot list,
 read, infer, or operate on any other scope.
 
+Planned scope provisioning is owner-only and creates a unique generated scope
+key; it does not grant that scope to any token. Owner credential management
+grants access separately. Limits across a group of scopes are also owner
+policy, not a property of a scoped token or a scoped-editable config document.
+The group policy's persistence and API shape need an ADR before implementation
+(`docs/config-fromapi-plan.md`); scoped publication must not bypass its limits.
+
 ## Configuration and scope operations
 
 YAML remains the source of behavior. The target API lets an authorized scoped

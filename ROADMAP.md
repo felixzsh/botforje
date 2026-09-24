@@ -234,7 +234,10 @@ Deliverables:
   include fragment, reload, and keep the previous state on any error), so a
   scope is created without hand-editing the main file. Applying it affects
   only that scope and keeps peer bots running. Reuses include fragments
-  (ADR 0016) and reload classes (ADR 0009). Scoped tokens cannot create scopes.
+  (ADR 0016) and reload classes (ADR 0009). Scoped tokens cannot create scopes;
+  owner credential management grants access separately. Once group limits
+  exist (Phase 18), the owner may provision an initial set within a group's
+  capacity or add scopes later; a limit never precreates scopes implicitly.
 - [ ] Instance identity: `instance_id`, version, and build info in responses
   and events, so a caller with several instances can tell them apart.
 - [ ] Signed outbound webhooks with retries and backoff: bot connected,
@@ -261,10 +264,9 @@ validation and review, while YAML stays the source of truth
 
 Deliverables:
 
-- [ ] Publishing over the API: apply a validated scope document as one include
-  fragment per scope (ADR 0016), written atomically and reloaded through the
-  watcher and validation of ADR 0009; a rejected publish changes nothing. An
-  expected version rejects a stale write instead of overwriting a newer edit.
+- [ ] Use the Phase 7 scope publication API in the editor; this phase does
+  not add a second writer. Existing definitions stay in their source files,
+  new ones use managed fragments, and stale writes conflict (ADR 0002).
 - [ ] Validation before publish: the same semantic rules as `config validate`
   plus template reference checks, so a dashboard edit and a hand edit pass
   the same gate.
@@ -356,10 +358,15 @@ Deliverables:
 - [ ] Telegram channel (`adapters/telegram`), the cheapest proof that the
   port is provider agnostic and the dashboard is not WhatsApp-specific.
 - [ ] Instance sharding: several instances, one identity each, and documented
-  guidance for spreading scopes across instances; aggregation lives outside
-  Botflota.
-- [ ] Per-scope quotas: bot count, message rate, and storage, enforced with
-  clear errors; the host sets them, Botflota enforces them.
+  guidance for spreading scopes across instances; aggregation **across
+  instances** lives outside Botflota.
+- [ ] Decide and enforce owner-managed aggregate limits for a group of scopes.
+  A group may start empty and gain scopes over time; bot count and other
+  resource ceilings are shared across its scopes, not copied to each scope or
+  stored on scoped tokens. Settle persistence, membership, manual-edit and
+  concurrency rules in an ADR before implementation; reject direct API writes
+  that exceed the group's budget. Preserve distinct per-scope runtime controls
+  where needed. See `docs/config-fromapi-plan.md`.
 - [ ] Each channel maps its own settings from `config.BotSettings` (the CLI
   translates them for WhatsApp today), so a second provider adds no switch in
   `cmd/`.
@@ -367,8 +374,8 @@ Deliverables:
   another instance, and a delete-scope operation that removes its rows and its
   device store.
 - [ ] Metrics and tracing for operators, beyond structured logs.
-- [ ] Tests: a second channel against the same fixture graph, quota
-  enforcement, and scope deletion.
+- [ ] Tests: a second channel against the same fixture graph, aggregate limit
+  enforcement across scopes, and scope deletion.
 
 Gate: the same graph runs on two providers, a scope moves between instances
 through export and import, and deleting a scope leaves no residue.

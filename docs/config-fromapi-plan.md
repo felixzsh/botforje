@@ -1,83 +1,193 @@
-Plan de implementación: publicación de configuración por API — Phase 7
-Contexto para retomar en una sesión nueva
-Trabajar solo en main de /home/felix/Work/personal/botflota. Al preparar este plan, el árbol estaba limpio y HEAD era 5c14dd7; comprobar de nuevo el estado antes de editar. Leer docs/glossary.md, PLAN.md y los ADR 0002, 0009 y 0016.
-Botflota usa YAML como única fuente canónica de comportamiento. Un proceso ejecuta bots de varios scopes. Hay dos autoridades: owner puede operar cualquier scope y la instancia; un token scoped puede leer y modificar únicamente sus scopes. No hay roles ni se planean. La UI futura accederá exclusivamente por API. No comenzar Phase 8 ni implementar la UI.
-Estado técnico relevante:
-- GET /api/v1/scopes/{scope}/config devuelve hoy la configuración activa; no existe escritura por API.
-- config.Loader carga el principal e include anidados, combina entidades de un mismo scope y registra su archivo de origen por (tipo, scope, nombre). Distintas entidades del mismo scope pueden vivir en archivos diferentes; varios scopes pueden compartir un archivo.
-- El watcher en cmd/botflota/reload.go carga y valida YAML; config.Source guarda el snapshot activo; fleet.ApplyConfig activa cambios seguros por scope y deja otros pendientes. YAML guardado y runtime activo pueden diferir.
-- PLAN.md:258–277 deja pendiente la publicación por API. docs/api.md:55–90 especifica versiones, aislamiento y concurrencia, pero aún no existe el publicador.
-- Contradicción que hay que resolver antes de programar: ADR 0002 y PLAN.md exigen editar definiciones en su archivo de origen, incluso si viven en config.yml, pero también dicen que la API nunca reescribe el principal. Para cumplir edición de scopes existentes sin exigir reorganización manual, actualizar la decisión canónica: permitir cambios acotados a scopes.<scope> y, cuando haga falta, el registro de un include en el principal; preservar settings globales y otros scopes. El formato o los comentarios de un archivo reescrito no necesitan permanecer idénticos.
-Contrato a entregar
-1. La API publica un scope lógico, sin que el cliente conozca rutas de archivos. El owner puede publicar cualquiera; un token scoped solo los suyos. Archivos y entidades ajenos nunca aparecen en sus respuestas.
-2. GET entrega la versión guardada del scope, una versión opaca para editar y el estado/versión activa. No usar el snapshot activo como base de una edición cuando hay YAML válido guardado pero pendiente.
-3. Una operación de publicación —por ejemplo PUT /api/v1/scopes/{scope}/config con versión esperada— modifica únicamente ese scope. Las entidades existentes conservan su archivo de origen; las nuevas van a un fragmento administrado y alcanzable por include. Si hay que registrar ese include en el principal, hacerlo dentro de la misma publicación.
-4. Dos cambios de scopes distintos en el mismo archivo deben conservarse ambos: al confirmar, releer el archivo más reciente y modificar solo el subtree autorizado. Dos cambios al mismo scope basados en una versión antigua producen conflicto. Repetir contenido idéntico es un no-op.
-5. Validar el candidato completo con el loader y las mismas reglas que config validate antes de tocar archivos definitivos. Una propuesta inválida no escribe nada. Tras un guardado válido, responder diferenciando active de pending con su motivo; no prometer activación inmediata de cambios que el runtime difiere.
-6. Los errores propios del scope son detallados para su token; errores globales o de otro scope son genéricos para él y diagnosticables por el owner. No filtrar rutas, nombres ajenos ni secretos.
-7. No garantizar coordinación con editores manuales externos. El watcher conserva el último runtime válido y no hace undo. Si el YAML manual existente impide cargar el documento global, rechazar la publicación API sin escribir y dar al token ajeno un error genérico hasta que el owner lo corrija.
-Orden de implementación
-1. Alinear decisiones y fases. Corregir ADR 0002, docs/api.md y la casilla de Phase 7 en PLAN.md para resolver la contradicción del archivo principal. Quitar de ROADMAP.md Phases 14–15 la duplicación de «implementar publicación API»: allí quedan provisioning y UI, que son capacidades posteriores. Mantener la casilla de Phase 7 abierta hasta que sus pruebas pasen.
-2. Construir el publicador en el dueño de los documentos, config. Exponer internamente origen y versión lógica de cada entidad/scope sin exponer rutas por API. Editar YAML en el archivo de origen —incluido el principal cuando corresponda— preservando los valores de otras entidades. Usar la dependencia YAML existente; no añadir otra. Resolver de manera determinista dónde se escriben entidades nuevas y cómo se incorpora su fragmento al árbol de includes.
-3. Validación previa y secretos. Preparar una vista candidata de los archivos modificados para pasarla por el loader y la validación completa sin publicarla todavía. Los Secret de spec en GET pueden aparecer como *** cuando provienen de un literal: una edición que los deje intactos debe conservar su valor original desde el YAML, nunca escribir *** como secreto. Las sustituciones explícitas siguen la política ${ENV_VAR} de ADR 0014.
-4. Commit concurrente y recuperación. Coordinar por archivo físico y comprobar la versión lógica del scope bajo el lock de publicación. Releer y revalidar después de otro commit; un cambio ajeno en el mismo archivo no convierte en obsoleta la edición del scope intacto. Acotar peticiones en espera, sin cola duradera ilimitada. Para una publicación que afecta varios archivos, implementar staging y una transacción de archivos recuperable ante error o caída: renames individuales no son atómicos como conjunto. Bloquear al watcher mientras se confirma; recuperar cualquier transacción incompleta antes de la carga/validación normal al arrancar. Hoy runFleet carga config antes de tomar el lock de instancia: ajustar ese orden o establecer un lock/journal de publicación localizable desde la ruta estable del config. No afirmar «todo-o-nada» tras un crash sin probar esa recuperación.
-5. Compartir el circuito de activación. Extraer de cmd/botflota/reload.go la coordinación reutilizable cargar → validar → comparar → aplicar, sin crear un ciclo de imports entre config y fleet. Inyectarla en api.Options mediante una interfaz pequeña; el watcher y el handler usan el mismo publicador. Tras confirmar YAML, activar los scopes seguros con el mecanismo existente; mantener los incompatibles pendientes y no modificar runtime ajeno. Evitar que el watcher procese como edición nueva los renames intermedios de una publicación API.
-6. Añadir la ruta y respuestas. Autorizar con scopeParam/Principal.Allows. Decodificar con límite de tamaño y exigir versión esperada. Responder con versión guardada, aplicada y estado; conflicto por edición obsoleta; errores de validación filtrados por autoridad. Distinguir edición del scope de operaciones globales, que siguen reservadas al owner y fuera de esta entrega.
-Pruebas de aceptación obligatorias
-- Owner, token propio y token fuera de scope: lectura/escritura permitidas y 404 sin inferencia ajena.
-- Scope distribuido entre config.yml e include anidados: cambiar, crear y eliminar entidades sin alterar otras definiciones.
-- Dos publicaciones simultáneas de scopes distintos en el mismo archivo: sobreviven ambas; dos del mismo scope: una obtiene conflicto.
-- Edición inválida: ningún archivo cambia; error propio visible, error ajeno opaco.
-- Secreto enmascarado en GET: un guardado sin cambiarlo conserva el secreto real; ninguna respuesta ni log lo revela.
-- Fallo inyectado después del primer reemplazo de una publicación multiarchivo: recuperación deja toda la versión anterior o toda la nueva, también al reiniciar.
-- Cambio válido pero incompatible con sesiones: YAML queda guardado, API dice pending, runtime anterior permanece y otros scopes siguen activos.
-- Edición idéntica: no reescribe ni incrementa generaciones. Includes nuevos y cambios manuales siguen entrando por el watcher.
-Verificar con los checks pertinentes (make check y make test-race para concurrencia), solicitando primero permiso de build según las instrucciones locales. Marcar entregables completados en el mismo commit que los complete y usar Conventional Commits.
+# API configuration publication and scope provisioning plan
 
+Planning context, not an implemented API contract. Work through the open
+decisions below before treating proposed routes or policy storage as settled.
+The current phase is Phase 7 (`PLAN.md`); later scope provisioning and limits
+belong to `ROADMAP.md`. Do not start Phase 8 or build the dashboard as part of
+this work.
 
-Operación	Propósito
-GET /api/v1/scopes/{scope}/config	Leer el scope guardado, su versión y si coincide con lo activo.
-PUT /api/v1/scopes/{scope}/config	Reemplazar el scope lógico completo con control de versión; el servidor resuelve los archivos.
-Lectura
-GET /api/v1/scopes/support/config
-Authorization: Bearer …
-200 OK
-ETag: "scope-version-opaque"
-Content-Type: application/json
-{
-  "scope": "support",
-  "config": {
-    "actions": {},
-    "graphs": {},
-    "bots": {},
-    "llms": {}
-  },
-  "version": "scope-version-opaque",
-  "active_version": "previous-version-opaque",
-  "state": "pending",
-  "pending_reasons": ["graph change waits for active sessions"]
-}
-config es la versión guardada en YAML; active_version permite saber si el runtime aún usa otra. Para un token scoped, los motivos solo pueden describir su propio scope. Ni rutas de archivos ni otros scopes aparecen en la respuesta.
-Publicación
+## Baseline
+
+- YAML remains the source of truth for behavior (ADR 0002). The loader merges
+  nested includes and records each entity's source file; config validation
+  checks the whole candidate. SQLite holds runtime state and credentials
+  (ADR 0006).
+- Today `GET /api/v1/scopes/{scope}/config` reads the active snapshot. There is
+  no publication API; saved valid YAML and active runtime may differ (ADR 0009).
+- The owner can address any scope. A scoped token can authorize one or more
+  scopes, but cannot create scopes, change its own authority, or edit owner
+  policy. Out-of-scope targets must look unknown (404; `docs/api.md`).
+- YAML map keys remain identities, not display labels (ADR 0016). Optional
+  `display_name` is editable; when absent or empty, an interface shows the
+  key. A label edit must preserve references, sessions, guards, linked
+  accounts, and token authorization. The API must not materialize the fallback
+  in saved YAML. Manual key changes are deletion plus creation, not inferred
+  renames. The watcher never writes IDs into manual files.
+- No config revision history or general rollback. An opaque logical scope
+  version/ETag prevents stale API writes; it is not a schema version or an
+  archive of previous documents.
+
+## Delivery order
+
+### 1. Publish existing scopes (Phase 7)
+
+Keep Phase 7's `PLAN.md` publication deliverable open until its tests pass.
+First settle the contradiction between ADR 0002 and the plan: existing
+entities must be edited in their defining file, potentially the main file,
+while the current decision forbids rewriting that file. Decide the canonical
+rule in ADR 0002 before implementing. If the main file can be changed, confine
+edits to the addressed scope and any required include registration; never
+change global settings or unrelated scopes. Formatting and comments are not
+part of the config contract. Update `docs/api.md` and `PLAN.md` accordingly.
+
+- `GET /api/v1/scopes/{scope}/config` should return the **saved** logical scope,
+  its opaque version, and the active version/status. An editor must never
+  base a write on an older active snapshot while valid YAML is pending.
+- A version-checked `PUT /api/v1/scopes/{scope}/config` replaces that scope's
+  logical document. The scope key comes from the URL. Existing entities stay
+  in their source files; new ones go to a deterministic managed fragment.
+  The server handles includes without exposing file paths to scoped callers.
+- The typed config includes optional `display_name` on scopes, bots, graphs,
+  actions, nodes, and LLM profiles. Future System One/shared profiles use the
+  same rule. A `PUT` that edits a label retains every map key; references
+  continue to use keys. GET leaves absent labels absent; presentation may
+  fall back to the key without changing the document or its ETag.
+- The loader validates the complete candidate before disk writes. Resolve
+  source files and serialize overlapping commits; rebase a write to scope A
+  over a concurrent write to scope B in the same physical file. Reject a
+  stale write to A, even if its label change seems harmless. Identical
+  publications are no-ops. Bound requests waiting for publication locks.
+- Stage multi-file updates and recover incomplete commits after errors or
+  crashes before normal startup loading. Coordinate with the watcher so it
+  never observes a half-published document. Share the normal load, validate,
+  compare, and activate pipeline (ADR 0009). Report saved versus active or
+  pending; do not claim that a deferred edit is live. The process currently
+  loads config before taking its instance lock: fix the recovery ordering.
+- Protect secrets on read and write. An unchanged masked literal (`***`) must
+  retain the original value, never be written as a secret. Define omission,
+  replacement with `${ENV_VAR}`, and explicit removal before accepting PUT.
+  A scoped token gets useful errors only for its own scope; global errors and
+  other scopes' details remain opaque.
+- Direct manual edits are outside API write locks/ETags. Do not overwrite a
+  manual editor silently or make the watcher rewrite its files. An invalid
+  manual document blocks API publication until corrected by the owner.
+
+Keep `POST /config/validate` out of this slice unless draft validation without
+publication is needed. Do not conflate a label edit with a key migration.
+
+### 2. Provision scopes and grant access (Phase 14)
+
+Provisioning is an **owner** operation, separate from scoped publication.
+The API generates and checks a unique, stable scope key at creation; manual
+authors choose their own keys. It may initialize `display_name`, which an
+authorized scoped principal can later edit with the normal publication API.
+Creating a scope must not automatically add it to any credential.
+
+A scoped token may authorize multiple scopes and must be granted a new scope
+by a separate owner credential operation. A host-facing flow can request
+creation from its own backend; the owner credential never reaches a scoped
+user or the dashboard. Once group limits are designed in Phase 18, a host may
+create an empty group with limits and add scopes on demand. If it wants
+ready-to-use scopes, it may request owner provisioning of an initial number
+within the group's capacity, with generated keys and optional initial labels.
+Neither creating a credential nor setting `max_scopes` implicitly creates
+that many scopes.
+
+Settle the provisioning route, collision handling, duplicate-request behavior,
+and failure boundaries before implementation. Reuse the publication validation
+and activation path rather than inventing a second config writer. Joining a
+group needs the Phase 18 policy decision and its own failure boundaries;
+neither operation may expose or interrupt peer scopes.
+
+### 3. Enforce aggregate limits across scopes (decision before implementation)
+
+The host knows why limits differ; Botflota knows only generic owner-managed
+groups and resource ceilings. For example, a group may start empty with
+`max_scopes: 3` and `max_bots: 4`: as scopes join, their bots share one
+four-bot budget. These numbers are examples, not a fixed policy schema.
+
+- Group membership and limits are owner-controlled. They are not fields in
+  scoped-editable YAML or access tokens. A token answers **which scopes** it
+  may use, never **how much** their group may consume. Reissuing a token must
+  not reset counters or widen a group's budget.
+- Check projected aggregate usage under the same concurrency control as
+  creation, membership changes, and publication. A scoped caller cannot evade
+  a ceiling by splitting bots across authorized scopes, racing two writes,
+  using a direct API call instead of the UI, or moving its own label.
+- Decide which resources count, whether every scope must belong to a group,
+  how a scope leaves or changes groups, and what to do when lowering a limit
+  below current usage. Define how policy applies to manual YAML edits and
+  startup without silently deleting or orphaning existing data.
+- Decide protected persistence and recovery for group policy and membership
+  (including consistency with YAML commits). ADR 0002 makes YAML canonical
+  for **behavior**, not a settled home for owner policy; do not choose SQLite
+  or a protected file by accident. Define the owner API and its authorization
+  matrix in a canonical ADR before implementing limits or group provisioning.
+
+Phase 18 now targets aggregate limits; settle their full contract in an ADR.
+Per-scope runtime controls need not be removed. No commercial vocabulary
+enters Botflota's contracts, code, comments, or docs.
+
+## Publication wire sketch (not a finalized endpoint reference)
+
+`GET /api/v1/scopes/support/config` returns saved config and an opaque ETag,
+alongside active status. A missing `display_name` stays missing in `config`;
+the UI displays `support`. A label edit can publish:
+
+```http
 PUT /api/v1/scopes/support/config
-Authorization: Bearer …
 If-Match: "scope-version-opaque"
 Content-Type: application/json
-{
-  "config": {
-    "actions": {},
-    "graphs": {},
-    "bots": {},
-    "llms": {}
-  }
-}
-Es un reemplazo completo del contenido lógico de ese scope: una entidad omitida se elimina. El scope se toma de la URL, no del cuerpo. Internamente la API edita las entidades en sus archivos de origen, incluso si varias comparten archivo con otro scope.
-La respuesta usa la misma forma que GET:
-- 200: guardado y activo, o contenido idéntico (no-op, misma versión).
-- 202: guardado válidamente, pero pendiente de activación por la regla de recarga aplicable.
-- 428: falta If-Match; 412: cambió ese mismo scope desde la lectura. Un cambio de otro scope en el mismo archivo no causa 412: el servidor incorpora ambos.
-- 422: propuesta inválida; no se escribió nada. Devuelve detalles de entidades y campos del scope propio.
-- 503 con motivo genérico para un token scoped si un YAML manual inválido fuera de su autoridad impide cargar el documento. El owner puede obtener el diagnóstico completo.
-- 404 para scope desconocido o no autorizado, como ahora; 401 para credencial inválida.
-Secretos: un GET puede mostrar *** para un valor oculto. El PUT no debe escribir ese texto como secreto: la UI omite el campo para conservar el valor existente, envía ${ENV_VAR} para sustituirlo, o lo elimina explícitamente si el campo lo permite. Hay que definir y probar esa semántica junto al handler.
-No incluiría POST /config/validate todavía. PUT ya valida antes de escribir y devuelve 422 sin efectos; si más adelante la UI necesita comprobar un borrador sin guardarlo aunque sea válido, se puede añadir ese tercer endpoint reutilizando exactamente el mismo validador. Tampoco incluiría aquí creación de scopes ni edición de settings globales: son operaciones distintas; el owner puede usar este mismo PUT para cualquier scope existente.
+
+{"config":{"display_name":"Support desk","graphs":{"welcome":{
+"root":"start","nodes":{"start":{}}}},"bots":{"assistant":{
+"graph":"welcome"}}}}
+```
+
+This is a **whole-scope** replacement: omitted entities are removed. Assume
+the example includes the scope's entire current content. For a real label
+edit, the caller must include the rest of the saved scope unchanged; a
+dedicated field update could be considered only if it reuses the same
+versioned publication path. Never synthesize fallback labels into the PUT.
+
+Expected outcomes: 200 for active/no-op, 202 for valid but pending, 428 for
+missing `If-Match`, 412 for stale scope version, 422 for invalid proposed
+config, 404 for unknown or unauthorized scope, and 401 for invalid credential.
+If unrelated invalid YAML blocks a scoped caller, return a generic failure
+while exposing diagnostics to the owner. Do not expose paths or other scopes.
+
+## Acceptance gates
+
+Phase 7 publication:
+
+- Owner, authorized multi-scope token, and out-of-scope token: reads and
+  writes obey authority, with 404 and no existence or policy disclosure.
+- Scope split across the main file and nested includes: edit, add, and remove
+  definitions without altering unrelated scopes or instance settings.
+- Two concurrent scopes in one file both survive; two stale writes to the
+  same scope conflict. An identical write leaves files and runtime unchanged.
+- Missing/empty and explicit `display_name`: round-trip without changing keys,
+  references, guards, sessions, linked accounts, or token access. Editing a
+  label in one scope cannot alter another; missing fallback is presentation
+  only. A manual key edit remains a different identity.
+- Invalid candidate or masked secret: no partial file write and no secret
+  leakage. An injected failure after the first file replacement recovers
+  entirely old or entirely new content, including after restart.
+- Incompatible graph edit: YAML saved, runtime pending, unrelated scopes
+  still active. Manual edits and newly matched includes remain watchable.
+
+Phase 14 provisioning and Phase 18 policy, respectively:
+
+- Owner provisioning creates a unique scope key without implicitly granting
+  token access; a scoped token cannot create a scope. Manual authors can keep
+  their own keys.
+- Owner group starts empty, optional initial provisioning stays within its
+  budget, and later provisioning updates membership without granting token
+  access automatically. Concurrent writes across two scopes cannot exceed
+  one aggregate ceiling; scoped and direct API attempts to alter owner
+  policy fail. Lowering limits and manual edits follow the settled ADR.
+
+When implementation begins, request build permission before checks. Use the
+Make targets, add concurrency tests where appropriate, and mark phase
+deliverables complete only in the commit that proves them. Do not implement
+group policy while its authority, persistence, and recovery decision is open.
