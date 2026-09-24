@@ -2,14 +2,18 @@ package spec
 
 // Scope is an isolation namespace holding its own entities.
 type Scope struct {
-	LLMs    map[string]LLM    `yaml:"llms" json:"llms,omitempty"`
-	Actions map[string]Action `yaml:"actions" json:"actions,omitempty"`
-	Graphs  map[string]Graph  `yaml:"graphs" json:"graphs,omitempty"`
-	Bots    map[string]Bot    `yaml:"bots" json:"bots,omitempty"`
+	// DisplayName is an optional label for people-facing interfaces.
+	DisplayName string            `yaml:"display_name,omitempty" json:"display_name,omitempty"`
+	LLMs        map[string]LLM    `yaml:"llms" json:"llms,omitempty"`
+	Actions     map[string]Action `yaml:"actions" json:"actions,omitempty"`
+	Graphs      map[string]Graph  `yaml:"graphs" json:"graphs,omitempty"`
+	Bots        map[string]Bot    `yaml:"bots" json:"bots,omitempty"`
 }
 
 // LLM is a named, scoped model profile a bot can reference.
 type LLM struct {
+	// DisplayName is an optional label for people-facing interfaces.
+	DisplayName string  `yaml:"display_name,omitempty" json:"display_name,omitempty"`
 	Provider    string  `yaml:"provider" json:"provider"`
 	Model       string  `yaml:"model" json:"model"`
 	APIKey      Secret  `yaml:"api_key" json:"api_key,omitzero"`

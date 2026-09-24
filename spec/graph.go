@@ -2,6 +2,8 @@ package spec
 
 // Graph is a conversation state machine.
 type Graph struct {
+	// DisplayName is an optional label for people-facing interfaces.
+	DisplayName    string          `yaml:"display_name,omitempty" json:"display_name,omitempty"`
 	Root           string          `yaml:"root" json:"root"`
 	Timeout        int             `yaml:"timeout" json:"timeout,omitempty"`
 	Fallback       string          `yaml:"fallback" json:"fallback,omitempty"`
@@ -12,6 +14,8 @@ type Graph struct {
 
 // Node is one state of a graph.
 type Node struct {
+	// DisplayName is an optional label for people-facing interfaces.
+	DisplayName    string         `yaml:"display_name,omitempty" json:"display_name,omitempty"`
 	Goal           string         `yaml:"goal" json:"goal,omitempty"`
 	Policy         string         `yaml:"policy" json:"policy,omitempty"`
 	OnEnter        []string       `yaml:"on_enter" json:"on_enter,omitempty"`

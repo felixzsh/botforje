@@ -4,6 +4,10 @@
   "$defs": {
     "Action": {
       "properties": {
+        "display_name": {
+          "type": "string",
+          "description": "DisplayName is an optional label for people-facing interfaces."
+        },
         "inputs": {
           "additionalProperties": {
             "$ref": "#/$defs/Input"
@@ -29,6 +33,10 @@
     },
     "Bot": {
       "properties": {
+        "display_name": {
+          "type": "string",
+          "description": "DisplayName is an optional label for people-facing interfaces."
+        },
         "graph": {
           "type": "string"
         },
@@ -224,6 +232,10 @@
     },
     "Graph": {
       "properties": {
+        "display_name": {
+          "type": "string",
+          "description": "DisplayName is an optional label for people-facing interfaces."
+        },
         "root": {
           "type": "string"
         },
@@ -289,6 +301,10 @@
     },
     "LLM": {
       "properties": {
+        "display_name": {
+          "type": "string",
+          "description": "DisplayName is an optional label for people-facing interfaces."
+        },
         "provider": {
           "type": "string"
         },
@@ -400,6 +416,10 @@
     },
     "Node": {
       "properties": {
+        "display_name": {
+          "type": "string",
+          "description": "DisplayName is an optional label for people-facing interfaces."
+        },
         "goal": {
           "type": "string"
         },
@@ -537,6 +557,10 @@
     },
     "Scope": {
       "properties": {
+        "display_name": {
+          "type": "string",
+          "description": "DisplayName is an optional label for people-facing interfaces."
+        },
         "llms": {
           "additionalProperties": {
             "$ref": "#/$defs/LLM"

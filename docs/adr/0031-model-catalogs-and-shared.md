@@ -66,6 +66,10 @@ Resolution and rules:
   (ADR 0030); `bounds` holds the call timeout.
 - `llms.<name>`: `provider` and `model` required; `realization` and `bounds`;
   no `routing`.
+- Model profile keys remain their identifiers. An optional `display_name`
+  supplies a UI label; when absent or empty, the interface uses the key. Apply
+  this to scoped and shared `system_one`/`llms` entries when the shared catalog
+  lands.
 - `provider` and `model` are required; `api_key` is optional for local
   providers.
 - A bot with neither `system_one` nor `llm` runs deterministically. A

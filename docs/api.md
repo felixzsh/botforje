@@ -48,6 +48,15 @@ changes; changes the running instance cannot safely apply are reported as
 restart-required rather than presented as live (PLAN Phase 7; ADRs
 0002, 0009, and 0016).
 
+Configuration entities keep their YAML map keys as identifiers. Their optional
+`display_name` is presentation metadata, not a reference or identity. A UI
+shows the key when the field is absent or empty; editing that label writes the
+field without renaming the key. API read models must distinguish the stored
+optional field from its presentation fallback rather than writing the fallback
+into YAML. Changing a key is not a display rename and must not be inferred as
+one during reload. Future scope provisioning generates a unique scope key;
+manual YAML authors choose their own.
+
 Instance-wide configuration and shared resources are owner operations. Scope
 configuration does not become a second source of truth in the API or dashboard:
 the API validates and publishes YAML fragments.

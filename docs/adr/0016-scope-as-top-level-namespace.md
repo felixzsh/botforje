@@ -21,15 +21,22 @@ catalog the host provides (ADR 0031). Each scope holds its own `system_one`,
 address: "127.0.0.1"
 scopes:
   client-a:
+    display_name: "Customer Support"
     actions: { greet: {...} }
     graphs:  { faq:   {...} }
     bots:    { support-bot: {...} }
 ```
 
-- Entities do not carry a `scope` field; the namespace is structural and
-  identity is `(scope, type, name)` by construction.
-- Scope names are free strings. `default` is just a name with no special
-  behavior; `shared` is not a scope.
+- Entity map keys are their stable identifiers and remain the keys used by
+  references, storage, and authorization. Scope names are free strings.
+- `display_name` is an optional, editable label on scopes and their entities.
+  Interfaces show it when non-empty and otherwise show the map key. Changing the
+  label never changes the key, references, or persisted runtime identity.
+- Renaming a map key changes identity. A manual edit that changes a key is not
+  inferred as a rename; preserving identity across a key change needs an
+  explicit operation with its own migration semantics.
+- `default` is just a scope name with no special behavior; `shared` is not a
+  scope.
 - Actions, graphs, and bots resolve references only inside their own scope.
   Model names (`system_one`, `llm`) resolve in the scope first and then in
   `shared` (ADR 0031); references never cross scopes.
@@ -42,8 +49,10 @@ Includes:
 - Any file may `include` others; included files use the same `scopes` shape and
   may not set global settings.
 - Several files may contribute to the same scope; a duplicate `(scope, type,
-  name)` is an error. Distinct entities in one scope may therefore have
+  key)` is an error. Distinct entities in one scope may therefore have
   different source files; the loader records the defining file for each one.
+- A scope's non-empty `display_name` may be declared in one contributing file;
+  a conflicting value in another file is an error.
 - Include paths resolve relative to the including file.
 - A file already loaded is skipped, which allows diamond includes and breaks
   cycles.

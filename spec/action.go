@@ -2,9 +2,11 @@ package spec
 
 // Action is a reusable pipeline of steps, optionally exposed as a tool.
 type Action struct {
-	Inputs map[string]Input `yaml:"inputs" json:"inputs,omitempty"`
-	Guards *Guards          `yaml:"guards" json:"guards,omitempty"`
-	Steps  []Step           `yaml:"steps" json:"steps"`
+	// DisplayName is an optional label for people-facing interfaces.
+	DisplayName string           `yaml:"display_name,omitempty" json:"display_name,omitempty"`
+	Inputs      map[string]Input `yaml:"inputs" json:"inputs,omitempty"`
+	Guards      *Guards          `yaml:"guards" json:"guards,omitempty"`
+	Steps       []Step           `yaml:"steps" json:"steps"`
 }
 
 // Input is a named, typed argument of a tool.

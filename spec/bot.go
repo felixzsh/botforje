@@ -2,9 +2,11 @@ package spec
 
 // Bot binds one WhatsApp account to a graph, an optional llm, and settings.
 type Bot struct {
-	Graph    string       `yaml:"graph" json:"graph"`
-	LLM      string       `yaml:"llm" json:"llm,omitempty"`
-	Settings *BotSettings `yaml:"settings" json:"settings,omitempty"`
+	// DisplayName is an optional label for people-facing interfaces.
+	DisplayName string       `yaml:"display_name,omitempty" json:"display_name,omitempty"`
+	Graph       string       `yaml:"graph" json:"graph"`
+	LLM         string       `yaml:"llm" json:"llm,omitempty"`
+	Settings    *BotSettings `yaml:"settings" json:"settings,omitempty"`
 }
 
 // BotSettings controls pacing, presence, filtering, and history import.

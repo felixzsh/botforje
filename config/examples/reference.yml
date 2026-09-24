@@ -35,9 +35,11 @@ rate_limit:                        # API budgets per fixed minute
 # sessions never cross scopes. "support" is just a name, like any other.
 scopes:
   support:
+    display_name: "Customer Support" # Optional UI label; defaults to `support`
     # LLM profiles (optional). A bot without `llm` runs deterministically.
     llms:
       primary:
+        display_name: "Primary model" # Optional UI label; key stays `primary`
         provider: "openai"        # openai, anthropic, ollama, ...
         model: "gpt-4o-mini"
         api_key: "${OPENAI_API_KEY}"  # Read the key from the environment
@@ -57,6 +59,7 @@ scopes:
     actions:
       # Deterministic reply
       greet:
+        display_name: "Greeting"
         steps:
           - message:
               body: "Hello! Welcome to our support chat. How can I help?"
@@ -280,6 +283,7 @@ scopes:
 
     graphs:
       faq-support:
+        display_name: "Support FAQ"
         root: "menu"
         timeout: 300                  # Session TTL (seconds)
         fallback: "invalid"           # Target when no edge matches and LLM is off
@@ -291,6 +295,7 @@ scopes:
 
         nodes:
           menu:
+            display_name: "Main menu"
             goal: "show the menu"
             policy: "Warm and brief. Never promise a human unless escalate runs."
             on_enter: ["menu"]
@@ -403,6 +408,7 @@ scopes:
 
     bots:
       support-bot:
+        display_name: "Support assistant"
         graph: "faq-support"
         llm: "primary"              # Must exist in this scope
         settings:

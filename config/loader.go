@@ -148,6 +148,13 @@ func mergeScopes(cfg *Config, file string, scopes map[string]spec.Scope) error {
 			cfg.Scopes = map[string]spec.Scope{}
 		}
 		dst := cfg.Scopes[scopeName]
+		if src.DisplayName != "" {
+			if dst.DisplayName != "" && dst.DisplayName != src.DisplayName {
+				return fmt.Errorf("%s: conflicting display_name for scope %q",
+					file, scopeName)
+			}
+			dst.DisplayName = src.DisplayName
+		}
 		var err error
 		if dst.LLMs, err = mergeEntities(cfg, file, "llm", scopeName,
 			dst.LLMs, src.LLMs); err != nil {

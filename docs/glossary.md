@@ -4,7 +4,10 @@
   system_one and llm; the deployable unit.
 - Fleet — the set of bots a single Botflota instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
-  and sessions; a free name, never derived from folders.
+  and sessions; its YAML key is its stable identifier, never derived from
+  folders.
+- Display name — optional `display_name` presentation label on a scope or
+  entity. Interfaces fall back to its YAML key; it never changes identity.
 - Graph — conversation state machine owned by one bot; may override the
   routing mode of the bot's system_one.
 - Node — a state: goal, policy, entry/exit actions, tools, and optional

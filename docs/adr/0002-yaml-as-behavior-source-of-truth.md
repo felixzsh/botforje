@@ -40,3 +40,7 @@ runtime state only: chats, sessions, messages, credentials, and auditing
 - API edits preserve unrelated definitions and files. Formatting and comments
   in a rewritten source file are not part of the config contract; the
   hand-written main file is never rewritten by the API.
+- Entity map keys remain stable identifiers; optional `display_name` values
+  are presentation metadata. API/dashboard edits may change the label without
+  changing references or runtime identity. Missing labels remain absent from
+  YAML; consumers display the key as the fallback.

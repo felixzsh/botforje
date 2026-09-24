@@ -229,11 +229,12 @@ Deliverables:
 - [ ] Scope projection of the dashboard: the same pages, navigation limited
   to the credential's authorized scopes, no instance settings, and the active
   scope shown in the header.
-- [ ] Scope provisioning: apply a scope config document to the running
-  instance (validate, write one include fragment per scope, reload, keep the
-  previous state on any error), so a scope is created without hand-editing the
-  main file. Applying it affects only that scope and keeps peer bots running.
-  Reuses include fragments (ADR 0016) and reload classes (ADR 0009).
+- [ ] Scope provisioning: an owner applies a scope config document to the
+  running instance (validate, assign a unique generated scope key, write one
+  include fragment, reload, and keep the previous state on any error), so a
+  scope is created without hand-editing the main file. Applying it affects
+  only that scope and keeps peer bots running. Reuses include fragments
+  (ADR 0016) and reload classes (ADR 0009). Scoped tokens cannot create scopes.
 - [ ] Instance identity: `instance_id`, version, and build info in responses
   and events, so a caller with several instances can tell them apart.
 - [ ] Signed outbound webhooks with retries and backoff: bot connected,
@@ -270,7 +271,9 @@ Deliverables:
 - [ ] Reload classes already apply (ADR 0009): safe changes go live,
   incompatible ones are kept and reported as restart-required.
 - [ ] Editors for bots, graphs, nodes, edges, actions, steps, guards, llms,
-  and scope settings, with a YAML view beside the form.
+  and scope settings, with a YAML view beside the form. Optional `display_name`
+  labels are editable without changing entity keys; when absent, the UI shows
+  each key. Cover System One profiles when that catalog is implemented.
 - [ ] Scope publication starts, stops, or rebuilds only affected bot actors;
   peer bots remain live. Revisit the current restart classification in ADR
   0009 when implementing this; instance-wide settings stay owner-only.

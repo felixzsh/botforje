@@ -44,6 +44,52 @@ func TestLoadExample(t *testing.T) {
 	}
 }
 
+func TestScopeDisplayNameMergesFromIncludes(t *testing.T) {
+	dir := t.TempDir()
+	main := writeTemp(t, dir, "config.yml", `include: [scope.yml]
+scopes:
+  support:
+    bots:
+      assistant:
+        graph: welcome
+`)
+	writeTemp(t, dir, "scope.yml", `scopes:
+  support:
+    display_name: Support team
+    graphs:
+      welcome:
+        root: hello
+        nodes:
+          hello: {}
+`)
+
+	cfg, err := testLoader().Load(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Scopes["support"].DisplayName; got != "Support team" {
+		t.Fatalf("scope display_name = %q, want Support team", got)
+	}
+}
+
+func TestConflictingScopeDisplayNamesFail(t *testing.T) {
+	dir := t.TempDir()
+	main := writeTemp(t, dir, "config.yml", `include: [scope.yml]
+scopes:
+  support:
+    display_name: Support
+`)
+	writeTemp(t, dir, "scope.yml", `scopes:
+  support:
+    display_name: Help desk
+`)
+
+	_, err := testLoader().Load(main)
+	if err == nil || !strings.Contains(err.Error(), "conflicting display_name") {
+		t.Fatalf("Load error = %v, want conflicting scope display_name", err)
+	}
+}
+
 func TestWatchPathsIncludeTheBaseOfGlobIncludes(t *testing.T) {
 	dir := t.TempDir()
 	parts := filepath.Join(dir, "parts")

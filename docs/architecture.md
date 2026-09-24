@@ -116,6 +116,10 @@ dashboard and integrations are API-only and never see local files.
 
 - Bot — identity (account) plus settings, the reference to one graph, and
   optional references to one system_one and one llm (ADR 0031).
+- Config identity — the YAML map key identifies a scope or entity and is used
+  by references and persisted state. Optional `display_name` is presentation
+  metadata only; interfaces fall back to the key when it is absent. Changing
+  a key is an identity change, not a display rename (ADR 0016).
 - Sender — the durable profile of one person who writes to bots in a scope:
   phone, push name, and first/last seen, keyed by (scope, phone). The
   bot-person thread is the chat; a person may write to several bots of the same
@@ -515,6 +519,15 @@ settings and `shared` are only valid in the main file, and scope is never
 derived from folders (ADR 0016). A relative `data_dir` resolves against the
 directory of the config file, like include paths; an empty one falls back to
 the XDG data home.
+
+Scope and entity map keys are stable identifiers. Optional non-empty
+`display_name` labels are used by interfaces and fall back to those keys. They
+are supported on scopes, bots, graphs, nodes, actions, and LLM profiles;
+future System One profiles follow the same rule. A key change does not imply
+a rename and can orphan references or runtime state; only a future explicit
+operation may coordinate an identity migration. Scope provisioning generates
+a unique key when the API creates a scope; manually authored scopes keep their
+chosen key.
 
 ## Configuration pipeline
 

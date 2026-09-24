@@ -14,7 +14,7 @@ deserve it.
 
 ## Decision
 
-Guard state lives on the **chat**, keyed by **action name**, in one JSON blob
+Guard state lives on the **chat**, keyed by **action key**, in one JSON blob
 (`chats.guards`):
 
 - The chat already pins `(scope, bot, sender)`, so state is per bot and per
@@ -37,7 +37,8 @@ reference to config, so a guard change never needs a data migration:
   (a lower limit blocks sooner; a shorter window ages the counter out).
 - Removing a guard leaves its entry unread; re-adding it revives the entry,
   which self-expires by time.
-- Renaming or deleting an action starts fresh or orphans entries; harmless and
+- Changing an action's `display_name` preserves the key and its guard state.
+  Changing or deleting its key starts fresh or orphans entries; harmless and
   bounded by config.
 - A config reload (ADR 0009) does not reset guard state.
 
@@ -51,4 +52,4 @@ reference to config, so a guard change never needs a data migration:
   to a `guard_state (chat_id, action, guard, state)` table without changing the
   semantics.
 - No foreign key to config exists or can exist (config is not in the database),
-  so names are the contract, as with nodes and request names.
+  so action keys are the contract, as with nodes and request names.
