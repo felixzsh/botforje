@@ -255,7 +255,7 @@ code for any particular host inside Botflota.
 ### Phase 15 — Behavior editor and YAML publishing
 
 Goal: everything YAML expresses today can be edited in the dashboard, with
-validation, review, and rollback, while YAML stays the source of truth
+validation and review, while YAML stays the source of truth
 (ADR 0002).
 
 Deliverables:
@@ -264,8 +264,6 @@ Deliverables:
   fragment per scope (ADR 0016), written atomically and reloaded through the
   watcher and validation of ADR 0009; a rejected publish changes nothing. An
   expected version rejects a stale write instead of overwriting a newer edit.
-- [ ] Revisions: every publish records author, time, and a diff against the
-  previous fragment; rollback restores one revision and reloads it.
 - [ ] Validation before publish: the same semantic rules as `config validate`
   plus template reference checks, so a dashboard edit and a hand edit pass
   the same gate.
@@ -283,12 +281,11 @@ Deliverables:
 - [ ] Starter templates: packaged graphs (support menu, appointment request,
   quote) a scope can instantiate and edit.
 - [ ] Import and export of a whole scope as YAML, with the publish validation.
-- [ ] Tests: concurrent edit conflict, rejected publish, revision rollback,
-  and simulator cases.
+- [ ] Tests: concurrent edit conflict, rejected publish, and simulator cases.
 
 Gate: an operator with no file access creates a bot from a template, edits its
-graph, simulates a conversation, publishes it, sees the fragment on disk and
-the change live, and rolls it back. This phase may split into the publishing
+graph, simulates a conversation, publishes it, and sees the fragment on disk
+and the change live. This phase may split into the publishing
 layer and the editors; the gate applies to both.
 
 ### Phase 16 — Onboarding assistant and history analysis
@@ -321,8 +318,8 @@ instead of silently invented.
 
 ### Phase 17 — Autonomous evolution
 
-Goal: graphs improve from live traffic under evaluation, approval, and
-rollback, never on their own authority.
+Goal: graphs improve from live traffic under evaluation and approval,
+never on their own authority.
 
 Deliverables:
 
@@ -333,14 +330,13 @@ Deliverables:
   no score is not eligible.
 - [ ] Approval policy per scope: always manual by default, automatic only
   inside declared bounds.
-- [ ] Canary: apply a proposal to a share of chats, watch the score, then
-  promote or revert automatically.
-- [ ] Every applied proposal is a revision that reverts in one action.
+- [ ] Canary: run a proposal on a share of chats, watch the score, then
+  promote it or drop it.
 - [ ] Budgets: per-scope token and request budgets that bound the loop.
-- [ ] Tests: regression detection, canary revert, budget enforcement, and
+- [ ] Tests: regression detection, canary drop, budget enforcement, and
   audit completeness.
 
-Gate: a proposal that lowers the score is reverted by the canary with no human
+Gate: a proposal that lowers the score is dropped by the canary with no human
 involved and one that raises it waits for approval, both visible in the audit
 log.
 
@@ -450,7 +446,7 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 - 14 before onboarding real users: provisioning, sign-in, and webhooks come
   first.
 - 15 before 16: the assistant's output must be reviewable and publishable.
-- 17 last: it needs 15 (revisions), 16 (analysis), and a base of real
+- 17 last: it needs 15 (publishing), 16 (analysis), and a base of real
   conversations to evaluate against.
 - 18 runs in parallel once 13 and 14 are stable; the Cloud API can be pulled
   earlier if account safety becomes the limiting factor.
@@ -467,8 +463,7 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
   that would need (Phase 15).
 - How export and import inline a scope's reference to `shared` (Phase 18).
 - Retention defaults per scope and who may change them (Phase 16).
-- Scope provisioning: where the writable config directory lives and whether a
-  previous version is kept per applied document (Phase 14).
+- Scope provisioning: where the writable config directory lives (Phase 14).
 - Sharding threshold, and whether the host or Botflota maps accounts to
   instances (Phase 18).
 - Quota dimensions and the enforcement point (Phase 18).

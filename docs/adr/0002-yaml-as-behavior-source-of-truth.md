@@ -32,7 +32,7 @@ runtime state only: chats, sessions, messages, credentials, and auditing
 - Behavior stays versionable and diffable in git; an operator can review a UI
   edit as a file change and roll back by restoring it.
 - There is no behavior migration to design: the editor phase (ROADMAP Phase
-  15) is the editor, the revision history, and publishing — not a move of
+  15) is the editor and publishing — not a move of
   tables.
 - Concurrent API edits use a logical scope version and serialize overlapping
   file commits. A change to a different scope in a shared file is preserved;

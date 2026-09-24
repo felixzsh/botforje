@@ -269,7 +269,7 @@ Deliverables:
   silently overwrite stale edits. Preserve unrelated scopes and definitions.
   Tests cover scopes spread across nested includes, two concurrent scopes in
   one physical file, same-scope conflicts, API-managed new definitions, and
-  rollback after a multi-file publication failure.
+  recovery after a multi-file publication failure.
   Validate before disk writes and leave files untouched on failure. Return
   detailed validation errors to the owner and for the caller's authorized
   scope; return a generic error for invalid configuration outside that scope
@@ -341,7 +341,8 @@ Deliverables:
 - [ ] Include watching: detect content changes, include-list changes, and new
   files matching directory or glob includes. Retry corrected invalid files
   and pending session-safe changes without requiring an unrelated edit.
-- [ ] Tests: invalid candidate rollback; one-scope edit leaves other runtime
+- [ ] Tests: invalid candidate leaves the active snapshot untouched; one-scope
+  edit leaves other runtime
   generations untouched; multi-scope candidate; active-session deferral and
   expiry; startup with a removed current node; changed/new includes; pending
   restart settings.
