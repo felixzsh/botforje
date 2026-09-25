@@ -403,7 +403,7 @@ Deliverables:
   edit leaves other runtime generations untouched; active-session deferral;
   startup with a removed current node; changed or new includes; pending
   restart settings.
-- [ ] Tests: a multi-scope candidate, and the expiry that lifts an
+- [x] Tests: a multi-scope candidate, and the expiry that lifts an
   active-session deferral once those sessions end. These two close with the
   publication API, which reuses the activation pipeline
   (`docs/current-plan.md`).

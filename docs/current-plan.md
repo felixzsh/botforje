@@ -161,11 +161,18 @@ what deletion reports, how a destination that already holds a chat absorbs one,
 how contacts merge, why live session state does not cross, the single port that
 owns the transaction, and why a retry needs no request key.
 
-### 4. Watcher coverage
+### 4. Watcher coverage (current)
 
 Publication reuses the existing activation pipeline, so the two watcher gaps
-already open in `PLAN.md` are part of this work: a multi-scope candidate, and
-the expiry that lifts an active-session deferral once those sessions end.
+already open in `PLAN.md` closed with this work, and `fleet` carries a test for
+each:
+
+- **A multi-scope candidate**: one reload changing two scopes applies both in
+  one call, advances both scope generations, and neither scope overwrites the
+  other's change.
+- **The expiry that lifts a deferral**: a graph change waits while a session is
+  live, stays pending when the same candidate is offered again, and applies
+  once that session expires — with no new edit and no restart (ADR 0009).
 
 ## Wire examples (proposed, not implemented)
 
