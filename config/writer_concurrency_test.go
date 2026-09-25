@@ -101,24 +101,21 @@ func TestWriterConflictsOnTwoStaleWrites(t *testing.T) {
 	version := scopeVersion(t, current, "support")
 	// Two editors hold the same version and submit different labels, so exactly
 	// one of them can be right about what the scope held.
-	edits := []spec.Scope{
-		func() spec.Scope { s := copyScope(current.Scopes["support"]); s.DisplayName = "First"; return s }(),
-		func() spec.Scope { s := copyScope(current.Scopes["support"]); s.DisplayName = "Second"; return s }(),
+	first := copyScope(current.Scopes["support"])
+	first.DisplayName = "First"
+	second := copyScope(current.Scopes["support"])
+	second.DisplayName = "Second"
+	edits := []spec.Scope{first, second}
+	results := make(chan error, 2)
+	for _, edit := range edits {
+		go func() {
+			_, err := writer.Publish(context.Background(), Publication{
+				Scopes: map[string]ScopeWrite{"support": {Version: version, Scope: edit}},
+			})
+			results <- err
+		}()
 	}
-	first, second := make(chan error, 1), make(chan error, 1)
-	go func() {
-		_, err := writer.Publish(context.Background(), Publication{
-			Scopes: map[string]ScopeWrite{"support": {Version: version, Scope: edits[0]}},
-		})
-		first <- err
-	}()
-	go func() {
-		_, err := writer.Publish(context.Background(), Publication{
-			Scopes: map[string]ScopeWrite{"support": {Version: version, Scope: edits[1]}},
-		})
-		second <- err
-	}()
-	firstErr, secondErr := <-first, <-second
+	firstErr, secondErr := <-results, <-results
 	if firstErr == nil && secondErr == nil {
 		t.Fatal("two writes on one version both landed")
 	}

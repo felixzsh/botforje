@@ -60,6 +60,7 @@ func Validate(cfg *Config) []ValidationError {
 			add("", "config", "rate_limit.failed_per_minute must be >= 0")
 		}
 	}
+	validateLabels(cfg, add)
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		for _, name := range SortedKeys(scope.LLMs) {

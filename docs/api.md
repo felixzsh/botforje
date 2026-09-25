@@ -103,10 +103,14 @@ key; later renames update only `display_name`.
 
 The server validates label uniqueness independently of the UI: effective
 labels must be unique among scopes instance-wide, among members of each entity
-category in a scope, among nodes in a graph, and within each model catalog.
-Equal labels across different categories or scopes are allowed. The precise
-case/whitespace comparison rule remains to be settled before implementing the
-API.
+category in a scope, and among the nodes of one graph. Equal labels across
+different categories, scopes, or graphs are allowed. The effective label is
+`display_name` when it says something and the key otherwise, so a missing label
+cannot collide with an explicit one unnoticed. Comparison drops surrounding
+space, collapses inner runs, and ignores case; only the comparison is
+normalized, and the saved label keeps its text. A shared catalog joins the
+rule when its types arrive (ADR 0031); config validation and every write
+enforce it, so the UI only gives early feedback.
 
 Instance-wide configuration and shared resources are owner operations. Scope
 configuration does not become a second source of truth in the API or dashboard:

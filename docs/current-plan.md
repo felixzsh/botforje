@@ -115,8 +115,10 @@ entity categories or different scopes are allowed. Compare the effective label
 (`display_name` when non-empty, otherwise the key), so a missing label cannot
 collide with an explicitly named entity unnoticed. Enforce this in config
 validation and on every API create/rename; UI checks are only early feedback.
-Case and whitespace normalization for comparisons remains an implementation
-detail to settle before the API contract freezes.
+Comparison drops surrounding space, collapses inner runs, and ignores case, so
+a label differing only in those ways is refused; the saved label keeps its own
+text. A shared catalog joins the rule when its types arrive (ADR 0031), which
+is why the check is keyed by namespace rather than by today's scope shape.
 
 ### 3. Account history: keep, delete, migrate
 

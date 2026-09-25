@@ -255,7 +255,7 @@ Deliverables:
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
   (`shared`, `system_one`) surface without reworking handlers.
-- [ ] Scope config publication API: an owner can publish any set of existing
+- [x] Scope config publication API: an owner can publish any set of existing
   scopes, and a scoped token only its authorized scopes, one or several per
   atomic request. Each scope carries its expected logical version. It writes
   validated YAML and invokes the same activation pipeline as a manual edit;
@@ -276,6 +276,14 @@ Deliverables:
   or for instance-wide failures. Document that direct file edits are not
   version-checked or serialized with API publications. See the publication
   sequence in `docs/current-plan.md`.
+- [x] Visible labels: creation uses the submitted name as the YAML key and a
+  later rename writes only `display_name`; a key collision is rejected, never
+  auto-suffixed. Effective labels (`display_name`, else the key) must be unique
+  among scopes instance-wide, within each entity category of a scope, and among
+  the nodes of one graph, compared with surrounding space dropped, inner runs
+  collapsed, and case ignored. Config validation enforces it, so every API
+  write inherits it; a shared catalog joins the rule when its types arrive
+  (ADR 0031).
 - [ ] Owner provisioning and aggregate limit policy: settle an ADR first,
   then create owner-only limit sets with a complete required limit catalog,
   scope membership, and enforcement across scopes. There is no scope-count

@@ -106,6 +106,68 @@ func savedScope(t *testing.T, main, name string) spec.Scope {
 	return scope
 }
 
+func TestPublishRefusesADuplicateLabel(t *testing.T) {
+	server := newPublishServer(t)
+	current := savedScope(t, server.main, "support")
+	version, _ := config.ScopeVersion(current)
+
+	t.Run("a rename onto another entry's label", func(t *testing.T) {
+		next := relabelled(t, current, "")
+		next.Bots = map[string]spec.Bot{
+			"demo":  {Graph: "main"},
+			"other": {DisplayName: "demo", Graph: "main"},
+		}
+		recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
+			"version": version, "config": next,
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "already used by") {
+			t.Fatalf("body = %s, want the collision reported", recorder.Body.String())
+		}
+	})
+
+	t.Run("a label equal to another entry's key", func(t *testing.T) {
+		next := relabelled(t, current, "")
+		next.Bots = map[string]spec.Bot{
+			"desk":  {Graph: "main"},
+			"other": {DisplayName: "  DESK ", Graph: "main"},
+		}
+		recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
+			"version": version, "config": next,
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+	})
+
+	// Nothing was written by either refusal.
+	if got := savedScope(t, server.main, "support").Bots["demo"].Graph; got != "main" {
+		t.Fatalf("demo graph = %q, want the file untouched", got)
+	}
+}
+
+func TestPublishAcceptsADistinctLabel(t *testing.T) {
+	server := newPublishServer(t)
+	current := savedScope(t, server.main, "support")
+	version, _ := config.ScopeVersion(current)
+	next := relabelled(t, current, "Help desk")
+	next.Bots = map[string]spec.Bot{
+		"demo":  {Graph: "main"},
+		"other": {DisplayName: "Sales desk", Graph: "main"},
+	}
+	recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
+		"version": version, "config": next,
+	})
+	if recorder.Code != http.StatusOK && recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if got := savedScope(t, server.main, "support").Bots["other"].DisplayName; got != "Sales desk" {
+		t.Fatalf("display_name = %q, want it saved", got)
+	}
+}
+
 func TestPublishRefusesWhileTheTreeDoesNotLoad(t *testing.T) {
 	server := newPublishServer(t)
 	// A manual edit that does not parse blocks publication until it is fixed.
