@@ -20,6 +20,11 @@ import (
 type Loader struct {
 	// LookupEnv resolves environment variables; nil means os.LookupEnv.
 	LookupEnv func(string) (string, bool)
+	// Overlay replaces the content of files a caller has not written yet, so a
+	// candidate tree can be loaded and validated exactly as the loader would
+	// read it from disk once the files land. A nil overlay reads the
+	// filesystem.
+	Overlay map[string][]byte
 }
 
 func (l Loader) lookup(name string) (string, bool) {
@@ -37,8 +42,9 @@ func (l Loader) Load(path string) (*Config, error) {
 		return nil, err
 	}
 	cfg := &Config{origin: map[string]string{}, source: abs}
+	reader := newFileReader(l.Overlay)
 	state := &includeState{loaded: map[string]bool{abs: true}}
-	if err := state.loadMain(abs, cfg); err != nil {
+	if err := state.loadMain(abs, cfg, reader); err != nil {
 		return nil, err
 	}
 	cfg.files = state.paths()
@@ -61,8 +67,8 @@ type includeState struct {
 	watchDirs []string
 }
 
-func (s *includeState) loadMain(path string, cfg *Config) error {
-	data, err := os.ReadFile(path)
+func (s *includeState) loadMain(path string, cfg *Config, files fileReader) error {
+	data, err := files.readFile(path)
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -70,14 +76,16 @@ func (s *includeState) loadMain(path string, cfg *Config) error {
 		return err
 	}
 	recordOrigins(cfg, path)
-	return s.runIncludes(path, cfg.Include, cfg)
+	return s.runIncludes(path, cfg.Include, cfg, files)
 }
 
-func (s *includeState) runIncludes(from string, includes []string, cfg *Config) error {
+func (s *includeState) runIncludes(
+	from string, includes []string, cfg *Config, reader fileReader,
+) error {
 	dir := filepath.Dir(from)
 	for _, inc := range includes {
 		s.watchDirs = append(s.watchDirs, includeWatchDir(dir, inc))
-		files, err := resolveInclude(dir, inc)
+		files, err := resolveInclude(dir, inc, reader)
 		if err != nil {
 			return fmt.Errorf("%s: include %q: %w", from, inc, err)
 		}
@@ -85,7 +93,7 @@ func (s *includeState) runIncludes(from string, includes []string, cfg *Config) 
 			return fmt.Errorf("%s: include %q matched no files", from, inc)
 		}
 		for _, file := range files {
-			if err := s.loadFragment(file, cfg); err != nil {
+			if err := s.loadFragment(file, cfg, reader); err != nil {
 				return err
 			}
 		}
@@ -117,7 +125,9 @@ func (s *includeState) paths() []string {
 	return paths
 }
 
-func (s *includeState) loadFragment(path string, cfg *Config) error {
+func (s *includeState) loadFragment(
+	path string, cfg *Config, reader fileReader,
+) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -127,7 +137,7 @@ func (s *includeState) loadFragment(path string, cfg *Config) error {
 	}
 	s.loaded[abs] = true
 
-	data, err := os.ReadFile(path)
+	data, err := reader.readFile(abs)
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -138,7 +148,7 @@ func (s *includeState) loadFragment(path string, cfg *Config) error {
 	if err := mergeScopes(cfg, path, frag.Scopes); err != nil {
 		return err
 	}
-	return s.runIncludes(path, frag.Include, cfg)
+	return s.runIncludes(path, frag.Include, cfg, reader)
 }
 
 func mergeScopes(cfg *Config, file string, scopes map[string]spec.Scope) error {
@@ -232,27 +242,27 @@ func decodeStrict(path string, data []byte, out any) error {
 	return nil
 }
 
-func resolveInclude(dir, entry string) ([]string, error) {
+func resolveInclude(dir, entry string, reader fileReader) ([]string, error) {
 	pattern := entry
 	if !filepath.IsAbs(pattern) {
 		pattern = filepath.Join(dir, entry)
 	}
 	if strings.ContainsAny(entry, "*?[") {
-		matches, err := filepath.Glob(pattern)
+		matches, err := reader.glob(pattern)
 		if err != nil {
 			return nil, err
 		}
 		sort.Strings(matches)
 		return matches, nil
 	}
-	info, err := os.Stat(pattern)
+	info, err := reader.stat(pattern)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() {
 		return []string{pattern}, nil
 	}
-	entries, err := os.ReadDir(pattern)
+	entries, err := reader.readDir(pattern)
 	if err != nil {
 		return nil, err
 	}
