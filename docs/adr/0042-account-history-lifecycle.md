@@ -44,24 +44,33 @@ sides.
   contacts it deleted. Those counts, not a second implementation, are what
   release the storage a limit set accounts for (`docs/access-policy.md`).
 
+- **History can be exported before it is deleted.**
+  `GET /api/v1/scopes/{scope}/bots/{bot}/history/export` answers one `zip`
+  holding a CSV per table the deletion removes: chats, sessions, messages,
+  contacts, and queued replies. Each file carries a header, its rows in stored
+  order, and a JSON-valued column as the JSON text it holds. The rows stream
+  while the archive is written, so a conversation of several megabytes costs
+  constant memory, and the whole read happens in one read transaction, so an
+  arrival mid-export cannot tear the file. It is a read: no confirmation, no
+  request key, and the same authority and 404 as any other scope-addressed
+  route. Deletion does not require it — the two are independent — but it exists
+  as the safety net that makes an irreversible deletion an informed choice.
+
 - **Migration is a move** to another bot of the same scope:
   `POST /api/v1/scopes/{scope}/bots/{bot}/history/migrations` with
   `{"to": "<bot>"}`. Scope never changes, because references and sessions never
   cross scopes (ADR 0016); a destination outside the scope, or the source
   itself, is refused. Senders need no transfer: the scope already shares them.
 
-- **The destination absorbs a chat it already has.** For each source chat, by
-  sender:
-  - the destination has no chat with that sender: the source chat is re-keyed
-    to the destination, sessions and messages following it;
-  - the destination already has one: the source's messages and sessions move
-    into it, a message whose provider id the destination chat already stores is
-    skipped (the unique index would refuse it, and it is the same echo), the
-    destination keeps its own `guards`, `started_at`, and identity, and its
-    activity grows by what arrived. The emptied source chat is removed, so the
-    same history is never stored twice.
-  Contacts merge by phone: a phone both sides know keeps the row with the later
-  `updated_at`, and a field that row leaves empty keeps the other row's text.
+- **The destination must be empty.** Migration exists for a bot that replaces
+  a lost account, so the destination is a bot with no chat history; if it holds
+  any chat, the operation is refused and names it, and the caller empties it
+  with an explicit deletion or picks another bot. Nothing is absorbed and
+  nothing is merged. Without that rule a chat would have to hold two bots'
+  messages, and it cannot: a message stores no bot, reads order by id rather
+  than by time (so moved older rows would surface at the end of the thread),
+  and guards live per chat, so the destination's would silently replace the
+  source's. A chat moves whole or not at all.
 
 - **Live session state does not cross.** A run still active at the source is
   expired before anything moves, so the destination never appears to resume
@@ -97,16 +106,16 @@ sides.
 
 ## Consequences
 
-- History is either deleted or moved, never copied. There is no operation that
-  leaves two bots holding the same conversation, and no operation that splits a
-  conversation across two bots.
-- Deletion is irreversible: there is no archive and no soft delete. A caller
-  that needs a copy must export first, and export is Phase 18 (ROADMAP), not a
-  prerequisite of this operation.
-- A peer bot that already talked to the same people gains their shared
-  conversation while keeping its own guards, session boundaries, and identity,
-  so what merges is history and never conversation state.
+- History is either deleted or moved, never copied or merged. No operation
+  leaves two bots holding the same conversation, and no operation splits one.
+- Deletion is irreversible: there is no archive and no soft delete. The export
+  is what makes that a decision instead of an accident, and it stays a separate
+  operation so a caller who is sure never pays for it.
+- A migrated chat keeps its own `started_at`, activity, guards, and session
+  runs, because it is the same row under a new bot. A replacement bot therefore
+  resumes exactly the conversation the lost account had.
 - Storage stops growing in a second place: the moved rows keep one home, and the
   counts a deletion returns are the same ones a limit set would release.
 - The `confirm` parameter guards against acting on the wrong bot; it is not
-  authorization, which stays with the principal and the scope.
+  authorization, which stays with the principal and the scope. A UI is expected
+  to confirm the target in its own flow as well.

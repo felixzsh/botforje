@@ -138,28 +138,36 @@ This is behavior Botflota owes an operator regardless of any host.
   removed. Nothing else calls it: no pairing, replacement, or config edit
   deletes history as a side effect.
 - **Migration transfers history, not identity.** A migration moves a bot's
-  chats, messages, and contacts to another bot **of the same scope**, so a
-  recreated bot or a peer bot starts from the same conversations and Botflota
-  treats the result as an ordinary bot. Scope never changes: references and
-  sessions never cross scopes (ADR 0016), so there is no cross-scope move.
-  Senders are already shared by the scope and need no copy. A bot that only
-  relinks its account needs no migration at all — its history is keyed by bot,
-  not by account.
+  chats and contacts to another bot **of the same scope**, so a bot replacing a
+  lost account starts from the same conversations and Botflota treats the result
+  as an ordinary bot. Scope never changes: references and sessions never cross
+  scopes (ADR 0016), so there is no cross-scope move. Senders are already shared
+  by the scope and need no copy. A bot that only relinks its account needs no
+  migration at all — its history is keyed by bot, not by account.
+- **History can be exported before it is deleted.** One `zip` download, one CSV
+  per table the deletion removes — chats, sessions, messages, contacts, and
+  queued replies — streamed so a conversation of several megabytes costs
+  constant memory, and read in one transaction so an arrival mid-export cannot
+  tear the file. It is a read with the same authority as any scope route, and it
+  is independent of deletion.
 
 Migration is a **move**, not a copy: two bots holding the same history would
-cost storage and prove nothing. The operation therefore runs with both bots
-stopped, settles the source's pending outbox first — the old link must never
-send what it no longer owns, so a non-empty queue is failed explicitly rather
-than carried over — and ends the source's active sessions instead of pretending
-the destination's graph sits at the same node. Chats, messages, and contacts
-transfer in one recoverable operation that lands all of them or none, and that
-a repeat does not duplicate. Both operations are owner-and-scoped like any
-other write to their scope.
+cost storage and prove nothing, and to a chat it cannot be done at all — a
+message stores no bot, reads order by id rather than by time, and guards live
+per chat, so a merged thread would be out of order and lose its provenance.
+Migration therefore requires an **empty destination**: a bot holding any chat is
+refused with 409 and named, and the caller empties it or picks another. It runs
+with both bots stopped, settles the source's pending outbox first — the old link
+must never send what it no longer owns — and expires the source's active
+sessions instead of pretending the destination's graph sits at the same node.
+Chats, sessions, messages, and contacts transfer in one recoverable operation
+that lands all of them or none, and that a repeat does not duplicate. Both
+operations are owner-and-scoped like any other write to their scope.
 
 Their semantics are settled in **ADR 0042**: the routes and their confirmation,
-what deletion reports, how a destination that already holds a chat absorbs one,
-how contacts merge, why live session state does not cross, the single port that
-owns the transaction, and why a retry needs no request key.
+what deletion reports, the empty-destination rule, why live session state does
+not cross, the export and its shape, the single port that owns the transaction,
+and why a retry needs no request key.
 
 ### 4. Watcher coverage (current)
 
@@ -242,14 +250,16 @@ Account history:
 - Explicit history deletion removes exactly one bot's history and contacts,
   never the scope's senders or another bot, and reports what it removed. A
   confirmation that does not repeat the target is refused.
-- Migration moves a bot's chats, messages, and contacts to another bot of the
-  same scope, never across scopes, with both bots stopped, the source's queued
-  replies failed before anything transfers, and its active sessions expired; it
-  lands all of them or none after an error or restart, and a repeat does not
-  duplicate them. A destination that already holds a chat for a sender absorbs
-  the moved messages and sessions, keeps its own guards and identity, and skips
-  a provider id it already stores; contacts merge by phone, keeping the row
-  with the later update and any text only the other row has (ADR 0042).
+- Migration moves a bot's chats and contacts to another bot of the same scope,
+  never across scopes, with both bots stopped, the source's queued replies
+  failed before anything transfers, and its active sessions expired; it lands
+  all of them or none after an error or restart, and a repeat does not
+  duplicate them. A destination holding any chat is refused and named, and a
+  moved chat keeps its own start, activity, guards, and session runs.
+- Export hands back one zip with a CSV per table the deletion removes, each with
+  a header and its rows in stored order, for a bot with several megabytes of
+  history; the server's memory stays flat while it streams, and a message
+  arriving mid-export does not appear or tear the file.
 
 When implementation begins, request build permission before checks. Use the Make
 targets, add concurrency tests, and mark deliverables complete only in the

@@ -155,8 +155,10 @@ Deliverables:
   backlog.
 - [ ] Session actions: reset to root, force expire, and inspect the current
   visited nodes.
-- [ ] Bot actions: reconnect, re-pair, unpair, and stop, each with an audit
-  entry and a confirmation step for destructive ones.
+- [ ] Bot actions: reconnect, re-pair, unpair, start, stop, and restart, each
+  with an audit entry and a confirmation step for destructive ones. A restart
+  is also what forces a saved change that was deferred for live sessions,
+  instead of waiting for those sessions to expire (ADR 0009).
 - [ ] Conversation and bot controls are API operations addressed to their
   scope-owned resources; acting on one chat or bot never stops peer bots.
 - [ ] Outbox view with queued and failed messages, retry, and cancel.
