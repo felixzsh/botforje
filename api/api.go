@@ -27,6 +27,16 @@ type Fleet interface {
 	StopBotForUnpair(scope, bot string) error
 }
 
+// ConfigApplier adopts a configuration the way a manual edit is adopted: the
+// scopes that can become live now do, and the rest stay pending. *fleet.Fleet
+// satisfies it; a server without one still saves, and the watcher activates the
+// change on its next poll.
+type ConfigApplier interface {
+	ApplyConfig(
+		ctx context.Context, cfg *config.Config, scopes []string, source *config.Source,
+	) ([]string, map[string][]string, error)
+}
+
 // Options are the dependencies fleet run injects; every field is required
 // except Log and Presence. Config is the shared snapshot a reload replaces
 // (ADR 0009). Saved is that snapshot's counterpart: the configuration as it
@@ -36,7 +46,10 @@ type Options struct {
 	Saved  *config.Source
 	// Writer saves scope configuration back into the files the instance loads;
 	// fleet run injects the one over the main config file.
-	Writer   *config.Writer
+	Writer *config.Writer
+	// Applier is optional: with it, a saved change becomes live in the same
+	// request instead of waiting for the watcher.
+	Applier  ConfigApplier
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
@@ -65,6 +78,7 @@ type Server struct {
 	cfg      *config.Source
 	saved    *config.Source
 	writer   *config.Writer
+	applier  ConfigApplier
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
@@ -149,7 +163,8 @@ func New(opts Options) (*Server, error) {
 		logger = botflota.DiscardLogger()
 	}
 	server := &Server{
-		cfg: opts.Config, saved: opts.Saved, writer: opts.Writer, fleet: opts.Fleet,
+		cfg: opts.Config, saved: opts.Saved, writer: opts.Writer,
+		applier: opts.Applier, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,

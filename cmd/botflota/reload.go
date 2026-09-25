@@ -60,13 +60,13 @@ func reloadOutcome(path string, current *config.Config) (
 // mtime polling keeps the watcher dependency-free (ADR 0009).
 func watchConfig(
 	ctx context.Context, path string, source, saved *config.Source,
-	runner *fleet.Fleet, logger *slog.Logger,
+	tree *config.Writer, runner *fleet.Fleet, logger *slog.Logger,
 ) {
-	last := filesStamp(source.Current().WatchPaths())
-	var candidate *config.Config
-	var lastPending string
-	var lastLoadError string
-	retryLoad := false
+	poll := &configPoll{
+		path: path, source: source, saved: saved, tree: tree,
+		runner: runner, logger: logger,
+	}
+	poll.stamp = filesStamp(source.Current().WatchPaths())
 	ticker := time.NewTicker(configWatchInterval)
 	defer ticker.Stop()
 	for {
@@ -75,68 +75,89 @@ func watchConfig(
 			return
 		case <-ticker.C:
 		}
-		current := source.Current()
-		stamp := filesStamp(watchPaths(current, candidate))
-		changed := stamp != last
-		if changed {
-			last = stamp
-		}
-		if changed || (candidate == nil && retryLoad) {
-			loaded, err := loadCandidate(path)
-			if err != nil {
-				candidate = nil
-				retryLoad = true
-				if err.Error() != lastLoadError {
-					logger.Error("config reload failed; keeping the current config",
-						"error", err)
-					lastLoadError = err.Error()
-				}
-				continue
-			}
-			candidate = loaded
-			// The files are now the saved truth even if activation is still
-			// pending, so readers see the document an editor must write against.
-			saved.Replace(loaded)
-			retryLoad = false
-			lastLoadError = ""
-		}
-		if candidate == nil {
-			continue
-		}
-		plan := config.PlanReload(current, candidate)
-		if len(plan.Scopes) == 0 && len(plan.Global) == 0 {
-			source.Replace(config.WithScopes(current, candidate, nil))
-			candidate = nil
-			lastPending = ""
-			continue
-		}
-		applied, pending, err := runner.ApplyConfig(ctx, candidate, plan.Scopes, source)
+		poll.tick(ctx)
+	}
+}
+
+// configPoll is one watcher's state between polls. Each tick holds the tree
+// while it reads and activates, so it never loads a publication's files while
+// they are being replaced.
+type configPoll struct {
+	path   string
+	source *config.Source
+	saved  *config.Source
+	tree   *config.Writer
+	runner *fleet.Fleet
+	logger *slog.Logger
+
+	stamp         string
+	candidate     *config.Config
+	pending       string
+	lastLoadError string
+	retryLoad     bool
+}
+
+func (p *configPoll) tick(ctx context.Context) {
+	defer p.tree.Sync()()
+	current := p.source.Current()
+	stamp := filesStamp(watchPaths(current, p.candidate))
+	changed := stamp != p.stamp
+	if changed {
+		p.stamp = stamp
+	}
+	if changed || (p.candidate == nil && p.retryLoad) {
+		loaded, err := loadCandidate(p.path)
 		if err != nil {
-			logger.Error("config reload failed; keeping the current config",
-				"error", err)
-			continue
-		}
-		if len(applied) > 0 {
-			current = config.WithScopes(current, candidate, applied)
-			logger.Info("config scopes activated", "scopes", applied)
-		}
-		pendingKey := ""
-		if len(plan.Global) > 0 {
-			pendingKey = fmt.Sprint("global:", plan.Global)
-		}
-		for _, scope := range config.SortedKeys(pending) {
-			pendingKey += fmt.Sprint(";", scope, ":", pending[scope])
-		}
-		if pendingKey != "" {
-			if pendingKey != lastPending {
-				logger.Warn("config changes saved but not active",
-					"global", plan.Global, "scopes", pending)
+			p.candidate = nil
+			p.retryLoad = true
+			if err.Error() != p.lastLoadError {
+				p.logger.Error("config reload failed; keeping the current config",
+					"error", err)
+				p.lastLoadError = err.Error()
 			}
-			lastPending = pendingKey
-		} else {
-			lastPending = ""
-			candidate = nil
+			return
 		}
+		p.candidate = loaded
+		// The files are now the saved truth even if activation is still
+		// pending, so readers see the document an editor must write against.
+		p.saved.Replace(loaded)
+		p.retryLoad = false
+		p.lastLoadError = ""
+	}
+	if p.candidate == nil {
+		return
+	}
+	plan := config.PlanReload(current, p.candidate)
+	if len(plan.Scopes) == 0 && len(plan.Global) == 0 {
+		p.source.Replace(config.WithScopes(current, p.candidate, nil))
+		p.candidate = nil
+		p.pending = ""
+		return
+	}
+	applied, pending, err := p.runner.ApplyConfig(ctx, p.candidate, plan.Scopes, p.source)
+	if err != nil {
+		p.logger.Error("config reload failed; keeping the current config",
+			"error", err)
+		return
+	}
+	if len(applied) > 0 {
+		p.logger.Info("config scopes activated", "scopes", applied)
+	}
+	key := ""
+	if len(plan.Global) > 0 {
+		key = fmt.Sprint("global:", plan.Global)
+	}
+	for _, scope := range config.SortedKeys(pending) {
+		key += fmt.Sprint(";", scope, ":", pending[scope])
+	}
+	switch {
+	case key == "":
+		p.pending = ""
+		p.candidate = nil
+	case key != p.pending:
+		p.logger.Warn("config changes saved but not active",
+			"global", plan.Global, "scopes", pending)
+		p.pending = key
 	}
 }
 

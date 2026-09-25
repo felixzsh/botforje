@@ -142,6 +142,9 @@ func (s *Server) publish(
 		s.writePublicationError(w, r, err)
 		return
 	}
+	if changed(outcomes) {
+		s.adopt(r)
+	}
 	results := make([]scopeWriteResult, 0, len(outcomes))
 	status := http.StatusOK
 	for _, outcome := range outcomes {
@@ -165,6 +168,51 @@ func (s *Server) publish(
 		})
 	}
 	writeJSON(w, status, map[string]any{"scopes": results})
+}
+
+// changed reports whether anything was written. A publication that matched what
+// the files already hold leaves nothing to adopt.
+func changed(outcomes []config.Outcome) bool {
+	for _, outcome := range outcomes {
+		if outcome.Changed {
+			return true
+		}
+	}
+	return false
+}
+
+// adopt loads the files a publication just wrote and hands the changed scopes
+// to the running fleet, the same way the watcher handles a manual edit. The
+// files are held for the whole load and activation, so the fleet never adopts a
+// scope that is still being replaced. A server without an applier leaves the
+// change saved; the watcher adopts it on its next poll.
+func (s *Server) adopt(r *http.Request) {
+	if s.applier == nil {
+		return
+	}
+	unlock := s.writer.Sync()
+	defer unlock()
+	candidate, err := (config.Loader{}).Load(s.writer.MainPath())
+	if err != nil {
+		// The files were validated before they were written, so this is not an
+		// expected outcome; the change stays saved and the watcher reports it.
+		s.log.Error("api adopt failed; the change stays saved", "error", err)
+		return
+	}
+	plan := config.PlanReload(s.config(), candidate)
+	// The active snapshot is what the fleet updates; the saved one follows the
+	// files below.
+	applied, _, err := s.applier.ApplyConfig(r.Context(), candidate, plan.Scopes, s.cfg)
+	if err != nil {
+		s.log.Error("api adopt failed; the change stays saved", "error", err)
+	}
+	// The saved snapshot follows the files whatever became live, so a reader
+	// sees the document an editor must write against.
+	s.saved.Replace(candidate)
+	if len(applied) == 0 && len(plan.Scopes) == 0 {
+		return
+	}
+	s.log.Info("published configuration activated", "scopes", applied)
 }
 
 // writePublicationError maps what the writer refused to a status an editor can

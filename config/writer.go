@@ -90,6 +90,10 @@ type Outcome struct {
 type Writer struct {
 	main string
 	mu   sync.Mutex
+	// tree guards the files themselves. A publication replaces several of them
+	// one after another, and a reader that loaded the tree in between would see
+	// a scope split across an old and a new file.
+	tree sync.Mutex
 }
 
 // NewWriter returns a writer for the tree the main file loads.
@@ -104,6 +108,14 @@ func NewWriter(main string) (*Writer, error) {
 // MainPath is the file this writer reads and replaces, which is where a caller
 // looks to see what a publication saved.
 func (w *Writer) MainPath() string { return w.main }
+
+// Sync holds the files still while the caller reads them, so a load and its
+// activation never overlap a publication replacing one of them. The config
+// watcher takes it around each poll; a publication takes it itself.
+func (w *Writer) Sync() func() {
+	w.tree.Lock()
+	return w.tree.Unlock
+}
 
 // Publish replaces whole existing scopes as one recoverable saved change. It
 // loads the files again instead of trusting a snapshot, so a manual edit made
@@ -121,6 +133,9 @@ func (w *Writer) Publish(
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	// The files are held for the whole operation, so a reader never loads a
+	// scope half-replaced.
+	defer w.Sync()()
 
 	current, err := (Loader{}).Load(w.main)
 	if err != nil {

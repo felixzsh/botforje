@@ -53,6 +53,13 @@ func runFleet(args []string) int {
 	// saved tracks the files, which run ahead of the running instance while a
 	// change is valid but not yet active (ADR 0009).
 	saved := config.NewSource(cfg)
+	// tree writes scope configuration back into the files, and holds them still
+	// while they are read, so the watcher and a publication never overlap.
+	tree, err := config.NewWriter(cfg.SourcePath())
+	if err != nil {
+		logger.Error("open config writer", "error", err)
+		return 1
+	}
 
 	lock, err := lockInstance(cfg)
 	if err != nil {
@@ -152,11 +159,9 @@ func runFleet(args []string) int {
 		<-ctx.Done()
 		logger.Info("shutdown requested")
 	}()
-	if watchFile, err := configPath(*cmd.config); err != nil {
-		logger.Warn("config watch unavailable", "error", err)
-	} else {
-		go watchConfig(ctx, watchFile, source, saved, runner, logger)
-	}
+	// The watcher reads the same tree the writer replaces, so both see one
+	// document rather than two paths that could drift.
+	go watchConfig(ctx, tree.MainPath(), source, saved, tree, runner, logger)
 
 	if cfg.Port == 0 {
 		if *cmd.newOwnerToken {
@@ -164,8 +169,8 @@ func runFleet(args []string) int {
 			return 2
 		}
 	} else {
-		stopAPI, err := serveAPI(ctx, stop, cfg, source, saved, runner, db, devices,
-			logger, *cmd.newOwnerToken)
+		stopAPI, err := serveAPI(ctx, stop, cfg, source, saved, tree, runner, db,
+			devices, logger, *cmd.newOwnerToken)
 		if err != nil {
 			logger.Error("start api", "error", err)
 			return 1
@@ -259,8 +264,9 @@ func runFleetStatus(args []string) int {
 // defer it after db.Close so it runs first.
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
-	source, saved *config.Source, runner *fleet.Fleet, db *sqlite.DB,
-	devices *whatsapp.Devices, logger *slog.Logger, rotate bool,
+	source, saved *config.Source, tree *config.Writer, runner *fleet.Fleet,
+	db *sqlite.DB, devices *whatsapp.Devices,
+	logger *slog.Logger, rotate bool,
 ) (func(), error) {
 	dataDir, err := cfg.DataDirPath()
 	if err != nil {
@@ -287,14 +293,11 @@ func serveAPI(
 		Outbox: db.Outbox(),
 	}
 	budgets := cfg.RateBudgets()
-	writer, err := config.NewWriter(cfg.SourcePath())
-	if err != nil {
-		return nil, err
-	}
 	server, err := api.New(api.Options{
 		Config:      source,
 		Saved:       saved,
-		Writer:      writer,
+		Writer:      tree,
+		Applier:     runner,
 		Fleet:       runner,
 		Accounts:    db.LinkedAccounts(),
 		Pairings:    db.Pairings(),

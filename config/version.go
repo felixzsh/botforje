@@ -59,6 +59,22 @@ func yamlField(field reflect.StructField) (name string, omitEmpty, skip bool) {
 	return name, omitEmpty, false
 }
 
+// isEmpty reports whether a field is dropped from the document. A nil
+// collection is always dropped: writing an empty map where the document had none
+// would make a saved scope differ from the loaded one, and every reload would
+// then see the scope as changed. An empty one is dropped only where the field
+// allows it.
+func isEmpty(v reflect.Value, omitEmpty bool) bool {
+	switch v.Kind() {
+	case reflect.Map, reflect.Slice:
+		return v.IsNil() || (omitEmpty && v.Len() == 0)
+	case reflect.String:
+		return v.Len() == 0
+	default:
+		return v.IsZero()
+	}
+}
+
 // writtenValue returns v with every secret replaced by its written form. Scope
 // digests the result and a writer encodes it, so a saved credential is never
 // replaced by its mask, and no value leaves either function.
@@ -79,7 +95,7 @@ func writtenValue(v reflect.Value) any {
 				continue
 			}
 			value := v.Field(i)
-			if omitEmpty && value.IsZero() {
+			if isEmpty(value, omitEmpty) {
 				continue
 			}
 			fields[name] = writtenValue(value)

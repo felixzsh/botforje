@@ -6,8 +6,10 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota/spec"
 )
@@ -378,6 +380,93 @@ func TestWriterRecoversAnInterruptedPublication(t *testing.T) {
 	after := loadWriterTree(t, main)
 	if _, ok := after.Scopes["support"].Bots["extra"]; ok {
 		t.Fatal("a recovered publication kept the new bot")
+	}
+}
+
+func TestWriterRoundTripKeepsTheDocumentTheSame(t *testing.T) {
+	main := writerTree(t)
+	before, err := (Loader{}).Load(main)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// A document that comes back from the writer must be indistinguishable from
+	// the one that went in. If it is not, a reload sees a change nobody made:
+	// an empty collection written where the file had none loads as a non-nil
+	// map, and the scope no longer compares equal to the running one.
+	writer, err := NewWriter(main)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	current := loadWriterTree(t, main)
+	next := copyScope(current.Scopes["support"])
+	next.DisplayName = "Support desk"
+	if _, err := writer.Publish(context.Background(), Publication{
+		Scopes: map[string]ScopeWrite{
+			"support": {Version: scopeVersion(t, current, "support"), Scope: next},
+		},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	after, err := (Loader{}).Load(main)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reflect.DeepEqual(before.Scopes["ventas"], after.Scopes["ventas"]) {
+		t.Fatalf("an untouched scope changed:\n%#v\n%#v",
+			before.Scopes["ventas"], after.Scopes["ventas"])
+	}
+	plan := PlanReload(before, after)
+	if len(plan.Scopes) != 1 || plan.Scopes[0] != "support" {
+		t.Fatalf("changed scopes = %v, want only the published one", plan.Scopes)
+	}
+}
+
+func TestWriterKeepsASavedCredentialIntact(t *testing.T) {
+	main := writerTree(t)
+	writer, _ := NewWriter(main)
+	current := loadWriterTree(t, main)
+
+	next := copyScope(current.Scopes["support"])
+	next.DisplayName = "Support desk"
+	if _, err := writer.Publish(context.Background(), Publication{
+		Scopes: map[string]ScopeWrite{
+			"support": {Version: scopeVersion(t, current, "support"), Scope: next},
+		},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	// The mask must never reach the file: it would replace a working key.
+	if strings.Contains(string(readFile(t, main)), "***") {
+		t.Fatal("the writer saved a mask as a credential")
+	}
+	got := loadWriterTree(t, main).Scopes["support"].LLMs["primary"].APIKey.Reveal()
+	if got != "sk-live" {
+		t.Fatalf("api_key = %q, want the credential that was saved", got)
+	}
+}
+
+func TestWriterSyncHoldsTheFilesStill(t *testing.T) {
+	main := writerTree(t)
+	writer, _ := NewWriter(main)
+
+	unlock := writer.Sync()
+	published := make(chan struct{})
+	go func() {
+		defer close(published)
+		_, _ = writer.Publish(context.Background(), Publication{
+			Scopes: map[string]ScopeWrite{"support": {Version: "v-any"}},
+		})
+	}()
+	select {
+	case <-published:
+		t.Fatal("a publication ran while the files were held")
+	case <-time.After(50 * time.Millisecond):
+	}
+	unlock()
+	select {
+	case <-published:
+	case <-time.After(time.Second):
+		t.Fatal("a publication stayed blocked after the files were released")
 	}
 }
 
