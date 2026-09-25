@@ -37,9 +37,9 @@ Do not start Phase 8 or build the dashboard here.
   bot, graph, action, node, or model profile, its submitted initial name is
   used verbatim as the YAML map key; no random key or `display_name` is
   generated. A later rename keeps that key and writes the new visible label to
-  `display_name`. Scope provisioning is the deliberate exception: the owner
-  API generates the stable scope key, and the requested initial visible name
-  becomes `display_name`.
+  `display_name`. Scope provisioning generates the stable scope key without
+  setting `display_name`; interfaces initially show the key, and the owner may
+  set a visible name later.
 - Visible labels must be unique in their UI namespace: scopes across the
   instance; each entity category within a scope; nodes within their graph;
   and each catalog within its owner (`scope` or `shared`). Same labels in
@@ -86,7 +86,7 @@ organization, not an API requirement; formatting is not a config contract.
   that its new effective label is unique in the relevant namespace, then
   writes `display_name` only; references and stored runtime identity remain
   key-based. Owner scope creation remains the generated-key exception in
-  the next section.
+  the next section, but does not set a display name.
 
 For example, creating a bot named `Sales assistant` inserts a map entry under
 that exact key and leaves `display_name` absent. Renaming it later to
@@ -94,8 +94,8 @@ that exact key and leaves `display_name` absent. Renaming it later to
 `display_name: Regional sales`. References such as `bot.graph` and graph
 `goto` values always contain keys. A key collision or duplicate effective
 label rejects the whole publication; never auto-slug, overwrite, or silently
-add a numeric suffix. Scope creation instead generates a key and stores the
-requested initial label as `display_name`.
+add a numeric suffix. Scope provisioning generates keys without requesting or
+storing initial labels.
 - Every requested scope has its own expected version. Missing or stale
   versions, validation errors, or quota failures reject **the entire batch**
   without writing any scope. Resolve source files and serialize overlapping
@@ -135,7 +135,7 @@ Proposed owner endpoints (all absent today):
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /api/v1/provisioning` | Create a limit set, initial scopes, and token together. |
+| `POST /api/v1/provisioning` | Create a limit set and requested scopes, with an optional token. |
 | `POST /api/v1/limit-sets` | Create an empty set with all limits; no token. |
 | `GET /api/v1/limit-sets/{id}` | Read limits, member scopes, computed usage, and period anchor. |
 | `PUT /api/v1/limit-sets/{id}/limits` | Replace all limits, with a policy version. |
@@ -143,20 +143,21 @@ Proposed owner endpoints (all absent today):
 | `PUT /api/v1/tokens/{id}/scopes` | Replace grants under owner authority. |
 
 `POST /api/v1/provisioning` takes `Idempotency-Key`, a complete `limits`
-object, a requested array of scopes (possibly empty), and an optional token
-request (`name`, optional `expires_at`). If it creates initial scopes, the
-server anchors the set's first outbound quota period to the commit timestamp
-of this provisioning operation; the request does not supply a billing date.
-It returns that timestamp so the host can align its own period to it. If the
-set is created empty, the anchor remains null until its first scope is added.
-The initial token, when requested,
-must have at least one scope. Botflota generates collision-checked stable
-scope keys, writes the new YAML fragments, creates membership and the token,
-and returns the keys, limit-set ID, token ID and clear token **once**. A scope's
-initial requested visible name becomes `display_name`; manual YAML authors
-still choose their own keys. Creating an empty limit set creates no scopes:
-how many scopes a set holds is the owner's provisioning decision, so no
-ceiling on the scope count exists (see the catalog below).
+object, a nonnegative `scope_count`, and an optional token request (`name`,
+optional `expires_at`). It creates exactly that many scopes, each with a
+generated key and no `display_name`. The owner can assign visible names later
+through ordinary scope publication. If it creates initial scopes, the server
+anchors the set's first outbound quota period to the commit timestamp of this
+provisioning operation; the request does not supply a billing date. The
+anchor is available from the limit-set read API, not the provisioning
+response. If the set is created empty, the anchor remains null until its first
+scope is added. A requested token requires at least one scope. Botflota
+generates collision-checked stable scope keys, writes the new YAML fragments,
+creates membership and the token, and returns the limit-set ID and scope keys,
+plus the token ID and clear token **once** when requested. Manual YAML authors
+still choose their own keys. How many scopes a set holds is the owner's
+provisioning decision, so no ceiling on the scope count exists (see the
+catalog below).
 `exclusive_scopes` applies to every new or changed grant, including this API.
 The owner credential stays with the host; it never reaches a scoped user.
 
@@ -512,24 +513,20 @@ Content-Type: application/json
   "max_llms":2,"max_soms":2,
   "max_outbound_messages_per_month":10000,
   "max_stored_message_bytes":104857600
-},"scopes":[{"display_name":"Sales"},{"display_name":"Support"}],
+},"scope_count":2,
 "access_token":{"name":"Primary access"}}
 ```
 
 ```json
-{"limit_set_id":"ls_82a1","scopes":[
-  {"key":"scope_a7f3","display_name":"Sales"},
-  {"key":"scope_b921","display_name":"Support"}
-],"outbound_period_start":"2026-09-25T14:03:12Z",
-"access_token":{"id":42,"scopes":["scope_a7f3","scope_b921"],
-"token":"<clear-value-shown-once>"}}
+{"limit_set_id":"ls_82a1","scopes":["scope_a7f3","scope_b921"],
+"access_token_id":42,"token":"<clear-value-shown-once>"}
 ```
 
 All 8 proposed limits are supplied, including `max_running_bots` separate
 from `max_bots`. The host retains any mapping to its own policy names.
-Botflota stores no such names on tokens or scopes. The number of scopes it
-asks for is not a limit but the tier itself: Botflota creates exactly those
-scopes and knows nothing about a ceiling above them. A repeat with the same
+Botflota stores no such names on tokens or scopes. The requested scope count
+is not a limit but the tier itself: Botflota creates exactly that many scopes
+and knows nothing about a ceiling above them. A repeat with the same
 `Idempotency-Key` returns the original result instead of provisioning again;
 a retry whose token-bearing response was lost returns the created IDs but
 never the clear token, so the owner mints a replacement and revokes the
@@ -572,7 +569,8 @@ Phase 7 publication:
 Advanced owner provisioning and limit policy in Phase 7:
 
 - Provisioning rejects missing limit fields. A set may start empty, or an
-  owner request may create policy, initial scopes, and a scoped token together
+  owner request may create policy, the requested number of scopes, and an
+  optional scoped token together
   with no half-finished results after error or restart. Manual authors keep
   their chosen scope keys. A scoped token cannot create scopes or change
   policy; new grants follow `exclusive_scopes` and never happen implicitly.
@@ -581,7 +579,7 @@ Advanced owner provisioning and limit policy in Phase 7:
   clear token was lost returns those IDs without it; the owner mints a
   replacement, and no path ever logs or stores the clear credential.
 - Provisioning with scopes anchors the outbound period to its successful
-  commit time and returns it; retry returns the identical anchor. Empty-set
+  commit time; the limit-set read returns it, and retry preserves it. Empty-set
   provisioning returns no anchor, and adding its first scope sets the anchor
   once. Periods roll by calendar month from that UTC instant, including the
   Jan-31 → Feb-last-day → Mar-31 case.

@@ -34,8 +34,8 @@ scopes:
   label never changes the key, references, or persisted runtime identity.
 - A UI-created child entity uses its initial submitted name as its map key.
   Later UI renames change `display_name`, not the key. Scope provisioning is
-  the exception: its owner operation generates the scope key and may set an
-  initial `display_name`.
+  the exception: its owner operation generates the scope key without setting
+  `display_name`; the owner may assign a visible label later.
 - Effective display labels are unique within their UI namespace: scopes across
   the instance, each entity category within a scope, nodes within a graph, and
   model catalogs within their owner. Different categories or scopes may reuse

@@ -56,8 +56,11 @@ a credential is still planned (`docs/current-plan.md`). In exclusive
 mode, rotating a credential will need a coordinated replacement that leaves
 no gap, which is not designed yet either.
 
-Planned owner provisioning can create a protected limit set, generated-key
-scopes, and a token authorized for those scopes as one operation. An empty
+Planned owner provisioning can create a protected limit set, a requested
+number of generated-key scopes, and an optional token authorized for those
+scopes as one operation. Provisioned scopes start without a `display_name`,
+so their keys serve as their initial visible labels until the owner changes
+them. An empty
 limit set creates neither scopes nor a token: how many scopes a set holds is
 the owner's provisioning decision, and Botflota keeps no ceiling on that
 number — a host expresses its own tiers by provisioning that many scopes.
@@ -90,11 +93,11 @@ shows the key when the field is absent or empty; editing that label writes the
 field without renaming the key. API read models must distinguish the stored
 optional field from its presentation fallback rather than writing the fallback
 into YAML. Changing a key is not a display rename and must not be inferred as
-one during reload. Future scope provisioning generates a unique scope key;
-manual YAML authors choose their own. For UI-created child entities, the
-submitted initial name is the YAML key; later renames update only
-`display_name`. Scope creation is the exception: its owner API generates the
-key and can store the requested initial label as `display_name`.
+one during reload. Future scope provisioning generates a unique scope key
+without setting `display_name`; interfaces initially show the key, and the
+owner may assign a visible name later. Manual YAML authors choose their own
+keys. For UI-created child entities, the submitted initial name is the YAML
+key; later renames update only `display_name`.
 
 The server validates label uniqueness independently of the UI: effective
 labels must be unique among scopes instance-wide, among members of each entity
