@@ -149,6 +149,10 @@
           "$ref": "#/$defs/RateLimitSettings",
           "description": "RateLimit bounds the API per fixed minute; an omitted block uses the\nbuilt-in budgets, and changing it requires a restart."
         },
+        "exclusive_scopes": {
+          "type": "boolean",
+          "description": "ExclusiveScopes makes a scope grant exclusive: minting an access token\nthen refuses a scope another active token already holds, and startup\nrefuses to run while a scope is already granted to several active\ntokens, so a scope belongs to at most one active token. The default\nfalse lets any number of tokens share a scope; the owner token covers\nevery scope either way. Changing it requires a restart."
+        },
         "include": {
           "items": {
             "type": "string"

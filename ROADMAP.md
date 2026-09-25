@@ -184,7 +184,9 @@ Deliverables:
 - [ ] ADR: delegated sign-in (see below).
 - [x] Scoped access tokens: mint, list, revoke, hashed at rest, optional
   expiry, usable by scripts and by server-to-server callers. (Landed with the
-  authorization base in Phase 7.)
+  authorization base in Phase 7.) A scope grant is shareable between tokens
+  by default and exclusive only where the instance sets `exclusive_scopes`,
+  which also refuses startup on an overlap already stored (`docs/api.md`).
 - [ ] Browser sessions: scope-limited, HttpOnly cookie, CSRF token on mutating
   requests, logout invalidates the session.
 - [ ] Isolation guarantees, enforced as tests: a scoped principal cannot read,

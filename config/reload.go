@@ -87,6 +87,8 @@ func globalChanges(current, next *Config) []string {
 		{"device_name", current.DeviceName, next.DeviceName},
 		{"rate_limit", fmt.Sprint(current.RateBudgets()),
 			fmt.Sprint(next.RateBudgets())},
+		{"exclusive_scopes", fmt.Sprint(current.ExclusiveScopes),
+			fmt.Sprint(next.ExclusiveScopes)},
 	} {
 		if change.was != change.now {
 			reasons = append(reasons, "global setting "+change.name)

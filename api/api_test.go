@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -399,6 +400,14 @@ func testServer(t *testing.T) *Server {
 }
 
 func testServerWithFleet(t *testing.T, live Fleet) *Server {
+	return testServerWithConfig(t, live, nil)
+}
+
+// testServerWithConfig builds the standard server; mutate adjusts the config
+// before New, so a test can exercise an instance setting.
+func testServerWithConfig(
+	t *testing.T, live Fleet, mutate func(*config.Config),
+) *Server {
 	t.Helper()
 	cfg := &config.Config{
 		Address: "127.0.0.1",
@@ -427,6 +436,20 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 			},
 		},
 	}
+	if mutate != nil {
+		mutate(cfg)
+	}
+	server, err := New(testOptions(t, live, cfg))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return server
+}
+
+// testOptions assembles the standard dependencies around one config, so a
+// test can call New itself when it wants to observe a refused startup.
+func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
+	t.Helper()
 	accounts := fakeAccounts{accounts: map[string]botflota.LinkedAccount{
 		"support/demo": {
 			Scope: "support", Bot: "demo", JID: "5215500000000@s.whatsapp.net",
@@ -475,7 +498,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 			ExpiresAt: time.Now().Add(-time.Hour),
 		},
 	}}
-	server, err := New(Options{
+	return Options{
 		Config:   config.NewSource(cfg),
 		Fleet:    live,
 		Accounts: &accounts,
@@ -540,11 +563,7 @@ func testServerWithFleet(t *testing.T, live Fleet) *Server {
 		},
 		Unpairer: &fakeUnpairer{accounts: &accounts},
 		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
 	}
-	return server
 }
 
 func get(t *testing.T, handler http.Handler, path, token string) *httptest.ResponseRecorder {
@@ -825,5 +844,142 @@ func TestTokenMintValidation(t *testing.T) {
 					recorder.Body)
 			}
 		})
+	}
+}
+
+func TestExclusiveScopeGrants(t *testing.T) {
+	cases := []struct {
+		name      string
+		exclusive bool
+		revoke    bool
+		body      string
+		want      int
+	}{
+		// The default lets the owner share a scope between tokens.
+		{"shared grant", false, false,
+			`{"name":"ci","scopes":["support"]}`, http.StatusCreated},
+		{"refuses a held scope", true, false,
+			`{"name":"ci","scopes":["support"]}`, http.StatusConflict},
+		{"allows a free scope", true, false,
+			`{"name":"ci","scopes":["ventas"]}`, http.StatusCreated},
+		// Only active tokens hold a scope: the fixture's revoked and expired
+		// tokens name `support` too, and releasing its holder frees the scope.
+		{"allows a released scope", true, true,
+			`{"name":"ci","scopes":["support"]}`, http.StatusCreated},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := testServerWithConfig(t, &fakeFleet{},
+				func(cfg *config.Config) {
+					cfg.ExclusiveScopes = tc.exclusive
+				})
+			handler := server.Handler()
+			if tc.revoke {
+				recorder := do(t, handler, http.MethodDelete,
+					"/api/v1/tokens/1", testOwnerToken)
+				if recorder.Code != http.StatusNoContent {
+					t.Fatalf("revoke status = %d, want 204", recorder.Code)
+				}
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/tokens",
+				strings.NewReader(tc.body))
+			request.Header.Set("Authorization", "Bearer "+testOwnerToken)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != tc.want {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, tc.want,
+					recorder.Body)
+			}
+		})
+	}
+}
+
+// TestExclusiveScopesStartup: exclusive mode only keeps its promise when the
+// grants already stored are exclusive too, so New refuses an overlap minted
+// before the setting was turned on.
+func TestExclusiveScopesStartup(t *testing.T) {
+	cases := []struct {
+		name      string
+		exclusive bool
+		overlap   bool
+		wantErr   bool
+	}{
+		{"shared grants start", false, true, false},
+		{"one holder per scope starts", true, false, false},
+		{"overlap refuses to start", true, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := testOptions(t, &fakeFleet{}, &config.Config{
+				ExclusiveScopes: tc.exclusive,
+			})
+			if tc.overlap {
+				store, ok := opts.Tokens.(*fakeAccessTokens)
+				if !ok {
+					t.Fatalf("tokens = %T, want *fakeAccessTokens", opts.Tokens)
+				}
+				store.tokens = append(store.tokens, botflota.AccessToken{
+					ID: 4, Name: "second", Hash: hashOf("second-token"),
+					Scopes: []string{"support"}, CreatedAt: testTime,
+				})
+			}
+			server, err := New(opts)
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatalf("New: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("New started on an overlap: %v", server)
+			}
+			for _, want := range []string{
+				"exclusive_scopes", "support", `"scoped"`, `"second"`,
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not name %s", err, want)
+				}
+			}
+		})
+	}
+}
+
+// TestConcurrentMintsShareNothing: while the setting holds, two mints racing
+// for one scope cannot both pass the check; exactly one is created.
+func TestConcurrentMintsShareNothing(t *testing.T) {
+	server := testServerWithConfig(t, &fakeFleet{}, func(cfg *config.Config) {
+		cfg.ExclusiveScopes = true
+	})
+	handler := server.Handler()
+
+	const mints = 8
+	codes := make([]int, mints)
+	var wg sync.WaitGroup
+	for i := range mints {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/tokens",
+				strings.NewReader(`{"name":"ci","scopes":["ventas"]}`))
+			request.Header.Set("Authorization", "Bearer "+testOwnerToken)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			codes[i] = recorder.Code
+		}()
+	}
+	wg.Wait()
+
+	created := 0
+	for _, code := range codes {
+		switch code {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+		default:
+			t.Errorf("status = %d, want 201 or 409", code)
+		}
+	}
+	if created != 1 {
+		t.Fatalf("created = %d, want 1", created)
 	}
 }

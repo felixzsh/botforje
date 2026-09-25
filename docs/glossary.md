@@ -98,8 +98,11 @@
   companion without a QR code.
 - Owner token — the instance owner's credential, created on first run and
   written once to `owner.token` under `data_dir` (mode 0600). It authorizes
-  every scope, instance settings, and credential management.
+  every scope, instance settings, and credential management; it is the only
+  credential that covers the whole instance.
 - Access token — an opaque random credential for the API, stored hashed,
   optionally expiring, and revocable. A scoped access token names the scopes
   it may use and both reads and changes them; it sees nothing else, and a
-  scoped principal requesting another scope gets 404, never 403.
+  scoped principal requesting another scope gets 404, never 403. It has full
+  authority over its own scopes, and whether two access tokens may hold the
+  same scope is the instance's choice (`exclusive_scopes`; docs/api.md).

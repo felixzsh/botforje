@@ -38,6 +38,24 @@ Scope isolation is enforced by the API, not by hiding controls in the UI. A
 credential authorized for several scopes can use them all, but cannot list,
 read, infer, or operate on any other scope.
 
+Scope grants are the owner's to make and the instance's to constrain. By
+default the same scope may be granted to several access tokens, and each has
+full authority over the scopes it holds. An instance that wants one active
+credential per scope sets `exclusive_scopes` (an instance setting; changing
+it requires a restart): minting then answers 409 `scope_already_granted` for
+a scope another active token already holds, and a revoked or expired token
+holds nothing, so its scopes can be granted again. Both behaviors are
+supported and neither is imposed; the owner token covers every scope either
+way. The promise has to hold for what is stored as well, so the server
+refuses to start in this mode while a scope is already granted to several
+active tokens; the owner resolves that overlap first.
+
+A grant changes only by minting a token and revoking one: no renewal or
+scope-grant update exists yet, and the owner operation that adds a scope to
+a credential is still planned (`docs/config-fromapi-plan.md`). In exclusive
+mode, rotating a credential will need a coordinated replacement that leaves
+no gap, which is not designed yet either.
+
 Planned scope provisioning is owner-only and creates a unique generated scope
 key; it does not grant that scope to any token. Owner credential management
 grants access separately. Limits across a group of scopes are also owner
