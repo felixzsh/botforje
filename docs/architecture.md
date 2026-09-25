@@ -357,7 +357,7 @@ nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
 
 Stored history is bounded per limit set (planned, Phase 7;
-`docs/current-plan.md`): `max_stored_message_bytes` sums the stored `body` and
+`docs/access-policy.md`): `max_stored_message_bytes` sums the stored `body` and
 `content` bytes of the set's scopes — inbound, outbound, and imported alike —
 not the size of the database file, and each bot carries its own
 `settings.history_import_max_bytes` for what its linked account may import.

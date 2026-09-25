@@ -80,7 +80,7 @@ Import the history sync, inertly and honestly:
   the imported message content one bot keeps for its linked account, in bytes,
   and a limit set with no room left under `max_stored_message_bytes` stops the
   import first and reports it partial. The accounting, the ceilings, and the
-  pause that follows are the owner policy's (`docs/current-plan.md`).
+  pause that follows are the owner policy's (`docs/access-policy.md`).
 - Older messages beyond the delivered backlog are requested by `chat sync
   <bot> <sender>`, the path a pairing without `--import-history` relies on. It
   pages backwards from the chat's oldest stored message,

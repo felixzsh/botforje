@@ -111,7 +111,7 @@
   messages per anchored UTC monthly period, and stored message bytes. The
   period starts at provisioning or when the first scope joins an empty set.
   It is not a scope, a UI group, or a token, and it carries no ceiling on how
-  many scopes it holds; the owner provisions those (`docs/current-plan.md`).
+  many scopes it holds; the owner provisions those (`docs/access-policy.md`).
 - Structural limit — how large one definition may grow: nodes per graph,
   edges per node, steps and inputs per action. An instance setting, a
   positive integer and restart-required, that belongs to no limit set and

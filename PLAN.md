@@ -291,13 +291,14 @@ Deliverables:
   `exclusive_scopes` on new grants. Protect the owner policy in SQLite only
   after updating ADR 0002 and recording the settled file/DB recovery, counter
   semantics, lowering, and startup behavior. The detailed schema, routes, and
-  gates are in `docs/current-plan.md`.
+  gates are in `docs/access-policy.md`. This deliverable is held back while the
+  host settles its access and offering model, which may reshape these routes.
 - [ ] Structural limits in instance config: max nodes per graph, max edges per
   node, max steps and max inputs per action, under `definition_limits` as
   positive integers with defaults, rejected at zero or below and
   restart-required. They bound one definition, so they belong to no limit set
   and never multiply by scope; they ship with their Go types and a regenerated
-  schema (`docs/current-plan.md`).
+  schema (`docs/access-policy.md`).
 - [ ] Storage and history-import ceilings: `max_stored_message_bytes` sums the
   stored `body` and `content` bytes of a set's scopes — inbound, outbound, and
   imported — not the database file, and `settings.history_import_max_bytes`
@@ -305,14 +306,18 @@ Deliverables:
   config in bytes. Import stops partial at either ceiling; a bot with no room
   left under its set then pauses its turns and reports it, so nothing is
   answered that cannot be stored (ADR 0040). Beyond the MVP, retention and
-  answering without storing stay open (ROADMAP Phase 16).
+  answering without storing stay open (ROADMAP Phase 16)
+  (`docs/access-policy.md`).
 - [ ] Account history: unlinking keeps chats, messages, sessions, and
   contacts; deleting one bot's history is an explicit confirmed operation
   that never touches the scope's senders or another bot; migration **moves**
   a bot's chats, messages, and contacts to another bot of the same scope for
   a recreated or peer bot, with both bots stopped, the source's queue failed
   first, and its active sessions ended. Settle it as an ADR before
-  implementing (`docs/current-plan.md`).
+  implementing (`docs/current-plan.md`). Publishing existing scopes, label
+  rules, and these history operations need no policy from a host, so they
+  proceed first; the watcher gaps they reuse (a multi-scope candidate, and
+  deferral expiry) are part of that work.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port
@@ -389,7 +394,9 @@ Deliverables:
   startup with a removed current node; changed or new includes; pending
   restart settings.
 - [ ] Tests: a multi-scope candidate, and the expiry that lifts an
-  active-session deferral once those sessions end.
+  active-session deferral once those sessions end. These two close with the
+  publication API, which reuses the activation pipeline
+  (`docs/current-plan.md`).
 - [x] Tests: API handlers and auth.
 - [x] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).
@@ -421,11 +428,14 @@ Deliverables:
   counts, and skip a chat with no anchor instead of failing the batch.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
-and reconfigured by editing its files, through CLI and API only. The owner can
-provision a limit set, a requested number of scopes, and a scoped token;
-scoped publication of
-several authorized scopes is atomic, and shared limits prevent direct API
-writes or concurrent bot starts from exceeding the configured ceilings.
+and reconfigured through CLI and API only. Scoped publication of several
+authorized scopes is atomic and leaves every other scope untouched. An owner
+can delete one bot's history and migrate it to another bot of the same scope
+without touching senders or a peer bot.
+
+The host-facing half of this phase — provisioning, limit sets, and quotas —
+stays open in `docs/access-policy.md` and does not gate the outcome above; it
+waits on the host's access and offering decisions.
 
 ### Phase 8 — System One routing, replies, and tools
 
@@ -544,7 +554,7 @@ and additional channels, each with its own phase, order, and open decisions.
 - LLM bounds defaults: max tools per message and timeout (Phase 8).
 - Which LLM providers ship first for realization (close in Phase 8).
 - Structural limit defaults: nodes per graph, edges per node, steps and inputs
-  per action (Phase 7; `docs/current-plan.md`).
+  per action (Phase 7; `docs/access-policy.md`).
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
@@ -554,7 +564,7 @@ binary's version identifies the format it implements (ADR 0041).
 The operational CLI is a client of the REST API, authenticated with the owner
 token or a scoped access token, and `config init` is non-interactive (Phase 7,
 ADR 0025).
-Owner limit policy (Phase 7) is settled in `docs/current-plan.md`: no ceiling on
+Owner limit policy (Phase 7) is settled in `docs/access-policy.md`: no ceiling on
 how many scopes a set holds; aggregate ceilings shared across its scopes;
 structural limits as positive restart-required instance settings; storage
 counted as logical message bytes; history import bounded per bot; unlink

@@ -7,8 +7,10 @@ Map of the documentation.
 - `scope.md` — what Botflota includes.
 - `glossary.md` — terms used across the docs.
 - `api.md` — API authority, scope coverage, and current versus target behavior.
-- `current-plan.md` — current Phase 7 plan for API publication, limit sets,
-  storage, and account history.
+- `current-plan.md` — current Phase 7 plan for API publication and account
+  history.
+- `access-policy.md` — the host-facing Phase 7 plan: limit sets, quotas, and
+  provisioning, held for redesign with the host's access model.
 - `../PLAN.md` — phases to the MVP, progress checkboxes, and open decisions.
 - `../ROADMAP.md` — phases after the MVP and the order they arrive in.
 

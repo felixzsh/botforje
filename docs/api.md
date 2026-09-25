@@ -52,7 +52,7 @@ active tokens; the owner resolves that overlap first.
 
 A grant changes only by minting a token and revoking one: no renewal or
 scope-grant update exists yet, and the owner operation that adds a scope to
-a credential is still planned (`docs/current-plan.md`). In exclusive
+a credential is still planned (`docs/access-policy.md`). In exclusive
 mode, rotating a credential will need a coordinated replacement that leaves
 no gap, which is not designed yet either.
 
@@ -70,10 +70,12 @@ access token or scoped-editable YAML; how large a bot's imported history may
 grow is ordinary bot configuration in bytes, not a tier Botflota knows.
 Rotating a token does not reset usage. A ceiling is never lowered below
 current use — nothing is deleted to make a number true — and a hand-edited
-file that exceeds one is refused at load without being rewritten. The
-catalog, the structural limits that live in instance config instead, storage
-exhaustion, and the account history operations are in `docs/current-plan.md`;
-their final enforcement contract needs an ADR before implementation.
+file that exceeds one is refused at load without being rewritten. The catalog,
+the ceilings that live in instance config instead, and storage exhaustion are
+in `docs/access-policy.md`; their final enforcement contract needs an ADR
+before implementation, and the whole policy may be reshaped with the host's
+access model. Configuration publication and the account history operations are
+separate capabilities in `docs/current-plan.md`.
 
 ## Configuration and scope operations
 
@@ -155,7 +157,8 @@ replies before the account is removed. Unlinking never removes history: chats,
 messages, sessions, and contacts stay, so a relink finds them again. Deleting
 one bot's history is a separate explicit operation, and migration moves it to
 another bot of the same scope for a recreated or peer bot; both are planned in
-`docs/current-plan.md`. The target adds the remaining
+`docs/current-plan.md` (`docs/access-policy.md` holds the limits that bound
+them). The target adds the remaining
 scope operations, including bot controls and complete configuration editing,
 without stopping peer bots. Ordinary errors in one bot must remain local to
 that bot.
