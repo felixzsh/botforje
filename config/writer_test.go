@@ -449,7 +449,10 @@ func TestWriterSyncHoldsTheFilesStill(t *testing.T) {
 	main := writerTree(t)
 	writer, _ := NewWriter(main)
 
-	unlock := writer.Sync()
+	unlock, err := writer.Sync(context.Background())
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
 	published := make(chan struct{})
 	go func() {
 		defer close(published)
@@ -479,4 +482,8 @@ func TestRecoverWithoutAJournalDoesNothing(t *testing.T) {
 	if string(readFile(t, main)) != before {
 		t.Fatal("Recover changed a tree with no pending publication")
 	}
+}
+
+func writeTreeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0o644)
 }

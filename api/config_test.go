@@ -65,6 +65,11 @@ func TestScopeConfigServesTheSavedDocument(t *testing.T) {
 	if body.Scope != "support" {
 		t.Fatalf("scope = %q, want support", body.Scope)
 	}
+	// The version is also an entity tag, so an editor can hold it without
+	// parsing the body.
+	if got, want := recorder.Header().Get("ETag"), `"`+body.Version+`"`; got != want {
+		t.Fatalf("ETag = %q, want %q", got, want)
+	}
 	if body.Version == "" || body.Version != body.ActiveVersion {
 		t.Fatalf("version = %q, active = %q, want one version that is active",
 			body.Version, body.ActiveVersion)

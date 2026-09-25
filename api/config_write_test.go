@@ -106,6 +106,45 @@ func savedScope(t *testing.T, main, name string) spec.Scope {
 	return scope
 }
 
+func TestPublishRefusesWhileTheTreeDoesNotLoad(t *testing.T) {
+	server := newPublishServer(t)
+	// A manual edit that does not parse blocks publication until it is fixed.
+	original, err := os.ReadFile(server.main)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	broken := strings.Replace(string(original),
+		"address: 127.0.0.1", "address: [not, a, string]", 1)
+	if err := os.WriteFile(server.main, []byte(broken), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	t.Run("the owner gets the reason", func(t *testing.T) {
+		recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
+			"version": "v-any", "config": spec.Scope{},
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), server.main) {
+			t.Fatalf("body = %s, want the file named", recorder.Body.String())
+		}
+	})
+
+	t.Run("a scoped caller learns nothing about the file", func(t *testing.T) {
+		recorder := putScope(t, server.Server, "support", testAccessToken, map[string]any{
+			"version": "v-any", "config": spec.Scope{},
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+		body := recorder.Body.String()
+		if strings.Contains(body, "unmarshal") || strings.Contains(body, server.main) {
+			t.Fatalf("body = %s, want no file or parse detail disclosure", body)
+		}
+	})
+}
+
 func TestPublishOneScope(t *testing.T) {
 	server := newPublishServer(t)
 	current := savedScope(t, server.main, "support")

@@ -190,7 +190,13 @@ func (s *Server) adopt(r *http.Request) {
 	if s.applier == nil {
 		return
 	}
-	unlock := s.writer.Sync()
+	unlock, err := s.writer.Sync(r.Context())
+	if err != nil {
+		// The request is gone before the files were free; the change stays
+		// saved, and the watcher adopts it.
+		s.log.Warn("adopt gave up waiting for the files", "error", err)
+		return
+	}
 	defer unlock()
 	candidate, err := (config.Loader{}).Load(s.writer.MainPath())
 	if err != nil {
@@ -223,9 +229,21 @@ func (s *Server) writePublicationError(
 ) {
 	var conflict config.VersionConflict
 	var invalid config.InvalidCandidate
+	var unreadable config.TreeUnreadable
 	switch {
 	case errors.Is(err, config.ErrScopeUnknown):
 		writeError(w, http.StatusNotFound, "not_found", "unknown scope")
+	case errors.As(err, &unreadable):
+		// The saved tree does not load, so nothing could be checked against it.
+		// An invalid manual document is the owner's to fix, and the detail
+		// names files that a scoped caller has no business seeing.
+		if principalFrom(r.Context()).Owner() {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_config",
+				unreadable.Error())
+			return
+		}
+		writeError(w, http.StatusUnprocessableEntity, "invalid_config",
+			"the saved configuration cannot be loaded")
 	case errors.As(err, &conflict):
 		if !principalFrom(r.Context()).Allows(conflict.Scope) {
 			writeError(w, http.StatusNotFound, "not_found", "unknown scope")

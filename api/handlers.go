@@ -318,6 +318,9 @@ func (s *Server) handleScopeConfig(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "version active scope", err)
 		return
 	}
+	// The version travels as an entity tag too, so a client can keep it for a
+	// conditional write without parsing the body.
+	w.Header().Set("ETag", `"`+version+`"`)
 	if present && version != activeVersion {
 		status = "pending"
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/felixzsh/botflota/api"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
+	"github.com/felixzsh/botflota/instance"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -44,7 +45,29 @@ func runFleet(args []string) int {
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
-	cfg, code := loadConfig(*cmd.config)
+	// The path is resolved, the instance is taken, and only then is the tree
+	// loaded: recovery of an interrupted publication runs under the lock, so two
+	// processes never restore the same files at once (ADR 0039).
+	configFile, err := configPath(*cmd.config)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	lockDir, err := config.LockDir(configFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	lock, err := instance.Acquire(lockDir)
+	if err != nil {
+		reportOwned(err, "starting the fleet")
+		return 1
+	}
+	defer releaseInstance(lock, func(err error) {
+		fmt.Fprintln(os.Stderr, "release instance:", err)
+	})
+
+	cfg, code := loadConfig(configFile)
 	if code != 0 {
 		return code
 	}
@@ -60,15 +83,6 @@ func runFleet(args []string) int {
 		logger.Error("open config writer", "error", err)
 		return 1
 	}
-
-	lock, err := lockInstance(cfg)
-	if err != nil {
-		logger.Error("own instance", "error", err)
-		return 1
-	}
-	defer releaseInstance(lock, func(err error) {
-		logger.Error("release instance", "error", err)
-	})
 
 	db, err := openDatabase(cfg)
 	if err != nil {

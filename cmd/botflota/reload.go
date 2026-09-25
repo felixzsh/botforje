@@ -98,7 +98,13 @@ type configPoll struct {
 }
 
 func (p *configPoll) tick(ctx context.Context) {
-	defer p.tree.Sync()()
+	unlock, err := p.tree.Sync(ctx)
+	if err != nil {
+		// Shutting down; the next start recovers anything a publication left
+		// unfinished.
+		return
+	}
+	defer unlock()
 	current := p.source.Current()
 	stamp := filesStamp(watchPaths(current, p.candidate))
 	changed := stamp != p.stamp

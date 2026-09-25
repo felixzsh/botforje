@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 
 	"go.yaml.in/yaml/v3"
 
@@ -32,6 +31,17 @@ func managedFragment(main, scope string) string {
 // ErrScopeUnknown reports a scope the files do not hold. Publication replaces
 // an existing scope and never creates one (ADR 0002).
 var ErrScopeUnknown = errors.New("config: unknown scope")
+
+// TreeUnreadable reports that the files could not be loaded at all, so nothing
+// could be checked against them. An invalid manual document leaves the tree
+// unreadable and blocks publication until its author corrects it; the message
+// names the file and the reason, which is more than an scoped caller should
+// learn, so the API decides how much of it to repeat (ADR 0002).
+type TreeUnreadable struct{ Err error }
+
+func (e TreeUnreadable) Error() string { return "config: " + e.Err.Error() }
+
+func (e TreeUnreadable) Unwrap() error { return e.Err }
 
 // VersionConflict reports that a scope changed after the version its editor
 // read. Nothing is written; the editor reloads and reconciles.
@@ -89,11 +99,11 @@ type Outcome struct {
 // content would not change is never rewritten.
 type Writer struct {
 	main string
-	mu   sync.Mutex
 	// tree guards the files themselves. A publication replaces several of them
 	// one after another, and a reader that loaded the tree in between would see
-	// a scope split across an old and a new file.
-	tree sync.Mutex
+	// a scope split across an old and a new file. It is a channel rather than a
+	// mutex so a caller waits inside its own context instead of forever.
+	tree chan struct{}
 }
 
 // NewWriter returns a writer for the tree the main file loads.
@@ -102,8 +112,22 @@ func NewWriter(main string) (*Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Writer{main: filepath.Clean(abs)}, nil
+	return &Writer{main: filepath.Clean(abs), tree: make(chan struct{}, 1)}, nil
 }
+
+// acquire holds the files, waiting only while the caller's context lasts. A
+// caller that gives up before the tree is free gets its context's error and
+// writes nothing.
+func (w *Writer) acquire(ctx context.Context) error {
+	select {
+	case w.tree <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *Writer) release() { <-w.tree }
 
 // MainPath is the file this writer reads and replaces, which is where a caller
 // looks to see what a publication saved.
@@ -111,10 +135,13 @@ func (w *Writer) MainPath() string { return w.main }
 
 // Sync holds the files still while the caller reads them, so a load and its
 // activation never overlap a publication replacing one of them. The config
-// watcher takes it around each poll; a publication takes it itself.
-func (w *Writer) Sync() func() {
-	w.tree.Lock()
-	return w.tree.Unlock
+// watcher takes it around each poll; a publication takes it itself. Release the
+// returned function when the read is done.
+func (w *Writer) Sync(ctx context.Context) (func(), error) {
+	if err := w.acquire(ctx); err != nil {
+		return nil, err
+	}
+	return w.release, nil
 }
 
 // Publish replaces whole existing scopes as one recoverable saved change. It
@@ -131,15 +158,17 @@ func (w *Writer) Publish(
 	if len(pub.Scopes) == 0 {
 		return nil, nil
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
 	// The files are held for the whole operation, so a reader never loads a
-	// scope half-replaced.
-	defer w.Sync()()
+	// scope half-replaced, and a second publication waits rather than
+	// interleaving.
+	if err := w.acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer w.release()
 
 	current, err := (Loader{}).Load(w.main)
 	if err != nil {
-		return nil, err
+		return nil, TreeUnreadable{Err: err}
 	}
 	outcomes, err := checkVersions(current, pub)
 	if err != nil {
