@@ -46,15 +46,17 @@ sides.
 
 - **History can be exported before it is deleted.**
   `GET /api/v1/scopes/{scope}/bots/{bot}/history/export` answers one `zip`
-  holding a CSV per table the deletion removes: chats, sessions, messages,
-  contacts, and queued replies. Each file carries a header, its rows in stored
-  order, and a JSON-valued column as the JSON text it holds. The rows stream
-  while the archive is written, so a conversation of several megabytes costs
-  constant memory, and the whole read happens in one read transaction, so an
-  arrival mid-export cannot tear the file. It is a read: no confirmation, no
-  request key, and the same authority and 404 as any other scope-addressed
-  route. Deletion does not require it — the two are independent — but it exists
-  as the safety net that makes an irreversible deletion an informed choice.
+  holding a CSV per table the deletion removes — chats, sessions, messages, and
+  contacts — with a header even when the table holds no row, its rows in stored
+  order, a JSON-valued column as the JSON text it holds, and the sender's phone
+  and name beside each chat so the archive stands alone. The archive streams
+  while it is read, so a conversation of several megabytes costs constant
+  memory, and the whole read is one transaction, so an arrival mid-export cannot
+  tear it. Queued replies are not exported: they are the delivery state of
+  messages the export already carries. It is a read — no confirmation, no
+  request key, the same authority and 404 as any scope-addressed route — and
+  deletion does not require it, but it is the safety net that makes an
+  irreversible deletion an informed choice.
 
 - **Migration is a move** to another bot of the same scope:
   `POST /api/v1/scopes/{scope}/bots/{bot}/history/migrations` with

@@ -146,6 +146,14 @@ type Message struct {
 	Routing           RoutingMethod
 }
 
+// HistoryChat is one chat as an export reads it, with its sender's identity
+// beside it so the exported file stands alone (ADR 0042).
+type HistoryChat struct {
+	Chat
+	SenderPhone string
+	SenderName  string
+}
+
 // ChatSummary is a chat joined with its sender profile, for the read API.
 // Messages, Sync, and Live count the stored rows by ingest kind; the embedded
 // MessageCount stays the live inbound count (ADR 0035).

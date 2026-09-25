@@ -176,15 +176,16 @@ process restart must say so explicitly.
 ## Current implementation and target
 
 Today, the API has owner and scoped bearer tokens, checks scope access on
-scope-addressed routes, reads scope configuration, and supports pairing,
-pairing cancellation, and unpairing while the fleet is running. The owner-only
-routes expose instance configuration and manage access tokens. It does not yet
-write configuration. YAML edits currently enter through files; the watcher
-loads and validates them and activates only safe changed scopes (ADR 0009).
-The CLI uses the API for operational commands while the instance is running.
+scope-addressed routes, reads and publishes scope configuration, and supports
+pairing, pairing cancellation, unpairing, and exporting one bot's history as a
+zip of CSVs while the fleet is running. The owner-only routes expose instance
+configuration and manage access tokens. YAML edits still enter through files as
+well; the watcher loads and validates them and activates only safe changed
+scopes (ADR 0009). The CLI uses the API for operational commands while the
+instance is running.
 
-The full target is not implemented yet: browser sessions, scope configuration
-publication, the complete set of bot and conversation controls, and the
+The full target is not implemented yet: browser sessions, deleting or migrating
+a bot's history, the complete set of bot and conversation controls, and the
 embedded dashboard remain planned. Scope publication is a Phase 7 deliverable;
 the later dashboard consumes it. Scope and bot membership changes and channel
 settings currently remain pending until restart; a graph topology change waits

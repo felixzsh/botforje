@@ -21,35 +21,47 @@ const sessionColumns = `id, chat_id, node, visited_nodes,
 func (s *SessionStore) Latest(ctx context.Context, chatID int64) (*botflota.Session, error) {
 	query := "SELECT " + sessionColumns +
 		" FROM sessions WHERE chat_id = ? ORDER BY id DESC LIMIT 1"
-	var (
-		session                         botflota.Session
-		visitedNodes, graphCtx, nodeCtx string
-		created, updated                string
-		expires                         string
-	)
-	err := s.db.QueryRowContext(ctx, query, chatID).Scan(
-		&session.ID, &session.ChatID, &session.Node, &visitedNodes, &graphCtx, &nodeCtx,
-		&created, &updated, &expires,
-	)
+	session, err := scanSession(s.db.QueryRowContext(ctx, query, chatID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, botflota.ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: get session: %w", err)
 	}
+	return &session, nil
+}
+
+// rowScanner is what *sql.Row and *sql.Rows share, so one session is decoded the
+// same way whoever read it: alone, or streamed with the rest of a chat's runs.
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanSession(row rowScanner) (botflota.Session, error) {
+	var (
+		session                         botflota.Session
+		visitedNodes, graphCtx, nodeCtx string
+		created, updated                string
+		expires                         string
+	)
+	err := row.Scan(
+		&session.ID, &session.ChatID, &session.Node, &visitedNodes, &graphCtx, &nodeCtx,
+		&created, &updated, &expires,
+	)
+	if err != nil {
+		return botflota.Session{}, err
+	}
 	if err := decodeJSON(visitedNodes, &session.VisitedNodes); err != nil {
-		return nil, fmt.Errorf("sqlite: visited nodes: %w", err)
+		return botflota.Session{}, fmt.Errorf("sqlite: visited nodes: %w", err)
 	}
 	if err := decodeJSON(graphCtx, &session.GraphContext); err != nil {
-		return nil, fmt.Errorf("sqlite: graph context: %w", err)
+		return botflota.Session{}, fmt.Errorf("sqlite: graph context: %w", err)
 	}
 	if err := decodeJSON(nodeCtx, &session.NodeContext); err != nil {
-		return nil, fmt.Errorf("sqlite: node context: %w", err)
+		return botflota.Session{}, fmt.Errorf("sqlite: node context: %w", err)
 	}
 	session.CreatedAt = parseTime(created)
 	session.UpdatedAt = parseTime(updated)
 	session.ExpiresAt = parseTime(expires)
-	return &session, nil
+	return session, nil
 }
 
 func (s *SessionStore) Save(ctx context.Context, session *botflota.Session) error {

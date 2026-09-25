@@ -320,7 +320,8 @@ Deliverables:
   contacts; deleting one bot's history is an explicit confirmed operation
   that never touches the scope's senders or another bot; exporting one bot's
   history is a streamed zip of one CSV per table the deletion removes, so an
-  irreversible deletion can be an informed one; migration **moves** a bot's
+  irreversible deletion can be an informed one and the export is implemented
+  while delete and migrate are not; migration **moves** a bot's
   chats and contacts to a bot of the same scope that holds no chat of its own,
   for a bot replacing a lost account, with both bots stopped, the source's
   queue failed first, and its active sessions expired. ADR 0042 settles the

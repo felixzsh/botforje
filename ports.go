@@ -134,6 +134,39 @@ type SenderStore interface {
 	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
 }
 
+// HistoryReader streams everything one bot's history holds, so it can leave the
+// instance without buffering a whole conversation (ADR 0042). The sink is called
+// once per stored row, table by table, in stored order; an error from any call
+// stops the read and is returned. Senders are not history — they belong to the
+// scope (ADR 0029) — but a chat carries its sender's phone and name so the
+// result stands on its own.
+type HistoryReader interface {
+	ReadHistory(ctx context.Context, scope, bot string, sink HistorySink) error
+}
+
+// HistoryTable names one table of a bot's history, so a sink knows which file
+// or destination the rows that follow belong to (ADR 0042).
+type HistoryTable string
+
+const (
+	TableChats    HistoryTable = "chats"
+	TableSessions HistoryTable = "sessions"
+	TableMessages HistoryTable = "messages"
+	TableContacts HistoryTable = "contacts"
+)
+
+// HistorySink receives one bot's history as it is read. BeginTable is called
+// once before a table's rows, so a sink that writes one file per table can
+// finish the previous file before the next one starts; the rows that follow
+// belong to that table, in stored order.
+type HistorySink interface {
+	BeginTable(table HistoryTable) error
+	Chat(HistoryChat) error
+	Session(Session) error
+	Message(Message) error
+	Contact(Contact) error
+}
+
 // ContactStore records the address-book entries of each bot's linked account
 // when contact import is on (ADR 0037). Put merges the non-empty name fields
 // and never clears one; List returns the most recently updated entries first,

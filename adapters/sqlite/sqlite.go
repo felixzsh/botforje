@@ -176,6 +176,9 @@ func (d *DB) Sessions() *stores.SessionStore { return stores.NewSessionStore(d.D
 
 func (d *DB) Messages() *stores.MessageStore { return stores.NewMessageStore(d.DB) }
 
+// History reads one bot's whole history in a single snapshot (ADR 0042).
+func (d *DB) History() *stores.HistoryStore { return stores.NewHistoryStore(d.DB) }
+
 // Turns returns the store that commits one message turn atomically.
 func (d *DB) Turns() *stores.TurnStore { return stores.NewTurnStore(d.DB) }
 

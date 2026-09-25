@@ -66,6 +66,9 @@ type Options struct {
 	Chats    botflota.ChatStore
 	Sessions botflota.SessionStore
 	Messages botflota.MessageStore
+	// History streams one bot's stored history for export. It is optional: a
+	// server without it answers 501 on the export route.
+	History  botflota.HistoryReader
 	Tokens   botflota.AccessTokenStore
 	Resolver PrincipalResolver
 	// RateBudgets are the per-minute request budgets; nil uses the built-in
@@ -90,6 +93,7 @@ type Server struct {
 	chats    botflota.ChatStore
 	sessions botflota.SessionStore
 	messages botflota.MessageStore
+	history  botflota.HistoryReader
 	tokens   botflota.AccessTokenStore
 	resolver PrincipalResolver
 	log      *slog.Logger
@@ -169,7 +173,7 @@ func New(opts Options) (*Server, error) {
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,
 		senders:  opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
-		sessions: opts.Sessions, messages: opts.Messages,
+		sessions: opts.Sessions, messages: opts.Messages, history: opts.History,
 		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
 		ops: map[string]*sync.Mutex{},
@@ -232,6 +236,9 @@ func (s *Server) routes() http.Handler {
 
 	account := "/api/v1/scopes/{scope}/bots/{bot}/account"
 	mux.HandleFunc("DELETE "+account, s.handleAccountDelete)
+
+	history := "/api/v1/scopes/{scope}/bots/{bot}/history"
+	mux.HandleFunc("GET "+history+"/export", s.handleHistoryExport)
 
 	return s.authenticate(mux)
 }

@@ -127,33 +127,43 @@ func scanMessages(rows *sql.Rows) ([]botflota.Message, error) {
 	defer rows.Close()
 	var messages []botflota.Message
 	for rows.Next() {
-		var (
-			message                       botflota.Message
-			sessionID                     sql.NullInt64
-			direction, kind, body, ingest string
-			content, origin, routing      string
-			sentAt                        string
-		)
-		if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
-			&direction, &kind, &body, &content, &sentAt,
-			&message.ProviderMessageID, &ingest, &origin, &routing); err != nil {
+		message, err := scanMessage(rows)
+		if err != nil {
 			return nil, err
 		}
-		if sessionID.Valid {
-			message.SessionID = sessionID.Int64
-		}
-		message.Direction = botflota.Direction(direction)
-		message.Ingest = botflota.Ingest(ingest)
-		message.Origin = botflota.MessageOrigin(origin)
-		message.Routing = botflota.RoutingMethod(routing)
-		message.At = parseTime(sentAt)
-		decoded, err := botflota.ContentFromJSON(
-			botflota.MessageKind(kind), body, []byte(content))
-		if err != nil {
-			return nil, fmt.Errorf("sqlite: decode message content: %w", err)
-		}
-		message.Content = decoded
 		messages = append(messages, message)
 	}
 	return messages, rows.Err()
+}
+
+// scanMessage reads one row of messageColumns, so a caller that streams rows
+// decodes each message the same way a caller that collects them does.
+func scanMessage(rows *sql.Rows) (botflota.Message, error) {
+	var (
+		message                       botflota.Message
+		sessionID                     sql.NullInt64
+		direction, kind, body, ingest string
+		content, origin, routing      string
+		sentAt                        string
+	)
+	if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
+		&direction, &kind, &body, &content, &sentAt,
+		&message.ProviderMessageID, &ingest, &origin, &routing); err != nil {
+		return botflota.Message{}, err
+	}
+	if sessionID.Valid {
+		message.SessionID = sessionID.Int64
+	}
+	message.Direction = botflota.Direction(direction)
+	message.Ingest = botflota.Ingest(ingest)
+	message.Origin = botflota.MessageOrigin(origin)
+	message.Routing = botflota.RoutingMethod(routing)
+	message.At = parseTime(sentAt)
+	decoded, err := botflota.ContentFromJSON(
+		botflota.MessageKind(kind), body, []byte(content))
+	if err != nil {
+		return botflota.Message{}, fmt.Errorf("sqlite: decode message content: %w", err)
+	}
+	message.Content = decoded
+	return message, nil
 }

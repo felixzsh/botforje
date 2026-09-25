@@ -144,12 +144,12 @@ This is behavior Botflota owes an operator regardless of any host.
   scopes (ADR 0016), so there is no cross-scope move. Senders are already shared
   by the scope and need no copy. A bot that only relinks its account needs no
   migration at all — its history is keyed by bot, not by account.
-- **History can be exported before it is deleted.** One `zip` download, one CSV
-  per table the deletion removes — chats, sessions, messages, contacts, and
-  queued replies — streamed so a conversation of several megabytes costs
-  constant memory, and read in one transaction so an arrival mid-export cannot
-  tear the file. It is a read with the same authority as any scope route, and it
-  is independent of deletion.
+- **History can be exported before it is deleted** (current). One `zip`
+  download, one CSV per table the deletion removes — chats, sessions, messages,
+  contacts — with a header even for a table with no rows, streamed so a
+  conversation of several megabytes costs constant memory, and read in one
+  transaction so an arrival mid-export cannot tear the file. It is a read with
+  the same authority as any scope route, and it is independent of deletion.
 
 Migration is a **move**, not a copy: two bots holding the same history would
 cost storage and prove nothing, and to a chat it cannot be done at all — a
@@ -257,9 +257,11 @@ Account history:
   duplicate them. A destination holding any chat is refused and named, and a
   moved chat keeps its own start, activity, guards, and session runs.
 - Export hands back one zip with a CSV per table the deletion removes, each with
-  a header and its rows in stored order, for a bot with several megabytes of
-  history; the server's memory stays flat while it streams, and a message
-  arriving mid-export does not appear or tear the file.
+  a header — even when the table holds no row — and its rows in stored order,
+  for a bot with several megabytes of history; the server's memory stays flat
+  while it streams, and a message arriving mid-export does not appear or tear
+  the file. The export reads as the scope's route does and needs no
+  confirmation.
 
 When implementation begins, request build permission before checks. Use the Make
 targets, add concurrency tests, and mark deliverables complete only in the

@@ -323,6 +323,7 @@ func serveAPI(
 		Chats:       db.Chats(),
 		Sessions:    db.Sessions(),
 		Messages:    db.Messages(),
+		History:     db.History(),
 		Tokens:      db.AccessTokens(),
 		RateBudgets: &budgets,
 		Resolver:    api.NewAuth(ownerHash, db.AccessTokens()),
