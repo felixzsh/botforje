@@ -287,9 +287,14 @@ func serveAPI(
 		Outbox: db.Outbox(),
 	}
 	budgets := cfg.RateBudgets()
+	writer, err := config.NewWriter(cfg.SourcePath())
+	if err != nil {
+		return nil, err
+	}
 	server, err := api.New(api.Options{
 		Config:      source,
 		Saved:       saved,
+		Writer:      writer,
 		Fleet:       runner,
 		Accounts:    db.LinkedAccounts(),
 		Pairings:    db.Pairings(),

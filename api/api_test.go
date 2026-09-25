@@ -30,6 +30,13 @@ const (
 
 var testTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
+// testGraph is a minimal valid graph, so the fixture configuration passes the
+// validation a publication runs before it writes.
+var testGraph = spec.Graph{
+	Root:  "hello",
+	Nodes: map[string]spec.Node{"hello": {Goal: "greet"}},
+}
+
 type fakeFleet struct {
 	statuses []botflota.BotStatus
 	stopped  []string
@@ -391,6 +398,20 @@ func hashOf(key string) []byte {
 	return sum[:]
 }
 
+// writeTestConfig saves a config as the files a writer would change and returns
+// the main file's path, so a test that publishes changes real files.
+func writeTestConfig(t *testing.T, cfg *config.Config) string {
+	t.Helper()
+	// The fixture carries a ${API_TOKEN} reference, so the writer can load what
+	// it is about to rewrite.
+	t.Setenv("API_TOKEN", "header-secret")
+	path := filepath.Join(t.TempDir(), "botflota.yml")
+	if err := cfg.WriteFile(path); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
+}
+
 func testServer(t *testing.T) *Server {
 	t.Helper()
 	return testServerWithFleet(t, &fakeFleet{statuses: []botflota.BotStatus{
@@ -429,10 +450,12 @@ func testServerWithConfig(
 						},
 					}}}},
 				},
-				Bots: map[string]spec.Bot{"demo": {}},
+				Graphs: map[string]spec.Graph{"main": testGraph},
+				Bots:   map[string]spec.Bot{"demo": {Graph: "main"}},
 			},
 			"ventas": {
-				Bots: map[string]spec.Bot{"other": {}},
+				Graphs: map[string]spec.Graph{"main": testGraph},
+				Bots:   map[string]spec.Bot{"other": {Graph: "main"}},
 			},
 		},
 	}
@@ -450,6 +473,10 @@ func testServerWithConfig(
 // test can call New itself when it wants to observe a refused startup.
 func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 	t.Helper()
+	writer, err := config.NewWriter(writeTestConfig(t, cfg))
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
 	accounts := fakeAccounts{accounts: map[string]botflota.LinkedAccount{
 		"support/demo": {
 			Scope: "support", Bot: "demo", JID: "5215500000000@s.whatsapp.net",
@@ -501,6 +528,7 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 	return Options{
 		Config:   config.NewSource(cfg),
 		Saved:    config.NewSource(cfg),
+		Writer:   writer,
 		Fleet:    live,
 		Accounts: &accounts,
 		Pairings: pairings,

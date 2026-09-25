@@ -4,6 +4,7 @@
 package config
 
 import (
+	"os"
 	"slices"
 
 	"github.com/felixzsh/botflota/spec"
@@ -78,6 +79,21 @@ func (c *Config) RateBudgets() RateBudgets {
 		budgets.FailedPerMinute = *c.RateLimit.FailedPerMinute
 	}
 	return budgets
+}
+
+// SourcePath is the absolute path of the main file this configuration was
+// loaded from, which is where a writer must write back to.
+func (c *Config) SourcePath() string { return c.source }
+
+// WriteFile saves the whole document to path, with every secret as it is
+// written, so a caller can lay down a starting configuration that loads the same
+// way it will be read back (ADR 0002).
+func (c *Config) WriteFile(path string) error {
+	content, err := encode(c)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, 0o644)
 }
 
 // Files lists the main config and every include Load read, so a watcher knows

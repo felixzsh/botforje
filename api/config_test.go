@@ -179,6 +179,14 @@ func TestScopeConfigReportsAScopeTheFilesNoLongerHold(t *testing.T) {
 	}
 }
 
+// readScopeConfig answers a scope read and hands back the decoded body.
+func readScopeConfig(
+	t *testing.T, server *Server, path, token string,
+) scopeConfigBody {
+	t.Helper()
+	return decodeScopeConfig(t, get(t, server.Handler(), path, token))
+}
+
 func decodeScopeConfig(t *testing.T, recorder *httptest.ResponseRecorder) scopeConfigBody {
 	t.Helper()
 	if recorder.Code != http.StatusOK {

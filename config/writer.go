@@ -101,6 +101,10 @@ func NewWriter(main string) (*Writer, error) {
 	return &Writer{main: filepath.Clean(abs)}, nil
 }
 
+// MainPath is the file this writer reads and replaces, which is where a caller
+// looks to see what a publication saved.
+func (w *Writer) MainPath() string { return w.main }
+
 // Publish replaces whole existing scopes as one recoverable saved change. It
 // loads the files again instead of trusting a snapshot, so a manual edit made
 // since the editor read is the one it is checked against. Every requested

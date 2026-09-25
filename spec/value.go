@@ -54,6 +54,22 @@ func (Text) JSONSchema() *jsonschema.Schema {
 	}
 }
 
+// UnmarshalJSON accepts one body or a list of variants, the same shapes
+// UnmarshalYAML takes, so a document an API read can be sent back.
+func (t *Text) UnmarshalJSON(data []byte) error {
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*t = Text{single}
+		return nil
+	}
+	var several []string
+	if err := json.Unmarshal(data, &several); err != nil {
+		return fmt.Errorf("body must be a string or a list of strings")
+	}
+	*t = several
+	return nil
+}
+
 // Secret is a value that must not leak into logs, errors, or the API
 // (ADR 0014). It keeps the string as written, so serialization shows the
 // `${ENV_VAR}` reference when the config used one and a mask when it did not.
@@ -97,7 +113,7 @@ func (s Secret) String() string {
 	if s.value == "" {
 		return ""
 	}
-	return "***"
+	return Mask
 }
 
 // GoString masks the value under %#v.
@@ -119,6 +135,23 @@ func (s *Secret) UnmarshalYAML(value *yaml.Node) error {
 
 // MarshalJSON emits the reference or the mask, never the value.
 func (s Secret) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
+
+// UnmarshalJSON reads the string as written, the way UnmarshalYAML does, so an
+// API accepts a reference, a literal, the mask it sent, or an empty string to
+// remove the secret (ADR 0014).
+func (s *Secret) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*s = Secret{value: raw}
+	return nil
+}
+
+// Mask is what a secret reads as when its value is hidden. A client that
+// receives the mask and sends it back unchanged is asking to keep the value it
+// never saw, so a writer restores what the files hold.
+const Mask = "***"
 
 // MarshalYAML emits the reference or the mask, never the value.
 func (s Secret) MarshalYAML() (any, error) { return s.String(), nil }

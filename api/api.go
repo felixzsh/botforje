@@ -32,8 +32,11 @@ type Fleet interface {
 // (ADR 0009). Saved is that snapshot's counterpart: the configuration as it
 // stands in the files, which may already differ from the running one.
 type Options struct {
-	Config   *config.Source
-	Saved    *config.Source
+	Config *config.Source
+	Saved  *config.Source
+	// Writer saves scope configuration back into the files the instance loads;
+	// fleet run injects the one over the main config file.
+	Writer   *config.Writer
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
@@ -61,6 +64,7 @@ type Options struct {
 type Server struct {
 	cfg      *config.Source
 	saved    *config.Source
+	writer   *config.Writer
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
@@ -97,6 +101,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Saved == nil {
 		return nil, errors.New("api: no saved config")
+	}
+	if opts.Writer == nil {
+		return nil, errors.New("api: no config writer")
 	}
 	if opts.Accounts == nil {
 		return nil, errors.New("api: no linked-account store")
@@ -142,7 +149,7 @@ func New(opts Options) (*Server, error) {
 		logger = botflota.DiscardLogger()
 	}
 	server := &Server{
-		cfg: opts.Config, saved: opts.Saved, fleet: opts.Fleet,
+		cfg: opts.Config, saved: opts.Saved, writer: opts.Writer, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,
@@ -195,6 +202,8 @@ func (s *Server) routes() http.Handler {
 
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
+	mux.HandleFunc("PUT /api/v1/scopes/{scope}/config", s.handleScopeConfigPut)
+	mux.HandleFunc("POST /api/v1/config/publications", s.handleConfigPublications)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/chats", s.handleChats)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts", s.handleContacts)
 	mux.HandleFunc("POST /api/v1/scopes/{scope}/chats/sync", s.handleChatSync)
