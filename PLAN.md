@@ -138,9 +138,9 @@ Deliverables:
   (ADR 0018).
 - [x] Guards: cooldown and rate limit per sender per action; blocked-action
   behavior.
-- [x] Hybrid intent semantics: classification fallback, rendering modes with
-  anchor plus fallback, and policy checks (shape settled in Phase 1;
-  ADR 0032).
+- [x] Hybrid intent semantics: classification fallback and rendering modes
+  with anchor plus fallback (shape settled in Phase 1; ADR 0032). The policy
+  check before queueing belongs to Phase 8's opt-in generation.
 - [x] Tests: simulated conversations including fallback, timeout, guards,
   request failures, template reference errors, and the same input with
   different visit histories.
@@ -335,31 +335,35 @@ Deliverables:
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [x] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
-  and request header values, reject it in every other string, keep the
-  placeholder when serializing, and reveal the value only to the consumer that
-  sends it.
+  and request header values, keep the placeholder when serializing, and
+  reveal the value only to the consumer that sends it.
+- [ ] Reject a `${...}` that reaches any other string (ADR 0014): entities
+  (llm, action, graph, bot) are scanned, but instance-level settings
+  (`address`, `data_dir`, `device_name`), `include` paths, and a scope's
+  `display_name` are not.
 - [x] Config watch baseline (ADR 0009): poll the main YAML and its loaded
   includes; load, interpolate, and validate a complete candidate before use.
   Invalid edits keep the active configuration.
-- [ ] Scope-isolated activation (ADR 0009): distinguish saved YAML from active
+- [x] Scope-isolated activation (ADR 0009): distinguish saved YAML from active
   runtime snapshots; calculate effective changed scopes and advance only
   those snapshots. An unchanged scope's actors, channels, filters, and queues
   remain untouched. A candidate changing several scopes is validated as one
   document and activated only where safe.
-- [ ] Runtime compatibility: defer graph topology or initial-context changes
+- [x] Runtime compatibility: defer graph topology or initial-context changes
   while affected bots have active sessions, retry while the saved candidate
   remains, and skip at startup rather than silently resume a session whose
   current node was removed. Preserve unrelated scopes when another scope is
   pending; keep global, scope-set, bot-set, and channel-setting changes
   explicitly restart-required.
-- [ ] Include watching: detect content changes, include-list changes, and new
+- [x] Include watching: detect content changes, include-list changes, and new
   files matching directory or glob includes. Retry corrected invalid files
   and pending session-safe changes without requiring an unrelated edit.
-- [ ] Tests: invalid candidate leaves the active snapshot untouched; one-scope
-  edit leaves other runtime
-  generations untouched; multi-scope candidate; active-session deferral and
-  expiry; startup with a removed current node; changed/new includes; pending
+- [x] Tests: invalid candidate leaves the active snapshot untouched; one-scope
+  edit leaves other runtime generations untouched; active-session deferral;
+  startup with a removed current node; changed or new includes; pending
   restart settings.
+- [ ] Tests: a multi-scope candidate, and the expiry that lifts an
+  active-session deferral once those sessions end.
 - [x] Tests: API handlers and auth.
 - [x] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).
@@ -375,19 +379,20 @@ Deliverables:
   (`message`, `location`, `media`, `contact`, `poll`) are defined in the config
   schema, and a channel rejects a kind it cannot deliver with
   `ErrUnsupportedKind`.
-- [ ] `bot pair --import-history` (ADR 0035): the flag asks WhatsApp for the
+- [x] `bot pair --import-history` (ADR 0035): the flag asks WhatsApp for the
   full history window at registration and waits for it, which is what brings
   chats older than the default recent window; a pairing without it still
   imports what arrives and leaves `chat sync` as the per-chat path.
-- [ ] Contact import (ADR 0037): a per-bot `settings.import_contacts` copies the
+- [x] Contact import (ADR 0037): a per-bot `settings.import_contacts` copies the
   linked account's address book into its own `contacts` resource, keyed by
   (scope, bot, phone), with the address-book, business, and push names kept
   apart; `contact list` and the scope `contacts` route read it. A control-only
   conversation shell registers no sender and no chat.
-- [ ] `chat sync --all` (ADR 0035): after those anchors exist, request one
+- [x] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over the running fleet's connection, in
-  sequence and never in parallel, skipping chats without an anchor and
-  reporting answered, timed-out, and skipped counts in the summary.
+  sequence and never in parallel, keeping the walk going when one chat fails.
+- [ ] The `chat sync --all` summary: report answered, timed-out, and skipped
+  counts, and skip a chat with no anchor instead of failing the batch.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured by editing its files, through CLI and API only. The owner can
