@@ -135,29 +135,29 @@ Proposed owner endpoints (all absent today):
 
 | Method and path | Purpose |
 | --- | --- |
-| `POST /api/v1/provisioning` | Create a limit set and requested scopes, with an optional token. |
-| `POST /api/v1/limit-sets` | Create an empty set with all limits; no token. |
+| `POST /api/v1/provisioning` | Create a limit set, its scopes, and a scoped access token. |
+| `POST /api/v1/limit-sets` | Create an empty set with all limits; no scopes, no token. |
 | `GET /api/v1/limit-sets/{id}` | Read limits, member scopes, computed usage, and period anchor. |
 | `PUT /api/v1/limit-sets/{id}/limits` | Replace all limits, with a policy version. |
 | `POST /api/v1/limit-sets/{id}/scopes` | Add scopes, optionally grant them to a token. |
 | `PUT /api/v1/tokens/{id}/scopes` | Replace grants under owner authority. |
 
 `POST /api/v1/provisioning` takes `Idempotency-Key`, a complete `limits`
-object, a nonnegative `scope_count`, and an optional token request (`name`,
-optional `expires_at`). It creates exactly that many scopes, each with a
-generated key and no `display_name`. The owner can assign visible names later
-through ordinary scope publication. If it creates initial scopes, the server
-anchors the set's first outbound quota period to the commit timestamp of this
-provisioning operation; the request does not supply a billing date. The
-anchor is available from the limit-set read API, not the provisioning
-response. If the set is created empty, the anchor remains null until its first
-scope is added. A requested token requires at least one scope. Botflota
-generates collision-checked stable scope keys, writes the new YAML fragments,
-creates membership and the token, and returns the limit-set ID and scope keys,
-plus the token ID and clear token **once** when requested. Manual YAML authors
-still choose their own keys. How many scopes a set holds is the owner's
-provisioning decision, so no ceiling on the scope count exists (see the
-catalog below).
+object, a `scope_count` of at least one, and a token request (`name`, optional
+`expires_at`). It creates exactly that many scopes, each with a generated key
+and no `display_name`, and one access token authorized for all of them. The
+owner can assign visible names later through ordinary scope publication. The
+server anchors the set's first outbound quota period to the commit timestamp of
+this provisioning operation; the request does not supply a billing date, and
+the anchor is available from the limit-set read API, not the provisioning
+response. An empty set is not a provisioning case: it comes from
+`POST /api/v1/limit-sets`, and its anchor stays null until its first scope is
+added. Botflota generates collision-checked stable scope keys, writes the new
+YAML fragments, creates membership and the token, and returns the limit-set ID,
+the scope keys, the token ID, and the clear token **once**. Manual YAML
+authors still choose their own keys. How many scopes a set holds is the
+owner's provisioning decision, so no ceiling on the scope count exists (see
+the catalog below).
 `exclusive_scopes` applies to every new or changed grant, including this API.
 The owner credential stays with the host; it never reaches a scoped user.
 
@@ -253,13 +253,13 @@ counter table and no duplicate counter to reconcile. The outbound query uses
 the set's anchored period; storage and per-bot history use their respective
 stored rows.
 
-Each limit set has one UTC monthly-period anchor. Provisioning with initial
-scopes sets it to the successful commit timestamp, not a date supplied by the
-host. The response returns the timestamp, and retries with the same
-idempotency key return that same value. A set created empty leaves the anchor
-unset until the owner adds its first scope; that operation sets it to its
-commit timestamp. Removing all scopes later does not reset an existing
-anchor. Periods end at the same UTC time on the corresponding day of the
+Each limit set has one UTC monthly-period anchor. Provisioning sets it to the
+successful commit timestamp, not a date supplied by the host; the limit-set
+read returns it, and retries with the same idempotency key preserve it. A set
+created empty through `POST /api/v1/limit-sets` leaves the anchor unset until
+the owner adds its first scope; that operation sets it to its commit
+timestamp. Removing all scopes later does not reset an existing anchor.
+Periods end at the same UTC time on the corresponding day of the
 following month; if that month lacks the anchor day, use its last day, then
 return to the original anchor day in later months (January 31 → February's
 last day → March 31).
@@ -568,9 +568,9 @@ Phase 7 publication:
 
 Advanced owner provisioning and limit policy in Phase 7:
 
-- Provisioning rejects missing limit fields. A set may start empty, or an
-  owner request may create policy, the requested number of scopes, and an
-  optional scoped token together
+- Provisioning rejects missing limit fields, a `scope_count` below one, or a
+  missing token name. One owner request creates policy, the requested number
+  of scopes, and the scoped token together
   with no half-finished results after error or restart. Manual authors keep
   their chosen scope keys. A scoped token cannot create scopes or change
   policy; new grants follow `exclusive_scopes` and never happen implicitly.
@@ -578,11 +578,11 @@ Advanced owner provisioning and limit policy in Phase 7:
   the original IDs instead of provisioning a second time, and a response whose
   clear token was lost returns those IDs without it; the owner mints a
   replacement, and no path ever logs or stores the clear credential.
-- Provisioning with scopes anchors the outbound period to its successful
-  commit time; the limit-set read returns it, and retry preserves it. Empty-set
-  provisioning returns no anchor, and adding its first scope sets the anchor
-  once. Periods roll by calendar month from that UTC instant, including the
-  Jan-31 → Feb-last-day → Mar-31 case.
+- Provisioning anchors the outbound period to its successful commit time; the
+  limit-set read returns it, and retry preserves it. A set created empty
+  through `POST /api/v1/limit-sets` has no anchor, and adding its first scope
+  sets the anchor once. Periods roll by calendar month from that UTC instant,
+  including the Jan-31 → Feb-last-day → Mar-31 case.
 - Subsequent owner provisioning respects the ceilings already stored, and the
   scope count only ever follows the owner's provisioning requests; lowering
   limits below use is rejected under the settled ADR. A credential

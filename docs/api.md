@@ -57,11 +57,11 @@ mode, rotating a credential will need a coordinated replacement that leaves
 no gap, which is not designed yet either.
 
 Planned owner provisioning can create a protected limit set, a requested
-number of generated-key scopes, and an optional token authorized for those
+number of generated-key scopes, and a scoped token authorized for those
 scopes as one operation. Provisioned scopes start without a `display_name`,
 so their keys serve as their initial visible labels until the owner changes
-them. An empty
-limit set creates neither scopes nor a token: how many scopes a set holds is
+them. An empty limit set is a separate owner operation that creates neither
+scopes nor a token: how many scopes a set holds is
 the owner's provisioning decision, and Botflota keeps no ceiling on that
 number — a host expresses its own tiers by provisioning that many scopes.
 Botflota knows only complete numeric resource ceilings, not the host's reason

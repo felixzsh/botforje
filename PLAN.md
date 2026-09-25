@@ -282,10 +282,10 @@ Deliverables:
   ceiling: the owner provisions the scopes a set holds. Include separate
   ceilings for configured bots and bots running concurrently; count runtime
   usage as well as definitions. Provide an all-or-nothing owner operation to
-  create a limit set, a requested count of generated-key scopes, and an
-  optional scoped token. Provisioned scopes start without `display_name`; an
+  create a limit set, a requested count of generated-key scopes, and a
+  scoped token. Provisioned scopes start without `display_name`; an
   owner may assign labels later. The response returns the limit-set ID,
-  created scope keys, and optional access-token ID and one-time token value.
+  created scope keys, and the access-token ID with its one-time token value.
   A scoped token cannot create scopes, change its grants, or change policy.
   Keep limits out of token records and scoped-editable YAML; honor
   `exclusive_scopes` on new grants. Protect the owner policy in SQLite only
@@ -422,7 +422,7 @@ Deliverables:
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured by editing its files, through CLI and API only. The owner can
-provision a limit set, a requested number of scopes, and an optional token;
+provision a limit set, a requested number of scopes, and a scoped token;
 scoped publication of
 several authorized scopes is atomic, and shared limits prevent direct API
 writes or concurrent bot starts from exceeding the configured ceilings.
