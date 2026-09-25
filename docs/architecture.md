@@ -357,7 +357,7 @@ nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
 
 Stored history is bounded per limit set (planned, Phase 7;
-`docs/api-plan.md`): `max_stored_message_bytes` sums the stored `body` and
+`docs/current-plan.md`): `max_stored_message_bytes` sums the stored `body` and
 `content` bytes of the set's scopes — inbound, outbound, and imported alike —
 not the size of the database file, and each bot carries its own
 `settings.history_import_max_bytes` for what its linked account may import.
@@ -475,7 +475,7 @@ it runs with both bots stopped, fails the source's queued replies before the
 old link can send them, and ends the source's active sessions instead of
 pretending the destination's graph sits at the same node. Neither operation
 runs as a side effect of pairing, unpairing, or a config edit. Both are
-planned in `docs/api-plan.md`.
+planned in `docs/current-plan.md`.
 
 ## Concurrency
 

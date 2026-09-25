@@ -108,9 +108,10 @@
   same scope is the instance's choice (`exclusive_scopes`; docs/api.md).
 - Limit set — an owner-managed policy joining several scopes under shared
   ceilings: bots, running bots, graphs, actions, model profiles, outbound
-  messages per UTC month, and stored message bytes. It is not a scope, a UI
-  group, or a token, and it carries no ceiling on how many scopes it holds;
-  the owner provisions those (docs/api-plan.md).
+  messages per anchored UTC monthly period, and stored message bytes. The
+  period starts at provisioning or when the first scope joins an empty set.
+  It is not a scope, a UI group, or a token, and it carries no ceiling on how
+  many scopes it holds; the owner provisions those (`docs/current-plan.md`).
 - Structural limit — how large one definition may grow: nodes per graph,
   edges per node, steps and inputs per action. An instance setting, a
   positive integer and restart-required, that belongs to no limit set and
@@ -124,4 +125,4 @@
 - History migration — moving, never copying, a bot's chats, messages, and
   contacts to another bot of the same scope, so a recreated or peer bot starts
   from the same conversations; it runs with both bots stopped
-  (`docs/api-plan.md`). Unlinking an account never deletes history.
+  (`docs/current-plan.md`). Unlinking an account never deletes history.

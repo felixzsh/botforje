@@ -488,7 +488,7 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 - Sharding threshold, and whether the host or Botflota maps accounts to
   instances (Phase 18).
 - Limit-set semantics, usage counters, and owner-policy recovery (Phase 7;
-  `docs/api-plan.md`).
+  `docs/current-plan.md`).
 
 ## Outside the boundary
 

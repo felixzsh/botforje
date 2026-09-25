@@ -1,4 +1,4 @@
-# API plan
+# Phase 7: API, limits, storage, and account history
 
 Phase 7 plan for reading and publishing existing scopes by API, registering
 owner-managed limit sets with generated-key scopes and scoped credentials,
@@ -137,14 +137,19 @@ Proposed owner endpoints (all absent today):
 | --- | --- |
 | `POST /api/v1/provisioning` | Create a limit set, initial scopes, and token together. |
 | `POST /api/v1/limit-sets` | Create an empty set with all limits; no token. |
-| `GET /api/v1/limit-sets/{id}` | Read limits, member scopes, and usage. |
+| `GET /api/v1/limit-sets/{id}` | Read limits, member scopes, computed usage, and period anchor. |
 | `PUT /api/v1/limit-sets/{id}/limits` | Replace all limits, with a policy version. |
 | `POST /api/v1/limit-sets/{id}/scopes` | Add scopes, optionally grant them to a token. |
 | `PUT /api/v1/tokens/{id}/scopes` | Replace grants under owner authority. |
 
 `POST /api/v1/provisioning` takes `Idempotency-Key`, a complete `limits`
 object, a requested array of scopes (possibly empty), and an optional token
-request (`name`, optional `expires_at`). The initial token, when requested,
+request (`name`, optional `expires_at`). If it creates initial scopes, the
+server anchors the set's first outbound quota period to the commit timestamp
+of this provisioning operation; the request does not supply a billing date.
+It returns that timestamp so the host can align its own period to it. If the
+set is created empty, the anchor remains null until its first scope is added.
+The initial token, when requested,
 must have at least one scope. Botflota generates collision-checked stable
 scope keys, writes the new YAML fragments, creates membership and the token,
 and returns the keys, limit-set ID, token ID and clear token **once**. A scope's
@@ -171,6 +176,8 @@ owner token-grant update supports existing/manual scopes and credential
 replacement; scoped callers cannot use either route. No policy is ever
 embedded in a token. Deleting or moving a scope and rotating a token need
 explicit later contracts; neither is an implicit side effect of a label edit.
+If the set has no period anchor yet, adding its first scope sets the anchor to
+that operation's commit timestamp; later scope additions do not move it.
 
 ### 3. Aggregate enforcement and protected storage
 
@@ -187,7 +194,7 @@ scopes of one limit set:
 | `max_running_bots` | Bot actors running concurrently, distinct from definitions. |
 | `max_graphs`, `max_actions` | Graph and action definitions. |
 | `max_llms`, `max_soms` | LLM and System One model (SOM) definitions. |
-| `max_outbound_messages_per_month` | Outbound messages admitted in a UTC month. |
+| `max_outbound_messages_per_month` | Outbound messages in the set's anchored UTC monthly period. |
 | `max_stored_message_bytes` | Logical stored message content, not DB file size. |
 
 Settled for this catalog:
@@ -209,9 +216,10 @@ Settled for this catalog:
   sessions, and contacts are outside it, so the ceiling is a content promise,
   not a disk promise. A retry that stores no new row costs nothing.
 - **`max_outbound_messages_per_month` stays separate.** It bounds newly
-  admitted outbound messages in a UTC month and says nothing about storage:
-  inbound and imported messages grow storage without touching it, and past
-  months' rows remain.
+  admitted outbound messages in the current monthly period and says nothing
+  about storage: inbound and imported messages grow storage without touching
+  it. The period is a rolling calendar month from the limit set's anchor, not
+  the first through last day of a calendar month.
 
 What counts, and when (settled):
 
@@ -223,9 +231,13 @@ What counts, and when (settled):
   until it stops. The slot is reserved before the start, so two starts at
   once cannot slip past the ceiling; a paired but stopped bot holds none, and
   "paired" is never mistaken for "running".
-- **`max_outbound_messages_per_month`** spends a slot when a reply is admitted
-  to the outbox, in the same transaction that stores the turn. A retry spends
-  none, a failed delivery gives nothing back, and the month is UTC.
+- **`max_outbound_messages_per_month`** counts outbound messages admitted to
+  the outbox during the set's current period. Query outbox rows joined through
+  their messages, chats, and the set's scopes; this excludes history-sync
+  imports, which never enter the outbox. Admission and message storage happen
+  in the same turn transaction, so a retry adds no row and spends no extra
+  slot, while a failed delivery remains counted. Use `outbox.created_at` and
+  the UTC period boundaries.
 - **`max_stored_message_bytes`** is checked as content is written: a row the
   dedup index rejects stores no bytes and spends none, and deleting messages
   returns their bytes to the ceiling.
@@ -233,13 +245,29 @@ What counts, and when (settled):
   stored under that bot. Unlinking keeps the history, so the usage stays with
   the bot; only deleting history releases it.
 
-Counters live in SQLite only where reading them cheaply matters: the UTC
-month and the stored bytes are persisted counters, updated in the same
-transaction that inserts or deletes the rows, so a crash cannot separate a
-row from its count. Definition counts are derived from saved YAML and running
-bots from the fleet, never duplicated as counters, and a reconciliation
-operation rebuilds the persisted ones from the rows instead of rescanning per
-message.
+Usage is calculated from its source when requested or enforced: definitions
+from saved YAML, running bots from the fleet, and message counts and bytes
+from SQLite queries over the set's member scopes. There is no generic usage
+counter table and no duplicate counter to reconcile. The outbound query uses
+the set's anchored period; storage and per-bot history use their respective
+stored rows.
+
+Each limit set has one UTC monthly-period anchor. Provisioning with initial
+scopes sets it to the successful commit timestamp, not a date supplied by the
+host. The response returns the timestamp, and retries with the same
+idempotency key return that same value. A set created empty leaves the anchor
+unset until the owner adds its first scope; that operation sets it to its
+commit timestamp. Removing all scopes later does not reset an existing
+anchor. Periods end at the same UTC time on the corresponding day of the
+following month; if that month lacks the anchor day, use its last day, then
+return to the original anchor day in later months (January 31 → February's
+last day → March 31).
+
+Because outbound use is queried from outbox rows, explicit history deletion
+also removes the associated rows from the query and can restore monthly
+outbound capacity. This is a consequence of avoiding a durable usage ledger;
+the ADR must explicitly accept that behavior or retain a dedicated outbound
+ledger.
 
 Lowering a ceiling below current usage is refused, with the usage and the
 requested maximum in the error: Botflota never deletes a definition, stops a
@@ -251,9 +279,10 @@ and leaves the existing history alone.
 
 This is a proposed **complete initial catalog**, not a promise to limit every
 possible future resource. Shared instance-level model profiles are not
-multiplied by scope. Counting for message variants and for queued replies is
-still the ADR's to settle; the rest of this section is decided above, and the
-ADR records it instead of reopening it.
+multiplied by scope. Counting for message variants and how explicit history
+deletion affects the outbound count are still for the ADR to settle; the
+rest of this section is decided above, and the ADR records it instead of
+reopening it.
 
 **Structural limits (instance config, not a limit set).** A graph may hold at
 most N nodes, a node at most N edges, an action at most N steps and N inputs.
@@ -336,6 +365,7 @@ CREATE TABLE limit_sets (
   max_soms INTEGER CHECK (max_soms >= 0),
   max_outbound_messages_per_month INTEGER
     CHECK (max_outbound_messages_per_month >= 0),
+  outbound_period_start TEXT, -- NULL until the set's first scope is added
   max_stored_message_bytes INTEGER CHECK (max_stored_message_bytes >= 0),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -345,20 +375,13 @@ CREATE TABLE limit_set_scopes (
   limit_set_id TEXT NOT NULL REFERENCES limit_sets(id)
 );
 CREATE INDEX limit_set_scopes_set ON limit_set_scopes(limit_set_id);
-CREATE TABLE limit_usage (
-  limit_set_id TEXT NOT NULL REFERENCES limit_sets(id),
-  resource TEXT NOT NULL,
-  period_start TEXT NOT NULL,
-  amount INTEGER NOT NULL CHECK (amount >= 0),
-  PRIMARY KEY (limit_set_id, resource, period_start)
-);
 ```
 
 Each scope belongs to at most one limit set; a set may be empty. Existing
 manually authored scopes can remain outside any set until the owner attaches
-them. Usage rows are for time-windowed or otherwise non-derivable counters;
-derive definition counts from saved YAML and count running bots from the
-fleet, not redundant tables. Existing token tables gain no limit columns.
+them. `outbound_period_start` is NULL only until the first scope joins an
+empty set. Usage is queried from saved YAML, the fleet, and message rows;
+there is no `limit_usage` table. Existing token tables gain no limit columns.
 Owner policy must be inaccessible to scoped publication, `GET` projections,
 or token-grant changes. An owner may set a ceiling; even an owner publication
 must honor the current ceiling until the policy changes explicitly.
@@ -497,7 +520,8 @@ Content-Type: application/json
 {"limit_set_id":"ls_82a1","scopes":[
   {"key":"scope_a7f3","display_name":"Sales"},
   {"key":"scope_b921","display_name":"Support"}
-],"access_token":{"id":42,"scopes":["scope_a7f3","scope_b921"],
+],"outbound_period_start":"2026-09-25T14:03:12Z",
+"access_token":{"id":42,"scopes":["scope_a7f3","scope_b921"],
 "token":"<clear-value-shown-once>"}}
 ```
 
@@ -556,6 +580,11 @@ Advanced owner provisioning and limit policy in Phase 7:
   the original IDs instead of provisioning a second time, and a response whose
   clear token was lost returns those IDs without it; the owner mints a
   replacement, and no path ever logs or stores the clear credential.
+- Provisioning with scopes anchors the outbound period to its successful
+  commit time and returns it; retry returns the identical anchor. Empty-set
+  provisioning returns no anchor, and adding its first scope sets the anchor
+  once. Periods roll by calendar month from that UTC instant, including the
+  Jan-31 → Feb-last-day → Mar-31 case.
 - Subsequent owner provisioning respects the ceilings already stored, and the
   scope count only ever follows the owner's provisioning requests; lowering
   limits below use is rejected under the settled ADR. A credential
@@ -593,6 +622,11 @@ Storage and history import:
 - Storage accounting matches the documented definition: the sum of `body` and
   `content` bytes over the set's scopes, so imported, inbound, and outbound
   rows all count and duplicate rows never do.
+- Outbound use is computed from the set's outbox rows and their `created_at`
+  values inside the anchored period; imported history never counts, failed
+  deliveries do, retries do not, and history deletion's effect on that count
+  matches the policy the ADR settles. No generic usage table or duplicate
+  persisted counter exists.
 
 Account history:
 
