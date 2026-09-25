@@ -65,10 +65,12 @@ Botflota knows only complete numeric resource ceilings, not the host's reason
 for selecting them. The limits belong to the set of scopes, never to an
 access token or scoped-editable YAML; how large a bot's imported history may
 grow is ordinary bot configuration in bytes, not a tier Botflota knows.
-Rotating a token does not reset usage. The catalog, the structural limits
-that live in instance config instead, storage exhaustion, and the account
-history operations are in `docs/api-plan.md`; their final enforcement
-contract needs an ADR before implementation.
+Rotating a token does not reset usage. A ceiling is never lowered below
+current use — nothing is deleted to make a number true — and a hand-edited
+file that exceeds one is refused at load without being rewritten. The
+catalog, the structural limits that live in instance config instead, storage
+exhaustion, and the account history operations are in `docs/api-plan.md`;
+their final enforcement contract needs an ADR before implementation.
 
 ## Configuration and scope operations
 

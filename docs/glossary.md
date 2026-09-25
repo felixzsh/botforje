@@ -121,7 +121,7 @@
 - History import ceiling — `settings.history_import_max_bytes`, the bytes of
   imported history one bot keeps for its linked account. Ordinary bot config
   in bytes; Botflota knows no tier and no percentage.
-- History migration — moving a bot's chats, messages, and contacts to another
-  bot of the same scope, so a recreated or peer bot starts from the same
-  conversations; whether the source keeps them is unsettled
+- History migration — moving, never copying, a bot's chats, messages, and
+  contacts to another bot of the same scope, so a recreated or peer bot starts
+  from the same conversations; it runs with both bots stopped
   (`docs/api-plan.md`). Unlinking an account never deletes history.

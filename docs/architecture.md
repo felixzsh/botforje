@@ -363,10 +363,13 @@ not the size of the database file, and each bot carries its own
 `settings.history_import_max_bytes` for what its linked account may import.
 When a set has no room left, import stops first and reports a partial import,
 then the bots of that set pause their turns: a bot never answers a message it
-could not store, so the atomic turn of ADR 0040 still holds. The condition is
-part of the bot's reported status, not only a log line. Beyond the MVP this
-may become retention — dropping the oldest messages to make room — or
-answering while storing nothing.
+could not store, so the atomic turn of ADR 0040 still holds. The pause
+protects consistency, not delivery — WhatsApp decides whether it retransmits
+what arrived while the bot was paused — so the reported state tells an
+operator that messages may have been missed. The condition is part of the
+bot's reported status, not only a log line. Beyond the MVP this may become
+retention — dropping the oldest messages to make room — or answering while
+storing nothing.
 
 ## REST API
 
@@ -467,8 +470,12 @@ messages, sessions, and contacts, so a relink or a replacement picks them up;
 pairing status only. Deleting a bot's history is a separate explicit
 operation, and a migration moves chats, messages, and contacts to another bot
 of the same scope — a recreated bot or a peer bot — while senders stay with
-the scope they are shared by (ADR 0029). Neither runs as a side effect of
-pairing, unpairing, or a config edit. Both are planned in `docs/api-plan.md`.
+the scope they are shared by (ADR 0029). A migration is a move, not a copy:
+it runs with both bots stopped, fails the source's queued replies before the
+old link can send them, and ends the source's active sessions instead of
+pretending the destination's graph sits at the same node. Neither operation
+runs as a side effect of pairing, unpairing, or a config edit. Both are
+planned in `docs/api-plan.md`.
 
 ## Concurrency
 

@@ -155,6 +155,15 @@ ceiling on the scope count exists (see the catalog below).
 `exclusive_scopes` applies to every new or changed grant, including this API.
 The owner credential stays with the host; it never reaches a scoped user.
 
+Retries are idempotent: a durable record of the request key, the payload
+hash, and the committed IDs answers a repeat with the original result instead
+of creating scopes twice. If the operation committed but the clear token
+never reached the caller, the repeat returns the created keys, the limit-set
+ID, and the token ID **without** the clear value — it is stored hashed and
+cannot be replayed — and the owner mints a replacement and revokes the first.
+The clear credential is never logged and never stored beyond that one
+response.
+
 `POST /api/v1/limit-sets/{id}/scopes` accepts an array of requested scope
 labels and an optional `grant_to_token_id`. The created keys join the set and
 the grant is updated as one operation, or none of it is changed. A separate
@@ -204,15 +213,47 @@ Settled for this catalog:
   inbound and imported messages grow storage without touching it, and past
   months' rows remain.
 
+What counts, and when (settled):
+
+- **Definitions** — `max_bots`, `max_graphs`, `max_actions`, and the model
+  profiles — count the entities in the **saved YAML** of every scope of the
+  set, whether or not they run. Running bots have their own ceiling beside
+  them.
+- **`max_running_bots`** holds a slot from the moment a bot's actor starts
+  until it stops. The slot is reserved before the start, so two starts at
+  once cannot slip past the ceiling; a paired but stopped bot holds none, and
+  "paired" is never mistaken for "running".
+- **`max_outbound_messages_per_month`** spends a slot when a reply is admitted
+  to the outbox, in the same transaction that stores the turn. A retry spends
+  none, a failed delivery gives nothing back, and the month is UTC.
+- **`max_stored_message_bytes`** is checked as content is written: a row the
+  dedup index rejects stores no bytes and spends none, and deleting messages
+  returns their bytes to the ceiling.
+- **`settings.history_import_max_bytes`** measures imported content still
+  stored under that bot. Unlinking keeps the history, so the usage stays with
+  the bot; only deleting history releases it.
+
+Counters live in SQLite only where reading them cheaply matters: the UTC
+month and the stored bytes are persisted counters, updated in the same
+transaction that inserts or deletes the rows, so a crash cannot separate a
+row from its count. Definition counts are derived from saved YAML and running
+bots from the fleet, never duplicated as counters, and a reconciliation
+operation rebuilds the persisted ones from the rows instead of rescanning per
+message.
+
+Lowering a ceiling below current usage is refused, with the usage and the
+requested maximum in the error: Botflota never deletes a definition, stops a
+bot, or drops history to make a smaller number true. The owner frees the
+resource first, then lowers the ceiling. `settings.history_import_max_bytes`
+is the exception that shows it is a preference rather than protected policy:
+it may be lowered below what is already stored, which stops further import
+and leaves the existing history alone.
+
 This is a proposed **complete initial catalog**, not a promise to limit every
 possible future resource. Shared instance-level model profiles are not
-multiplied by scope. Counting for variants, queued replies, and failed
-delivery is still the ADR's to settle. A retry of an already admitted
-outbound message must not consume another slot. `max_running_bots` must be
-enforced on actor starts, restarts, and startup, not merely checked when YAML
-is published. Decide precisely when a bot starts and stops counting; do not
-mistake "paired" for "running". Reject lowering a limit below current usage
-unless the ADR defines another safe outcome.
+multiplied by scope. Counting for message variants and for queued replies is
+still the ADR's to settle; the rest of this section is decided above, and the
+ADR records it instead of reopening it.
 
 **Structural limits (instance config, not a limit set).** A graph may hold at
 most N nodes, a node at most N edges, an action at most N steps and N inputs.
@@ -266,9 +307,12 @@ a set has no room under `max_stored_message_bytes`:
 
 - history import stops first and reports how much it stored and that the
   import is partial;
-- a bot of that set **pauses its turns**: it keeps its connection and
-  receives messages, but no new turn is processed, so nothing is answered
-  without being stored and the redelivery guarantee of ADR 0040 holds;
+- a bot of that set **pauses its turns**: it keeps its connection, but no new
+  turn is processed, so nothing is answered without being stored and the
+  redelivery guarantee of ADR 0040 holds. The pause protects consistency,
+  not delivery — WhatsApp decides whether it retransmits what arrived while
+  the bot was paused, so the reported state must tell an operator that
+  messages may have been missed;
 - the condition is visible on the bot's status, not only in a log line, and
   freeing space or raising the ceiling resumes it.
 
@@ -335,19 +379,35 @@ decides whether owner policy stays in SQLite or moves to YAML.
 
 Enforce projected totals while holding publication/provisioning locks; a
 scoped caller must not bypass limits via two scopes, parallel requests, or a
-direct API call. Manual YAML edits and startup must not activate over-limit
-resources or silently delete existing data. The storage refusal policy is
-settled above: import stops, then the affected bot pauses its turns; it never
-answers a message it could not store, so the pause stays inside the atomic
-turn of ADR 0040. Group membership, quota counters, and generated YAML span
-SQLite and files: design crash recovery as one logical commit, not an
-assumed cross-store transaction.
+direct API call. The storage refusal policy is settled above: import stops,
+then the affected bot pauses its turns; it never answers a message it could
+not store, so the pause stays inside the atomic turn of ADR 0040.
+
+**Manual edits and startup.** A hand-edited file that exceeds a ceiling is
+never repaired by deleting or rewriting it. While the instance runs, the
+active configuration stays and the violation is reported with the scope, the
+object, the usage, and the ceiling; at a cold start the affected scope is
+refused with the same diagnostic instead of being trimmed to fit — Botflota
+never picks which bots to drop. Scopes outside every limit set keep their
+current meaning: valid configuration with no set ceilings.
+
+**All-or-nothing across YAML and SQLite.** Membership, counters, and
+generated YAML span files and the database, and a SQLite transaction cannot
+cover a file. So an operation first prepares and validates everything, then
+records itself durably in SQLite with its request key and payload hash, then
+writes the affected files recoverably, and finally commits its SQLite rows
+and clears that record. Startup finishes or reverts a pending record before
+normal config load, so a crash leaves either the whole operation or none of
+it — never a scope without its membership, and never a token without the
+scopes it was minted for.
 
 ADR 0002 makes YAML canonical for **behavior** and currently describes SQLite
 as runtime/credential storage. Update it and record a canonical policy ADR
-before implementing owner policy in SQLite. The ADR must also settle exact
-counter semantics, treatment of unmatched scopes, changing membership,
-lowering ceilings, startup behavior, and the owner API's failure model.
+before implementing owner policy in SQLite. That ADR records the rules
+settled above — counting, lowering a ceiling, startup, manual edits, and the
+all-or-nothing cross-store commit — and still settles treatment of unmatched
+scopes, changing membership, counting for variants and queued replies, and
+the owner API's failure model.
 
 ### 4. Account history: keep, delete, migrate
 
@@ -376,13 +436,19 @@ change:
   relinks its account needs no migration at all — its history is keyed by
   bot, not by account.
 
-Open for the ADR and the implementation: whether the source keeps its history
-after the transfer (active sessions and pending outbox entries must be
-settled before the source bot can keep running), whether the operation is
-idempotent, and how it recovers after an error or restart. Both operations
-are owner-and-scoped like any other write to their scope, and neither
-bypasses a ceiling: content counts against the destination's set once, not
-twice.
+Migration is a **move**, not a copy: two bots holding the same history would
+cost storage and prove nothing. The operation therefore runs with both bots
+stopped, settles the source's pending outbox first — the old link must never
+send what it no longer owns, so a non-empty queue is failed explicitly rather
+than carried over — and ends the source's active sessions instead of
+pretending the destination's graph sits at the same node. Chats, messages,
+and contacts transfer in one recoverable operation that lands all of them or
+none, and that a repeat does not duplicate. Senders need no transfer: they
+already belong to the scope.
+
+Both operations are owner-and-scoped like any other write to their scope,
+and neither bypasses a ceiling: content counts against the destination's set
+once, not twice.
 
 ## Wire examples (proposed, not implemented)
 
@@ -439,10 +505,12 @@ All 8 proposed limits are supplied, including `max_running_bots` separate
 from `max_bots`. The host retains any mapping to its own policy names.
 Botflota stores no such names on tokens or scopes. The number of scopes it
 asks for is not a limit but the tier itself: Botflota creates exactly those
-scopes and knows nothing about a ceiling above them. Decide safe retry behavior
-for an owner request whose token-bearing response was lost: the stored token
-is hashed and cannot simply be replayed in clear. Never solve retries by
-logging or indefinitely storing that clear credential.
+scopes and knows nothing about a ceiling above them. A repeat with the same
+`Idempotency-Key` returns the original result instead of provisioning again;
+a retry whose token-bearing response was lost returns the created IDs but
+never the clear token, so the owner mints a replacement and revokes the
+first. Never solve retries by logging or indefinitely storing that clear
+credential.
 
 Publication outcomes: 200 for saved and active/no-op, 202 if any requested
 scope is saved but pending, 428 for missing expected versions, 412 if any
@@ -484,6 +552,10 @@ Advanced owner provisioning and limit policy in Phase 7:
   with no half-finished results after error or restart. Manual authors keep
   their chosen scope keys. A scoped token cannot create scopes or change
   policy; new grants follow `exclusive_scopes` and never happen implicitly.
+- Repeating a provisioning request with the same `Idempotency-Key` returns
+  the original IDs instead of provisioning a second time, and a response whose
+  clear token was lost returns those IDs without it; the owner mints a
+  replacement, and no path ever logs or stores the clear credential.
 - Subsequent owner provisioning respects the ceilings already stored, and the
   scope count only ever follows the owner's provisioning requests; lowering
   limits below use is rejected under the settled ADR. A credential
@@ -499,6 +571,11 @@ Advanced owner provisioning and limit policy in Phase 7:
   `config validate` with the object named; `0` and negative values are
   rejected as instance settings; changing one keeps the runtime on the old
   value until restart, like every other global setting.
+- Lowering a ceiling below current use is refused with the usage and the
+  requested maximum in the error, and nothing is deleted to make it fit. A
+  hand-edited file that exceeds a ceiling leaves the active configuration
+  untouched and the file unchanged; a cold start refuses the scope instead of
+  choosing which resources to drop.
 
 Storage and history import:
 
@@ -525,10 +602,13 @@ Account history:
   never the scope's senders or another bot, reports what it removed, and
   returns the storage to its limit set.
 - Migration moves a bot's chats, messages, and contacts to another bot of the
-  same scope, never across scopes, and lands all of them or none of them
-  after an error or restart.
+  same scope, never across scopes, with both bots stopped, the source's
+  queued replies failed before anything transfers, and its active sessions
+  ended; it lands all of them or none after an error or restart, and a repeat
+  does not duplicate them.
 
 When implementation begins, request build permission before checks. Use the
 Make targets, add concurrency tests, and mark deliverables complete only in
 the commit that proves them. Do not implement limit policy before its ADR
-settles authority, counting, persistence, and recovery.
+records the settled rules above — authority, counting, lowering, recovery,
+and failure behavior.
