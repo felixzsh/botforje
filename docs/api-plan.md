@@ -3,7 +3,10 @@
 Phase 7 plan for reading and publishing existing scopes by API, registering
 owner-managed limit sets with generated-key scopes and scoped credentials,
 and enforcing aggregate definition, running-bot, outbound-message, and stored
-message limits across each set's scopes. It covers proposed endpoints, SQLite
+message limits across each set's scopes. It also settles the structural limits
+that live in instance config instead of a limit set, the per-bot history
+import ceiling, what happens when storage runs out, and the account history
+operations (keep, delete, migrate). It covers proposed endpoints, SQLite
 tables, concurrency, recovery, and acceptance tests. Nothing below is
 implemented unless marked current. An ADR must settle the new owner policy,
 quota semantics, and cross-store commit before coding them. Phase 14 uses
@@ -146,7 +149,9 @@ must have at least one scope. Botflota generates collision-checked stable
 scope keys, writes the new YAML fragments, creates membership and the token,
 and returns the keys, limit-set ID, token ID and clear token **once**. A scope's
 initial requested visible name becomes `display_name`; manual YAML authors
-still choose their own keys. Setting `max_scopes` alone creates no scopes.
+still choose their own keys. Creating an empty limit set creates no scopes:
+how many scopes a set holds is the owner's provisioning decision, so no
+ceiling on the scope count exists (see the catalog below).
 `exclusive_scopes` applies to every new or changed grant, including this API.
 The owner credential stays with the host; it never reaches a scoped user.
 
@@ -160,32 +165,116 @@ explicit later contracts; neither is an implicit side effect of a label edit.
 
 ### 3. Aggregate enforcement and protected storage
 
-**Proposed first catalog, pending an ADR:** the `limits` object must include
-every field in this fixed catalog, with no silent defaults or unknown fields.
-Each field is a nonnegative integer; zero forbids that resource. If unlimited
-is supported, it must be an explicit `null` for that field, never omission.
-Every ceiling is across the member scopes of one limit set:
+**Proposed first catalog, pending an ADR:** the `limits` object of a
+provisioning request must include every field in this fixed catalog, with no
+silent defaults or unknown fields. Each field is a nonnegative integer; zero
+forbids that resource. If unlimited is supported, it must be an explicit
+`null` for that field, never omission. Every ceiling is across the member
+scopes of one limit set:
 
 | Field | What it bounds |
 | --- | --- |
-| `max_scopes` | Number of member scopes. |
 | `max_bots` | Bot definitions. |
 | `max_running_bots` | Bot actors running concurrently, distinct from definitions. |
-| `max_graphs`, `max_nodes`, `max_edges` | Graph definitions and their parts. |
-| `max_actions`, `max_steps`, `max_action_inputs` | Action definitions and parts. |
+| `max_graphs`, `max_actions` | Graph and action definitions. |
 | `max_llms`, `max_system_one_profiles` | Scoped model profiles. |
 | `max_outbound_messages_per_month` | Outbound messages admitted in a UTC month. |
 | `max_stored_message_bytes` | Logical stored message content, not DB file size. |
 
+Settled for this catalog:
+
+- **No `max_scopes`.** The owner provisions the scopes a set holds and may add
+  or remove them later, so the scope count is decided where the scopes are
+  created, not enforced a second time. A host expresses its own tiers by
+  provisioning that many scopes; Botflota knows none of those tiers.
+- **Aggregate versus structural.** `max_bots`, `max_graphs`, and `max_actions`
+  are ceilings the set's scopes share: three scopes drawing from one set do
+  not each get their own copy. Nodes, edges, steps, and action inputs are not
+  aggregate ceilings and are not multiplied by scope or set; see the
+  structural limits below.
+- **`max_stored_message_bytes` counts logical content, per set.** It sums the
+  UTF-8 length of the stored `body` and `content` columns for every message
+  row of the set's scopes — inbound, outbound, and imported alike — which is
+  what `octet_length()` returns in SQLite. It is deliberately not the size of
+  the `.db` file: indexes, free pages, WAL, the whatsmeow device store, chats,
+  sessions, and contacts are outside it, so the ceiling is a content promise,
+  not a disk promise. A retry that stores no new row costs nothing.
+- **`max_outbound_messages_per_month` stays separate.** It bounds newly
+  admitted outbound messages in a UTC month and says nothing about storage:
+  inbound and imported messages grow storage without touching it, and past
+  months' rows remain.
+
 This is a proposed **complete initial catalog**, not a promise to limit every
 possible future resource. Shared instance-level model profiles are not
-multiplied by scope. Define counting for variants, imported messages, queued
-replies, failed delivery, deletion, and storage before implementation. A
-retry of an already admitted outbound message must not consume another slot.
-`max_running_bots` must be enforced on actor starts, restarts, and startup,
-not merely checked when YAML is published. Decide precisely when a bot starts
-and stops counting; do not mistake "paired" for "running". Reject lowering
-a limit below current usage unless the ADR defines another safe outcome.
+multiplied by scope. Counting for variants, queued replies, and failed
+delivery is still the ADR's to settle. A retry of an already admitted
+outbound message must not consume another slot. `max_running_bots` must be
+enforced on actor starts, restarts, and startup, not merely checked when YAML
+is published. Decide precisely when a bot starts and stops counting; do not
+mistake "paired" for "running". Reject lowering a limit below current usage
+unless the ADR defines another safe outcome.
+
+**Structural limits (instance config, not a limit set).** A graph may hold at
+most N nodes, a node at most N edges, an action at most N steps and N inputs.
+These bound how large a single definition may grow, so a fixed ceiling per
+object is enough: it neither multiplies by scope nor belongs to any set. They
+are instance settings in the main config file, in one object that holds only
+these — named apart from the provisioning request's `limits`, which is the
+owner's policy:
+
+```yaml
+definition_limits:
+  max_nodes_per_graph: 60
+  max_edges_per_node: 20
+  max_steps_per_action: 12
+  max_action_inputs: 12
+```
+
+Each is a positive integer — `0` and negatives are validation errors, because
+"no definition at all" is not a structural limit — and each has a default, so
+an instance that never sets them still enforces the shipped values. They are
+**restart-required**, like other global settings (ADR 0009), and they are
+generated into `config.schema.json` from their Go types in the same commit
+that adds them. The aggregate ceilings are deliberately absent from this
+object: they are the limit set in SQLite.
+
+**History import ceiling (bot settings, not a limit set).**
+`settings.history_import_max_bytes` bounds the imported message content one
+bot keeps for its linked account, in bytes:
+
+```yaml
+scopes:
+  support:
+    bots:
+      assistant:
+        settings:
+          history_sync: true
+          history_import_max_bytes: 20971520  # 20 MiB
+```
+
+The ceiling sits on the bot because the import belongs to that bot and its
+linked account, not to the scope or the set: unlinking, another bot, or a
+peer scope never spend it. A host computes the number outside Botflota from
+whatever it sells — Botflota stores no tier and no percentage. A principal
+authorized for the scope edits it as ordinary bot configuration; it is not a
+protected ceiling, so `max_stored_message_bytes` is the only irreducible
+bound. A pairing imports until either ceiling stops it and reports the
+import as partial.
+
+**Storage exhaustion (settled for the MVP, pending the ADR's wording).** When
+a set has no room under `max_stored_message_bytes`:
+
+- history import stops first and reports how much it stored and that the
+  import is partial;
+- a bot of that set **pauses its turns**: it keeps its connection and
+  receives messages, but no new turn is processed, so nothing is answered
+  without being stored and the redelivery guarantee of ADR 0040 holds;
+- the condition is visible on the bot's status, not only in a log line, and
+  freeing space or raising the ceiling resumes it.
+
+Beyond the MVP this stays open: answering while storing nothing, or a
+retention flag that drops the oldest messages to make room for the new ones.
+Both need the dedup and outbox consequences settled first (ROADMAP Phase 16).
 
 **Proposed SQLite schema**, separate from YAML behavior and token grants.
 Nullable ceiling columns represent explicit unlimited values; the API still
@@ -195,15 +284,10 @@ requires every corresponding field in a provisioning request:
 CREATE TABLE limit_sets (
   id TEXT PRIMARY KEY,
   policy_version TEXT NOT NULL,
-  max_scopes INTEGER CHECK (max_scopes >= 0),
   max_bots INTEGER CHECK (max_bots >= 0),
   max_running_bots INTEGER CHECK (max_running_bots >= 0),
   max_graphs INTEGER CHECK (max_graphs >= 0),
-  max_nodes INTEGER CHECK (max_nodes >= 0),
-  max_edges INTEGER CHECK (max_edges >= 0),
   max_actions INTEGER CHECK (max_actions >= 0),
-  max_steps INTEGER CHECK (max_steps >= 0),
-  max_action_inputs INTEGER CHECK (max_action_inputs >= 0),
   max_llms INTEGER CHECK (max_llms >= 0),
   max_system_one_profiles INTEGER CHECK (max_system_one_profiles >= 0),
   max_outbound_messages_per_month INTEGER
@@ -239,26 +323,66 @@ hashes plus committed IDs; finalize its schema together with the one-time
 clear-token response rule. A memory-only idempotency map is insufficient
 after a crash.
 
-No new YAML fields are proposed for limits or group membership:
-`config.schema.json` stays generated from Go behavior types and must not be
-edited by hand. It already covers optional `display_name` and the existing
-global `exclusive_scopes`. The proposed owner JSON request validates its
-complete limits object separately; this work does not change YAML schema
-unless the eventual ADR chooses YAML instead of protected SQLite policy.
+The limit-set catalog itself stays out of YAML: it is protected SQLite
+policy, and `config.schema.json` stays generated from Go behavior types and
+must not be edited by hand. It already covers optional `display_name` and the
+existing global `exclusive_scopes`. The structural limits and
+`settings.history_import_max_bytes` are the exception — they are config, so
+they arrive with their Go types, a regenerated schema, and a
+`config/examples/reference.yml` entry in the same commit. The proposed owner
+JSON request validates its complete limits object separately; the ADR still
+decides whether owner policy stays in SQLite or moves to YAML.
 
 Enforce projected totals while holding publication/provisioning locks; a
 scoped caller must not bypass limits via two scopes, parallel requests, or a
 direct API call. Manual YAML edits and startup must not activate over-limit
-resources or silently delete existing data. For storage/inbound flows, define
-a safe backpressure or refusal policy before enforcement. Group membership,
-quota counters, and generated YAML span SQLite and files: design crash
-recovery as one logical commit, not an assumed cross-store transaction.
+resources or silently delete existing data. The storage refusal policy is
+settled above: import stops, then the affected bot pauses its turns; it never
+answers a message it could not store, so the pause stays inside the atomic
+turn of ADR 0040. Group membership, quota counters, and generated YAML span
+SQLite and files: design crash recovery as one logical commit, not an
+assumed cross-store transaction.
 
 ADR 0002 makes YAML canonical for **behavior** and currently describes SQLite
 as runtime/credential storage. Update it and record a canonical policy ADR
 before implementing owner policy in SQLite. The ADR must also settle exact
 counter semantics, treatment of unmatched scopes, changing membership,
 lowering ceilings, startup behavior, and the owner API's failure model.
+
+### 4. Account history: keep, delete, migrate
+
+Unlinking is not deletion, and deletion is never implied by an account
+change:
+
+- **Unlink keeps everything.** `DELETE .../bots/{bot}/account` and `bot unpair`
+  remove the credentials, the account record, and the pairing status, and fail
+  the replies the old link still owes (ADR 0040). Chats, sessions, messages,
+  sender profiles, and contacts stay exactly as they are, so a temporary
+  unlink or a later replacement never costs history.
+- **Deleting history is its own explicit operation**, confirmed by the caller
+  and addressed to one `(scope, bot)`: it drops that bot's chats, and with
+  them the cascaded sessions, messages, and queued replies, plus its contacts.
+  It never touches the scope's `senders` — those are shared by the scope's
+  bots (ADR 0029) — and it never touches another bot. The API reports what
+  was removed, and the storage it freed is counted back into the limit set.
+  Nothing else calls it: no pairing, replacement, or config edit deletes
+  history as a side effect.
+- **Migration transfers history, not identity.** A migration moves a bot's
+  chats, messages, and contacts to another bot **of the same scope**, so a
+  recreated bot or a peer bot starts from the same conversations and Botflota
+  treats the result as an ordinary bot. Scope never changes: references and
+  sessions never cross scopes (ADR 0016), so there is no cross-scope move.
+  Senders are already shared by the scope and need no copy. A bot that only
+  relinks its account needs no migration at all — its history is keyed by
+  bot, not by account.
+
+Open for the ADR and the implementation: whether the source keeps its history
+after the transfer (active sessions and pending outbox entries must be
+settled before the source bot can keep running), whether the operation is
+idempotent, and how it recovers after an error or restart. Both operations
+are owner-and-scoped like any other write to their scope, and neither
+bypasses a ceiling: content counts against the destination's set once, not
+twice.
 
 ## Wire examples (proposed, not implemented)
 
@@ -294,9 +418,8 @@ Idempotency-Key: <opaque-request-key>
 Content-Type: application/json
 
 {"limits":{
-  "max_scopes":3,"max_bots":4,"max_running_bots":2,
-  "max_graphs":10,"max_nodes":50,"max_edges":100,
-  "max_actions":20,"max_steps":80,"max_action_inputs":40,
+  "max_bots":4,"max_running_bots":2,
+  "max_graphs":10,"max_actions":20,
   "max_llms":2,"max_system_one_profiles":2,
   "max_outbound_messages_per_month":10000,
   "max_stored_message_bytes":104857600
@@ -312,9 +435,11 @@ Content-Type: application/json
 "token":"<clear-value-shown-once>"}}
 ```
 
-All 13 proposed limits are supplied, including `max_running_bots` separate
+All 8 proposed limits are supplied, including `max_running_bots` separate
 from `max_bots`. The host retains any mapping to its own policy names.
-Botflota stores no such names on tokens or scopes. Decide safe retry behavior
+Botflota stores no such names on tokens or scopes. The number of scopes it
+asks for is not a limit but the tier itself: Botflota creates exactly those
+scopes and knows nothing about a ceiling above them. Decide safe retry behavior
 for an owner request whose token-bearing response was lost: the stored token
 is hashed and cannot simply be replayed in clear. Never solve retries by
 logging or indefinitely storing that clear credential.
@@ -359,8 +484,9 @@ Advanced owner provisioning and limit policy in Phase 7:
   with no half-finished results after error or restart. Manual authors keep
   their chosen scope keys. A scoped token cannot create scopes or change
   policy; new grants follow `exclusive_scopes` and never happen implicitly.
-- Subsequent owner provisioning respects `max_scopes` and the other ceilings;
-  lowering limits below use is rejected under the settled ADR. A credential
+- Subsequent owner provisioning respects the ceilings already stored, and the
+  scope count only ever follows the owner's provisioning requests; lowering
+  limits below use is rejected under the settled ADR. A credential
   replacement does not reset usage. Concurrent writes across two scopes
   cannot exceed one shared limit, including running bots and outbound use.
 - Restart and manual edits cannot activate excess bots; a bot that is merely
@@ -369,6 +495,38 @@ Advanced owner provisioning and limit policy in Phase 7:
 - Duplicate effective labels are rejected by the server within each stated
   namespace; equal labels across categories or scopes remain valid. Test
   create, rename, fallback-to-key, and collisions, including direct API calls.
+- Structural limits: a graph, node, or action over its instance maximum fails
+  `config validate` with the object named; `0` and negative values are
+  rejected as instance settings; changing one keeps the runtime on the old
+  value until restart, like every other global setting.
+
+Storage and history import:
+
+- Reaching `max_stored_message_bytes` stops import first (reported as
+  partial, with what it stored), then pauses the affected bots' turns with
+  the state visible on the bot's status; no message is answered without being
+  stored. Freeing space or raising the ceiling resumes turns without a
+  restart.
+- `history_import_max_bytes` bounds one bot only: its import stops at the
+  ceiling while peer bots and the rest of the scope keep importing, and a
+  value above the set's remaining storage still cannot push the set past
+  `max_stored_message_bytes`. The ceiling is ordinary bot config, so a
+  scoped principal may raise it inside its own scope; only the limit set
+  stays out of its reach.
+- Storage accounting matches the documented definition: the sum of `body` and
+  `content` bytes over the set's scopes, so imported, inbound, and outbound
+  rows all count and duplicate rows never do.
+
+Account history:
+
+- Unlink, replace, pair, and unpair leave chats, sessions, messages, and
+  contacts untouched, and the next pairing resumes them.
+- Explicit history deletion removes exactly one bot's history and contacts,
+  never the scope's senders or another bot, reports what it removed, and
+  returns the storage to its limit set.
+- Migration moves a bot's chats, messages, and contacts to another bot of the
+  same scope, never across scopes, and lands all of them or none of them
+  after an error or restart.
 
 When implementation begins, request build permission before checks. Use the
 Make targets, add concurrency tests, and mark deliverables complete only in

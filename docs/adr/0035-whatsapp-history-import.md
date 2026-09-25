@@ -76,6 +76,11 @@ Import the history sync, inertly and honestly:
   its own message id after delivery. The fleet writes that id back onto the
   stored row, so a later sync that echoes the reply deduplicates it too.
 - `settings.history_sync` disables the import for a bot; absent means on.
+- Import volume is bounded per bot: `settings.history_import_max_bytes` caps
+  the imported message content one bot keeps for its linked account, in bytes,
+  and a limit set with no room left under `max_stored_message_bytes` stops the
+  import first and reports it partial. The accounting, the ceilings, and the
+  pause that follows are the owner policy's (`docs/api-plan.md`).
 - Older messages beyond the delivered backlog are requested by `chat sync
   <bot> <sender>`, the path a pairing without `--import-history` relies on. It
   pages backwards from the chat's oldest stored message,

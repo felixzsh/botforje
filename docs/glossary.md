@@ -106,3 +106,22 @@
   scoped principal requesting another scope gets 404, never 403. It has full
   authority over its own scopes, and whether two access tokens may hold the
   same scope is the instance's choice (`exclusive_scopes`; docs/api.md).
+- Limit set — an owner-managed policy joining several scopes under shared
+  ceilings: bots, running bots, graphs, actions, model profiles, outbound
+  messages per UTC month, and stored message bytes. It is not a scope, a UI
+  group, or a token, and it carries no ceiling on how many scopes it holds;
+  the owner provisions those (docs/api-plan.md).
+- Structural limit — how large one definition may grow: nodes per graph,
+  edges per node, steps and inputs per action. An instance setting, a
+  positive integer and restart-required, that belongs to no limit set and
+  never multiplies by scope.
+- Stored message bytes — the logical size of stored message content: the
+  UTF-8 length of `body` and `content` over a set's scopes, inbound,
+  outbound, and imported alike. It is not the size of the database file.
+- History import ceiling — `settings.history_import_max_bytes`, the bytes of
+  imported history one bot keeps for its linked account. Ordinary bot config
+  in bytes; Botflota knows no tier and no percentage.
+- History migration — moving a bot's chats, messages, and contacts to another
+  bot of the same scope, so a recreated or peer bot starts from the same
+  conversations; whether the source keeps them is unsettled
+  (`docs/api-plan.md`). Unlinking an account never deletes history.

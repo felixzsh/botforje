@@ -58,13 +58,17 @@ no gap, which is not designed yet either.
 
 Planned owner provisioning can create a protected limit set, generated-key
 scopes, and a token authorized for those scopes as one operation. An empty
-limit set creates neither scopes nor a token; merely setting `max_scopes` does
-not precreate scopes. Botflota knows only complete numeric resource ceilings,
-not the host's reason for selecting them. The limits belong to the set of
-scopes, never to an access token or scoped-editable YAML. Rotating a token
-does not reset usage. Proposed SQLite storage, routes, and the mandatory
-catalog (including `max_running_bots`) are in `docs/api-plan.md`;
-their final enforcement contract needs an ADR before implementation.
+limit set creates neither scopes nor a token: how many scopes a set holds is
+the owner's provisioning decision, and Botflota keeps no ceiling on that
+number — a host expresses its own tiers by provisioning that many scopes.
+Botflota knows only complete numeric resource ceilings, not the host's reason
+for selecting them. The limits belong to the set of scopes, never to an
+access token or scoped-editable YAML; how large a bot's imported history may
+grow is ordinary bot configuration in bytes, not a tier Botflota knows.
+Rotating a token does not reset usage. The catalog, the structural limits
+that live in instance config instead, storage exhaustion, and the account
+history operations are in `docs/api-plan.md`; their final enforcement
+contract needs an ADR before implementation.
 
 ## Configuration and scope operations
 
@@ -142,7 +146,11 @@ version and asks the user to reconcile before saving again.
 Bot operations address one `(scope, bot)` at a time. Pairing and unpairing
 already work through the API while the instance runs; unpairing stops only that
 bot, lets a send already in progress finish, and fails the rest of its queued
-replies before the account is removed. The target adds the remaining
+replies before the account is removed. Unlinking never removes history: chats,
+messages, sessions, and contacts stay, so a relink finds them again. Deleting
+one bot's history is a separate explicit operation, and migration moves it to
+another bot of the same scope for a recreated or peer bot; both are planned in
+`docs/api-plan.md`. The target adds the remaining
 scope operations, including bot controls and complete configuration editing,
 without stopping peer bots. Ordinary errors in one bot must remain local to
 that bot.

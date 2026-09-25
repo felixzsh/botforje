@@ -278,15 +278,37 @@ Deliverables:
   sequence in `docs/api-plan.md`.
 - [ ] Owner provisioning and aggregate limit policy: settle an ADR first,
   then create owner-only limit sets with a complete required limit catalog,
-  scope membership, and enforcement across scopes. Include separate ceilings
-  for configured bots and bots running concurrently; count runtime usage as
-  well as definitions. Provide an all-or-nothing owner operation to create a
-  limit set, generated-key scopes, and an optional scoped token. A scoped
-  token cannot create scopes, change its grants, or change policy. Keep limits
-  out of token records and scoped-editable YAML; honor `exclusive_scopes` on
-  new grants. Protect the owner policy in SQLite only after updating ADR 0002
-  and settling file/DB recovery, counter semantics, and startup behavior.
-  The detailed schema, routes, and gates are in `docs/api-plan.md`.
+  scope membership, and enforcement across scopes. There is no scope-count
+  ceiling: the owner provisions the scopes a set holds. Include separate
+  ceilings for configured bots and bots running concurrently; count runtime
+  usage as well as definitions. Provide an all-or-nothing owner operation to
+  create a limit set, generated-key scopes, and an optional scoped token. A
+  scoped token cannot create scopes, change its grants, or change policy.
+  Keep limits out of token records and scoped-editable YAML; honor
+  `exclusive_scopes` on new grants. Protect the owner policy in SQLite only
+  after updating ADR 0002 and settling file/DB recovery, counter semantics,
+  and startup behavior. The detailed schema, routes, and gates are in
+  `docs/api-plan.md`.
+- [ ] Structural limits in instance config: max nodes per graph, max edges per
+  node, max steps and max inputs per action, under `definition_limits` as
+  positive integers with defaults, rejected at zero or below and
+  restart-required. They bound one definition, so they belong to no limit set
+  and never multiply by scope; they ship with their Go types and a regenerated
+  schema (`docs/api-plan.md`).
+- [ ] Storage and history-import ceilings: `max_stored_message_bytes` sums the
+  stored `body` and `content` bytes of a set's scopes — inbound, outbound, and
+  imported — not the database file, and `settings.history_import_max_bytes`
+  bounds what one bot imports for its linked account, edited as ordinary bot
+  config in bytes. Import stops partial at either ceiling; a bot with no room
+  left under its set then pauses its turns and reports it, so nothing is
+  answered that cannot be stored (ADR 0040). Beyond the MVP, retention and
+  answering without storing stay open (ROADMAP Phase 16).
+- [ ] Account history: unlinking keeps chats, messages, sessions, and
+  contacts; deleting one bot's history is an explicit confirmed operation
+  that never touches the scope's senders or another bot; migration moves a
+  bot's chats, messages, and contacts to another bot of the same scope for a
+  recreated or peer bot. Settle it as an ADR before implementing
+  (`docs/api-plan.md`).
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port
@@ -516,6 +538,13 @@ and additional channels, each with its own phase, order, and open decisions.
 - How export and import inline a scope's reference to `shared` (Phase 18).
 - LLM bounds defaults: max tools per message and timeout (Phase 8).
 - Which LLM providers ship first for realization (close in Phase 8).
+- Structural limit defaults: nodes per graph, edges per node, steps and inputs
+  per action (Phase 7; `docs/api-plan.md`).
+- Account history migration: copy or move, what happens to active sessions and
+  queued replies, and whether the source keeps its history (Phase 7;
+  `docs/api-plan.md`).
+- Reading a set's stored bytes cheaply enough to check before each write
+  (Phase 7; `docs/api-plan.md`).
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
@@ -525,6 +554,11 @@ binary's version identifies the format it implements (ADR 0041).
 The operational CLI is a client of the REST API, authenticated with the owner
 token or a scoped access token, and `config init` is non-interactive (Phase 7,
 ADR 0025).
+Owner limit policy (Phase 7) is settled in `docs/api-plan.md`: no ceiling on
+how many scopes a set holds, aggregate ceilings shared across its scopes,
+structural limits as positive restart-required instance settings, storage
+counted as logical message bytes, history import bounded per bot, and unlink
+never deleting history.
 Trigger matching and its threshold are in ADR 0019. AI routing is
 decision-only via System One (ADR 0030), model catalogs are scoped with a
 shared host catalog (ADR 0031), prescribed replies are the default (ADR

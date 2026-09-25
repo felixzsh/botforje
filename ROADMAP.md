@@ -122,7 +122,8 @@ Deliverables:
   an embedded single-page app.
 - [ ] Login with the owner token, browser session cookie, and logout.
 - [ ] Fleet overview: per-bot connection state, uptime, outbox depth, active
-  sessions, and last error.
+  sessions, last error, and stored-message use against the set's ceiling, so
+  the pause a full storage brings is visible before it stops a bot.
 - [ ] Scope list and per-scope bot list. The scope is part of every URL and
   page title, so the scoped view of Phase 13 is the same pages limited to the
   scopes authorized for that principal.
@@ -276,7 +277,12 @@ Deliverables:
   UI name becomes its key, and later renames set `display_name`. Scope creation
   uses the generated-key provisioning operation. Enforce unique effective
   labels within each UI namespace on the server; when absent, the UI shows the
-  key. Cover System One profiles when that catalog is implemented.
+  key. Cover System One profiles when that catalog is implemented. Storage is
+  a bounded control rather than a free number: `settings.history_import_max_bytes`
+  is a slider from 0 up to a small share of the set's
+  `max_stored_message_bytes` (5–10 %), while the API keeps accepting whatever
+  byte count the caller's authority allows and `max_stored_message_bytes`
+  stays the only irreducible bound.
 - [ ] Scope publication starts, stops, or rebuilds only affected bot actors;
   peer bots remain live. Revisit the current restart classification in ADR
   0009 when implementing this; instance-wide settings stay owner-only.
@@ -308,6 +314,10 @@ Deliverables:
 - [ ] Retention and privacy: per-scope retention window, purge, and export;
   analysis runs on stored history and clearly states what leaves the instance
   when the configured provider requires it.
+- [ ] Past a full storage ceiling: a retention flag that drops the oldest
+  messages to keep receiving new ones, or answering while storing nothing,
+  each with the dedup, outbox, and session consequences settled first. The MVP
+  pauses instead (`PLAN.md`, Phase 7).
 - [ ] Analysis: cluster conversations, infer intents and slots, and propose
   nodes, edges, and actions, each with the messages that support it.
 - [ ] Draft output: a scope config document that passes `config validate`. A
@@ -414,6 +424,10 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 - WhatsApp content is third-party personal data. Retention is per scope and
   defaults to what operations need, not to forever.
 - Export and delete are first-class operations, not SQL handed to the host.
+- A bot never answers a message it could not store: when a limit set is out
+  of `max_stored_message_bytes`, import stops and the bot pauses its turns
+  (Phase 7). Whether it should instead drop the oldest messages or answer
+  without storing is a Phase 16 decision.
 - Whether instance authority reads message bodies of every scope, or only
   metadata, is an open decision below.
 

@@ -356,6 +356,18 @@ The session also keeps the visited nodes (ADR 0010): the ordered list of
 nodes used for routing and handed to the LLM as context, bounded to a
 configured maximum.
 
+Stored history is bounded per limit set (planned, Phase 7;
+`docs/api-plan.md`): `max_stored_message_bytes` sums the stored `body` and
+`content` bytes of the set's scopes — inbound, outbound, and imported alike —
+not the size of the database file, and each bot carries its own
+`settings.history_import_max_bytes` for what its linked account may import.
+When a set has no room left, import stops first and reports a partial import,
+then the bots of that set pause their turns: a bot never answers a message it
+could not store, so the atomic turn of ADR 0040 still holds. The condition is
+part of the bot's reported status, not only a log line. Beyond the MVP this
+may become retention — dropping the oldest messages to make room — or
+answering while storing nothing.
+
 ## REST API
 
 The API's scope-coverage and authority contract, including current status and
@@ -448,6 +460,15 @@ operation under the bot's lock, so the writes of one bot never overlap. The
 CLI drives those routes while another process owns the instance and works
 locally when it does not; replacing a pairing is an unpair followed by a
 pair, whichever way the instance is running.
+
+An account change never changes history. Unlinking keeps the bot's chats,
+messages, sessions, and contacts, so a relink or a replacement picks them up;
+`adapters/whatsapp/pair.go` removes credentials, the account record, and the
+pairing status only. Deleting a bot's history is a separate explicit
+operation, and a migration moves chats, messages, and contacts to another bot
+of the same scope — a recreated bot or a peer bot — while senders stay with
+the scope they are shared by (ADR 0029). Neither runs as a side effect of
+pairing, unpairing, or a config edit. Both are planned in `docs/api-plan.md`.
 
 ## Concurrency
 
