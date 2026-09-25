@@ -321,8 +321,10 @@ Deliverables:
   that never touches the scope's senders or another bot; migration **moves**
   a bot's chats, messages, and contacts to another bot of the same scope for
   a recreated or peer bot, with both bots stopped, the source's queue failed
-  first, and its active sessions ended. Settle it as an ADR before
-  implementing (`docs/current-plan.md`). Publishing existing scopes, label
+  first, and its active sessions ended. ADR 0042 settles the routes, the
+  confirmation, the report, the merge into a destination that already holds a
+  chat, the single transaction, and the retry; it is not implemented yet
+  (`docs/current-plan.md`). Publishing existing scopes, label
   rules, and these history operations need no policy from a host, so they
   proceed first; the watcher gaps they reuse (a multi-scope candidate, and
   deferral expiry) are part of that work.

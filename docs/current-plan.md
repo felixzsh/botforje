@@ -154,8 +154,12 @@ than carried over — and ends the source's active sessions instead of pretendin
 the destination's graph sits at the same node. Chats, messages, and contacts
 transfer in one recoverable operation that lands all of them or none, and that
 a repeat does not duplicate. Both operations are owner-and-scoped like any
-other write to their scope, and settle their own semantics in an ADR before
-implementation.
+other write to their scope.
+
+Their semantics are settled in **ADR 0042**: the routes and their confirmation,
+what deletion reports, how a destination that already holds a chat absorbs one,
+how contacts merge, why live session state does not cross, the single port that
+owns the transaction, and why a retry needs no request key.
 
 ### 4. Watcher coverage
 
@@ -229,12 +233,16 @@ Account history:
 - Unlink, replace, pair, and unpair leave chats, sessions, messages, and
   contacts untouched, and the next pairing resumes them.
 - Explicit history deletion removes exactly one bot's history and contacts,
-  never the scope's senders or another bot, and reports what it removed.
+  never the scope's senders or another bot, and reports what it removed. A
+  confirmation that does not repeat the target is refused.
 - Migration moves a bot's chats, messages, and contacts to another bot of the
   same scope, never across scopes, with both bots stopped, the source's queued
-  replies failed before anything transfers, and its active sessions ended; it
+  replies failed before anything transfers, and its active sessions expired; it
   lands all of them or none after an error or restart, and a repeat does not
-  duplicate them.
+  duplicate them. A destination that already holds a chat for a sender absorbs
+  the moved messages and sessions, keeps its own guards and identity, and skips
+  a provider id it already stores; contacts merge by phone, keeping the row
+  with the later update and any text only the other row has (ADR 0042).
 
 When implementation begins, request build permission before checks. Use the Make
 targets, add concurrency tests, and mark deliverables complete only in the

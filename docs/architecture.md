@@ -475,7 +475,7 @@ it runs with both bots stopped, fails the source's queued replies before the
 old link can send them, and ends the source's active sessions instead of
 pretending the destination's graph sits at the same node. Neither operation
 runs as a side effect of pairing, unpairing, or a config edit. Both are
-planned in `docs/current-plan.md`.
+planned in `docs/current-plan.md` and settled in ADR 0042.
 
 ## Concurrency
 
