@@ -500,6 +500,7 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 	}}
 	return Options{
 		Config:   config.NewSource(cfg),
+		Saved:    config.NewSource(cfg),
 		Fleet:    live,
 		Accounts: &accounts,
 		Pairings: pairings,
@@ -694,7 +695,11 @@ func TestNewRequiresDependencies(t *testing.T) {
 		opts Options
 	}{
 		{"config", Options{}},
-		{"fleet", Options{Config: config.NewSource(&config.Config{})}},
+		{"saved config", Options{Config: config.NewSource(&config.Config{})}},
+		{"fleet", Options{
+			Config: config.NewSource(&config.Config{}),
+			Saved:  config.NewSource(&config.Config{}),
+		}},
 		{"account unpairer", Options{
 			Config:   config.NewSource(&config.Config{}),
 			Fleet:    &fakeFleet{},

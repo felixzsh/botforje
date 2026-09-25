@@ -50,6 +50,9 @@ func runFleet(args []string) int {
 	}
 	logger := botflota.NewLogger(cfg.LogLevel, os.Stderr)
 	source := config.NewSource(cfg)
+	// saved tracks the files, which run ahead of the running instance while a
+	// change is valid but not yet active (ADR 0009).
+	saved := config.NewSource(cfg)
 
 	lock, err := lockInstance(cfg)
 	if err != nil {
@@ -152,7 +155,7 @@ func runFleet(args []string) int {
 	if watchFile, err := configPath(*cmd.config); err != nil {
 		logger.Warn("config watch unavailable", "error", err)
 	} else {
-		go watchConfig(ctx, watchFile, source, runner, logger)
+		go watchConfig(ctx, watchFile, source, saved, runner, logger)
 	}
 
 	if cfg.Port == 0 {
@@ -161,7 +164,7 @@ func runFleet(args []string) int {
 			return 2
 		}
 	} else {
-		stopAPI, err := serveAPI(ctx, stop, cfg, source, runner, db, devices,
+		stopAPI, err := serveAPI(ctx, stop, cfg, source, saved, runner, db, devices,
 			logger, *cmd.newOwnerToken)
 		if err != nil {
 			logger.Error("start api", "error", err)
@@ -256,7 +259,7 @@ func runFleetStatus(args []string) int {
 // defer it after db.Close so it runs first.
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
-	source *config.Source, runner *fleet.Fleet, db *sqlite.DB,
+	source, saved *config.Source, runner *fleet.Fleet, db *sqlite.DB,
 	devices *whatsapp.Devices, logger *slog.Logger, rotate bool,
 ) (func(), error) {
 	dataDir, err := cfg.DataDirPath()
@@ -286,6 +289,7 @@ func serveAPI(
 	budgets := cfg.RateBudgets()
 	server, err := api.New(api.Options{
 		Config:      source,
+		Saved:       saved,
 		Fleet:       runner,
 		Accounts:    db.LinkedAccounts(),
 		Pairings:    db.Pairings(),

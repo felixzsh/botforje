@@ -289,13 +289,43 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.config())
 }
 
+// handleScopeConfig serves one scope as the files hold it, never as the
+// running instance holds it: an editor must write against the saved document,
+// or it would compute a base for a change that is already on disk but not yet
+// active. A missing display_name stays absent, so presentation may fall back
+// to the key without changing the document.
 func (s *Server) handleScopeConfig(w http.ResponseWriter, r *http.Request) {
-	scope, ok := s.scopeParam(w, r)
+	scope, ok := s.configScopeParam(w, r)
 	if !ok {
 		return
 	}
+	saved, present := s.savedConfig().Scopes[scope]
+	status := "active"
+	if !present {
+		// The files no longer hold the scope while the instance still runs it.
+		// Serve what is running and say so: there is no saved document to
+		// edit, and calling it active would claim the opposite.
+		saved = s.config().Scopes[scope]
+		status = "unsaved"
+	}
+	version, err := config.ScopeVersion(saved)
+	if err != nil {
+		s.fail(w, "version saved scope", err)
+		return
+	}
+	activeVersion, err := config.ScopeVersion(s.config().Scopes[scope])
+	if err != nil {
+		s.fail(w, "version active scope", err)
+		return
+	}
+	if present && version != activeVersion {
+		status = "pending"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"scope":  scope,
-		"config": s.config().Scopes[scope],
+		"scope":          scope,
+		"version":        version,
+		"active_version": activeVersion,
+		"status":         status,
+		"config":         saved,
 	})
 }

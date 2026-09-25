@@ -72,6 +72,27 @@ func (s *Server) scopeParam(w http.ResponseWriter, r *http.Request) (string, boo
 	return scope, true
 }
 
+// configScopeParam is scopeParam for the configuration routes, which address
+// the saved document. A scope can exist in the files and not yet be running, so
+// existence is answered by the saved tree as well as the active one; authority
+// is still decided before either is read, and an out-of-scope target is still
+// indistinguishable from an unknown one.
+func (s *Server) configScopeParam(w http.ResponseWriter, r *http.Request) (string, bool) {
+	scope := r.PathValue("scope")
+	if !principalFrom(r.Context()).Allows(scope) {
+		writeError(w, http.StatusNotFound, "not_found", "unknown scope")
+		return "", false
+	}
+	if _, ok := s.savedConfig().Scopes[scope]; ok {
+		return scope, true
+	}
+	if _, ok := s.config().Scopes[scope]; ok {
+		return scope, true
+	}
+	writeError(w, http.StatusNotFound, "not_found", "unknown scope")
+	return "", false
+}
+
 // An empty bot is allowed; the caller decides whether it needs one.
 func (s *Server) botParam(w http.ResponseWriter, r *http.Request, scope string) (string, bool) {
 	bot := r.URL.Query().Get("bot")

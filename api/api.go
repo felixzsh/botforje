@@ -29,9 +29,11 @@ type Fleet interface {
 
 // Options are the dependencies fleet run injects; every field is required
 // except Log and Presence. Config is the shared snapshot a reload replaces
-// (ADR 0009).
+// (ADR 0009). Saved is that snapshot's counterpart: the configuration as it
+// stands in the files, which may already differ from the running one.
 type Options struct {
 	Config   *config.Source
+	Saved    *config.Source
 	Fleet    Fleet
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
@@ -58,6 +60,7 @@ type Options struct {
 
 type Server struct {
 	cfg      *config.Source
+	saved    *config.Source
 	fleet    Fleet
 	accounts botflota.LinkedAccountStore
 	pairings botflota.PairingStore
@@ -91,6 +94,9 @@ func New(opts Options) (*Server, error) {
 	}
 	if opts.Fleet == nil {
 		return nil, errors.New("api: no fleet")
+	}
+	if opts.Saved == nil {
+		return nil, errors.New("api: no saved config")
 	}
 	if opts.Accounts == nil {
 		return nil, errors.New("api: no linked-account store")
@@ -136,7 +142,7 @@ func New(opts Options) (*Server, error) {
 		logger = botflota.DiscardLogger()
 	}
 	server := &Server{
-		cfg: opts.Config, fleet: opts.Fleet,
+		cfg: opts.Config, saved: opts.Saved, fleet: opts.Fleet,
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,
@@ -154,6 +160,11 @@ func (s *Server) Handler() http.Handler { return s.handler }
 
 // config is the active snapshot; a reload replaces it for every handler.
 func (s *Server) config() *config.Config { return s.cfg.Current() }
+
+// savedConfig is the configuration as the files stand, which is what an editor
+// reads and writes against: a scope can be valid and saved while the running
+// instance still holds the previous one (ADR 0009).
+func (s *Server) savedConfig() *config.Config { return s.saved.Current() }
 
 // lockBot serializes the write operations of one bot — pairing start,
 // cancel, and unpair — so an unpair never overlaps the session that stored

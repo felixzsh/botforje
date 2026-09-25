@@ -59,7 +59,7 @@ func reloadOutcome(path string, current *config.Config) (
 // watchConfig polls the config files and applies a reload that validates;
 // mtime polling keeps the watcher dependency-free (ADR 0009).
 func watchConfig(
-	ctx context.Context, path string, source *config.Source,
+	ctx context.Context, path string, source, saved *config.Source,
 	runner *fleet.Fleet, logger *slog.Logger,
 ) {
 	last := filesStamp(source.Current().WatchPaths())
@@ -94,6 +94,9 @@ func watchConfig(
 				continue
 			}
 			candidate = loaded
+			// The files are now the saved truth even if activation is still
+			// pending, so readers see the document an editor must write against.
+			saved.Replace(loaded)
 			retryLoad = false
 			lastLoadError = ""
 		}
