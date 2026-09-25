@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"reflect"
+	"strings"
 
 	"github.com/felixzsh/botflota/spec"
 )
@@ -30,9 +31,37 @@ type writtenSecret string
 
 func (s writtenSecret) MarshalJSON() ([]byte, error) { return json.Marshal(string(s)) }
 
-// writtenValue returns v with every secret replaced by its written form. The
-// result is hashed and discarded inside ScopeVersion, so a secret value is
-// never carried into a response, a log, or storage.
+// textType marshals itself: a single variant writes as a scalar and several as
+// a list, so it is left alone rather than rebuilt as a plain slice.
+var textType = reflect.TypeOf(spec.Text{})
+
+// yamlField reads a struct field's YAML name, so rebuilt documents keep the
+// keys the config actually uses. It reports omitempty, which a writer must honor
+// to avoid writing empty settings, and skip for a field the format drops.
+func yamlField(field reflect.StructField) (name string, omitEmpty, skip bool) {
+	tag, ok := field.Tag.Lookup("yaml")
+	if !ok {
+		return field.Name, false, false
+	}
+	parts := strings.Split(tag, ",")
+	if parts[0] == "-" {
+		return "", false, true
+	}
+	name = parts[0]
+	if name == "" {
+		name = field.Name
+	}
+	for _, option := range parts[1:] {
+		if option == "omitempty" {
+			omitEmpty = true
+		}
+	}
+	return name, omitEmpty, false
+}
+
+// writtenValue returns v with every secret replaced by its written form. Scope
+// digests the result and a writer encodes it, so a saved credential is never
+// replaced by its mask, and no value leaves either function.
 func writtenValue(v reflect.Value) any {
 	switch v.Kind() {
 	case reflect.Struct:
@@ -45,7 +74,15 @@ func writtenValue(v reflect.Value) any {
 			if !field.IsExported() {
 				continue
 			}
-			fields[field.Name] = writtenValue(v.Field(i))
+			name, omitEmpty, skip := yamlField(field)
+			if skip {
+				continue
+			}
+			value := v.Field(i)
+			if omitEmpty && value.IsZero() {
+				continue
+			}
+			fields[name] = writtenValue(value)
 		}
 		return fields
 	case reflect.Pointer:
@@ -60,6 +97,9 @@ func writtenValue(v reflect.Value) any {
 		}
 		return entries
 	case reflect.Slice, reflect.Array:
+		if v.Type() == textType {
+			return v.Interface()
+		}
 		items := make([]any, v.Len())
 		for i := range v.Len() {
 			items[i] = writtenValue(v.Index(i))

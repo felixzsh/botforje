@@ -41,9 +41,9 @@ func TestLoaderOverlayValidatesACandidateTree(t *testing.T) {
 	})
 
 	t.Run("an overlay adds a file an include names but disk lacks", func(t *testing.T) {
+		fragment := filepath.Join(filepath.Dir(main), "scopes", "support.yml")
 		loader := Loader{Overlay: map[string][]byte{
-			filepath.Join(filepath.Dir(main), "scopes", "support.yml"):
-				[]byte("scopes:\n  support:\n    display_name: Support\n"),
+			fragment: []byte("scopes:\n  support:\n    display_name: Support\n"),
 		}}
 		withInclude := strings.Replace(string(readFile(t, main)),
 			"include:\n  - extra.yml\n",

@@ -77,6 +77,12 @@ func loadConfig(path string) (*config.Config, int) {
 		}
 		path = found
 	}
+	// A publication that did not finish is undone before the first load, so
+	// the instance never starts on a half-written tree.
+	if err := config.Recover(path); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil, 1
+	}
 	cfg, err := (config.Loader{}).Load(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

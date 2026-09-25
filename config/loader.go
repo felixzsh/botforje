@@ -164,6 +164,7 @@ func mergeScopes(cfg *Config, file string, scopes map[string]spec.Scope) error {
 					file, scopeName)
 			}
 			dst.DisplayName = src.DisplayName
+			recordScopeOrigin(cfg, file, scopeName)
 		}
 		var err error
 		if dst.LLMs, err = mergeEntities(cfg, file, "llm", scopeName,
@@ -217,11 +218,21 @@ func duplicateError(cfg *Config, file, kind, scope, name string) error {
 func recordOrigins(cfg *Config, path string) {
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
+		if scope.DisplayName != "" {
+			recordScopeOrigin(cfg, path, scopeName)
+		}
 		recordOrigin(cfg, path, "llm", scopeName, scope.LLMs)
 		recordOrigin(cfg, path, "action", scopeName, scope.Actions)
 		recordOrigin(cfg, path, "graph", scopeName, scope.Graphs)
 		recordOrigin(cfg, path, "bot", scopeName, scope.Bots)
 	}
+}
+
+// recordScopeOrigin notes which file declares a scope's display name, so a
+// writer can change that label in place instead of moving it (ADR 0016: a
+// scope's non-empty display_name may be declared in one contributing file).
+func recordScopeOrigin(cfg *Config, file, scope string) {
+	cfg.origin["display/"+scope] = file
 }
 
 func recordOrigin[V any](cfg *Config, file, kind, scope string, names map[string]V) {
@@ -289,6 +300,22 @@ func (c *Config) originOf(kind, scope, name string) string {
 		return ""
 	}
 	return c.origin[originKey(kind, scope, name)]
+}
+
+// OriginFile names the file that defines one entity, or the empty string when
+// no loaded file defines it. A writer uses it to edit a definition where it
+// already lives (ADR 0002, ADR 0034).
+func (c *Config) OriginFile(kind, scope, name string) string {
+	return c.originOf(kind, scope, name)
+}
+
+// DisplayNameOrigin names the file that declares a scope's display name, or the
+// empty string when no file declares one.
+func (c *Config) DisplayNameOrigin(scope string) string {
+	if c == nil || c.origin == nil {
+		return ""
+	}
+	return c.origin["display/"+scope]
 }
 
 // SortedKeys returns a map's keys in sorted order, so validation output stays
