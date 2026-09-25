@@ -22,7 +22,7 @@ the loader's entity origins to update or remove definitions in their source
 files. This includes the main config file when it contains the addressed
 scope. New definitions go to a deterministic API-managed scope fragment; the
 API may update the main file's include list when needed to make that fragment
-reachable. These edits are limited to the requested scope and necessary
+reachable. These edits are limited to the requested scopes and necessary
 includes; global settings and unrelated scopes are preserved. A publication
 that touches several files is all-or-nothing; failure leaves their previous
 contents intact. SQLite keeps runtime state only: chats, sessions, messages,
@@ -37,9 +37,10 @@ credentials, and auditing (ADR 0006).
 - There is no behavior migration to design: the editor phase (ROADMAP Phase
   15) is the editor and publishing — not a move of
   tables.
-- Concurrent API edits use a logical scope version and serialize overlapping
-  file commits. A change to a different scope in a shared file is preserved;
-  a stale edit to the same scope conflicts instead of overwriting newer data.
+- An API publication may target several existing authorized scopes. Each has
+  its own logical version; if any is stale, none are saved. Concurrent edits
+  serialize overlapping file commits. A change to an unrequested scope in a
+  shared file is preserved, not overwritten by the publication.
 - API edits preserve unrelated definitions and files, but may rewrite the
   main file when an authorized target scope is defined there or an include
   must be registered. Formatting and comments in a rewritten source file are

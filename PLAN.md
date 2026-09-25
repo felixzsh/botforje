@@ -255,30 +255,38 @@ Deliverables:
   scoped authority (Phase 13) both route by that pair. The `config` read
   serves the typed model, not a hand-written DTO, so the Phase 8 catalogs
   (`shared`, `system_one`) surface without reworking handlers.
-- [ ] Scope config publication API: an owner can publish any scope and a
-  scoped token only its scopes. It writes canonical YAML atomically, validates
-  with the normal loader, and invokes the same activation pipeline as a manual
-  edit; drafts and edit forms stay client-side. Optional `display_name` edits
-  leave scope/entity keys unchanged; absent labels remain absent in YAML.
-  Each publication carries the logical scope version it was based on. Resolve
-  every existing entity to its source file, edit only those definitions, and
-  place new ones in a deterministic API-managed scope fragment. The main file
-  is editable when it contains the authorized scope or needs an include entry;
-  preserve global settings and unrelated scopes (ADR 0002).
+- [ ] Scope config publication API: an owner can publish any set of existing
+  scopes, and a scoped token only its authorized scopes, one or several per
+  atomic request. Each scope carries its expected logical version. It writes
+  validated YAML and invokes the same activation pipeline as a manual edit;
+  drafts stay client-side. Optional `display_name` edits leave keys unchanged;
+  absent labels stay absent in YAML. Resolve existing entities to their
+  source files, put new ones in managed fragments, and edit the main file when
+  it contains an authorized scope or needs an include (ADR 0002). Never edit
+  unrelated scopes or global settings. This route cannot create scopes.
   Stage all affected files and publish them as one recoverable all-or-nothing
-  change. Serialize overlapping file commits; rebase a scope edit over API
-  changes to other scopes in the same file, but reject a stale edit to that
-  same scope with a conflict. Identical publishes are no-ops; do not queue or
-  silently overwrite stale edits. Preserve unrelated scopes and definitions.
-  Tests cover scopes spread across nested includes, two concurrent scopes in
-  one physical file, same-scope conflicts, API-managed new definitions, and
-  recovery after a multi-file publication failure.
+  change. Serialize overlapping file commits; rebase edits over unrelated
+  scope changes in shared files, but reject the whole batch if any requested
+  scope is stale, unauthorized, or invalid. Identical publishes are no-ops.
+  Tests cover nested includes, concurrent scopes in one file, batch conflicts,
+  API-managed definitions, and recovery after multi-file failure.
   Validate before disk writes and leave files untouched on failure. Return
   detailed validation errors to the owner and for the caller's authorized
   scope; return a generic error for invalid configuration outside that scope
   or for instance-wide failures. Document that direct file edits are not
-  version-checked or serialized with API publications. The implementation
-  sequence and open source-file decision are in `docs/config-fromapi-plan.md`.
+  version-checked or serialized with API publications. See the publication
+  sequence in `docs/api-plan.md`.
+- [ ] Owner provisioning and aggregate limit policy: settle an ADR first,
+  then create owner-only limit sets with a complete required limit catalog,
+  scope membership, and enforcement across scopes. Include separate ceilings
+  for configured bots and bots running concurrently; count runtime usage as
+  well as definitions. Provide an all-or-nothing owner operation to create a
+  limit set, generated-key scopes, and an optional scoped token. A scoped
+  token cannot create scopes, change its grants, or change policy. Keep limits
+  out of token records and scoped-editable YAML; honor `exclusive_scopes` on
+  new grants. Protect the owner policy in SQLite only after updating ADR 0002
+  and settling file/DB recovery, counter semantics, and startup behavior.
+  The detailed schema, routes, and gates are in `docs/api-plan.md`.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port
@@ -382,7 +390,10 @@ Deliverables:
   reporting answered, timed-out, and skipped counts in the summary.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
-and reconfigured by editing its files, through CLI and API only.
+and reconfigured by editing its files, through CLI and API only. The owner can
+provision a limit set, initial scopes, and a token; scoped publication of
+several authorized scopes is atomic, and shared limits prevent direct API
+writes or concurrent bot starts from exceeding the configured ceilings.
 
 ### Phase 8 — System One routing, replies, and tools
 

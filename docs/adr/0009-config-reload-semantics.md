@@ -44,7 +44,9 @@ sessions expire or the process restarts with compatible persisted sessions.
 ## Consequences
 
 - API config publication, when added, writes YAML and invokes this same
-  pipeline; drafts remain a client concern.
+  pipeline; drafts remain a client concern. A multi-scope API publication
+  saves all requested scopes or none, while activation may defer some scopes
+  under the same compatibility rules as a manual multi-scope edit.
 - A single manual write that changes several scopes is validated as one
   candidate, then its safe scopes activate independently. A sequence of
   separate file writes is not a transaction.

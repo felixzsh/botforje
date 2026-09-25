@@ -52,26 +52,31 @@ active tokens; the owner resolves that overlap first.
 
 A grant changes only by minting a token and revoking one: no renewal or
 scope-grant update exists yet, and the owner operation that adds a scope to
-a credential is still planned (`docs/config-fromapi-plan.md`). In exclusive
+a credential is still planned (`docs/api-plan.md`). In exclusive
 mode, rotating a credential will need a coordinated replacement that leaves
 no gap, which is not designed yet either.
 
-Planned scope provisioning is owner-only and creates a unique generated scope
-key; it does not grant that scope to any token. Owner credential management
-grants access separately. Limits across a group of scopes are also owner
-policy, not a property of a scoped token or a scoped-editable config document.
-The group policy's persistence and API shape need an ADR before implementation
-(`docs/config-fromapi-plan.md`); scoped publication must not bypass its limits.
+Planned owner provisioning can create a protected limit set, generated-key
+scopes, and a token authorized for those scopes as one operation. An empty
+limit set creates neither scopes nor a token; merely setting `max_scopes` does
+not precreate scopes. Botflota knows only complete numeric resource ceilings,
+not the host's reason for selecting them. The limits belong to the set of
+scopes, never to an access token or scoped-editable YAML. Rotating a token
+does not reset usage. Proposed SQLite storage, routes, and the mandatory
+catalog (including `max_running_bots`) are in `docs/api-plan.md`;
+their final enforcement contract needs an ADR before implementation.
 
 ## Configuration and scope operations
 
-YAML remains the source of behavior. The target API lets an authorized scoped
-principal read and publish that scope's configuration, including bots,
-graphs, actions, and settings, with the same validation as configuration-file
-loading. Publication is atomic, rejects stale versions, and reloads valid
-changes; changes the running instance cannot safely apply are reported as
-restart-required rather than presented as live (PLAN Phase 7; ADRs
-0002, 0009, and 0016).
+YAML remains the source of behavior. The target API lets a scoped principal
+read and publish only its authorized scopes' configuration, including bots,
+graphs, actions, and settings; the owner can read and publish any scopes. No
+read-only scoped token is planned. A publication may contain one or several
+**existing** scopes: every target must be authorized and carry its own
+expected version; all are validated and saved atomically or none are.
+Activation may still be pending per scope. Neither scoped nor owner config
+publication creates scopes or edits owner policy; owner provisioning is a
+separate operation (PLAN Phase 7; ADRs 0002, 0009, and 0016).
 
 Configuration entities keep their YAML map keys as identifiers. Their optional
 `display_name` is presentation metadata, not a reference or identity. A UI
@@ -110,17 +115,14 @@ the API may update the main file's include list to make the fragment reachable.
 Keeping scopes in separate include files is a user choice and a maintainability
 recommendation, never a restriction on API edits.
 
-Each publication carries the logical scope version the editor read. At commit,
-the server reloads the latest include tree, applies the requested scope change
-to its source files, validates the complete candidate, and publishes every
-affected file as one recoverable all-or-nothing change. It serializes writes to
-overlapping files. If another API publication changed only a different scope
-in a shared file, the server rebases the requested scope onto that latest
-file content so neither update is lost. If the target scope itself changed
-since it was read, the caller gets a conflict and must reload and reconcile;
-the server does not queue or silently retry stale edits. A token does not limit
-itself to one in-flight request, so authorization is not a concurrency
-control.
+Each requested scope carries the logical version its editor read. At commit,
+the server reloads the latest include tree, applies changes only to requested
+scopes in their source files, validates the complete candidate, and publishes
+all affected files as one recoverable all-or-nothing change. It serializes
+overlapping writes and rebases untouched scopes in shared files. If any
+requested scope changed since it was read, the entire batch conflicts; no
+partial save, queue, or silent retry. A token does not limit itself to one
+in-flight request, so authorization is not concurrency control.
 
 The API validates the complete candidate before writing. If the proposed
 publication is invalid, it changes no files. A scoped caller receives details

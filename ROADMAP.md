@@ -231,15 +231,11 @@ Deliverables:
 - [ ] Scope projection of the dashboard: the same pages, navigation limited
   to the credential's authorized scopes, no instance settings, and the active
   scope shown in the header.
-- [ ] Scope provisioning: an owner applies a scope config document to the
-  running instance (validate, assign a unique generated scope key, write one
-  include fragment, reload, and keep the previous state on any error), so a
-  scope is created without hand-editing the main file. Applying it affects
-  only that scope and keeps peer bots running. Reuses include fragments
-  (ADR 0016) and reload classes (ADR 0009). Scoped tokens cannot create scopes;
-  owner credential management grants access separately. Once group limits
-  exist (Phase 18), the owner may provision an initial set within a group's
-  capacity or add scopes later; a limit never precreates scopes implicitly.
+- [ ] Host flow consumes Phase 7 owner provisioning: request a limit set,
+  initial generated-key scopes, and a scoped token through the owner API,
+  then hand only the scoped credential to its user. An existing limit set can
+  start empty and gain scopes later; the limit alone never creates scopes.
+  Phase 14 adds the scoped surface, not a second provisioning writer.
 - [ ] Instance identity: `instance_id`, version, and build info in responses
   and events, so a caller with several instances can tell them apart.
 - [ ] Signed outbound webhooks with retries and backoff: bot connected,
@@ -266,9 +262,9 @@ validation and review, while YAML stays the source of truth
 
 Deliverables:
 
-- [ ] Use the Phase 7 scope publication API in the editor; this phase does
-  not add a second writer. Existing definitions stay in their source files,
-  new ones use managed fragments, and stale writes conflict (ADR 0002).
+- [ ] Use Phase 7's single- or multi-scope publication API in the editor;
+  this phase does not add another writer. Existing definitions stay in their
+  source files, new ones use managed fragments, and stale batches conflict.
 - [ ] Validation before publish: the same semantic rules as `config validate`
   plus template reference checks, so a dashboard edit and a hand edit pass
   the same gate.
@@ -365,13 +361,9 @@ Deliverables:
 - [ ] Instance sharding: several instances, one identity each, and documented
   guidance for spreading scopes across instances; aggregation **across
   instances** lives outside Botflota.
-- [ ] Decide and enforce owner-managed aggregate limits for a group of scopes.
-  A group may start empty and gain scopes over time; bot count and other
-  resource ceilings are shared across its scopes, not copied to each scope or
-  stored on scoped tokens. Settle persistence, membership, manual-edit and
-  concurrency rules in an ADR before implementation; reject direct API writes
-  that exceed the group's budget. Preserve distinct per-scope runtime controls
-  where needed. See `docs/config-fromapi-plan.md`.
+- [ ] Document that Phase 7 limit sets are per-instance; spreading scopes
+  across instances does not create a cross-instance limit. The host owns
+  cross-instance coordination. Per-scope runtime controls remain separate.
 - [ ] Each channel maps its own settings from `config.BotSettings` (the CLI
   translates them for WhatsApp today), so a second provider adds no switch in
   `cmd/`.
@@ -379,8 +371,8 @@ Deliverables:
   another instance, and a delete-scope operation that removes its rows and its
   device store.
 - [ ] Metrics and tracing for operators, beyond structured logs.
-- [ ] Tests: a second channel against the same fixture graph, aggregate limit
-  enforcement across scopes, and scope deletion.
+- [ ] Tests: a second channel against the same fixture graph and scope
+  deletion; verify no cross-instance limit is implied by sharding guidance.
 
 Gate: the same graph runs on two providers, a scope moves between instances
 through export and import, and deleting a scope leaves no residue.
@@ -478,10 +470,11 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
   that would need (Phase 15).
 - How export and import inline a scope's reference to `shared` (Phase 18).
 - Retention defaults per scope and who may change them (Phase 16).
-- Scope provisioning: where the writable config directory lives (Phase 14).
+- Scope provisioning: where the writable config directory lives (Phase 7).
 - Sharding threshold, and whether the host or Botflota maps accounts to
   instances (Phase 18).
-- Quota dimensions and the enforcement point (Phase 18).
+- Limit-set semantics, usage counters, and owner-policy recovery (Phase 7;
+  `docs/api-plan.md`).
 
 ## Outside the boundary
 
