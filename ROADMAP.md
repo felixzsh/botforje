@@ -277,7 +277,7 @@ Deliverables:
   UI name becomes its key, and later renames set `display_name`. Scope creation
   uses the generated-key provisioning operation. Enforce unique effective
   labels within each UI namespace on the server; when absent, the UI shows the
-  key. Cover System One profiles when that catalog is implemented. Storage is
+  key. Cover System One models (SOMs) when that catalog is implemented. Storage is
   a bounded control rather than a free number: `settings.history_import_max_bytes`
   is a slider from 0 up to a small share of the set's
   `max_stored_message_bytes` (5–10 %), while the API keeps accepting whatever

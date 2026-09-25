@@ -152,7 +152,7 @@ dashboard and integrations are API-only and never see local files.
 - Shared catalog — the instance-level `system_one` and `llms` a host provides, in
   the main config file only; a bot resolves a name in its scope first, then in
   `shared`. It is not a scope (ADR 0031).
-- System One — a named model profile that answers typed decisions with confidence for
+- System One model (SOM) — a named model that answers typed decisions with confidence for
   routing and policy, referenced by a bot with `system_one`; it resolves in the scope
   or in `shared` (ADR 0030, ADR 0031).
 - LLM — a named model profile (provider, model, credentials, realization
@@ -536,7 +536,7 @@ forwarded from dependencies such as the channel and the device store; `off`
 silences a category. Levels follow one rule: debug for per-message detail, info
 for lifecycle and state, warn for recoverable conditions, and error for
 failures. Message bodies are debug-only, and secrets stay masked by type
-(ADR 0014). A System One decision logs its profile, question, answer, and
+(ADR 0014). A System One decision logs its SOM, question, answer, and
 confidence; the LLM logs realization and tool calls.
 
 ## Config layout
@@ -555,7 +555,7 @@ the XDG data home.
 Scope and entity map keys are stable identifiers. Optional non-empty
 `display_name` labels are used by interfaces and fall back to those keys. They
 are supported on scopes, bots, graphs, nodes, actions, and LLM profiles;
-future System One profiles follow the same rule. A key change does not imply
+future SOMs follow the same rule. A key change does not imply
 a rename and can orphan references or runtime state; only a future explicit
 operation may coordinate an identity migration. Scope provisioning generates
 a unique key when the API creates a scope; manually authored scopes keep their

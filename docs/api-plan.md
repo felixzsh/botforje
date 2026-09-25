@@ -76,9 +76,9 @@ organization, not an API requirement; formatting is not a config contract.
   may target any existing scope. Neither route creates, removes, or rekeys a
   scope, edits instance settings, or changes owner policy.
 - The typed config includes optional `display_name` on scopes, bots, graphs,
-  actions, nodes, and LLM profiles. Future System One/shared profiles use the
-  same rule. A `PUT` that edits a label retains every map key; references
-  continue to use keys. GET leaves absent labels absent; presentation may
+  actions, nodes, and LLM profiles. Future System One models (SOMs) and shared
+  catalog entries use the same rule. A `PUT` that edits a label retains every
+  map key; references continue to use keys. GET leaves absent labels absent; presentation may
   fall back to the key without changing the document or its ETag.
 - For child-entity creation, the UI's initial `name` is the key. Reject a key
   collision within its map rather than silently changing or suffixing it. Do
@@ -186,7 +186,7 @@ scopes of one limit set:
 | `max_bots` | Bot definitions. |
 | `max_running_bots` | Bot actors running concurrently, distinct from definitions. |
 | `max_graphs`, `max_actions` | Graph and action definitions. |
-| `max_llms`, `max_system_one_profiles` | Scoped model profiles. |
+| `max_llms`, `max_soms` | LLM and System One model (SOM) definitions. |
 | `max_outbound_messages_per_month` | Outbound messages admitted in a UTC month. |
 | `max_stored_message_bytes` | Logical stored message content, not DB file size. |
 
@@ -215,8 +215,8 @@ Settled for this catalog:
 
 What counts, and when (settled):
 
-- **Definitions** — `max_bots`, `max_graphs`, `max_actions`, and the model
-  profiles — count the entities in the **saved YAML** of every scope of the
+- **Definitions** — `max_bots`, `max_graphs`, `max_actions`, `max_llms`, and
+  `max_soms` count the entities in the **saved YAML** of every scope of the
   set, whether or not they run. Running bots have their own ceiling beside
   them.
 - **`max_running_bots`** holds a slot from the moment a bot's actor starts
@@ -333,7 +333,7 @@ CREATE TABLE limit_sets (
   max_graphs INTEGER CHECK (max_graphs >= 0),
   max_actions INTEGER CHECK (max_actions >= 0),
   max_llms INTEGER CHECK (max_llms >= 0),
-  max_system_one_profiles INTEGER CHECK (max_system_one_profiles >= 0),
+  max_soms INTEGER CHECK (max_soms >= 0),
   max_outbound_messages_per_month INTEGER
     CHECK (max_outbound_messages_per_month >= 0),
   max_stored_message_bytes INTEGER CHECK (max_stored_message_bytes >= 0),
@@ -486,7 +486,7 @@ Content-Type: application/json
 {"limits":{
   "max_bots":4,"max_running_bots":2,
   "max_graphs":10,"max_actions":20,
-  "max_llms":2,"max_system_one_profiles":2,
+  "max_llms":2,"max_soms":2,
   "max_outbound_messages_per_month":10000,
   "max_stored_message_bytes":104857600
 },"scopes":[{"display_name":"Sales"},{"display_name":"Support"}],

@@ -475,7 +475,7 @@ Deliverables:
   routing degrades to triggers and the default edge.
 - [ ] Bounded calls: a timeout from the `system_one` `bounds`, and the tool
   loop limits (max tools per message, timeout) from the `llms` `bounds`.
-- [ ] Per-message logging of node, intent, System One profile, question,
+- [ ] Per-message logging of node, intent, System One model (SOM), question,
   answer, confidence, tools called, provider, and policy version.
 - [ ] Tests: provider fakes, decision cases with confidence thresholds, config
   resolution across scope and `shared`, multi-select and mapping cases,

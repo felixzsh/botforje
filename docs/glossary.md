@@ -68,7 +68,7 @@
 - Shared catalog — the instance-level `system_one` and `llms` a host provides, in
   the main config file only; a bot resolves `system_one` and `llm` in its scope first
   and then in `shared`, which is not a scope.
-- System One — a model class that answers typed questions with calibrated
+- System One model (SOM) — a model class that answers typed questions with calibrated
   confidence instead of generating text; the project's main AI path. Its three
   question types are `choice` (pick one option), `score` (rate on a rubric)
   and `noul` (probability that a statement is true). Jev (TypeSafe) is the
