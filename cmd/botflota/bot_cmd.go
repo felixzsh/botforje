@@ -95,24 +95,35 @@ func runPair(args []string) int {
 	}
 	name := cmd.fs.Arg(0)
 
-	cfg, code := loadConfig(*cmd.config)
+	// The instance is taken before the tree is read, so the recovery a local
+	// pairing runs cannot race the owner's (ADR 0039, ADR 0042).
+	configFile, err := configPath(*cmd.config)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	lock, err := ownInstance(configFile)
+	owned := err == nil
+	if err != nil && !errors.Is(err, instance.ErrOwned) {
+		reportOwned(err, "pairing (one device cannot be connected twice)")
+		return 1
+	}
+	cfg, code := loadConfig(configFile)
 	if code != 0 {
 		return code
 	}
 	scopeName, botSpec, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
+		if owned {
+			releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
+		}
 		fmt.Fprintln(os.Stderr, err)
 		printHelp(os.Stderr, "bot", "pair")
 		return 1
 	}
-	lock, err := lockInstance(cfg)
-	if err != nil {
-		if errors.Is(err, instance.ErrOwned) {
-			return pairThroughAPI(os.Stdout, cfg, scopeName, name,
-				botSpec.Settings, *cmd.importHistory, *cmd.force)
-		}
-		reportOwned(err, "pairing (one device cannot be connected twice)")
-		return 1
+	if !owned {
+		return pairThroughAPI(os.Stdout, cfg, scopeName, name,
+			botSpec.Settings, *cmd.importHistory, *cmd.force)
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	db, err := openDatabase(cfg)
@@ -347,24 +358,35 @@ func runUnpair(args []string) int {
 		printHelp(os.Stderr, "bot", "unpair")
 		return 2
 	}
-	cfg, code := loadConfig(*cmd.config)
+	// The instance is taken before the tree is read, so the recovery a local
+	// unpair runs cannot race the owner's (ADR 0039, ADR 0042).
+	configFile, err := configPath(*cmd.config)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	lock, err := ownInstance(configFile)
+	owned := err == nil
+	if err != nil && !errors.Is(err, instance.ErrOwned) {
+		reportOwned(err, "unpairing")
+		return 1
+	}
+	cfg, code := loadConfig(configFile)
 	if code != 0 {
 		return code
 	}
 	name := cmd.fs.Arg(0)
 	scopeName, _, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
+		if owned {
+			releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
+		}
 		fmt.Fprintln(os.Stderr, err)
 		printHelp(os.Stderr, "bot", "unpair")
 		return 1
 	}
-	lock, err := lockInstance(cfg)
-	if err != nil {
-		if errors.Is(err, instance.ErrOwned) {
-			return unpairThroughAPI(os.Stdout, cfg, scopeName, name)
-		}
-		reportOwned(err, "unpairing")
-		return 1
+	if !owned {
+		return unpairThroughAPI(os.Stdout, cfg, scopeName, name)
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	db, err := openDatabase(cfg)

@@ -77,12 +77,6 @@ func loadConfig(path string) (*config.Config, int) {
 		}
 		path = found
 	}
-	// A publication that did not finish is undone before the first load, so
-	// the instance never starts on a half-written tree.
-	if err := config.Recover(path); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return nil, 1
-	}
 	cfg, err := (config.Loader{}).Load(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -118,12 +112,25 @@ func openDevices(
 // lockInstance takes the exclusive ownership that keeps a local write command
 // out of a running fleet (ADR 0039). It does not look at the API port: the
 // owner process is the one holding the lock.
-func lockInstance(cfg *config.Config) (*instance.Lock, error) {
-	dir, err := cfg.DataDirPath()
+// ownInstance takes the instance for a command that writes, and undoes a
+// publication that did not finish before anything reads the tree. Recovery
+// rewrites files, so only the process holding the instance may run it: a caller
+// that finds the instance owned hands the work to the owner instead (ADR 0039,
+// ADR 0042).
+func ownInstance(configFile string) (*instance.Lock, error) {
+	lockDir, err := config.LockDir(configFile)
 	if err != nil {
 		return nil, err
 	}
-	return instance.Acquire(dir)
+	lock, err := instance.Acquire(lockDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := config.Recover(configFile); err != nil {
+		_ = lock.Release()
+		return nil, err
+	}
+	return lock, nil
 }
 
 func releaseInstance(lock *instance.Lock, report func(error)) {

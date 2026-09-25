@@ -19,7 +19,6 @@ import (
 	"github.com/felixzsh/botflota/api"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
-	"github.com/felixzsh/botflota/instance"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -53,12 +52,7 @@ func runFleet(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	lockDir, err := config.LockDir(configFile)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	lock, err := instance.Acquire(lockDir)
+	lock, err := ownInstance(configFile)
 	if err != nil {
 		reportOwned(err, "starting the fleet")
 		return 1

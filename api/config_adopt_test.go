@@ -192,6 +192,58 @@ func TestPublishAdoptsOnlyTheScopesItChanged(t *testing.T) {
 	}
 }
 
+// TestPublishReportsOnePendingScopeBesideAnActiveOne covers the gate for an
+// incompatible edit: the changed scope is saved and waits while another scope of
+// the same batch becomes live, and the response reports each honestly.
+func TestPublishReportsOnePendingScopeBesideAnActiveOne(t *testing.T) {
+	server, applier := newAdoptingServer(t)
+	applier.held = map[string][]string{
+		"support": {"graph topology of bot \"demo\" has active sessions"},
+	}
+	support := savedScope(t, server.main, "support")
+	ventas := savedScope(t, server.main, "ventas")
+	supportVersion, _ := config.ScopeVersion(support)
+	ventasVersion, _ := config.ScopeVersion(ventas)
+
+	recorder := publishScopes(t, server.Server, testOwnerToken, map[string]any{
+		"scopes": map[string]any{
+			"support": map[string]any{
+				"version": supportVersion,
+				"config":  relabelled(t, support, "Support desk"),
+			},
+			"ventas": map[string]any{
+				"version": ventasVersion,
+				"config":  relabelled(t, ventas, "Sales"),
+			},
+		},
+	})
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202: %s", recorder.Code, recorder.Body.String())
+	}
+	states := map[string]string{}
+	for _, result := range decodeWriteResults(t, recorder).Scopes {
+		states[result.Scope] = result.Status
+	}
+	if states["support"] != "pending" {
+		t.Fatalf("support = %q, want pending", states["support"])
+	}
+	if states["ventas"] != "active" {
+		t.Fatalf("ventas = %q, want active beside a pending scope", states["ventas"])
+	}
+	// Both are saved, and only the deferred one still differs from what runs.
+	if got := savedScope(t, server.main, "support").DisplayName; got != "Support desk" {
+		t.Fatalf("support display_name = %q, want it saved", got)
+	}
+	if got := savedScope(t, server.main, "ventas").DisplayName; got != "Sales" {
+		t.Fatalf("ventas display_name = %q, want it saved", got)
+	}
+	active := readScopeConfig(t, server.Server,
+		"/api/v1/scopes/ventas/config", testOwnerToken)
+	if active.Status != "active" {
+		t.Fatalf("ventas read status = %q, want active", active.Status)
+	}
+}
+
 func TestPublishOfAnIdenticalScopeAdoptsNothing(t *testing.T) {
 	server, applier := newAdoptingServer(t)
 	current := savedScope(t, server.main, "support")
