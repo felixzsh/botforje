@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/felixzsh/botflota"
@@ -47,6 +48,13 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := controller.SetChatHuman(r.Context(), scope, bot, phone, human); err != nil {
+		// A stopped bot has no live state to hold, which is a state of the
+		// instance the caller can wait out, not a server failure (ADR 0043).
+		if errors.Is(err, botflota.ErrBotNotRunning) {
+			writeError(w, http.StatusConflict, "bot_not_running",
+				"the bot is not running, so it has no chat to control")
+			return
+		}
 		s.fail(w, "set chat control", err)
 		return
 	}

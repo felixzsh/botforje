@@ -788,7 +788,7 @@ func (f *Fleet) SetChatHuman(
 ) error {
 	target, ok := f.bot(scope, bot)
 	if !ok || !target.running.Load() {
-		return fmt.Errorf("fleet: bot %s/%s is not running", scope, bot)
+		return fmt.Errorf("%w: %s/%s", botflota.ErrBotNotRunning, scope, bot)
 	}
 	if human {
 		if err := f.cancelChat(ctx, scope, bot, phone); err != nil {

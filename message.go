@@ -32,6 +32,11 @@ var ErrBusy = errors.New("already in progress")
 // destination first or picks another bot (ADR 0042).
 var ErrDestinationNotEmpty = errors.New("destination already holds history")
 
+// ErrBotNotRunning reports an operation that needs a bot's live actor, such as
+// holding one of its chats, while the bot is stopped. It is a state of the
+// instance, not a failure, so a caller can wait and retry (ADR 0043).
+var ErrBotNotRunning = errors.New("bot is not running")
+
 // IncomingMessage is one inbound message. SenderPhone is the resolved phone
 // number in plain digits; the JID and any LID stay inside the channel adapter
 // (ADR 0020). SenderDisplayName is a best-effort push name, never an
