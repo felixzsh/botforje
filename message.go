@@ -27,6 +27,11 @@ var ErrUnsupportedKind = errors.New("unsupported message content")
 // as a second pairing session for one bot (ADR 0025).
 var ErrBusy = errors.New("already in progress")
 
+// ErrDestinationNotEmpty reports a history migration whose destination already
+// holds a chat. History is moved, never merged, so the caller empties the
+// destination first or picks another bot (ADR 0042).
+var ErrDestinationNotEmpty = errors.New("destination already holds history")
+
 // IncomingMessage is one inbound message. SenderPhone is the resolved phone
 // number in plain digits; the JID and any LID stay inside the channel adapter
 // (ADR 0020). SenderDisplayName is a best-effort push name, never an

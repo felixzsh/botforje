@@ -318,6 +318,7 @@ func serveAPI(
 		Sessions:    db.Sessions(),
 		Messages:    db.Messages(),
 		History:     db.History(),
+		Pauser:      runner,
 		Tokens:      db.AccessTokens(),
 		RateBudgets: &budgets,
 		Resolver:    api.NewAuth(ownerHash, db.AccessTokens()),

@@ -134,6 +134,20 @@ type SenderStore interface {
 	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
 }
 
+// HistoryStore owns the operations that span one bot's whole history — its
+// chats, sessions, messages, and contacts — and must be atomic across all of
+// them. DeleteBot removes that history and leaves the scope's senders alone
+// (ADR 0029); MoveBot moves it to another bot of the same scope and refuses a
+// destination that already holds a chat, because history is moved and never
+// merged (ADR 0042).
+type HistoryStore interface {
+	HistoryReader
+	DeleteBot(ctx context.Context, scope, bot string) (HistoryCounts, error)
+	MoveBot(
+		ctx context.Context, scope, from, to string, at time.Time,
+	) (HistoryCounts, error)
+}
+
 // HistoryReader streams everything one bot's history holds, so it can leave the
 // instance without buffering a whole conversation (ADR 0042). The sink is called
 // once per stored row, table by table, in stored order; an error from any call

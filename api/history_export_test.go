@@ -11,18 +11,48 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
 
 // fakeHistory serves the rows a test hands it, so the endpoint's archive can be
-// checked without a database.
+// checked without a database, and records the delete and move it was asked for.
 type fakeHistory struct {
-	chats    []botflota.HistoryChat
-	sessions []botflota.Session
-	messages []botflota.Message
-	contacts []botflota.Contact
-	err      error
+	chats     []botflota.HistoryChat
+	sessions  []botflota.Session
+	messages  []botflota.Message
+	contacts  []botflota.Contact
+	err       error
+	writeErr  error
+	deleted   []string
+	moved     []string
+	occupancy map[string]bool
+	at        time.Time
+}
+
+func (f *fakeHistory) DeleteBot(
+	_ context.Context, scope, bot string,
+) (botflota.HistoryCounts, error) {
+	if f.writeErr != nil {
+		return botflota.HistoryCounts{}, f.writeErr
+	}
+	f.deleted = append(f.deleted, scope+"/"+bot)
+	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Contacts: 4}, nil
+}
+
+func (f *fakeHistory) MoveBot(
+	_ context.Context, scope, from, to string, at time.Time,
+) (botflota.HistoryCounts, error) {
+	if f.writeErr != nil {
+		return botflota.HistoryCounts{}, f.writeErr
+	}
+	if f.occupancy[scope+"/"+to] {
+		return botflota.HistoryCounts{}, botflota.ErrDestinationNotEmpty
+	}
+	f.moved = append(f.moved, scope+"/"+from+"->"+to)
+	f.at = at
+	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Contacts: 4}, nil
 }
 
 func (f *fakeHistory) ReadHistory(

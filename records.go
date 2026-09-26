@@ -146,6 +146,17 @@ type Message struct {
 	Routing           RoutingMethod
 }
 
+// HistoryCounts is what a history operation removed or moved: one bot's chats
+// and their cascaded sessions, messages, and queued replies, plus its contacts.
+// A caller reports them, and a limit set releases the storage they held
+// (ADR 0042).
+type HistoryCounts struct {
+	Chats    int64
+	Sessions int64
+	Messages int64
+	Contacts int64
+}
+
 // HistoryChat is one chat as an export reads it, with its sender's identity
 // beside it so the exported file stands alone (ADR 0042).
 type HistoryChat struct {
