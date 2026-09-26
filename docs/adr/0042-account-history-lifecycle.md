@@ -79,15 +79,26 @@ sides.
   another bot's graph at a node it never reached. Historical runs move with
   their chat; nothing is deleted, so messages keep the session they belong to.
 
-- **The source's queue fails first.** Pending replies are ended through
-  `FailPending` (ADR 0040) before the move: the old link must never send what it
-  no longer owns, and a queued row follows the message it belongs to.
+- **The source's queue goes with its history.** Its queued replies are removed,
+  not carried and not left behind: the old link must never send what it no
+  longer owns (ADR 0040), and a `failed` row would otherwise point at a message
+  another bot now holds, with no bot left to diagnose it against. The source is
+  stopped with its queue dropped, and the rows leave in the same transaction as
+  the move.
+
+- **Contacts keep the destination's own row for a phone it knows.** Contacts are
+  an account's address book (ADR 0037), not history, so an empty destination may
+  still hold them while holding no chat. A moved contact lands unless the
+  destination already knows that phone, in which case the destination's row
+  wins: its own account is the newer truth about that person. No field is
+  merged and no row is lost — the source is emptied either way.
 
 - **Each operation stops what it must and puts it back.** The affected bot or
   bots are stopped for the duration — a running actor would keep writing the
   rows being moved — and one that was running is started again once the change
-  has committed. The pause belongs to the operation, not to the caller's
-  workflow, and it never stops the whole fleet.
+  has committed. A bot that was not running is not touched, and a pause that
+  fails is reported without abandoning the work. The pause belongs to the
+  operation, not to the caller's workflow, and it never stops the whole fleet.
 
 - **One port owns both operations.** They span chats, sessions, messages, and
   contacts at once and must be atomic across all of them, so they do not belong

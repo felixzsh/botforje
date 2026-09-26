@@ -316,21 +316,16 @@ Deliverables:
   answered that cannot be stored (ADR 0040). Beyond the MVP, retention and
   answering without storing stay open (ROADMAP Phase 16)
   (`docs/access-policy.md`).
-- [ ] Account history: unlinking keeps chats, messages, sessions, and
-  contacts; deleting one bot's history is an explicit confirmed operation
-  that never touches the scope's senders or another bot; exporting one bot's
-  history is a streamed zip of one CSV per table the deletion removes, so an
-  irreversible deletion can be an informed one and the export is implemented
-  while delete and migrate are not; migration **moves** a bot's
-  chats and contacts to a bot of the same scope that holds no chat of its own,
-  for a bot replacing a lost account, with both bots stopped, the source's
-  queue failed first, and its active sessions expired. ADR 0042 settles the
-  routes, the confirmation, the report, the empty-destination rule, the export,
-  the single transaction, and the retry; it is not implemented yet
-  (`docs/current-plan.md`). Publishing existing scopes, label rules, and these
-  history operations need no policy from a host, so they proceed first; the
-  watcher gaps they reuse (a multi-scope candidate, and deferral expiry) are
-  part of that work.
+- [x] Account history: unlinking keeps chats, messages, sessions, and
+  contacts; deleting one bot's history is an explicit confirmed operation that
+  never touches the scope's senders or another bot and reports what it removed;
+  exporting one bot's history is a streamed zip of one CSV per table the
+  deletion removes, so an irreversible deletion can be an informed one;
+  migration **moves** a bot's chats and contacts to a bot of the same scope
+  that holds no chat of its own, for a bot replacing a lost account, with both
+  bots stopped, the source's queue removed, and its active sessions expired.
+  ADR 0042 settles the routes, the confirmation, the report, the
+  empty-destination rule, the export, the single transaction, and the retry.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
   second run or a pairing beneath a live fleet fails immediately; the port

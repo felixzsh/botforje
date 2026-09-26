@@ -159,12 +159,14 @@ already work through the API while the instance runs; unpairing stops only that
 bot, lets a send already in progress finish, and fails the rest of its queued
 replies before the account is removed. Unlinking never removes history: chats,
 messages, sessions, and contacts stay, so a relink finds them again. Deleting
-one bot's history is a separate explicit operation, and migration moves it to
-another bot of the same scope for a recreated or peer bot; both are planned in
-`docs/current-plan.md` (`docs/access-policy.md` holds the limits that bound
-them). The target adds the remaining
-scope operations, including bot controls and complete configuration editing,
-without stopping peer bots. Ordinary errors in one bot must remain local to
+one bot's history is a separate explicit confirmed operation that reports what
+it removed, and migration moves it to another bot of the same scope for a bot
+replacing a lost account; both work through the API (ADR 0042), and a bot can
+export its history first so deleting it is an informed choice
+(`docs/access-policy.md` holds the limits that bound them). The target adds the
+remaining scope operations, including bot controls and complete configuration
+editing, without stopping peer bots. Ordinary errors in one bot must remain
+local to
 that bot.
 
 The `fleet run` process remains under the host supervisor. A future
@@ -184,9 +186,9 @@ well; the watcher loads and validates them and activates only safe changed
 scopes (ADR 0009). The CLI uses the API for operational commands while the
 instance is running.
 
-The full target is not implemented yet: browser sessions, deleting or migrating
-a bot's history, the complete set of bot and conversation controls, and the
-embedded dashboard remain planned. Scope publication is a Phase 7 deliverable;
+The full target is not implemented yet: browser sessions, the complete set of
+bot and conversation controls, and the embedded dashboard remain planned. Scope
+publication is a Phase 7 deliverable;
 the later dashboard consumes it. Scope and bot membership changes and channel
 settings currently remain pending until restart; a graph topology change waits
 for active sessions in its scope to expire (ADR 0009).

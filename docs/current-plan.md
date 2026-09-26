@@ -120,10 +120,12 @@ a label differing only in those ways is refused; the saved label keeps its own
 text. A shared catalog joins the rule when its types arrive (ADR 0031), which
 is why the check is keyed by namespace rather than by today's scope shape.
 
-### 3. Account history: keep, delete, migrate
+### 3. Account history: keep, delete, migrate (current)
 
 Unlinking is not deletion, and deletion is never implied by an account change.
-This is behavior Botflota owes an operator regardless of any host.
+This is behavior Botflota owes an operator regardless of any host. The routes,
+the confirmation, the counts, the export, and the empty-destination rule are
+implemented; the decisions behind them are in ADR 0042.
 
 - **Unlink keeps everything** (current). `DELETE .../bots/{bot}/account` and
   `bot unpair` remove the credentials, the account record, and the pairing
