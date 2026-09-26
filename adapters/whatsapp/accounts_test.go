@@ -162,6 +162,16 @@ func (f *fakeOutbox) FailPending(
 	return 1, nil
 }
 
+func (f *fakeOutbox) FailPendingForChat(
+	context.Context, int64, string, time.Time,
+) (int, error) {
+	return 0, nil
+}
+
+func (f *fakeOutbox) IsPending(context.Context, int64) (bool, error) {
+	return true, nil
+}
+
 // TestUnpairFailsTheQueuedReplies: unlinking ends what the link still owes
 // in the same operation, so a later pairing never sends those replies from
 // a different account (ADR 0040).

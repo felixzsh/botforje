@@ -260,6 +260,23 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 	return nil
 }
 
+// Record stores a message outside a routable turn and moves its chat activity,
+// the way the SQLite turn store does (ADR 0043).
+func (s *memStore) Record(
+	ctx context.Context, message *botflota.Message, at time.Time,
+) error {
+	if message == nil {
+		return errors.New("memstore: record has no message")
+	}
+	if err := s.Append(ctx, message); err != nil {
+		return err
+	}
+	if message.Direction == botflota.Inbound {
+		return s.RecordMessage(ctx, message.ChatID, at)
+	}
+	return nil
+}
+
 func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
 	var oldest *botflota.Message
 	for _, message := range s.messages {

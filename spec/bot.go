@@ -29,4 +29,9 @@ type BotSettings struct {
 	// false: the book may hold people this account never wrote to, and it can
 	// overlap with the address book of a personal account on the same phone.
 	ImportContacts *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
+	// ExternalReplyPause is the milliseconds one chat stays handed to a human
+	// after a message leaves the linked account without Botflota sending it.
+	// Zero or absent uses the 15-minute default; every chat of the bot shares
+	// the value.
+	ExternalReplyPause int `yaml:"external_reply_pause" json:"external_reply_pause,omitempty"`
 }

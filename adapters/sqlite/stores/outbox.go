@@ -150,6 +150,41 @@ func (s *OutboxStore) FailPending(
 	return int(affected), nil
 }
 
+// FailPendingForChat ends the queued replies stored under one chat, so a chat
+// handed to a human never sends an automatic reply already queued; the bot's
+// other chats and their messages are left alone (ADR 0043).
+func (s *OutboxStore) FailPendingForChat(
+	ctx context.Context, chatID int64, reason string, at time.Time,
+) (int, error) {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE outbox SET state = 'failed', error = ?, updated_at = ?
+		 WHERE state = 'pending' AND message_id IN (
+		   SELECT id FROM messages WHERE chat_id = ?)`,
+		reason, formatTime(at), chatID)
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: outbox fail chat: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: outbox fail chat: %w", err)
+	}
+	return int(affected), nil
+}
+
+// IsPending reports whether one queued reply is still waiting; the worker
+// rechecks it right before sending, so a reply cancelled for a hand-over after
+// it was read is not sent (ADR 0043).
+func (s *OutboxStore) IsPending(ctx context.Context, id int64) (bool, error) {
+	var pending bool
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM outbox WHERE id = ? AND state = 'pending')`,
+		id).Scan(&pending)
+	if err != nil {
+		return false, fmt.Errorf("sqlite: outbox pending: %w", err)
+	}
+	return pending, nil
+}
+
 func (s *OutboxStore) updatePending(
 	ctx context.Context, id int64, query string, args ...any,
 ) error {

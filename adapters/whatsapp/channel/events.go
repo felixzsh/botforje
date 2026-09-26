@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/felixzsh/botflota"
@@ -37,7 +38,7 @@ func (a *Adapter) handleEvent(raw any) {
 }
 
 func (a *Adapter) onMessage(event *events.Message) {
-	if event.Info.IsFromMe || event.IsEdit {
+	if event.IsEdit {
 		return
 	}
 	// An unclassifiable live payload is dropped rather than turned into a
@@ -48,6 +49,10 @@ func (a *Adapter) onMessage(event *events.Message) {
 	}
 	id := string(event.Info.ID)
 	if !a.seen.fresh(id) {
+		return
+	}
+	if event.Info.IsFromMe {
+		a.onOwnMessage(event, id, content)
 		return
 	}
 	pn, ok := resolveSender(event.Info, a.lookupPN)
@@ -80,6 +85,45 @@ func (a *Adapter) onMessage(event *events.Message) {
 	case a.incoming <- message:
 	case <-a.stop:
 		a.log.Debug("message not delivered; adapter stopped", "sender", sender)
+	}
+}
+
+// onOwnMessage reports a live message that left the linked account: our own
+// echo is ignored, and anything else hands the chat to a human (ADR 0043).
+// Only 1:1 chats are observed; a group, broadcast, or channel message never
+// pauses a chat.
+func (a *Adapter) onOwnMessage(
+	event *events.Message, id string, content botflota.MessageContent,
+) {
+	if a.sentByUs(id) {
+		return
+	}
+	if event.Info.IsGroup {
+		return
+	}
+	chat := event.Info.Chat
+	if chat.Server != types.DefaultUserServer && chat.Server != types.HiddenUserServer {
+		return
+	}
+	pn, ok := resolveJID(chat, event.Info.RecipientAlt, a.lookupPN)
+	if !ok {
+		a.log.Warn("dropping own message: chat has no known phone number")
+		return
+	}
+	message := botflota.OutboundMessage{
+		Bot:               a.bot,
+		RecipientPhone:    pn.User,
+		Content:           content,
+		ProviderMessageID: id,
+		At:                event.Info.Timestamp,
+	}
+	// Backpressure, like the inbound queue: the event handler waits until the
+	// bot actor takes the observation (ADR 0011, ADR 0043).
+	select {
+	case a.outbound <- message:
+	case <-a.stop:
+		a.log.Debug("own message not delivered; adapter stopped",
+			"sender", pn.User)
 	}
 }
 

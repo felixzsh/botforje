@@ -233,6 +233,17 @@ Inbound:
     that transaction, so a failed turn can leave those two rows and nothing
     else. The outbox worker then delivers the replies with the pacing below.
 
+A chat may be handed to a human instead (ADR 0043). A live message that leaves
+the linked account without Botflota sending it — an operator reply from the
+phone, told apart from the bot's own echo by the channel — starts a pause for
+that chat; the API may also hold a chat until it is released. While a chat is
+held, the fleet stores each inbound message for history and deduplication but
+runs no transition and queues no reply, and the session does not change. Taking
+the hold fails the chat's still-pending replies first, and the outbox worker
+rechecks a reply just before sending it, so nothing automatic overtakes the
+human. The pause length is the bot's `settings.external_reply_pause`; the state
+is in memory, so a restart returns every chat to automatic.
+
 Outbound:
 
 1. When read receipts are enabled, the bot waits `read_receipt_delay` and

@@ -169,6 +169,19 @@ editing, without stopping peer bots. Ordinary errors in one bot must remain
 local to
 that bot.
 
+### Conversation control
+
+A chat is handed to a human in two ways, both per chat: an external reply from
+the linked account starts an automatic pause, and `PUT
+/api/v1/scopes/{scope}/chats/control?bot=&sender=` with `{"mode":"human"}` holds
+it until `{"mode":"auto"}` releases it (ADR 0043). Taking the hold cancels the
+automatic replies still queued for that chat; the bot's other chats are
+untouched. The pause length is the bot's `settings.external_reply_pause`, not a
+request field. `GET /api/v1/scopes/{scope}/chats` reports each chat's effective
+`control` (`auto`, `paused`, or `human`) and, while a pause counts down, its
+`paused_till`. Control state is live runtime state: a restart returns every
+chat to `auto`, and nothing received during a hold is replayed.
+
 The `fleet run` process remains under the host supervisor. A future
 owner-only dashboard/API action may request a process restart through that
 supervisor; scoped authority cannot control process lifecycle. A scope
@@ -179,8 +192,9 @@ process restart must say so explicitly.
 
 Today, the API has owner and scoped bearer tokens, checks scope access on
 scope-addressed routes, reads and publishes scope configuration, and supports
-pairing, pairing cancellation, unpairing, and exporting one bot's history as a
-zip of CSVs while the fleet is running. The owner-only routes expose instance
+pairing, pairing cancellation, unpairing, exporting one bot's history as a zip
+of CSVs, and holding or releasing one chat's automation (ADR 0043) while the
+fleet is running. The owner-only routes expose instance
 configuration and manage access tokens. YAML edits still enter through files as
 well; the watcher loads and validates them and activates only safe changed
 scopes (ADR 0009). The CLI uses the API for operational commands while the

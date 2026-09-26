@@ -146,11 +146,13 @@ browser and without the bot talking over them.
 
 Deliverables:
 
-- [ ] Chat control state `auto` or `human`, persisted per chat and visible in
-  the chat list.
+- [x] Per-chat control `auto`, `paused`, or `human`, live runtime state visible
+  in the chat list; `settings.external_reply_pause` sets the automatic window,
+  an external reply starts or renews it, and a restart returns every chat to
+  `auto` by decision (ADR 0043).
 - [ ] Manual reply travels through the bot's outbox, so pacing, jitter,
   presence, and read receipts stay unchanged.
-- [ ] While a chat is `human`, the engine records inbound messages and never
+- [x] While a chat is held, the engine records inbound messages and never
   replies; returning to `auto` resumes the session without replaying a
   backlog.
 - [ ] Session actions: reset to root, force expire, and inspect the current

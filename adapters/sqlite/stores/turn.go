@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
@@ -75,6 +76,46 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("sqlite: commit turn: %w", err)
+	}
+	return nil
+}
+
+// Record stores one message that is not part of a routable turn — an inbound
+// the bot suppressed while a chat was held, or an outbound the operator sent
+// outside Botflota — and moves its chat's activity in the same transaction. An
+// inbound still counts as a live message; an outbound only moves the activity
+// (ADR 0043).
+func (s *TurnStore) Record(
+	ctx context.Context, message *botflota.Message, at time.Time,
+) error {
+	if message == nil {
+		return errors.New("sqlite: record has no message")
+	}
+	if message.ChatID == 0 {
+		return errors.New("sqlite: record has no chat")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("sqlite: begin record: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	messages := MessageStore{db: tx}
+	if err := messages.Append(ctx, message); err != nil {
+		return err
+	}
+	if message.Direction == botflota.Inbound {
+		chats := ChatStore{db: tx}
+		if err := chats.RecordMessage(ctx, message.ChatID, at); err != nil {
+			return err
+		}
+	} else if _, err := tx.ExecContext(ctx,
+		"UPDATE chats SET updated_at = ? WHERE id = ?",
+		formatTime(at), message.ChatID); err != nil {
+		return fmt.Errorf("sqlite: touch chat: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("sqlite: commit record: %w", err)
 	}
 	return nil
 }

@@ -415,6 +415,7 @@ func validateBot(
 			{"queue_delay", s.QueueDelay},
 			{"jitter", s.Jitter},
 			{"max_messages_per_minute", s.MaxMsgPerMinute},
+			{"external_reply_pause", s.ExternalReplyPause},
 		} {
 			if v.value < 0 {
 				add(file, entity, "%s must be >= 0", v.field)

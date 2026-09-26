@@ -414,6 +414,23 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 	return nil
 }
 
+// Record stores a message outside a routable turn and moves its chat activity,
+// the way the SQLite turn store does (ADR 0043).
+func (s *memStore) Record(
+	ctx context.Context, message *botflota.Message, at time.Time,
+) error {
+	if message == nil {
+		return errors.New("memstore: record has no message")
+	}
+	if err := s.Append(ctx, message); err != nil {
+		return err
+	}
+	if message.Direction == botflota.Inbound {
+		return s.RecordMessage(ctx, message.ChatID, at)
+	}
+	return nil
+}
+
 // queuedReply mirrors one outbox row for the worker tests.
 type queuedReply struct {
 	scope, bot  string
@@ -529,6 +546,36 @@ func (s *memStore) FailPending(
 		}
 	}
 	return failed, nil
+}
+
+func (s *memStore) FailPendingForChat(
+	_ context.Context, chatID int64, _ string, _ time.Time,
+) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stored := map[int64]bool{}
+	for _, message := range s.messages {
+		if message.ChatID == chatID {
+			stored[message.ID] = true
+		}
+	}
+	failed := 0
+	for i := range s.outbox {
+		queued := &s.outbox[i]
+		if queued.sent || queued.failed || !stored[queued.entry.MessageID] {
+			continue
+		}
+		queued.failed = true
+		failed++
+	}
+	return failed, nil
+}
+
+func (s *memStore) IsPending(_ context.Context, id int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	queued := s.findQueued(id)
+	return queued != nil && !queued.sent && !queued.failed, nil
 }
 
 func (s *memStore) Oldest(_ context.Context, chatID int64) (*botflota.Message, error) {
