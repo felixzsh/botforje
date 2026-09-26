@@ -34,17 +34,24 @@ right now, not to stored history.
   restarts the countdown. The value is read when the reply arrives, so
   changing it never moves a countdown already running.
 
+- **A manual hold outranks the countdown.** An external reply finds the chat
+  already held by hand and renews only the countdown, leaving the hold standing,
+  so a reply from the phone cannot hand back a chat an operator is keeping.
+  Releasing the hold returns the chat to automatic, and an explicit `auto`
+  cancels a countdown still running: the caller asked for the bot to answer.
+
 - **In memory, not in the database.** Control state lives in the bot actor. A
-  restart forgets every pause and every manual hold, and the bot answers the
-  next inbound message normally. Replies already cancelled stay cancelled in
-  the queue, but a new inbound inside the window is answered. Persisting the
-  state would buy only that restart window and is deliberately out of scope.
+  restart forgets every pause and every manual hold: replies already cancelled
+  stay cancelled in the queue, and the next inbound message is answered normally
+  even though the window it arrived inside had not run out. Persisting the state
+  would buy only that restart window and is deliberately out of scope.
 
 - **The inbound is kept, the graph is not run.** While a chat is held, an
   inbound message is stored for history and deduplication, but no transition,
-  no reply, and no session change happens. When the hold ends, the next
-  inbound message is handled normally; nothing received during the hold is
-  replayed.
+  no reply, and no session change happens: the person who wrote is still
+  recorded as having written, and the graph stays where it was. When the hold
+  ends, the next inbound message is handled normally; nothing received during
+  the hold is replayed.
 
 - **Handing over cancels what the bot still owes that chat.** Pending replies
   of that chat are failed with a reason, in one statement, before the manual
@@ -62,11 +69,15 @@ right now, not to stored history.
 - **Correlation is the channel's job.** The adapter knows the ids it sent, so
   it can tell its own echo from the operator's reply, and it pre-generates the
   id of an outbound message so a reply is marked before it can be echoed back.
-  Fleet sees only observations that are not the bot's own.
+  Fleet sees only observations that are not the bot's own. The set of sent ids
+  is bounded, so the correlation holds within a window of recent sends rather
+  than forever; the echo arrives long before that window could matter.
 
 - **The API exposes the control, not the timer.** A scoped principal may set a
   chat to `human` or `auto`, and reads the effective state in the chat list.
-  Starting or renewing the automatic pause needs no route.
+  Starting or renewing the automatic pause needs no route. A chat that was never
+  written to does not exist yet, so holding it is not offered: the automatic
+  hand-over covers the case where the operator replies first.
 
 ## Consequences
 
