@@ -66,7 +66,10 @@ func TestOnMessageDropsUnresolvedLID(t *testing.T) {
 	}
 }
 
-func TestOnMessageIgnoresOwnAndNonText(t *testing.T) {
+// TestOnMessageNeverRoutesAnOwnMessageOrEmptyText: a message of our own account
+// is an observation for the hand-over path, never a routable inbound, and an
+// empty payload is dropped (ADR 0043).
+func TestOnMessageNeverRoutesAnOwnMessageOrEmptyText(t *testing.T) {
 	a := newTestAdapter()
 	own := textEvent("5215500000000", "1", "mine")
 	own.Info.IsFromMe = true
@@ -82,9 +85,6 @@ func TestOnMessageIgnoresOwnAndNonText(t *testing.T) {
 	}
 }
 
-// TestOnMessageWaitsWhenQueueIsFull proves backpressure instead of a drop:
-// with a full queue the event handler blocks until the consumer takes a
-// message, and never discards the inbound one (ADR 0011).
 // TestOnOwnMessageReportsExternalReply: a live message that left the account
 // and was not sent by this adapter hands the chat to a human (ADR 0043).
 func TestOnOwnMessageReportsExternalReply(t *testing.T) {
@@ -122,6 +122,9 @@ func TestOnOwnMessageIgnoresItsOwnEcho(t *testing.T) {
 	}
 }
 
+// TestOnMessageWaitsWhenQueueIsFull proves backpressure instead of a drop:
+// with a full queue the event handler blocks until the consumer takes a
+// message, and never discards the inbound one (ADR 0011).
 func TestOnMessageWaitsWhenQueueIsFull(t *testing.T) {
 	a := newTestAdapter()
 	a.incoming = make(chan botflota.IncomingMessage, 1)

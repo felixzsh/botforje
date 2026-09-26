@@ -63,6 +63,46 @@ func TestExternalReplyRestartsTheCountdown(t *testing.T) {
 	}
 }
 
+// TestAnExternalReplyDoesNotReleaseAManualHold: a reply from the phone renews
+// the countdown but never hands back a chat an operator is keeping (ADR 0043).
+func TestAnExternalReplyDoesNotReleaseAManualHold(t *testing.T) {
+	now := t0
+	bot := &Bot{
+		externalPause: 15 * time.Minute,
+		now:           func() time.Time { return now },
+		control:       map[string]chatControl{},
+	}
+	bot.setHuman("s", true)
+	bot.noteExternal("s", now)
+
+	// Long past the countdown the external reply started, the hold still stands.
+	if !bot.paused("s", now.Add(time.Hour)) {
+		t.Fatal("an external reply released a manual hold")
+	}
+	if state := bot.controlOf("s", now.Add(time.Hour)); state.Mode != botflota.ChatHuman {
+		t.Fatalf("mode = %q, want human", state.Mode)
+	}
+}
+
+// TestAnExplicitAutoCancelsARunningCountdown: releasing a chat means the bot
+// answers now, so it does not wait out a countdown already running (ADR 0043).
+func TestAnExplicitAutoCancelsARunningCountdown(t *testing.T) {
+	now := t0
+	bot := &Bot{
+		externalPause: 15 * time.Minute,
+		now:           func() time.Time { return now },
+		control:       map[string]chatControl{},
+	}
+	bot.noteExternal("s", now)
+	if !bot.paused("s", now.Add(time.Minute)) {
+		t.Fatal("the chat was not paused")
+	}
+	bot.setHuman("s", false)
+	if bot.paused("s", now.Add(time.Minute)) {
+		t.Fatal("an explicit auto did not cancel the countdown")
+	}
+}
+
 func TestExternalReplyPauseResolvesTheDefault(t *testing.T) {
 	if got := externalReplyPause(spec.BotSettings{}); got != 15*time.Minute {
 		t.Fatalf("default = %s, want 15m", got)
