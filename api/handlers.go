@@ -90,7 +90,7 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 	}
 	views := make([]chatView, 0, len(chats))
 	for _, chat := range chats {
-		views = append(views, chatView{
+		view := chatView{
 			ID:    chat.ID,
 			Scope: chat.Scope,
 			Bot:   chat.Bot,
@@ -103,7 +103,15 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 			Messages:  chat.Messages,
 			Sync:      chat.Sync,
 			Live:      chat.Live,
-		})
+		}
+		if state, ok := s.chatControl(scope, chat.Bot, chat.Phone); ok {
+			view.Control = string(state.Mode)
+			if !state.PausedTill.IsZero() {
+				paused := state.PausedTill
+				view.PausedTill = &paused
+			}
+		}
+		views = append(views, view)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": views})
 }

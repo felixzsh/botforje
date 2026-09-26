@@ -15,6 +15,12 @@ func newDedup(capacity int) *dedup {
 	return &dedup{capacity: capacity, seen: make(map[string]struct{}, capacity)}
 }
 
+// contains reports whether an id was seen before, without recording it.
+func (d *dedup) contains(id string) bool {
+	_, ok := d.seen[id]
+	return ok
+}
+
 func (d *dedup) fresh(id string) bool {
 	if id == "" {
 		return true

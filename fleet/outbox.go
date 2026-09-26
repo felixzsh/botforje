@@ -305,6 +305,18 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 	if q.cfg.Sender == nil {
 		return
 	}
+	// A reply read before the chat was handed over may have been cancelled
+	// since; it must not be sent now (ADR 0043).
+	pending, err := q.cfg.Store.IsPending(context.Background(), entry.ID)
+	if err != nil {
+		// A read failure is not a reason to lose the reply; the send below
+		// records its own outcome either way.
+		q.cfg.Log.Warn("outbox pending check failed",
+			"id", entry.ID, "error", err)
+	} else if !pending {
+		q.cfg.Log.Debug("queued reply cancelled; not sent", "id", entry.ID)
+		return
+	}
 	msg := botflota.OutgoingMessage{
 		Bot: q.cfg.Bot, RecipientPhone: entry.Recipient, Content: entry.Content,
 		Origin: entry.Origin, Routing: entry.Routing,

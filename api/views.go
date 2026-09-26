@@ -39,6 +39,10 @@ type chatView struct {
 	Messages int64 `json:"messages"`
 	Sync     int64 `json:"sync"`
 	Live     int64 `json:"live"`
+	// Control is the live automation of the chat: auto, paused, or human
+	// (ADR 0043). PausedTill is set only while an automatic pause counts down.
+	Control    string     `json:"control,omitempty"`
+	PausedTill *time.Time `json:"paused_till,omitempty"`
 }
 
 type contactView struct {

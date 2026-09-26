@@ -85,6 +85,43 @@ func TestOnMessageIgnoresOwnAndNonText(t *testing.T) {
 // TestOnMessageWaitsWhenQueueIsFull proves backpressure instead of a drop:
 // with a full queue the event handler blocks until the consumer takes a
 // message, and never discards the inbound one (ADR 0011).
+// TestOnOwnMessageReportsExternalReply: a live message that left the account
+// and was not sent by this adapter hands the chat to a human (ADR 0043).
+func TestOnOwnMessageReportsExternalReply(t *testing.T) {
+	a := newTestAdapter()
+	own := textEvent("5215500000000", "EXT1", "lo veo yo")
+	own.Info.IsFromMe = true
+
+	a.onMessage(own)
+
+	select {
+	case out := <-a.outbound:
+		if out.RecipientPhone != "5215500000000" ||
+			botflota.ContentText(out.Content) != "lo veo yo" {
+			t.Fatalf("outbound = %#v", out)
+		}
+	default:
+		t.Fatal("an external reply was not observed")
+	}
+}
+
+// TestOnOwnMessageIgnoresItsOwnEcho: the adapter's own sent id must never
+// pause the chat it just answered (ADR 0043).
+func TestOnOwnMessageIgnoresItsOwnEcho(t *testing.T) {
+	a := newTestAdapter()
+	a.markSent("MINE1")
+	own := textEvent("5215500000000", "MINE1", "respuesta del bot")
+	own.Info.IsFromMe = true
+
+	a.onMessage(own)
+
+	select {
+	case out := <-a.outbound:
+		t.Fatalf("our own echo was reported: %#v", out)
+	default:
+	}
+}
+
 func TestOnMessageWaitsWhenQueueIsFull(t *testing.T) {
 	a := newTestAdapter()
 	a.incoming = make(chan botflota.IncomingMessage, 1)
@@ -145,7 +182,9 @@ func newTestAdapter() *Adapter {
 	return &Adapter{
 		bot:      "support-bot",
 		incoming: make(chan botflota.IncomingMessage, 4),
+		outbound: make(chan botflota.OutboundMessage, 4),
 		seen:     newDedup(8),
+		sentIDs:  newDedup(8),
 		last:     map[string]lastInbound{},
 		log:      botflota.DiscardLogger(),
 	}

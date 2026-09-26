@@ -12,14 +12,21 @@ import (
 // then SenderAlt, then the LID store. False means no phone number is known:
 // the caller drops the message rather than key anything on a LID (ADR 0020).
 func resolveSender(info types.MessageInfo, lookup ingest.PNLookup) (types.JID, bool) {
-	if info.Sender.Server == types.DefaultUserServer {
-		return info.Sender, true
+	return resolveJID(info.Sender, info.SenderAlt, lookup)
+}
+
+// resolveJID returns the phone number JID behind a sender or chat, trying the
+// JID itself, then its alternate, then the LID store. False means no phone
+// number is known.
+func resolveJID(jid, alt types.JID, lookup ingest.PNLookup) (types.JID, bool) {
+	if jid.Server == types.DefaultUserServer {
+		return jid, true
 	}
-	if info.SenderAlt.Server == types.DefaultUserServer && !info.SenderAlt.IsEmpty() {
-		return info.SenderAlt, true
+	if alt.Server == types.DefaultUserServer && !alt.IsEmpty() {
+		return alt, true
 	}
 	if lookup != nil {
-		if pn, ok := lookup(info.Sender); ok && !pn.IsEmpty() {
+		if pn, ok := lookup(jid); ok && !pn.IsEmpty() {
 			return pn, true
 		}
 	}

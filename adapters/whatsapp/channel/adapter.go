@@ -100,6 +100,9 @@ type Adapter struct {
 	onState  func(State)
 
 	incoming chan botflota.IncomingMessage
+	// outbound carries live messages that left the account outside Botflota,
+	// so the fleet can hand the chat to a human (ADR 0043).
+	outbound chan botflota.OutboundMessage
 
 	senders      botflota.SenderStore
 	chats        botflota.ChatStore
@@ -121,6 +124,10 @@ type Adapter struct {
 	state  State
 	seen   *dedup
 	last   map[string]lastInbound
+
+	// sentMu guards sentIDs, which Send writes and the event handler reads.
+	sentMu  sync.Mutex
+	sentIDs *dedup
 
 	reconnect chan struct{}
 	stop      chan struct{}
@@ -180,8 +187,10 @@ func New(opts Options) (*Adapter, error) {
 		chats:     opts.Chats,
 		messages:  opts.Messages,
 		incoming:  make(chan botflota.IncomingMessage, queue),
+		outbound:  make(chan botflota.OutboundMessage, queue),
 		state:     StateStopped,
 		seen:      newDedup(2048),
+		sentIDs:   newDedup(2048),
 		last:      map[string]lastInbound{},
 		reconnect: make(chan struct{}, 1),
 		stop:      make(chan struct{}),
@@ -258,6 +267,28 @@ func (a *Adapter) Disconnect(context.Context) error {
 }
 
 func (a *Adapter) Incoming() <-chan botflota.IncomingMessage { return a.incoming }
+
+func (a *Adapter) Outbound() <-chan botflota.OutboundMessage { return a.outbound }
+
+// markSent remembers an id this adapter sent, so its echo is not mistaken for
+// an operator reply (ADR 0043).
+func (a *Adapter) markSent(id string) {
+	if id == "" {
+		return
+	}
+	a.sentMu.Lock()
+	a.sentIDs.fresh(id)
+	a.sentMu.Unlock()
+}
+
+func (a *Adapter) sentByUs(id string) bool {
+	if id == "" {
+		return false
+	}
+	a.sentMu.Lock()
+	defer a.sentMu.Unlock()
+	return a.sentIDs.contains(id)
+}
 
 func (a *Adapter) State() State {
 	a.mu.Lock()

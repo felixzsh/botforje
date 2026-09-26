@@ -37,6 +37,26 @@ type AccountUnpairer interface {
 	UnpairAccount(ctx context.Context, scope, bot string) error
 }
 
+// OutboundMessage is a message that left a bot's linked account without
+// Botflota sending it: a human replied from the phone or another client
+// (ADR 0043). It carries the chat's plain phone number, never a LID. It is an
+// observation, not a routable turn.
+type OutboundMessage struct {
+	Bot               string
+	RecipientPhone    string
+	Content           MessageContent
+	ProviderMessageID string
+	At                time.Time
+}
+
+// OutboundObserver is an optional MessageChannel capability: a channel that
+// reports messages leaving the linked account outside Botflota, so a bot can
+// hand the chat to a human (ADR 0043). A channel that cannot tell its own echo
+// apart from an operator reply does not implement it.
+type OutboundObserver interface {
+	Outbound() <-chan OutboundMessage
+}
+
 // HistorySyncer is an optional MessageChannel capability: asking the primary
 // device for older messages of one chat over the live connection (ADR 0035).
 type HistorySyncer interface {
@@ -253,6 +273,12 @@ type OutboundRecord struct {
 // 0026, ADR 0027, ADR 0011).
 type TurnStore interface {
 	CommitTurn(ctx context.Context, turn TurnRecord) error
+	// Record stores one message that is not part of a routable turn and queues
+	// nothing, moving its chat's activity in the same transaction: an inbound
+	// the bot suppressed while a human held the chat, or an outbound the
+	// operator sent outside Botflota (ADR 0043). The message carries its
+	// ChatID and no session run; Append reports ErrDuplicate on a redelivery.
+	Record(ctx context.Context, message *Message, at time.Time) error
 }
 
 // OutboxEntry is one queued reply: the stored message id, the recipient, and
@@ -290,6 +316,16 @@ type OutboxStore interface {
 	FailPending(
 		ctx context.Context, scope, bot, reason string, at time.Time,
 	) (int, error)
+	// FailPendingForChat ends the queued replies stored under one chat, so a
+	// chat handed to a human never sends an automatic reply already queued
+	// (ADR 0043). It leaves the bot's other chats and its messages alone.
+	FailPendingForChat(
+		ctx context.Context, chatID int64, reason string, at time.Time,
+	) (int, error)
+	// IsPending reports whether one queued reply is still waiting; the worker
+	// rechecks it right before sending, so a reply cancelled for a hand-over
+	// after it was read is not sent (ADR 0043).
+	IsPending(ctx context.Context, id int64) (bool, error)
 	Depth(ctx context.Context, scope, bot string) (int, error)
 }
 

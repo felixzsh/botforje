@@ -205,6 +205,90 @@ func (e *Engine) storedBefore(
 	return seen, nil
 }
 
+// RecordSuppressed stores an inbound message for a chat handed to a human:
+// history and deduplication, no routing and no session change (ADR 0043). A
+// redelivery whose id the chat already stores is dropped like any other.
+func (e *Engine) RecordSuppressed(
+	ctx context.Context, msg botflota.IncomingMessage,
+) error {
+	if msg.SenderPhone == "" {
+		return errors.New("engine: incoming message has no sender")
+	}
+	if msg.Content == nil {
+		msg.Content = botflota.TextContent{}
+	}
+	seen, err := e.storedBefore(ctx, msg)
+	if err != nil {
+		return err
+	}
+	if seen {
+		return nil
+	}
+	now := e.now()
+	chat, _, _, _, err := e.load(ctx, msg, now)
+	if err != nil {
+		return err
+	}
+	record := &botflota.Message{
+		ChatID:            chat.ID,
+		Direction:         botflota.Inbound,
+		Content:           msg.Content,
+		At:                msg.At,
+		ProviderMessageID: msg.ProviderMessageID,
+		Ingest:            botflota.IngestLive,
+		Routing:           botflota.RoutingUnknown,
+	}
+	if err := e.turn.Record(ctx, record, now); err != nil {
+		return fmt.Errorf("engine: record suppressed inbound: %w", err)
+	}
+	return nil
+}
+
+// RecordOperator stores an outbound message the operator sent outside Botflota
+// under its chat, with the operator origin, and queues nothing (ADR 0043). A
+// provider id the chat already stores — a later history sync echoing it — is
+// ignored.
+func (e *Engine) RecordOperator(
+	ctx context.Context, msg botflota.OutboundMessage,
+) error {
+	if msg.RecipientPhone == "" {
+		return errors.New("engine: outbound message has no recipient")
+	}
+	if msg.Content == nil {
+		msg.Content = botflota.TextContent{}
+	}
+	if e.senders == nil {
+		return errors.New("engine: no sender store")
+	}
+	now := e.now()
+	sender, _, err := e.senders.Upsert(ctx, e.scope, msg.RecipientPhone, "", now)
+	if err != nil {
+		return fmt.Errorf("engine: sender: %w", err)
+	}
+	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, sender.ID, now)
+	if err != nil {
+		return fmt.Errorf("engine: chat: %w", err)
+	}
+	record := &botflota.Message{
+		ChatID:            chat.ID,
+		Direction:         botflota.Outbound,
+		Content:           msg.Content,
+		At:                msg.At,
+		ProviderMessageID: msg.ProviderMessageID,
+		Ingest:            botflota.IngestLive,
+		Origin:            botflota.OriginOperator,
+		Routing:           botflota.RoutingUnknown,
+	}
+	err = e.turn.Record(ctx, record, now)
+	if errors.Is(err, botflota.ErrDuplicate) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("engine: record operator outbound: %w", err)
+	}
+	return nil
+}
+
 // commitTurn lands the whole turn in one unit: the session, the inbound
 // message, every reply, the chat activity, and the guard state. The engine
 // never writes those shapes directly, so a failure can never leave the

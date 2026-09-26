@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/felixzsh/botflota"
@@ -56,7 +57,12 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (strin
 	if err := a.sleepFor(ctx, replyDelay); err != nil {
 		return "", err
 	}
-	response, err := client.SendMessage(ctx, to, content)
+	// The id is chosen before the send, so the reply is marked as ours before
+	// its echo could arrive and be mistaken for an operator reply (ADR 0043).
+	messageID := client.GenerateMessageID()
+	a.markSent(string(messageID))
+	response, err := client.SendMessage(ctx, to, content,
+		whatsmeow.SendRequestExtra{ID: messageID})
 	if composing {
 		_ = client.SendChatPresence(ctx, to, types.ChatPresencePaused,
 			types.ChatPresenceMediaText)

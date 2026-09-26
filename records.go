@@ -165,6 +165,23 @@ type HistoryChat struct {
 	SenderName  string
 }
 
+// ChatControlMode is the effective automation of one chat (ADR 0043). It is
+// live runtime state, never a stored column.
+type ChatControlMode string
+
+const (
+	ChatAuto   ChatControlMode = "auto"
+	ChatPaused ChatControlMode = "paused"
+	ChatHuman  ChatControlMode = "human"
+)
+
+// ChatControl reports one chat's live control state for the read API: the
+// effective mode, and the automatic pause deadline while it is counting down.
+type ChatControl struct {
+	Mode       ChatControlMode
+	PausedTill time.Time
+}
+
 // ChatSummary is a chat joined with its sender profile, for the read API.
 // Messages, Sync, and Live count the stored rows by ingest kind; the embedded
 // MessageCount stays the live inbound count (ADR 0035).

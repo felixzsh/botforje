@@ -430,6 +430,7 @@ scopes:
           ignored_senders: ["5215500000000"]  # Plain phone numbers, no JID suffix
           history_sync: true          # Import the WhatsApp backlog when linking
           import_contacts: false      # Copy the account's address book too
+          external_reply_pause: 900000  # Hand a chat over after a phone reply (ms)
 
       sales-bot:
         graph: "faq-support"        # No llm: this bot is deterministic
