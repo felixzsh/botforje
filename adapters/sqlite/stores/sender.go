@@ -10,7 +10,7 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-type SenderStore struct{ db *sql.DB }
+type SenderStore struct{ db dbtx }
 
 func NewSenderStore(db *sql.DB) *SenderStore { return &SenderStore{db: db} }
 

@@ -66,6 +66,9 @@ type Options struct {
 	Chats    botflota.ChatStore
 	Sessions botflota.SessionStore
 	Messages botflota.MessageStore
+	// Sends commits an API-origin outbound message outside a turn; it is
+	// optional so a server without it answers 501 on the send route (ADR 0044).
+	Sends botflota.SendStore
 	// History reads, deletes, and moves one bot's stored history. It is
 	// optional: a server without it answers 501 on the history routes.
 	History botflota.HistoryStore
@@ -96,6 +99,7 @@ type Server struct {
 	chats    botflota.ChatStore
 	sessions botflota.SessionStore
 	messages botflota.MessageStore
+	sends    botflota.SendStore
 	history  botflota.HistoryStore
 	pauser   BotPauser
 	tokens   botflota.AccessTokenStore
@@ -177,9 +181,10 @@ func New(opts Options) (*Server, error) {
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,
 		senders:  opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
-		sessions: opts.Sessions, messages: opts.Messages, history: opts.History,
-		pauser: opts.Pauser,
-		tokens: opts.Tokens, resolver: opts.Resolver, log: logger,
+		sessions: opts.Sessions, messages: opts.Messages, sends: opts.Sends,
+		history: opts.History,
+		pauser:  opts.Pauser,
+		tokens:  opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
 		ops: map[string]*sync.Mutex{},
 	}
@@ -234,6 +239,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/scopes/{scope}/chats/sync", s.handleChatSync)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)
+	mux.HandleFunc("POST /api/v1/scopes/{scope}/messages", s.handleSendMessage)
 
 	pairing := "/api/v1/scopes/{scope}/bots/{bot}/pairing"
 	mux.HandleFunc("POST "+pairing, s.handlePairStart)

@@ -430,6 +430,15 @@ func testServerWithConfig(
 	t *testing.T, live Fleet, mutate func(*config.Config),
 ) *Server {
 	t.Helper()
+	return testServerWithOptions(t, live, nil, mutate)
+}
+
+// testServerWithOptions additionally adjusts the options before New, so a test
+// can replace or drop an optional dependency.
+func testServerWithOptions(
+	t *testing.T, live Fleet, adjust func(*Options), mutate func(*config.Config),
+) *Server {
+	t.Helper()
 	cfg := &config.Config{
 		Address: "127.0.0.1",
 		Port:    3000,
@@ -462,7 +471,11 @@ func testServerWithConfig(
 	if mutate != nil {
 		mutate(cfg)
 	}
-	server, err := New(testOptions(t, live, cfg))
+	opts := testOptions(t, live, cfg)
+	if adjust != nil {
+		adjust(&opts)
+	}
+	server, err := New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -591,6 +604,7 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 			},
 		},
 		Unpairer: &fakeUnpairer{accounts: &accounts},
+		Sends:    &fakeSends{},
 		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
 	}
 }

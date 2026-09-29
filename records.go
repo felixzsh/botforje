@@ -109,7 +109,10 @@ const (
 	OriginPreset   MessageOrigin = "preset"
 	OriginLLM      MessageOrigin = "llm"
 	OriginOperator MessageOrigin = "operator"
-	OriginUnknown  MessageOrigin = "unknown"
+	// OriginAPI is a message the API asked a bot to deliver outside a turn
+	// (ADR 0044); it is not a human reply.
+	OriginAPI     MessageOrigin = "api"
+	OriginUnknown MessageOrigin = "unknown"
 )
 
 // RoutingMethod is how the engine chose the transition that handled an inbound

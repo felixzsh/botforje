@@ -124,6 +124,7 @@ var schema = []string{
 		message_id   INTEGER NOT NULL
 			REFERENCES messages (id) ON DELETE CASCADE,
 		recipient    TEXT NOT NULL,
+		client_id    TEXT NOT NULL DEFAULT '',
 		state        TEXT NOT NULL DEFAULT 'pending',
 		attempts     INTEGER NOT NULL DEFAULT 0,
 		next_attempt TEXT NOT NULL DEFAULT '',
@@ -133,6 +134,14 @@ var schema = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS outbox_pending
 		ON outbox (scope, bot, state, id)`,
+}
+
+// schemaAfterColumns runs after the ALTERs that bring an existing database up
+// to the CREATE TABLE shapes; an index on an added column cannot run before
+// its ALTER.
+var schemaAfterColumns = []string{
+	`CREATE UNIQUE INDEX IF NOT EXISTS outbox_client
+		ON outbox (scope, bot, client_id) WHERE client_id != ''`,
 }
 
 // DB is an open SQLite database with its schema applied.
@@ -185,6 +194,9 @@ func (d *DB) Turns() *stores.TurnStore { return stores.NewTurnStore(d.DB) }
 // Outbox returns the durable delivery queue the turn writes into.
 func (d *DB) Outbox() *stores.OutboxStore { return stores.NewOutboxStore(d.DB) }
 
+// Sends commits an API-origin outbound message outside a turn (ADR 0044).
+func (d *DB) Sends() *stores.SendStore { return stores.NewSendStore(d.DB) }
+
 func (d *DB) LinkedAccounts() *stores.LinkedAccountStore {
 	return stores.NewLinkedAccountStore(d.DB)
 }
@@ -211,6 +223,14 @@ func applySchema(db *sql.DB) error {
 	// which starts at the first release.
 	if err := addColumn(db, "messages", "content", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
 		return err
+	}
+	if err := addColumn(db, "outbox", "client_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	for _, statement := range schemaAfterColumns {
+		if _, err := db.Exec(statement); err != nil {
+			return fmt.Errorf("sqlite: schema: %w", err)
+		}
 	}
 	return nil
 }

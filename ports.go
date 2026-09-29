@@ -240,6 +240,35 @@ type MessageStore interface {
 	HasProviderID(ctx context.Context, chatID int64, providerID string) (bool, error)
 }
 
+// SendRecord is one message the API asks a bot to deliver outside a turn: no
+// session run, no inbound message (ADR 0044). The store creates the sender
+// profile and the chat when they are missing, so a notice can reach a phone
+// that never wrote first.
+type SendRecord struct {
+	Scope   string
+	Bot     string
+	To      string
+	Content SendableContent
+	// ClientID is the caller's idempotency key; empty means no key.
+	ClientID string
+	At       time.Time
+}
+
+// SendResult is what CommitSend stored.
+type SendResult struct {
+	MessageID int64
+	OutboxID  int64
+}
+
+// SendStore commits one API-origin outbound message as one unit: the sender
+// profile, the chat, the stored message, the chat's activity, and the queued
+// delivery either all land or none does. A ClientID the bot already accepted
+// reports ErrDuplicate with the accepted message id in the result, so a caller
+// that lost the response can reconcile (ADR 0044).
+type SendStore interface {
+	CommitSend(ctx context.Context, send SendRecord) (SendResult, error)
+}
+
 // TurnRecord is one message turn's writes: the session it advanced, the
 // inbound message, the replies it produced, the chat activity, and the guard
 // state it changed (ADR 0026, ADR 0027). Scope, Bot, Session, and Inbound are

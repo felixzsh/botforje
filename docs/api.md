@@ -188,6 +188,21 @@ supervisor; scoped authority cannot control process lifecycle. A scope
 operation must not stop the whole fleet. Instance-wide changes that need a
 process restart must say so explicitly.
 
+### Outbound sends
+
+An integration can ask a bot to message any phone of its scope, even one that
+never wrote first: `POST /api/v1/scopes/{scope}/messages` with
+`{"bot":"...","to":"5215594251984","body":"...","kind":"text"}` stores and
+queues the message — creating the sender profile and the chat when missing —
+and answers `202 {"id":123,"status":"queued"}` (ADR 0044). Only `text` is
+accepted today. `client_id` is optional; repeating one already accepted
+answers `409` with code `duplicate` and the accepted message's `id` beside the
+error. The message is stored as `direction=out`, `ingest=api`, `origin=api`,
+with no session run, and the bot's existing outbox paces and retries it like a
+reply. The send does not read or change a chat's control (`auto`, `paused`,
+`human`): it is delivered while a chat is held, and the channel's echo
+correlation keeps it from starting a pause (ADR 0043).
+
 ## Current implementation and target
 
 Today, the API has owner and scoped bearer tokens, checks scope access on

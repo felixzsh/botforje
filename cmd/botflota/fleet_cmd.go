@@ -317,6 +317,7 @@ func serveAPI(
 		Chats:       db.Chats(),
 		Sessions:    db.Sessions(),
 		Messages:    db.Messages(),
+		Sends:       db.Sends(),
 		History:     db.History(),
 		Pauser:      runner,
 		Tokens:      db.AccessTokens(),

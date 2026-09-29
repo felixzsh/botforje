@@ -337,9 +337,10 @@ message history live in SQLite (ADR 0026).
 Every stored message carries its provenance (ADR 0026): `ingest_kind` says
 whether it came from live traffic, a history sync, or the API; `routing` says
 which matching layer or decision handled the inbound message; and `origin`
-says whether an outbound body is `preset`, `llm`, or `operator`. An imported
-message reports `sync` with `unknown` origin, because the past cannot say who
-wrote an outbound message outside Botflota.
+says whether an outbound body is `preset`, `llm`, `operator`, or `api` (an
+API-origin send, ADR 0044). An imported message reports `sync` with `unknown`
+origin, because the past cannot say who wrote an outbound message outside
+Botflota.
 
 The account-wide history sync WhatsApp delivers at link time is imported
 inertly (ADR 0035): `bot pair` and `fleet run` share one importer, every 1:1
@@ -400,7 +401,10 @@ polls, and each message carries its kind, its visible text, and the structured
 `content`; `chats` lists a bot's chats with their sender profiles, which is how
 `chat list` reads them; `status` and `bots` report each bot's active sessions;
 `POST chats/sync` asks the phone for older messages of one chat over the live
-connection and reports the batch counts. Errors use one shape,
+connection and reports the batch counts. A scope's `messages` route also
+accepts a `POST`: an API-origin send that stores and queues one text message
+to any phone — creating the sender and the chat when missing — so the bot's
+outbox delivers it like a reply (ADR 0044). Errors use one shape,
 `{"error":{"code","message"}}`.
 
 One middleware resolves the credential to a `Principal` through a small

@@ -109,6 +109,53 @@ func TestSetChatHumanRefusesABotThatIsNotRunning(t *testing.T) {
 	}
 }
 
+// queueAPISend puts one queued API-origin send directly into the store, the
+// way CommitSend does (ADR 0044), so the worker can be driven in tests.
+func queueAPISend(t *testing.T, store *memStore, scope, bot, phone, body string) int64 {
+	t.Helper()
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.nextOut++
+	id := store.nextOut
+	store.outbox = append(store.outbox, queuedReply{
+		scope: scope, bot: bot,
+		entry: botflota.OutboxEntry{
+			ID: id, Recipient: phone, MessageID: 900 + id,
+			Content: botflota.TextContent{Body: body},
+			Origin:  botflota.OriginAPI, Routing: botflota.RoutingUnknown,
+		},
+	})
+	return id
+}
+
+// TestAnAPISendReachesAHeldChat: a human hold suppresses the bot's own replies,
+// but an API-origin send queued after the hold is delivered and the hold still
+// stands (ADR 0043, ADR 0044).
+func TestAnAPISendReachesAHeldChat(t *testing.T) {
+	runner, channels, store := buildFleetWithStore(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = runner.Run(ctx) }()
+	waitConnected(t, runner)
+	alpha := channels["alpha"]
+
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", "held", true); err != nil {
+		t.Fatalf("SetChatHuman: %v", err)
+	}
+	queueAPISend(t, store, "dev", "alpha", "held", "aviso")
+	sent := receive(t, alpha.sent)
+	if body := botflota.ContentText(sent.Content); body != "aviso" {
+		t.Fatalf("sent = %q, want the API send", body)
+	}
+	if sent.Origin != botflota.OriginAPI || sent.RecipientPhone != "held" {
+		t.Fatalf("sent = %#v", sent)
+	}
+	if state, ok := runner.ChatControl("dev", "alpha", "held"); !ok ||
+		state.Mode != botflota.ChatHuman {
+		t.Fatalf("control = %+v, %v; want the hold to stand", state, ok)
+	}
+}
+
 // TestHandingOverFailsAReplyAlreadyInFlight covers the edge the recheck cannot
 // reach: the worker had already left the queue with the reply when the chat was
 // handed over, so the row is failed at once and the send still finishes, which
