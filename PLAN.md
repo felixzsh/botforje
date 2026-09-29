@@ -535,9 +535,14 @@ Deliverables:
 
 - [ ] Reference bot: a small support menu graph with intents and one `request`
   step.
-- [ ] Operational notes: systemd unit and container setup, native supervisor
-  commands for start/stop/restart, restart policies, and SIGTERM graceful
-  shutdown (ADR 0025); backup of SQLite and the device store; and
+- [x] systemd integration (ADR 0025): user and system unit templates plus
+  `scripts/install-service.sh` (`make install-service`,
+  `make install-service-system`) that write the unit, create the config and a
+  `0600` secrets file, and enable and start `fleet run`. The unit reads secrets
+  through an `EnvironmentFile`, restarts on failure, and gives the paced outbox
+  a stop timeout to drain. The binary never invokes systemd; the installer is
+  packaging.
+- [ ] Container setup, backup of SQLite and the device store, and
   account-safety practices (warmup for new accounts, no bulk outreach, human
   fallback when a bot is restricted) (ADR 0011). Document that accounts
   requiring a passkey on every connection cannot be automated (ADR 0028).

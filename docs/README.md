@@ -25,6 +25,9 @@ For contributors and agents working on this repository:
 
 For people running bots. It lives in `guide/`.
 
+- `guide/whatsapp.md` — pairing an account and running bots.
+- `guide/systemd.md` — running Botflota as a systemd service.
+
 ## Where things live
 
 - Identity and principles: `../README.md`.

@@ -43,7 +43,8 @@ opt-in LLM realization — all of them Phase 8 in `PLAN.md`.
 ## Documentation
 
 - `config/examples/reference.yml` — reference configuration.
-- `docs/guide/` — pairing an account and running bots.
+- `docs/guide/` — pairing an account, running bots, and running as a systemd
+  service.
 - `docs/glossary.md` — terms used across the docs.
 
 ## Development

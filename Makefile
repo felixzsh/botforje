@@ -9,7 +9,8 @@ LINE_MAX := 100
 
 .DEFAULT_GOAL := help
 .PHONY: help build run dev dev-reset test test-race vet fmt fmt-check \
-	lines-check check schema validate tidy clean
+	lines-check check schema validate install-service install-service-system \
+	tidy clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -59,6 +60,12 @@ schema: ## Regenerate config.schema.json (run from the repo root)
 
 validate: ## Validate a config: make validate CONFIG=path
 	$(GO) run ./cmd/botflota config validate --config $(CONFIG)
+
+install-service: build ## Install and start the user systemd service
+	scripts/install-service.sh $(ARGS)
+
+install-service-system: build ## Install the system-wide service (sudo)
+	sudo scripts/install-service.sh --system $(ARGS)
 
 tidy: ## Tidy go.mod and go.sum
 	$(GO) mod tidy

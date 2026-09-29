@@ -1,0 +1,28 @@
+# Botflota system-wide systemd unit, written by scripts/install-service.sh.
+#
+# The binary never invokes systemd; this unit is packaging. Secrets enter
+# through an EnvironmentFile, never through this file.
+[Unit]
+Description=Botflota fleet
+Documentation=https://github.com/felixzsh/botflota
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botflota
+Group=botflota
+EnvironmentFile=-/etc/botflota/secrets.env
+ExecStart=@BOTFLOTA_BIN@ fleet run --config @BOTFLOTA_CONFIG@
+Restart=on-failure
+RestartSec=5
+# A graceful stop drains the paced outbox before exiting.
+TimeoutStopSec=120
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

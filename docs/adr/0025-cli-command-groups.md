@@ -75,7 +75,9 @@ Output guidance:
 - Operational CLI commands read the same API used by the dashboard instead of
   duplicating live-state access.
 - Service lifecycle uses the supervisor's native commands; Botflota never
-  detects or invokes systemd or a container runtime.
+  detects or invokes systemd or a container runtime. An installer shipped in
+  this repository may write and enable a unit file — that is packaging the
+  supervisor's own configuration, and the binary still invokes nothing.
 - Messages stay valid under scope or entity ambiguity: they point to `bot pair`,
   not to a specific invocation.
 - The process group is `fleet`, matching the glossary.
