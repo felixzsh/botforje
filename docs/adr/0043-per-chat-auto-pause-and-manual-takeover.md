@@ -69,9 +69,11 @@ right now, not to stored history.
 - **Correlation is the channel's job.** The adapter knows the ids it sent, so
   it can tell its own echo from the operator's reply, and it pre-generates the
   id of an outbound message so a reply is marked before it can be echoed back.
-  Fleet sees only observations that are not the bot's own. The set of sent ids
-  is bounded, so the correlation holds within a window of recent sends rather
-  than forever; the echo arrives long before that window could matter.
+  This covers every send Botflota performs, including an API-origin message
+  (ADR 0044); none of them ever looks like an operator reply. Fleet sees only
+  observations that are not the bot's own. The set of sent ids is bounded, so
+  the correlation holds within a window of recent sends rather than forever;
+  the echo arrives long before that window could matter.
 
 - **The API exposes the control, not the timer.** A scoped principal may set a
   chat to `human` or `auto`, and reads the effective state in the chat list.

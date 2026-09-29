@@ -40,8 +40,8 @@ chats   (id, scope, bot, sender_id -> senders, started_at, updated_at,
 - The channel maps the push name into `IncomingMessage`; the engine seeds it as
   `{{sender.name}}` alongside `{{sender.phone}}` (ADR 0018). The stored name
   fills the reference when a message carries none.
-- The `created` result of the upsert is the first-contact hook. Delivering it
-  as a webhook is a later phase; it is not part of this record.
+- The `created` result of the upsert is the first-contact hook. ADR 0045
+  delivers it as a signed webhook; it changes nothing in this record.
 
 ## Consequences
 
@@ -52,8 +52,9 @@ chats   (id, scope, bot, sender_id -> senders, started_at, updated_at,
 - Per-bot blocking and allow/ignore stay configuration for now. If it moves
   into the database later, this key supports both "blocked for this bot"
   (on the chat) and "blocked for the scope" (on the sender).
-- A send to a number that never wrote first (an outbound-only contact) does not
-  create a profile yet.
+- An API-origin send to a number that never wrote first creates the profile
+  and its chat (ADR 0044), because the send needs them; it never fires the
+  first-contact hook, which belongs to an inbound message.
 - With `ignore_groups` false, a group participant is recorded like any sender;
   telling the two apart is an open decision.
 - Push names are third-party personal data; retention, export, and purge follow

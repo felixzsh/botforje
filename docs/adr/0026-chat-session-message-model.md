@@ -37,7 +37,8 @@ Schema (`adapters/sqlite`):
   `provider_message_id` is the channel's own id, unique per chat when present,
   and the dedup key of a history import. `ingest_kind` says how the row entered
   Botflota (`live`, `sync`, `api`, `unknown`); `origin` who produced an
-  outbound body (`preset`, `llm`, `operator`, `unknown`, empty for inbound);
+  outbound body (`preset`, `llm`, `operator`, `api`, `unknown`, empty for
+  inbound; `api` is an API-origin send, ADR 0044);
   `routing` how the engine chose the transition (`trigger_exact`,
   `trigger_sequence`, `trigger_words`, `trigger_fuzzy`, `system_one`,
   `default`, `fallback`, `root`, `unknown`).

@@ -62,4 +62,5 @@ that nobody reads.
   out `queue_delay` between the remaining sends.
 - The engine no longer writes message, chat, or guard rows directly. A new
   write that belongs to a turn belongs in `TurnRecord`; anything else needs
-  its own port and contract.
+  its own port and contract — the API-origin send is `SendStore.CommitSend`
+  (ADR 0044).

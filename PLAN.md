@@ -243,6 +243,23 @@ Deliverables:
   the first allowed message, keyed by (scope, phone) and shared by the scope's
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
   history is recorded.
+- [ ] Sender reads over the API (ADR 0044): `GET
+  /api/v1/scopes/{scope}/senders` lists the scope's profiles newest activity
+  first, with `since` over `first_seen` and an opaque keyset cursor, and `GET
+  .../senders/{phone}` answers one profile or 404; `GET .../bots/{bot}` reads
+  one bot or 404.
+- [ ] API-origin outbound send (ADR 0044): `POST
+  /api/v1/scopes/{scope}/messages` stores and queues one text message to any
+  phone of one `(scope, bot)` in a single transaction — creating the sender and
+  the chat when missing — with `ingest=api`, `origin=api`, no session run, and
+  an optional `client_id` whose repeat answers 409 with the accepted id. The
+  existing outbox worker paces and retries it; the chat's control state is
+  neither read nor changed; the channel's echo correlation keeps it from
+  pausing the chat (ADR 0043).
+- [ ] First-contact webhooks (ADR 0045): `webhooks` in the main config file and
+  a `FirstContactNotifier` port; `sender.first_seen` is emitted when a sender
+  profile is created and delivered at-least-once through a durable SQLite queue
+  with exponential backoff and an HMAC-SHA256 signature over the raw body.
 - [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
   Config reload is automatic and needs no signal (ADR 0009). Starting,
   stopping, and restarting are supervisor operations (ADR 0025).
@@ -439,7 +456,9 @@ Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several
 authorized scopes is atomic and leaves every other scope untouched. An owner
 can delete one bot's history and migrate it to another bot of the same scope
-without touching senders or a peer bot.
+without touching senders or a peer bot. An integration can send a message to
+any phone, read the scope's senders, and receive a signed first-contact
+webhook.
 
 The host-facing half of this phase — provisioning, limit sets, and quotas —
 stays open in `docs/access-policy.md` and does not gate the outcome above; it

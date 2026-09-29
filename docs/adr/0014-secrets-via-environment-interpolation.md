@@ -5,8 +5,8 @@ Status: Accepted (2026-09)
 ## Context
 
 Config files get copied, committed, and shared, so secrets must never live in
-YAML. Tokens are needed in a few places: model API keys and outbound request
-headers.
+YAML. Tokens are needed in a few places: model API keys, outbound request
+headers, and the signing secret of an outbound webhook (ADR 0045).
 
 The template engine resolves runtime conversation values (`graph`, `node`,
 `sender`, `message`, `bot`, `input`, request results). Adding secrets to it
@@ -20,7 +20,8 @@ secret and lose its disguise.
 only in fields explicitly enabled for secrets:
 
 - the `api_key` of a model profile;
-- the values of request `headers`.
+- the values of request `headers`;
+- the `secret` of a webhook target.
 
 Nothing else. A `${...}` in a message body, a context value, an input default,
 an include path, or any other ordinary string is a validation error.

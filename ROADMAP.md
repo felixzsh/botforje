@@ -246,7 +246,9 @@ Deliverables:
 - [ ] Signed outbound webhooks with retries and backoff: bot connected,
   disconnected, logged out, or banned; bot created or removed; per-scope
   message counters and connected bot time as integration facts; threshold
-  warnings.
+  warnings. The first-contact event and the delivery mechanism (config,
+  durable queue, signature, retries) landed with ADR 0045 (`PLAN.md`, Phase
+  7); this phase widens the event catalog over it.
 - [ ] `docs/integration/scoped-hosting.md`: the Botflota side of the contract
   only (issuer configuration, token claims, webhook payloads and signatures,
   scope naming, API versioning and deprecation). The other side is out of

@@ -1,0 +1,68 @@
+# ADR 0044 — Outbound sends and sender reads over the API
+
+Status: Accepted (2026-09)
+
+## Context
+
+An external system that hosts a Botflota instance may need a bot to message a
+phone that never wrote first — a status notice to a customer, an alert to an
+operator — without impersonating a human and without a graph turn. Today every
+outbound message comes from a turn: `TurnStore.CommitTurn` requires a session
+and an inbound message, and the engine writes no rows directly (ADR 0040). The
+API can hold a chat (ADR 0043) but cannot send from one.
+
+The same system needs to read a scope's sender profiles — who wrote, and when
+they were first and last seen — which the scope stores (ADR 0029) but the API
+does not serve.
+
+## Decision
+
+**An outbound send is an API operation, not a turn.** `POST
+/api/v1/scopes/{scope}/messages` accepts `{bot, to, body, kind, client_id}` and
+answers `202 {id, status}`: only `text` today; `to` is a phone number in plain
+digits (ADR 0020), and `bot` must exist in the scope's configuration. A repeat
+of an accepted `client_id` answers `409 duplicate` with the accepted message's
+`id` beside the error, so a caller that lost the response can reconcile.
+
+- A new store port commits the send as one unit: the sender profile, the chat
+  (created when missing), the stored message, its outbox row, and the chat's
+  activity land in one transaction or not at all. `CommitTurn` cannot serve —
+  it requires a session and an inbound message — and the engine never writes
+  these rows; a send outside a turn gets its own port and contract (ADR 0040).
+- The message is stored with `direction=out`, `ingest=api`, `session_id=0`,
+  `origin=api`, `routing=unknown`. `OriginAPI` joins the provenance vocabulary
+  (ADR 0026); it is not `operator`.
+- The send enters the bot's outbox and the existing delivery worker delivers
+  it: pacing, jitter, typing, read receipts, retries, and failure recording
+  are the same path as a reply (ADR 0011, ADR 0040). It is not a second engine.
+- The channel pre-generates and registers the outbound id before sending
+  (ADR 0043), so the message's own echo never looks like an operator reply and
+  never pauses the chat. The send neither reads nor changes a chat's control
+  state: it is delivered while a chat is `human`, and it never sets `human`.
+- `client_id` is optional and idempotent per `(scope, bot)`. Admission to the
+  outbox is where an outbound budget counts a message; when limit sets arrive
+  with their own ADR (`docs/access-policy.md`), that admission consults them.
+  Until then there are no configured ceilings to respect.
+
+**Senders are read scope-level.** `GET /api/v1/scopes/{scope}/senders` lists
+the scope's profiles newest activity first, with `since` (unix milliseconds)
+filtering on `first_seen`, an opaque keyset cursor, and `next_cursor` absent on
+the last page; `GET .../senders/{phone}` answers one profile or 404. This is
+the API's first cursor-paginated read; ROADMAP Phase 10 generalizes the
+convention rather than replacing it.
+
+## Consequences
+
+- A host can notify a number that never wrote: the sender and the chat are
+  created by the same transaction that stores the message, and the read API
+  can then list the person.
+- The API exposes the message id, so a caller can follow delivery through the
+  message history; the outbox row carries the client id for idempotency.
+- An API send shares the bot's queue with the graph's replies, so a burst of
+  notices delays replies and vice versa; that is the intended pacing boundary.
+- A hand-over still cancels every pending reply of the chat (ADR 0043),
+  including an API send queued before it: a human taking the chat owns it.
+- A send to a stopped or unpaired bot is accepted and waits durably; unlinking
+  the account fails it with the rest of the queue (ADR 0040).
+- Outbound limits are not enforced until their policy lands; the admission
+  point exists so enforcement is one check, not a new path.
