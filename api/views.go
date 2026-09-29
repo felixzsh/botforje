@@ -27,6 +27,15 @@ type senderView struct {
 	Name  string `json:"name,omitempty"`
 }
 
+// senderProfileView is the scope-level sender read (ADR 0044). DisplayName is
+// the best-effort push name, always present, possibly empty.
+type senderProfileView struct {
+	Phone       string    `json:"phone"`
+	DisplayName string    `json:"display_name"`
+	FirstSeen   time.Time `json:"first_seen"`
+	LastSeen    time.Time `json:"last_seen"`
+}
+
 type chatView struct {
 	ID        int64      `json:"id"`
 	Scope     string     `json:"scope"`
@@ -91,45 +100,69 @@ func (s *Server) botsView(ctx context.Context, scope string) ([]botView, error) 
 	}
 	bots := make([]botView, 0)
 	for _, bot := range config.SortedKeys(s.config().Scopes[scope].Bots) {
-		view := live[bot]
-		view.Scope = scope
-		view.Bot = bot
-		sessions, err := s.activeSessions(ctx, scope, bot)
+		view, err := s.botView(ctx, scope, bot, live[bot])
 		if err != nil {
 			return nil, err
-		}
-		view.Sessions = sessions
-		account, err := s.accounts.Get(ctx, scope, bot)
-		switch {
-		case err == nil:
-		case errors.Is(err, botflota.ErrNotFound):
-			account = nil
-		default:
-			return nil, err
-		}
-		stored, err := s.pairings.Get(ctx, scope, bot)
-		switch {
-		case err == nil:
-		case errors.Is(err, botflota.ErrNotFound):
-			stored = nil
-		default:
-			return nil, err
-		}
-		state, err := s.pairingState(ctx, account, stored)
-		if err != nil {
-			return nil, err
-		}
-		view.Pairing = string(state)
-		if state == botflota.PairingPaired && account != nil {
-			view.Phone = account.Phone()
-		}
-		if stored != nil && stored.State == state && !stored.LastChange.IsZero() {
-			changed := stored.LastChange
-			view.LastChange = &changed
 		}
 		bots = append(bots, view)
 	}
 	return bots, nil
+}
+
+// botView reads one configured bot's view; live carries the fleet status when
+// the bot is running. The scope list and the single-bot read share it.
+func (s *Server) botView(
+	ctx context.Context, scope, bot string, live botView,
+) (botView, error) {
+	view := live
+	view.Scope = scope
+	view.Bot = bot
+	sessions, err := s.activeSessions(ctx, scope, bot)
+	if err != nil {
+		return botView{}, err
+	}
+	view.Sessions = sessions
+	account, err := s.accounts.Get(ctx, scope, bot)
+	switch {
+	case err == nil:
+	case errors.Is(err, botflota.ErrNotFound):
+		account = nil
+	default:
+		return botView{}, err
+	}
+	stored, err := s.pairings.Get(ctx, scope, bot)
+	switch {
+	case err == nil:
+	case errors.Is(err, botflota.ErrNotFound):
+		stored = nil
+	default:
+		return botView{}, err
+	}
+	state, err := s.pairingState(ctx, account, stored)
+	if err != nil {
+		return botView{}, err
+	}
+	view.Pairing = string(state)
+	if state == botflota.PairingPaired && account != nil {
+		view.Phone = account.Phone()
+	}
+	if stored != nil && stored.State == state && !stored.LastChange.IsZero() {
+		changed := stored.LastChange
+		view.LastChange = &changed
+	}
+	return view, nil
+}
+
+// scopeBotView is the single-bot read: the same view, with the fleet's status
+// looked up for that bot only.
+func (s *Server) scopeBotView(ctx context.Context, scope, bot string) (botView, error) {
+	var live botView
+	for _, status := range s.fleet.Status() {
+		if status.Scope == scope && status.Bot == bot {
+			live = botView{State: status.State, Outbox: status.OutboxDepth}
+		}
+	}
+	return s.botView(ctx, scope, bot, live)
 }
 
 // pairingState prefers the live credential check when fleet run injected one;

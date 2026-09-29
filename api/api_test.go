@@ -248,7 +248,16 @@ func (f fakeContacts) List(
 	return out, nil
 }
 
-type fakeSenders struct{ senders map[string]botflota.Sender }
+// fakeSenders serves the scope's profiles and records the last list read, so
+// a test can assert the query parameters reached the store.
+type fakeSenders struct {
+	senders    map[string]botflota.Sender
+	listPage   botflota.SenderPage
+	listErr    error
+	lastSince  time.Time
+	lastLimit  int
+	lastCursor string
+}
 
 func (f fakeSenders) Get(_ context.Context, scope, phone string) (*botflota.Sender, error) {
 	sender, ok := f.senders[scope+"/"+phone]
@@ -266,6 +275,16 @@ func (f fakeSenders) Upsert(
 
 func (f fakeSenders) SetDisplayName(context.Context, string, string, string, time.Time) error {
 	return nil
+}
+
+func (f *fakeSenders) List(
+	_ context.Context, _ string, since time.Time, limit int, cursor string,
+) (botflota.SenderPage, error) {
+	f.lastSince, f.lastLimit, f.lastCursor = since, limit, cursor
+	if f.listErr != nil {
+		return botflota.SenderPage{}, f.listErr
+	}
+	return f.listPage, nil
 }
 
 type fakeChats struct {
@@ -545,7 +564,7 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 		Fleet:    live,
 		Accounts: &accounts,
 		Pairings: pairings,
-		Senders: fakeSenders{senders: map[string]botflota.Sender{
+		Senders: &fakeSenders{senders: map[string]botflota.Sender{
 			"support/" + sender.Phone: sender,
 			"support/" + quiet.Phone:  quiet,
 		}},

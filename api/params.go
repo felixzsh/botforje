@@ -148,6 +148,19 @@ func limitParam(r *http.Request, allowAll bool) (int, error) {
 	return limit, nil
 }
 
+// The lower bound of a list read is a unix-millisecond timestamp.
+func sinceParam(r *http.Request) (time.Time, error) {
+	raw := r.URL.Query().Get("since")
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || ms < 0 {
+		return time.Time{}, fmt.Errorf("since must be a unix millisecond timestamp")
+	}
+	return time.UnixMilli(ms), nil
+}
+
 // A zero count means every entry the phone makes available.
 func countParam(r *http.Request) (int, error) {
 	raw := r.URL.Query().Get("count")

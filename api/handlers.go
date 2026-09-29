@@ -67,6 +67,25 @@ func (s *Server) handleScopeBots(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "bots": bots})
 }
 
+// handleScopeBot reads one bot of a scope, or answers 404 for an unknown bot
+// like every other scope-owned target (ADR 0044).
+func (s *Server) handleScopeBot(w http.ResponseWriter, r *http.Request) {
+	scope, ok := s.scopeParam(w, r)
+	if !ok {
+		return
+	}
+	bot, ok := s.botPathParam(w, r, scope)
+	if !ok {
+		return
+	}
+	view, err := s.scopeBotView(r.Context(), scope, bot)
+	if err != nil {
+		s.fail(w, "read bot", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 // handleChats lists the chats of a scope, newest first. An empty bot lists
 // every bot in the scope.
 func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {

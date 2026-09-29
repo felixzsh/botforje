@@ -393,7 +393,7 @@ composition and mechanics.
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
 scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
-`contacts`, `sessions`, and `messages`. Every addressable object carries its scope, a
+`contacts`, `senders`, `sessions`, and `messages`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
 pair plus the sender's phone number. `messages` returns the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`

@@ -147,11 +147,21 @@ type ChatStore interface {
 // SenderStore records the profile of each person who writes to a bot. Upsert
 // reports whether the profile is new, the first-contact hook (ADR 0029).
 // SetDisplayName records a name from channel contact data without touching
-// first or last seen (ADR 0035).
+// first or last seen (ADR 0035). List is the scope-level read: profiles most
+// recently seen first, filtered by first_seen when since is not zero, with an
+// opaque cursor a caller passes back unchanged (ADR 0044).
 type SenderStore interface {
 	Upsert(ctx context.Context, scope, phone, name string, at time.Time) (*Sender, bool, error)
 	Get(ctx context.Context, scope, phone string) (*Sender, error)
 	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
+	List(ctx context.Context, scope string, since time.Time, limit int, cursor string) (SenderPage, error)
+}
+
+// SenderPage is one page of a scope's sender profiles. NextCursor is empty on
+// the last page; a caller sends it back through List to read the next one.
+type SenderPage struct {
+	Senders    []Sender
+	NextCursor string
 }
 
 // HistoryStore owns the operations that span one bot's whole history — its

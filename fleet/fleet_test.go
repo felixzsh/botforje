@@ -252,6 +252,14 @@ func (s *memStore) SetDisplayName(
 	return nil
 }
 
+// List is not part of these tests; the scope read is proven against the
+// SQLite store.
+func (s *memStore) List(
+	context.Context, string, time.Time, int, string,
+) (botflota.SenderPage, error) {
+	return botflota.SenderPage{}, errors.New("memstore: List is not implemented")
+}
+
 func (s *memStore) NoteHistory(
 	_ context.Context, chatID int64, from, to time.Time,
 ) error {

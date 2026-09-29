@@ -203,6 +203,16 @@ reply. The send does not read or change a chat's control (`auto`, `paused`,
 `human`): it is delivered while a chat is held, and the channel's echo
 correlation keeps it from starting a pause (ADR 0043).
 
+### Sender reads
+
+`GET /api/v1/scopes/{scope}/senders` lists the scope's sender profiles newest
+activity first; `since` (unix milliseconds) keeps profiles whose `first_seen`
+is at or after it, and an opaque `cursor` pages the list, with `next_cursor`
+absent on the last page (ADR 0044). Each entry is `{phone, display_name,
+first_seen, last_seen}`. `GET .../senders/{phone}` answers one profile or 404.
+Senders belong to the scope, not to a bot (ADR 0029), so the route names no
+bot; `GET .../bots/{bot}` reads one bot's view or 404.
+
 ## Current implementation and target
 
 Today, the API has owner and scoped bearer tokens, checks scope access on

@@ -37,6 +37,10 @@ var ErrDestinationNotEmpty = errors.New("destination already holds history")
 // instance, not a failure, so a caller can wait and retry (ADR 0043).
 var ErrBotNotRunning = errors.New("bot is not running")
 
+// ErrInvalidCursor reports a list cursor a caller did not receive from the
+// read that owns it (ADR 0044).
+var ErrInvalidCursor = errors.New("invalid cursor")
+
 // IncomingMessage is one inbound message. SenderPhone is the resolved phone
 // number in plain digits; the JID and any LID stay inside the channel adapter
 // (ADR 0020). SenderDisplayName is a best-effort push name, never an

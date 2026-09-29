@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
@@ -109,5 +110,76 @@ func TestSenderIsScoped(t *testing.T) {
 	}
 	if first.ID == second.ID {
 		t.Fatal("one phone in two scopes must be two profiles")
+	}
+}
+
+// TestSenderListPagesByLastSeen: the scope read is ordered by activity, the
+// since filter looks at first_seen, and the cursor pages without repeating a
+// row (ADR 0044).
+func TestSenderListPagesByLastSeen(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	t3 := t2.Add(5 * time.Minute)
+	for _, sender := range []struct {
+		phone, name string
+		first, last time.Time
+	}{
+		{"5215500000003", "Cora", t0, t0},
+		{"5215500000002", "Beto", t1, t1},
+		{"5215500000001", "Ana", t1, t3},
+	} {
+		if _, _, err := db.Senders().Upsert(ctx, "support",
+			sender.phone, sender.name, sender.first); err != nil {
+			t.Fatalf("Upsert %s: %v", sender.phone, err)
+		}
+		if !sender.last.Equal(sender.first) {
+			if _, _, err := db.Senders().Upsert(ctx, "support",
+				sender.phone, "", sender.last); err != nil {
+				t.Fatalf("touch %s: %v", sender.phone, err)
+			}
+		}
+	}
+	if _, _, err := db.Senders().Upsert(ctx, "other", "5215599999999", "Zoe", t0); err != nil {
+		t.Fatalf("Upsert other scope: %v", err)
+	}
+
+	page, err := db.Senders().List(ctx, "support", time.Time{}, 2, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(page.Senders) != 2 ||
+		page.Senders[0].Phone != "5215500000001" ||
+		page.Senders[1].Phone != "5215500000002" {
+		t.Fatalf("page one = %#v", page.Senders)
+	}
+	if page.NextCursor == "" {
+		t.Fatal("a full page must carry a cursor")
+	}
+
+	next, err := db.Senders().List(ctx, "support", time.Time{}, 2, page.NextCursor)
+	if err != nil {
+		t.Fatalf("next page: %v", err)
+	}
+	if len(next.Senders) != 1 || next.Senders[0].Phone != "5215500000003" {
+		t.Fatalf("page two = %#v", next.Senders)
+	}
+	if next.NextCursor != "" {
+		t.Fatalf("last page cursor = %q, want none", next.NextCursor)
+	}
+
+	// since filters by first_seen, so the active profile created before it is
+	// out even though its activity is the newest.
+	since, err := db.Senders().List(ctx, "support", t1, 10, "")
+	if err != nil {
+		t.Fatalf("List since: %v", err)
+	}
+	if len(since.Senders) != 2 ||
+		since.Senders[0].Phone != "5215500000001" ||
+		since.Senders[1].Phone != "5215500000002" {
+		t.Fatalf("since page = %#v", since.Senders)
+	}
+
+	if _, err := db.Senders().List(ctx, "support", time.Time{}, 2, "notacursor"); !errors.Is(err, botflota.ErrInvalidCursor) {
+		t.Fatalf("bad cursor error = %v, want ErrInvalidCursor", err)
 	}
 }

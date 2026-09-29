@@ -230,6 +230,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/tokens/{id}", s.handleTokensRevoke)
 
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots/{bot}", s.handleScopeBot)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/senders", s.handleSenders)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/senders/{phone}", s.handleSender)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
 	mux.HandleFunc("PUT /api/v1/scopes/{scope}/config", s.handleScopeConfigPut)
 	mux.HandleFunc("POST /api/v1/config/publications", s.handleConfigPublications)
