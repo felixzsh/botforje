@@ -82,6 +82,8 @@
 - Filter — one bot's inbound rules (ignore groups, allow/ignore senders)
   applied before the engine; the fleet routes events to the bot.
 - Outbox — per-bot FIFO queue that paces outbound messages.
+- Webhook — an instance-level signed HTTP delivery of an outbound event to an
+  external system; the first event is `sender.first_seen` (ADR 0045).
 - Secret reference — a `${ENV_VAR}` placeholder, allowed only in fields enabled
   for secrets (model `api_key`, request header values), resolved from the
   process environment at load; the whole string is sensitive.

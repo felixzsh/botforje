@@ -20,15 +20,17 @@ import (
 // Options configures an Engine. Bot, Graph, Actions, Store, Chats, Senders,
 // Messages, and Turn are required.
 type Options struct {
-	Bot            string
-	Scope          string
-	Graph          spec.Graph
-	Actions        map[string]spec.Action
-	Store          botflota.SessionStore
-	Chats          botflota.ChatStore
-	Senders        botflota.SenderStore
-	Messages       botflota.MessageStore
-	Turn           botflota.TurnStore
+	Bot      string
+	Scope    string
+	Graph    spec.Graph
+	Actions  map[string]spec.Action
+	Store    botflota.SessionStore
+	Chats    botflota.ChatStore
+	Senders  botflota.SenderStore
+	Messages botflota.MessageStore
+	Turn     botflota.TurnStore
+	// Notify receives the first-contact hook; nil means no consumer (ADR 0045).
+	Notify         botflota.FirstContactNotifier
 	LLM            botflota.LLMProvider
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -49,6 +51,7 @@ type Engine struct {
 	senders        botflota.SenderStore
 	messages       botflota.MessageStore
 	turn           botflota.TurnStore
+	notify         botflota.FirstContactNotifier
 	llm            botflota.LLMProvider
 	hasLLM         bool
 	http           *http.Client
@@ -69,6 +72,7 @@ func New(opts Options) *Engine {
 		senders:        opts.Senders,
 		messages:       opts.Messages,
 		turn:           opts.Turn,
+		notify:         opts.Notify,
 		llm:            opts.LLM,
 		hasLLM:         opts.LLM != nil,
 		http:           opts.HTTPClient,
@@ -124,45 +128,49 @@ func (e *Engine) Handle(
 		return nil, nil
 	}
 	now := e.now()
-	chat, sender, session, created, err := e.load(ctx, msg, now)
+	current, err := e.load(ctx, msg, now)
 	if err != nil {
 		return nil, err
+	}
+	if current.newSender {
+		e.notifyFirstContact(ctx, current.sender, now)
 	}
 	r := &run{
 		ctx:     ctx,
 		engine:  e,
-		session: session,
-		chat:    chat,
-		tctx:    e.contextOf(session, msg, sender),
+		session: current.session,
+		chat:    current.chat,
+		tctx:    e.contextOf(current.session, msg, current.sender),
 		msg:     msg,
 	}
 
-	result, err := e.route(r, created)
+	result, err := e.route(r, current.newSession)
 	if err != nil {
 		return nil, err
 	}
 	r.routing = result.Method
 	switch {
 	case result.Target == "":
-		if created {
-			e.log.Debug("entered root node", "node", session.Node)
+		if current.newSession {
+			e.log.Debug("entered root node", "node", current.session.Node)
 			if err := r.enter(); err != nil {
 				return nil, err
 			}
 		} else {
-			e.log.Debug("no transition", "node", session.Node)
+			e.log.Debug("no transition", "node", current.session.Node)
 		}
 	default:
-		if err := r.move(result.Target, !created); err != nil {
+		if err := r.move(result.Target, !current.newSession); err != nil {
 			return nil, err
 		}
 	}
 
+	session := current.session
 	session.GraphContext = r.tctx.Values(botflota.RootGraph)
 	session.NodeContext = r.tctx.Values(botflota.RootNode)
 	session.UpdatedAt = now
 	session.ExpiresAt = e.expiry(now)
-	if err := e.commitTurn(ctx, chat, session, msg, r.routing, r.out,
+	if err := e.commitTurn(ctx, current.chat, session, msg, r.routing, r.out,
 		now, r.guardsDirty); err != nil {
 		return nil, err
 	}
@@ -225,12 +233,15 @@ func (e *Engine) RecordSuppressed(
 		return nil
 	}
 	now := e.now()
-	chat, _, _, _, err := e.load(ctx, msg, now)
+	current, err := e.load(ctx, msg, now)
 	if err != nil {
 		return err
 	}
+	if current.newSender {
+		e.notifyFirstContact(ctx, current.sender, now)
+	}
 	record := &botflota.Message{
-		ChatID:            chat.ID,
+		ChatID:            current.chat.ID,
 		Direction:         botflota.Inbound,
 		Content:           msg.Content,
 		At:                msg.At,
@@ -242,6 +253,24 @@ func (e *Engine) RecordSuppressed(
 		return fmt.Errorf("engine: record suppressed inbound: %w", err)
 	}
 	return nil
+}
+
+// notifyFirstContact reports a profile the upsert just created, so a consumer
+// learns the first contact without polling (ADR 0029, ADR 0045). It runs once
+// the profile is durable and never fails the turn: the sender row itself is
+// already stored, and a lost enqueue is logged.
+func (e *Engine) notifyFirstContact(
+	ctx context.Context, sender *botflota.Sender, at time.Time,
+) {
+	if e.notify == nil || sender == nil {
+		return
+	}
+	event := botflota.FirstContact{
+		Scope: e.scope, Bot: e.bot, Sender: *sender, At: at,
+	}
+	if err := e.notify.FirstContact(ctx, event); err != nil {
+		e.log.Error("first-contact hook failed", "sender", sender.Phone, "error", err)
+	}
 }
 
 // RecordOperator stores an outbound message the operator sent outside Botflota
@@ -346,29 +375,46 @@ func (e *Engine) commitTurn(
 	return nil
 }
 
+// loaded is what one inbound message needs before routing: the durable chat
+// and sender profile, the session run it continues or starts, and whether the
+// message created the profile (the first-contact hook) or the run (ADR 0029,
+// ADR 0045).
+type loaded struct {
+	chat       *botflota.Chat
+	sender     *botflota.Sender
+	session    *botflota.Session
+	newSession bool
+	newSender  bool
+}
+
 func (e *Engine) load(
 	ctx context.Context, msg botflota.IncomingMessage, now time.Time,
-) (*botflota.Chat, *botflota.Sender, *botflota.Session, bool, error) {
+) (loaded, error) {
 	if e.senders == nil {
-		return nil, nil, nil, false, errors.New("engine: no sender store")
+		return loaded{}, errors.New("engine: no sender store")
 	}
-	sender, _, err := e.senders.Upsert(ctx, e.scope, msg.SenderPhone,
+	sender, created, err := e.senders.Upsert(ctx, e.scope, msg.SenderPhone,
 		msg.SenderDisplayName, now)
 	if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("engine: sender: %w", err)
+		return loaded{}, fmt.Errorf("engine: sender: %w", err)
 	}
 	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, sender.ID, now)
 	if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("engine: chat: %w", err)
+		return loaded{}, fmt.Errorf("engine: chat: %w", err)
 	}
 	session, err := e.store.Latest(ctx, chat.ID)
 	if err == nil && !session.Expired(now) {
-		return chat, sender, session, false, nil
+		return loaded{
+			chat: chat, sender: sender, session: session, newSender: created,
+		}, nil
 	}
 	if err != nil && !errors.Is(err, botflota.ErrNotFound) {
-		return nil, nil, nil, false, err
+		return loaded{}, err
 	}
-	return chat, sender, e.start(chat.ID, now), true, nil
+	return loaded{
+		chat: chat, sender: sender, session: e.start(chat.ID, now),
+		newSession: true, newSender: created,
+	}, nil
 }
 
 func (e *Engine) start(chatID int64, now time.Time) *botflota.Session {

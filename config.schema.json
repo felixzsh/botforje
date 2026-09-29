@@ -157,6 +157,13 @@
           "type": "boolean",
           "description": "ExclusiveScopes makes a scope grant exclusive: minting an access token\nthen refuses a scope another active token already holds, and startup\nrefuses to run while a scope is already granted to several active\ntokens, so a scope belongs to at most one active token. The default\nfalse lets any number of tokens share a scope; the owner token covers\nevery scope either way. Changing it requires a restart."
         },
+        "webhooks": {
+          "items": {
+            "$ref": "#/$defs/WebhookSettings"
+          },
+          "type": "array",
+          "description": "Webhooks are the outbound event deliveries this instance sends; see\nWebhookSettings."
+        },
         "include": {
           "items": {
             "type": "string"
@@ -638,6 +645,30 @@
           "type": "array"
         }
       ]
+    },
+    "WebhookSettings": {
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "secret": {
+          "$ref": "#/$defs/Secret"
+        },
+        "events": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "url",
+        "secret",
+        "events"
+      ],
+      "description": "WebhookSettings is one instance-level webhook target: where deliveries go, the secret their bodies are signed with, and the events it subscribes to."
     }
   }
 }

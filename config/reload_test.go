@@ -71,6 +71,13 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 		{"exclusive scopes", func(c *Config) {
 			c.ExclusiveScopes = true
 		}, []string{"global setting exclusive_scopes"}},
+		{"webhooks", func(c *Config) {
+			c.Webhooks = []WebhookSettings{{
+				URL:    "https://hooks.example.test/events",
+				Secret: spec.NewSecret("secret"),
+				Events: []string{"sender.first_seen"},
+			}}
+		}, []string{"global setting webhooks"}},
 	}
 
 	for _, tc := range cases {

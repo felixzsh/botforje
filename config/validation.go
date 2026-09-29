@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
+	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -60,6 +62,7 @@ func Validate(cfg *Config) []ValidationError {
 			add("", "config", "rate_limit.failed_per_minute must be >= 0")
 		}
 	}
+	validateWebhooks(cfg.Webhooks, add)
 	validateLabels(cfg, add)
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
@@ -98,6 +101,45 @@ func validateScopeTemplates(cfg *Config, scopeName string, scope spec.Scope, add
 		file := cfg.originOf("action", scopeName, issue.Action)
 		entity := fmt.Sprintf("action %q (scope %q)", issue.Action, scopeName)
 		add(file, entity, "%s: %v", issue.Site, issue.Err)
+	}
+}
+
+// webhookEvents is the outbound event vocabulary an instance may subscribe to
+// (ADR 0045).
+var webhookEvents = map[string]bool{botflota.EventSenderFirstSeen: true}
+
+// validateWebhooks checks the instance-level webhook list: an absolute http or
+// https URL, a signing secret, and known event names, with no URL repeated
+// (ADR 0045).
+func validateWebhooks(webhooks []WebhookSettings, add addError) {
+	urls := map[string]bool{}
+	for i, entry := range webhooks {
+		entity := fmt.Sprintf("webhook %d", i)
+		switch {
+		case entry.URL == "":
+			add("", entity, "url is required")
+		default:
+			parsed, err := url.Parse(entry.URL)
+			if err != nil || parsed.Host == "" ||
+				(parsed.Scheme != "http" && parsed.Scheme != "https") {
+				add("", entity, "url %q must be an absolute http or https URL", entry.URL)
+			}
+			if urls[entry.URL] {
+				add("", entity, "duplicate url %q", entry.URL)
+			}
+			urls[entry.URL] = true
+		}
+		if entry.Secret.IsZero() {
+			add("", entity, "secret is required")
+		}
+		if len(entry.Events) == 0 {
+			add("", entity, "events must name at least one event")
+		}
+		for _, event := range entry.Events {
+			if !webhookEvents[event] {
+				add("", entity, "unknown event %q", event)
+			}
+		}
 	}
 }
 

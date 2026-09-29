@@ -94,6 +94,9 @@ func globalChanges(current, next *Config) []string {
 			reasons = append(reasons, "global setting "+change.name)
 		}
 	}
+	if !reflect.DeepEqual(current.Webhooks, next.Webhooks) {
+		reasons = append(reasons, "global setting webhooks")
+	}
 	return reasons
 }
 

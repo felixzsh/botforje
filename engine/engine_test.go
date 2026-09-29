@@ -374,6 +374,13 @@ func outbound(t *testing.T, eng *engine.Engine, sender, text string) []string {
 
 func fixtureEngine(t *testing.T, store *memStore) *engine.Engine {
 	t.Helper()
+	return fixtureEngineNotify(t, store, nil)
+}
+
+func fixtureEngineNotify(
+	t *testing.T, store *memStore, notify botflota.FirstContactNotifier,
+) *engine.Engine {
+	t.Helper()
 	scope := loadScope(t)
 	return newTestEngine(t, engine.Options{
 		Bot:            "support-bot",
@@ -385,6 +392,7 @@ func fixtureEngine(t *testing.T, store *memStore) *engine.Engine {
 		Senders:        store,
 		Messages:       store,
 		Turn:           store,
+		Notify:         notify,
 		DefaultTimeout: 300 * time.Second,
 	})
 }

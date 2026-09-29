@@ -213,6 +213,27 @@ first_seen, last_seen}`. `GET .../senders/{phone}` answers one profile or 404.
 Senders belong to the scope, not to a bot (ADR 0029), so the route names no
 bot; `GET .../bots/{bot}` reads one bot's view or 404.
 
+### Webhooks
+
+The instance can push events to an external system: `webhooks` in the main
+config file lists `url`, `secret` (an environment reference), and the `events`
+a target subscribes to (ADR 0045). Only `sender.first_seen` exists today; it
+fires once per phone per scope when an allowed inbound creates the profile,
+never on an import, an operator reply, or an API send. Delivery is a signed
+`POST`:
+
+    { "id": "<uuid>", "event": "sender.first_seen",
+      "occurred_at": "2026-09-28T20:24:20Z", "scope": "support",
+      "data": { "bot": "assistant",
+                "sender": { "phone": "5215599999999", "display_name": "Ana" },
+                "first_seen": "2026-09-28T20:24:20Z" } }
+
+with `X-Botflota-Event`, `X-Botflota-Delivery` (stable across retries), and
+`X-Botflota-Signature: sha256=<hex>`, the HMAC-SHA256 of the raw body under
+the target's secret. Delivery is at-least-once through a durable queue with
+exponential backoff; a consumer deduplicates by the envelope `id`, which every
+retry reuses. Changing the webhook list requires a restart.
+
 ## Current implementation and target
 
 Today, the API has owner and scoped bearer tokens, checks scope access on

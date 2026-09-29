@@ -1,0 +1,4 @@
+webhooks:
+  - secret: "${BOTFLOTA_WEBHOOK_SECRET}"
+    events: ["sender.first_seen"]
+scopes: {}

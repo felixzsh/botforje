@@ -30,12 +30,15 @@ type BotSpec struct {
 
 // Store, Chats, Senders, Messages, Turn, Outbox, and NewChannel are required.
 type Options struct {
-	Store      botflota.SessionStore
-	Chats      botflota.ChatStore
-	Senders    botflota.SenderStore
-	Messages   botflota.MessageStore
-	Turn       botflota.TurnStore
-	Outbox     botflota.OutboxStore
+	Store    botflota.SessionStore
+	Chats    botflota.ChatStore
+	Senders  botflota.SenderStore
+	Messages botflota.MessageStore
+	Turn     botflota.TurnStore
+	Outbox   botflota.OutboxStore
+	// Notify receives each bot's first-contact hook; nil means no consumer
+	// (ADR 0045).
+	Notify     botflota.FirstContactNotifier
 	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
 	// Skip is for recoverable runtime conditions such as a missing local
 	// pairing; a skipped bot never gets a channel.
@@ -276,6 +279,7 @@ func (f *Fleet) buildRuntime(
 		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
 		Messages:   opts.Messages,
 		Turn:       opts.Turn,
+		Notify:     opts.Notify,
 		HTTPClient: opts.HTTPClient, Now: opts.Now,
 		Rand:           rand.New(rand.NewSource(opts.Rand.Int63())),
 		DefaultTimeout: opts.DefaultTimeout,

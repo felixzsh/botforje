@@ -154,7 +154,9 @@ type SenderStore interface {
 	Upsert(ctx context.Context, scope, phone, name string, at time.Time) (*Sender, bool, error)
 	Get(ctx context.Context, scope, phone string) (*Sender, error)
 	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
-	List(ctx context.Context, scope string, since time.Time, limit int, cursor string) (SenderPage, error)
+	List(
+		ctx context.Context, scope string, since time.Time, limit int, cursor string,
+	) (SenderPage, error)
 }
 
 // SenderPage is one page of a scope's sender profiles. NextCursor is empty on
@@ -162,6 +164,27 @@ type SenderStore interface {
 type SenderPage struct {
 	Senders    []Sender
 	NextCursor string
+}
+
+// EventSenderFirstSeen is the first-contact event: a phone wrote to a bot of
+// the scope for the first time (ADR 0045).
+const EventSenderFirstSeen = "sender.first_seen"
+
+// FirstContact is one sender's first allowed inbound message in a scope: the
+// created profile of the sender upsert (ADR 0029), carrying the bot that saw
+// it and when (ADR 0045).
+type FirstContact struct {
+	Scope  string
+	Bot    string
+	Sender Sender
+	At     time.Time
+}
+
+// FirstContactNotifier receives the first-contact hook so an adapter can
+// deliver it outside the engine (ADR 0045). The engine calls it once per new
+// profile and the call records the event; delivery belongs to the adapter.
+type FirstContactNotifier interface {
+	FirstContact(ctx context.Context, event FirstContact) error
 }
 
 // HistoryStore owns the operations that span one bot's whole history — its
@@ -366,6 +389,36 @@ type OutboxStore interface {
 	// after it was read is not sent (ADR 0043).
 	IsPending(ctx context.Context, id int64) (bool, error)
 	Depth(ctx context.Context, scope, bot string) (int, error)
+}
+
+// WebhookDelivery is one queued webhook delivery (ADR 0045). The event id
+// identifies the fact and is shared by a target's retries; the delivery id is
+// the row's own identifier and stays the same across them. Payload is the raw
+// JSON body, signed and sent unchanged.
+type WebhookDelivery struct {
+	ID          int64
+	EventID     string
+	DeliveryID  string
+	URL         string
+	Event       string
+	Scope       string
+	Payload     []byte
+	Attempts    int
+	NextAttempt time.Time
+}
+
+// WebhookStore is the durable outbound webhook queue: one row per (event,
+// target). Enqueue is idempotent on that pair, NextPending returns the rows
+// due at a time, and the outcome of an attempt is recorded, never only logged
+// (ADR 0045).
+type WebhookStore interface {
+	Enqueue(ctx context.Context, delivery *WebhookDelivery) error
+	NextPending(ctx context.Context, at time.Time, limit int) ([]WebhookDelivery, error)
+	MarkSent(ctx context.Context, id int64, at time.Time) error
+	MarkRetry(
+		ctx context.Context, id int64, reason string, next, at time.Time,
+	) error
+	MarkFailed(ctx context.Context, id int64, reason string, at time.Time) error
 }
 
 // LinkedAccountStore records the channel identity linked to each bot

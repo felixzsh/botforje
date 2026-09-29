@@ -82,9 +82,10 @@ Dependencies point along `config → spec` and `engine → spec`; neither `confi
 nor `engine` imports the other, and both use the core template language
 (ADR 0034).
 
-Planned capabilities land as `dashboard` (embedded UI), `auth` (authority and
-credentials), `webhook` (outbound delivery), and one package per channel or
-model provider under `adapters/`. The dashboard edits behavior by publishing
+`webhook` delivers the instance's outbound events as signed HTTP POSTs over a
+durable queue (ADR 0045). Planned capabilities land as `dashboard` (embedded
+UI), `auth` (authority and credentials), and one package per channel or model
+provider under `adapters/`. The dashboard edits behavior by publishing
 config through the API; it never becomes a second source of truth (ADR 0002).
 
 `fleet run` is the composition root: it loads config, opens stores and channel
@@ -195,8 +196,11 @@ Inbound:
    (ADR 0020, ADR 0036).
 2. The fleet routes the event to the bot; the bot's filter drops it (groups,
    allow/ignore lists) or passes it to the engine, which upserts the sender
-   profile before routing (ADR 0029). The dedup check in step 5 reads that
-   sender and chat first, so only a message about to run writes them.
+   profile before routing (ADR 0029). A profile the upsert creates is the
+   first-contact hook: the engine hands it to the configured notifier, whose
+   webhook sink queues signed deliveries (ADR 0045). The dedup check in
+   step 5 reads that sender and chat first, so only a message about to run
+   writes them.
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -323,6 +327,20 @@ APIs that answer asynchronously (202 plus a status endpoint) are polled
 within bounds: the LLM calls the operation, then checks its status up to its
 tool budget; longer waits continue on later messages. A deterministic polling
 step (interval, timeout, success condition) is an open decision for Phase 4/8.
+
+## Webhooks
+
+The instance can mirror outbound events to an external system through signed
+webhooks (ADR 0045). The engine reports a sender profile's creation through
+the core `FirstContactNotifier` port; the `webhook` package implements it as a
+sink that freezes one envelope per event and queues one delivery per
+subscribed target in SQLite. A worker polls the queue, signs the raw body with
+HMAC-SHA256, POSTs it, retries network failures, `429`, and `5xx` with
+exponential backoff, and records the outcome. The queue never stores a secret:
+the signing secret is resolved from the running configuration at delivery
+time, so a target the configuration no longer holds fails its pending
+deliveries. The list is an instance setting in the main file and needs a
+restart.
 
 ## Chats and sessions
 

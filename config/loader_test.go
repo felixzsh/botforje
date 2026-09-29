@@ -10,8 +10,9 @@ import (
 
 func testLoader() Loader {
 	values := map[string]string{
-		"OPENAI_API_KEY": "sk-test",
-		"API_TOKEN":      "token",
+		"OPENAI_API_KEY":          "sk-test",
+		"API_TOKEN":               "token",
+		"BOTFLOTA_WEBHOOK_SECRET": "webhook-secret",
 	}
 	return Loader{LookupEnv: func(name string) (string, bool) {
 		v, ok := values[name]

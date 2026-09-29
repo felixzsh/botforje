@@ -179,7 +179,8 @@ func TestSenderListPagesByLastSeen(t *testing.T) {
 		t.Fatalf("since page = %#v", since.Senders)
 	}
 
-	if _, err := db.Senders().List(ctx, "support", time.Time{}, 2, "notacursor"); !errors.Is(err, botflota.ErrInvalidCursor) {
+	_, err = db.Senders().List(ctx, "support", time.Time{}, 2, "notacursor")
+	if !errors.Is(err, botflota.ErrInvalidCursor) {
 		t.Fatalf("bad cursor error = %v, want ErrInvalidCursor", err)
 	}
 }

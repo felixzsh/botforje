@@ -61,6 +61,12 @@ var invalidFixtures = []fixtureCase{
 	{"undeclared_template_var.yml", "not declared in initial_context"},
 	{"undeclared_template_input.yml", "input"},
 	{"undeclared_to_var.yml", "not declared in initial_context"},
+	{"webhook_no_url.yml", "url is required"},
+	{"webhook_bad_url.yml", "absolute http or https URL"},
+	{"webhook_no_secret.yml", "secret is required"},
+	{"webhook_no_events.yml", "at least one event"},
+	{"webhook_unknown_event.yml", "unknown event"},
+	{"webhook_duplicate_url.yml", "duplicate url"},
 }
 
 func TestInvalidFixtures(t *testing.T) {

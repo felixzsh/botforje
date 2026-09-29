@@ -134,6 +134,24 @@ var schema = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS outbox_pending
 		ON outbox (scope, bot, state, id)`,
+	`CREATE TABLE IF NOT EXISTS webhook_deliveries (
+		id           INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_id     TEXT NOT NULL,
+		delivery_id  TEXT NOT NULL,
+		url          TEXT NOT NULL,
+		event        TEXT NOT NULL,
+		scope        TEXT NOT NULL,
+		payload      TEXT NOT NULL,
+		state        TEXT NOT NULL DEFAULT 'pending',
+		attempts     INTEGER NOT NULL DEFAULT 0,
+		next_attempt TEXT NOT NULL DEFAULT '',
+		error        TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL,
+		updated_at   TEXT NOT NULL,
+		UNIQUE (event_id, url)
+	)`,
+	`CREATE INDEX IF NOT EXISTS webhook_pending
+		ON webhook_deliveries (state, next_attempt, id)`,
 }
 
 // schemaAfterColumns runs after the ALTERs that bring an existing database up
@@ -196,6 +214,9 @@ func (d *DB) Outbox() *stores.OutboxStore { return stores.NewOutboxStore(d.DB) }
 
 // Sends commits an API-origin outbound message outside a turn (ADR 0044).
 func (d *DB) Sends() *stores.SendStore { return stores.NewSendStore(d.DB) }
+
+// Webhooks is the durable outbound webhook queue (ADR 0045).
+func (d *DB) Webhooks() *stores.WebhookStore { return stores.NewWebhookStore(d.DB) }
 
 func (d *DB) LinkedAccounts() *stores.LinkedAccountStore {
 	return stores.NewLinkedAccountStore(d.DB)

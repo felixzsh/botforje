@@ -26,6 +26,15 @@ rate_limit:                        # API budgets per fixed minute
 # Restart to apply.
 exclusive_scopes: false
 
+# Outbound webhooks (optional). Each target receives signed POSTs for the
+# events it subscribes to; only `sender.first_seen` exists today. The secret
+# signs the raw body with HMAC-SHA256 (X-Botflota-Signature) and is resolved
+# from the environment. Changing this list requires a restart.
+webhooks:
+  - url: "https://example.com/botflota/events"
+    secret: "${BOTFLOTA_WEBHOOK_SECRET}"
+    events: ["sender.first_seen"]
+
 
 # Multi-file organization: every file uses the `scopes` shape, and
 # several files may contribute to the same scope under the same rules as one.

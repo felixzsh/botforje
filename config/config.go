@@ -30,6 +30,16 @@ type RateBudgets struct {
 	FailedPerMinute     int
 }
 
+// WebhookSettings is one instance-level webhook target: where deliveries go,
+// the secret their bodies are signed with, and the events it subscribes to.
+// Only the main config file declares it, and changing it requires a restart
+// like every other instance setting.
+type WebhookSettings struct {
+	URL    string      `yaml:"url" json:"url"`
+	Secret spec.Secret `yaml:"secret" json:"secret"`
+	Events []string    `yaml:"events" json:"events"`
+}
+
 // Config is the root document: instance settings plus the scopes it runs.
 type Config struct {
 	Schema         string `yaml:"$schema" json:"$schema,omitempty"`
@@ -52,9 +62,12 @@ type Config struct {
 	// tokens, so a scope belongs to at most one active token. The default
 	// false lets any number of tokens share a scope; the owner token covers
 	// every scope either way. Changing it requires a restart.
-	ExclusiveScopes bool                  `yaml:"exclusive_scopes" json:"exclusive_scopes,omitempty"`
-	Include         []string              `yaml:"include" json:"include,omitempty"`
-	Scopes          map[string]spec.Scope `yaml:"scopes" json:"scopes"`
+	ExclusiveScopes bool `yaml:"exclusive_scopes" json:"exclusive_scopes,omitempty"`
+	// Webhooks are the outbound event deliveries this instance sends; see
+	// WebhookSettings.
+	Webhooks []WebhookSettings     `yaml:"webhooks" json:"webhooks,omitempty"`
+	Include  []string              `yaml:"include" json:"include,omitempty"`
+	Scopes   map[string]spec.Scope `yaml:"scopes" json:"scopes"`
 
 	origin     map[string]string `yaml:"-" json:"-"`
 	source     string            `yaml:"-" json:"-"`

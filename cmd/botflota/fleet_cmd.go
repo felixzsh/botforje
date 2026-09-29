@@ -20,6 +20,7 @@ import (
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
 	"github.com/felixzsh/botflota/spec"
+	"github.com/felixzsh/botflota/webhook"
 )
 
 type fleetRunCmd struct {
@@ -126,6 +127,7 @@ func runFleet(args []string) int {
 		Messages: db.Messages(),
 		Turn:     db.Turns(),
 		Outbox:   db.Outbox(),
+		Notify:   webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
 		Skip: func(scope, bot string) bool {
 			return skipped[scope][bot]
 		},
@@ -166,6 +168,16 @@ func runFleet(args []string) int {
 	go func() {
 		<-ctx.Done()
 		logger.Info("shutdown requested")
+	}()
+	// Webhook deliveries stop with the process; the queue is durable, so a
+	// delivery still pending after this run is retried by the next one
+	// (ADR 0045).
+	deliveries := webhook.NewWorker(db.Webhooks(), webhook.Targets(cfg.Webhooks),
+		webhook.WorkerOptions{Log: logger})
+	deliveries.Start(ctx)
+	defer func() {
+		stop()
+		deliveries.Wait()
 	}()
 	// The watcher reads the same tree the writer replaces, so both see one
 	// document rather than two paths that could drift.
