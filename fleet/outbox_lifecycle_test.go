@@ -16,7 +16,7 @@ func TestOutboxDiscardStopsAfterTheInFlightSend(t *testing.T) {
 	seedReply(store, 2)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	sender := &recordingSender{}
+	sender := &recordingSend{}
 	cfg := workerConfig(store, func(
 		ctx context.Context, msg botflota.OutgoingMessage,
 	) (string, error) {
@@ -67,7 +67,7 @@ func TestOutboxDiscardStopsAfterTheInFlightSend(t *testing.T) {
 func TestOutboxCloseBeforeStartKeepsRepliesPending(t *testing.T) {
 	store := newStore()
 	seedReply(store, 1)
-	sender := &recordingSender{}
+	sender := &recordingSend{}
 	queue := newOutbox(workerConfig(store, sender.send))
 	queue.Close()
 	queue.Wait()

@@ -37,7 +37,7 @@ func TestRequestStepCapturesResult(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 		HTTPClient: server.Client(),
 	})
 	got := outbound(t, eng, "s", "hi")
@@ -57,10 +57,10 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	})
 	if !errors.Is(err, botflota.ErrNoLLM) {
 		t.Fatalf("error = %v, want ErrNoLLM", err)
@@ -81,7 +81,7 @@ func TestAnchoredMessageFallsBackToBody(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	got := outbound(t, eng, "s", "hi")
 	if want := []string{"Your order is confirmed."}; !slices.Equal(got, want) {
@@ -93,7 +93,7 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 	actions := map[string]spec.Action{
 		"notify": {Steps: []spec.Step{{Message: &spec.Message{
 			To:   "5215500099999",
-			Body: spec.Text{"lead from {{sender.phone}}"},
+			Body: spec.Text{"lead from {{contact.phone}}"},
 		}}}},
 	}
 	graph := spec.Graph{
@@ -103,10 +103,10 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", SenderPhone: "5215500000000", At: t0,
+		Bot: "b", FromPhone: "5215500000000", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
@@ -136,10 +136,10 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", SenderPhone: "5215500000000", At: t0,
+		Bot: "b", FromPhone: "5215500000000", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
@@ -165,10 +165,10 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "b", SenderPhone: "52155", At: t0,
+		Bot: "b", FromPhone: "52155", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "resolved empty") {
@@ -189,10 +189,10 @@ func TestLocationStep(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(),
-		botflota.IncomingMessage{SenderPhone: "s", Content: botflota.TextContent{Body: "hi"}})
+		botflota.IncomingMessage{FromPhone: "s", Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -226,10 +226,10 @@ func TestMediaContactPollSteps(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(context.Background(),
-		botflota.IncomingMessage{SenderPhone: "s", Content: botflota.TextContent{Body: "hi"}})
+		botflota.IncomingMessage{FromPhone: "s", Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -284,7 +284,7 @@ func retryEngine(t *testing.T, retry int, transport http.RoundTripper) *engine.E
 	store := newMemStore()
 	return newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 		HTTPClient: &http.Client{Transport: transport},
 	})
 }
@@ -303,7 +303,7 @@ func TestRequestRetriesThenSucceeds(t *testing.T) {
 func TestRequestFailureStopsTheRun(t *testing.T) {
 	eng := retryEngine(t, 1, &flakyTransport{fail: 5})
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	})
 	if err == nil {
 		t.Fatal("want an error when every attempt fails")

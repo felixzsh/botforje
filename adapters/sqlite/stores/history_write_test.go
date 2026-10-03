@@ -18,8 +18,8 @@ var _ = sqlite.Open
 func seedHistory(t *testing.T, db *sqlite.DB, bot string) *botflota.Chat {
 	t.Helper()
 	ctx := context.Background()
-	sender := ensureSender(t, db)
-	chat, err := db.Chats().Ensure(ctx, "support", bot, sender.ID, t0)
+	contact := ensureContact(t, db)
+	chat, err := db.Chats().Ensure(ctx, "support", bot, contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure chat: %v", err)
 	}
@@ -44,11 +44,11 @@ func seedHistory(t *testing.T, db *sqlite.DB, bot string) *botflota.Chat {
 		t0.UTC().Format(time.RFC3339Nano), t0.UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
-	if err := db.Contacts().Put(ctx, &botflota.Contact{
+	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
 		Scope: "support", Bot: bot, Phone: "5215500000000", Name: "Ana",
 		UpdatedAt: t0,
 	}); err != nil {
-		t.Fatalf("Put contact: %v", err)
+		t.Fatalf("Put address-book entry: %v", err)
 	}
 	return chat
 }
@@ -64,16 +64,16 @@ func TestDeleteBotRemovesItsHistoryAndKeepsTheScope(t *testing.T) {
 		t.Fatalf("DeleteBot: %v", err)
 	}
 	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 ||
-		counts.Contacts != 1 {
+		counts.AddressBook != 1 {
 		t.Fatalf("counts = %+v, want one of each", counts)
 	}
 
-	// The deleted bot keeps nothing; the other bot and the scope's sender do.
+	// The deleted bot keeps nothing; the other bot and the scope's contact do.
 	got := &collector{}
 	if err := db.History().ReadHistory(ctx, "support", "support-bot", got); err != nil {
 		t.Fatalf("ReadHistory: %v", err)
 	}
-	if len(got.chats)+len(got.messages)+len(got.sessions)+len(got.contacts) != 0 {
+	if len(got.chats)+len(got.messages)+len(got.sessions)+len(got.addressBook) != 0 {
 		t.Fatalf("deleted bot still holds history: %+v", got)
 	}
 	kept := &collector{}
@@ -83,9 +83,9 @@ func TestDeleteBotRemovesItsHistoryAndKeepsTheScope(t *testing.T) {
 	if len(kept.chats) != 1 || len(kept.messages) != 1 {
 		t.Fatalf("the other bot lost history: %+v", kept)
 	}
-	// The scope's sender is shared by its bots and must survive.
-	if _, err := db.Senders().Get(ctx, "support", "5215500000000"); err != nil {
-		t.Fatalf("the scope's sender was removed: %v", err)
+	// The scope's contact identity is shared by its bots and must survive.
+	if _, err := db.Contacts().Get(ctx, "support", "5215500000000"); err != nil {
+		t.Fatalf("the scope's contact was removed: %v", err)
 	}
 	// The queued reply went with its message.
 	if depth, err := db.Outbox().Depth(ctx, "support", "support-bot"); err != nil || depth != 0 {
@@ -107,11 +107,11 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := seedHistory(t, db, "lost-bot")
 	// The destination is a fresh bot of the same scope.
-	if err := db.Contacts().Put(ctx, &botflota.Contact{
+	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
 		Scope: "support", Bot: "new-bot", Phone: "5215599999999",
 		Name: "Luis", UpdatedAt: t0,
 	}); err != nil {
-		t.Fatalf("Put destination contact: %v", err)
+		t.Fatalf("Put destination address-book entry: %v", err)
 	}
 
 	counts, err := db.History().MoveBot(ctx, "support", "lost-bot", "new-bot", t2)
@@ -143,16 +143,17 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 		t.Fatalf("session expires at %v, want it expired at %v",
 			moved.sessions[0].ExpiresAt, t2)
 	}
-	// Contacts arrive, and the destination's own row for another phone stays.
-	if len(moved.contacts) != 2 {
-		t.Fatalf("contacts = %+v, want both", moved.contacts)
+	// Address-book entries arrive, and the destination's own row for another
+	// phone stays.
+	if len(moved.addressBook) != 2 {
+		t.Fatalf("address book = %+v, want both", moved.addressBook)
 	}
 	// The source is empty and its queue is gone, never carried over.
 	source := &collector{}
 	if err := db.History().ReadHistory(ctx, "support", "lost-bot", source); err != nil {
 		t.Fatalf("ReadHistory source: %v", err)
 	}
-	if len(source.chats) != 0 || len(source.contacts) != 0 {
+	if len(source.chats) != 0 || len(source.addressBook) != 0 {
 		t.Fatalf("the source kept history: %+v", source)
 	}
 	if depth, err := db.Outbox().Depth(ctx, "support", "lost-bot"); err != nil || depth != 0 {

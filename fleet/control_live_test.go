@@ -16,13 +16,13 @@ func queuedReplyIDFor(
 	t.Helper()
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	sender, ok := store.senders[senderKey(scope, phone)]
+	sender, ok := store.contacts[contactKey(scope, phone)]
 	if !ok {
 		t.Fatalf("no sender stored for %s", phone)
 	}
 	var chatID int64
 	for _, chat := range store.chats {
-		if chat.Scope == scope && chat.Bot == bot && chat.SenderID == sender.ID {
+		if chat.Scope == scope && chat.Bot == bot && chat.ContactID == sender.ID {
 			chatID = chat.ID
 		}
 	}
@@ -59,7 +59,7 @@ func TestSetChatHumanCancelsOnlyThatChatsQueue(t *testing.T) {
 
 	for _, sender := range []string{"held", "other"} {
 		alpha.incoming <- botflota.IncomingMessage{
-			Bot: "alpha", SenderPhone: sender,
+			Bot: "alpha", FromPhone: sender,
 			Content: botflota.TextContent{Body: "hi"},
 		}
 	}
@@ -169,7 +169,7 @@ func TestHandingOverFailsAReplyAlreadyInFlight(t *testing.T) {
 	alpha := channels["alpha"]
 
 	alpha.incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "held",
+		Bot: "alpha", FromPhone: "held",
 		Content: botflota.TextContent{Body: "hi"},
 	}
 	<-alpha.entered

@@ -76,7 +76,7 @@ func TestPrintMessagesUsesTheNewestPage(t *testing.T) {
 		t.Fatalf("output = %q, want the provenance columns", text)
 	}
 	raw := page.lastQuery(t)
-	for _, want := range []string{"bot=demo", "sender=52155", "limit=50"} {
+	for _, want := range []string{"bot=demo", "contact=52155", "limit=50"} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("query %q is missing %q", raw, want)
 		}

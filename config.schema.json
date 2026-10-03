@@ -80,13 +80,13 @@
         "ignore_groups": {
           "type": "boolean"
         },
-        "allowed_senders": {
+        "allowed_contacts": {
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "ignored_senders": {
+        "ignored_contacts": {
           "items": {
             "type": "string"
           },
@@ -221,7 +221,7 @@
       "required": [
         "duration"
       ],
-      "description": "Cooldown blocks the same sender for `duration` seconds, then runs the `on_blocked` steps."
+      "description": "Cooldown blocks the same contact for `duration` seconds, then runs the `on_blocked` steps."
     },
     "Edge": {
       "properties": {
@@ -520,7 +520,7 @@
         "limit",
         "window"
       ],
-      "description": "RateLimit allows at most `limit` runs per sender in `window` seconds and runs the `on_blocked` steps when the sender exceeds it."
+      "description": "RateLimit allows at most `limit` runs per contact in `window` seconds and runs the `on_blocked` steps when the contact exceeds it."
     },
     "RateLimitSettings": {
       "properties": {

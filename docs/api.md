@@ -173,7 +173,7 @@ that bot.
 
 A chat is handed to a human in two ways, both per chat: an external reply from
 the linked account starts an automatic pause, and `PUT
-/api/v1/scopes/{scope}/chats/control?bot=&sender=` with `{"mode":"human"}` holds
+/api/v1/scopes/{scope}/chats/control?bot=&contact=` with `{"mode":"human"}` holds
 it until `{"mode":"auto"}` releases it (ADR 0043). Taking the hold cancels the
 automatic replies still queued for that chat; the bot's other chats are
 untouched. The pause length is the bot's `settings.external_reply_pause`, not a
@@ -193,7 +193,7 @@ process restart must say so explicitly.
 An integration can ask a bot to message any phone of its scope, even one that
 never wrote first: `POST /api/v1/scopes/{scope}/messages` with
 `{"bot":"...","to":"5215594251984","body":"...","kind":"text"}` stores and
-queues the message — creating the sender profile and the chat when missing —
+queues the message — creating the contact identity and the chat when missing —
 and answers `202 {"id":123,"status":"queued"}` (ADR 0044). Only `text` is
 accepted today. `client_id` is optional; repeating one already accepted
 answers `409` with code `duplicate` and the accepted message's `id` beside the
@@ -203,29 +203,29 @@ reply. The send does not read or change a chat's control (`auto`, `paused`,
 `human`): it is delivered while a chat is held, and the channel's echo
 correlation keeps it from starting a pause (ADR 0043).
 
-### Sender reads
+### Contact reads
 
-`GET /api/v1/scopes/{scope}/senders` lists the scope's sender profiles newest
-activity first; `since` (unix milliseconds) keeps profiles whose `first_seen`
-is at or after it, and an opaque `cursor` pages the list, with `next_cursor`
-absent on the last page (ADR 0044). Each entry is `{phone, display_name,
-first_seen, last_seen}`. `GET .../senders/{phone}` answers one profile or 404.
-Senders belong to the scope, not to a bot (ADR 0029), so the route names no
-bot; `GET .../bots/{bot}` reads one bot's view or 404.
+`GET /api/v1/scopes/{scope}/contacts` lists the scope's contact identities
+newest activity first; `since` (unix milliseconds) keeps identities whose
+`first_seen` is at or after it, and an opaque `cursor` pages the list, with
+`next_cursor` absent on the last page (ADR 0044). Each entry is `{phone,
+display_name, first_seen, last_seen}`. `GET .../contacts/{phone}` answers one
+identity or 404. Contacts belong to the scope, not to a bot (ADR 0029), so the
+route names no bot; `GET .../bots/{bot}` reads one bot's view or 404, and
+`GET .../bots/{bot}/contacts` reads that bot's imported address book (ADR 0037).
 
 ### Webhooks
 
 The instance can push events to an external system: `webhooks` in the main
 config file lists `url`, `secret` (an environment reference), and the `events`
-a target subscribes to (ADR 0045). Only `sender.first_seen` exists today; it
-fires once per phone per scope when an allowed inbound creates the profile,
-never on an import, an operator reply, or an API send. Delivery is a signed
-`POST`:
+a target subscribes to (ADR 0045). Only `contact.first_seen` exists today; it
+fires once per phone per scope on the first allowed inbound, never on an
+import, an operator reply, or an API send. Delivery is a signed `POST`:
 
-    { "id": "<uuid>", "event": "sender.first_seen",
+    { "id": "<uuid>", "event": "contact.first_seen",
       "occurred_at": "2026-09-28T20:24:20Z", "scope": "support",
       "data": { "bot": "assistant",
-                "sender": { "phone": "5215599999999", "display_name": "Ana" },
+                "contact": { "phone": "5215599999999", "display_name": "Ana" },
                 "first_seen": "2026-09-28T20:24:20Z" } }
 
 with `X-Botflota-Event`, `X-Botflota-Delivery` (stable across retries), and

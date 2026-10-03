@@ -30,12 +30,18 @@ func (h *HistoryImporter) importCallLogs(
 			continue
 		}
 		name := h.pushNames[phone]
-		sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, at)
+		contact, err := h.contacts.EnsureContact(ctx, h.scope, phone, at)
 		if err != nil {
-			h.log.Warn("import history call sender", "phone", phone, "error", err)
+			h.log.Warn("import history call contact", "phone", phone, "error", err)
 			continue
 		}
-		chat, err := h.chats.Ensure(ctx, h.scope, h.bot, sender.ID, at)
+		if name != "" {
+			if err := h.contacts.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
+				h.log.Warn("import history call name", "phone", phone, "error", err)
+				continue
+			}
+		}
+		chat, err := h.chats.Ensure(ctx, h.scope, h.bot, contact.ID, at)
 		if err != nil {
 			h.log.Warn("import history call chat", "phone", phone, "error", err)
 			continue

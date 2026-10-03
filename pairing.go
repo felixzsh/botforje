@@ -26,14 +26,14 @@ type PairRequest struct {
 // session instead of a log (ADR 0038); only the phone travels, never the JID
 // (ADR 0020).
 type PairingResult struct {
-	Phone     string
-	Chunks    int
-	Chats     int
-	Messages  int
-	Duplicate int
-	Skipped   int
-	Contacts  int
-	Elapsed   time.Duration
+	Phone       string
+	Chunks      int
+	Chats       int
+	Messages    int
+	Duplicate   int
+	Skipped     int
+	AddressBook int
+	Elapsed     time.Duration
 }
 
 // PairingSession is one bot's live pairing session, read until Final

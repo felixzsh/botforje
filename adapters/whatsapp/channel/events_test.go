@@ -28,11 +28,11 @@ func TestOnMessageMapsAndDedups(t *testing.T) {
 			botflota.ContentText(message.Content) != "hello" {
 			t.Fatalf("message = %#v", message)
 		}
-		if message.SenderPhone != "5215500000000" {
-			t.Fatalf("sender = %q, want the plain phone number", message.SenderPhone)
+		if message.FromPhone != "5215500000000" {
+			t.Fatalf("sender = %q, want the plain phone number", message.FromPhone)
 		}
-		if message.SenderDisplayName != "Ana" {
-			t.Fatalf("sender name = %q, want the push name", message.SenderDisplayName)
+		if message.FromName != "Ana" {
+			t.Fatalf("sender name = %q, want the push name", message.FromName)
 		}
 	default:
 		t.Fatal("no message was delivered")

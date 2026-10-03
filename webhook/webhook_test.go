@@ -159,15 +159,15 @@ func TestSinkQueuesOneDeliveryPerSubscribedTarget(t *testing.T) {
 	queue := &memQueue{}
 	sink := NewSink(queue, []Target{
 		{URL: "https://a.test/hook", Secret: spec.NewSecret("s1"),
-			Events: []string{botflota.EventSenderFirstSeen}},
+			Events: []string{botflota.EventContactFirstSeen}},
 		{URL: "https://b.test/hook", Secret: spec.NewSecret("s2"),
 			Events: []string{"other.event"}},
 		{URL: "https://c.test/hook", Secret: spec.NewSecret("s3"),
-			Events: []string{botflota.EventSenderFirstSeen}},
+			Events: []string{botflota.EventContactFirstSeen}},
 	})
 	event := botflota.FirstContact{
 		Scope: "bardo", Bot: "bardo",
-		Sender: botflota.Sender{
+		Contact: botflota.Contact{
 			Phone: "5218994251984", DisplayName: "Ana", FirstSeen: t0,
 		},
 		At: t0,
@@ -184,7 +184,7 @@ func TestSinkQueuesOneDeliveryPerSubscribedTarget(t *testing.T) {
 	if err := json.Unmarshal(stored[0].delivery.Payload, &envelope); err != nil {
 		t.Fatalf("decode envelope: %v", err)
 	}
-	if envelope["id"] == "" || envelope["event"] != botflota.EventSenderFirstSeen ||
+	if envelope["id"] == "" || envelope["event"] != botflota.EventContactFirstSeen ||
 		envelope["scope"] != "bardo" ||
 		envelope["occurred_at"] != "2026-09-28T10:00:00Z" {
 		t.Fatalf("envelope = %#v", envelope)
@@ -194,9 +194,9 @@ func TestSinkQueuesOneDeliveryPerSubscribedTarget(t *testing.T) {
 		data["first_seen"] != "2026-09-28T10:00:00Z" {
 		t.Fatalf("data = %#v", envelope["data"])
 	}
-	sender, ok := data["sender"].(map[string]any)
-	if !ok || sender["phone"] != "5218994251984" || sender["display_name"] != "Ana" {
-		t.Fatalf("sender = %#v", data["sender"])
+	contact, ok := data["contact"].(map[string]any)
+	if !ok || contact["phone"] != "5218994251984" || contact["display_name"] != "Ana" {
+		t.Fatalf("contact = %#v", data["contact"])
 	}
 	if stored[0].delivery.EventID != stored[1].delivery.EventID {
 		t.Fatalf("event ids differ: %q vs %q",
@@ -237,8 +237,8 @@ func TestWorkerSignsRetriesAndDelivers(t *testing.T) {
 	queue := &memQueue{}
 	delivery := botflota.WebhookDelivery{
 		EventID: "event-1", DeliveryID: "delivery-1", URL: server.URL,
-		Event: botflota.EventSenderFirstSeen, Scope: "bardo",
-		Payload: []byte(`{"id":"event-1","event":"sender.first_seen"}`),
+		Event: botflota.EventContactFirstSeen, Scope: "bardo",
+		Payload: []byte(`{"id":"event-1","event":"contact.first_seen"}`),
 	}
 	if err := queue.Enqueue(context.Background(), &delivery); err != nil {
 		t.Fatalf("Enqueue: %v", err)
@@ -291,7 +291,7 @@ func TestWorkerSignsRetriesAndDelivers(t *testing.T) {
 	if gotSignature != want {
 		t.Fatalf("signature = %q, want %q", gotSignature, want)
 	}
-	if gotEvent != "sender.first_seen" || gotDelivery != "delivery-1" {
+	if gotEvent != "contact.first_seen" || gotDelivery != "delivery-1" {
 		t.Fatalf("headers = %q/%q", gotEvent, gotDelivery)
 	}
 }
@@ -306,7 +306,7 @@ func TestWorkerGivesUpOnARejectedDelivery(t *testing.T) {
 	queue := &memQueue{}
 	delivery := botflota.WebhookDelivery{
 		EventID: "event-2", URL: server.URL,
-		Event: botflota.EventSenderFirstSeen, Scope: "bardo",
+		Event: botflota.EventContactFirstSeen, Scope: "bardo",
 		Payload: []byte(`{}`),
 	}
 	if err := queue.Enqueue(context.Background(), &delivery); err != nil {
@@ -334,7 +334,7 @@ func TestWorkerFailsADeliveryForAnUnconfiguredTarget(t *testing.T) {
 	queue := &memQueue{}
 	delivery := botflota.WebhookDelivery{
 		EventID: "event-3", URL: "https://gone.test/hook",
-		Event: botflota.EventSenderFirstSeen, Scope: "bardo",
+		Event: botflota.EventContactFirstSeen, Scope: "bardo",
 		Payload: []byte(`{}`),
 	}
 	if err := queue.Enqueue(context.Background(), &delivery); err != nil {

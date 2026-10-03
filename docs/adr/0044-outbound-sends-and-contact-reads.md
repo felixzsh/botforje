@@ -1,4 +1,4 @@
-# ADR 0044 — Outbound sends and sender reads over the API
+# ADR 0044 — Outbound sends and contact reads over the API
 
 Status: Accepted (2026-09)
 
@@ -11,9 +11,9 @@ outbound message comes from a turn: `TurnStore.CommitTurn` requires a session
 and an inbound message, and the engine writes no rows directly (ADR 0040). The
 API can hold a chat (ADR 0043) but cannot send from one.
 
-The same system needs to read a scope's sender profiles — who wrote, and when
-they were first and last seen — which the scope stores (ADR 0029) but the API
-does not serve.
+The same system needs to read a scope's contact identities — who wrote, and
+when they were first and last seen — which the scope stores (ADR 0029) but the
+API does not serve.
 
 ## Decision
 
@@ -24,7 +24,7 @@ digits (ADR 0020), and `bot` must exist in the scope's configuration. A repeat
 of an accepted `client_id` answers `409 duplicate` with the accepted message's
 `id` beside the error, so a caller that lost the response can reconcile.
 
-- A new store port commits the send as one unit: the sender profile, the chat
+- A new store port commits the send as one unit: the contact identity, the chat
   (created when missing), the stored message, its outbox row, and the chat's
   activity land in one transaction or not at all. `CommitTurn` cannot serve —
   it requires a session and an inbound message — and the engine never writes
@@ -44,16 +44,17 @@ of an accepted `client_id` answers `409 duplicate` with the accepted message's
   with their own ADR (`docs/access-policy.md`), that admission consults them.
   Until then there are no configured ceilings to respect.
 
-**Senders are read scope-level.** `GET /api/v1/scopes/{scope}/senders` lists
-the scope's profiles newest activity first, with `since` (unix milliseconds)
-filtering on `first_seen`, an opaque keyset cursor, and `next_cursor` absent on
-the last page; `GET .../senders/{phone}` answers one profile or 404. This is
+**Contact identities are read scope-level.** `GET
+/api/v1/scopes/{scope}/contacts` lists the scope's identities newest activity
+first, with `since` (unix milliseconds) filtering on `first_seen`, an opaque
+keyset cursor, and `next_cursor` absent on the last page; `GET
+.../contacts/{phone}` answers one identity or 404. This is
 the API's first cursor-paginated read; ROADMAP Phase 10 generalizes the
 convention rather than replacing it.
 
 ## Consequences
 
-- A host can notify a number that never wrote: the sender and the chat are
+- A host can notify a number that never wrote: the contact and the chat are
   created by the same transaction that stores the message, and the read API
   can then list the person.
 - The API exposes the message id, so a caller can follow delivery through the

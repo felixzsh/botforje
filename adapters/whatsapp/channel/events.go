@@ -55,24 +55,24 @@ func (a *Adapter) onMessage(event *events.Message) {
 		a.onOwnMessage(event, id, content)
 		return
 	}
-	pn, ok := resolveSender(event.Info, a.lookupPN)
+	pn, ok := resolveFrom(event.Info, a.lookupPN)
 	if !ok {
-		a.log.Warn("dropping message: sender has no known phone number")
+		a.log.Warn("dropping message: contact has no known phone number")
 		return
 	}
-	sender := pn.User
+	from := pn.User
 	chat := event.Info.Chat
 
 	a.mu.Lock()
-	a.last[sender] = lastInbound{
-		id: event.Info.ID, chat: chat, sender: event.Info.Sender,
+	a.last[from] = lastInbound{
+		id: event.Info.ID, chat: chat, from: event.Info.Sender,
 	}
 	a.mu.Unlock()
 
 	message := botflota.IncomingMessage{
 		Bot:               a.bot,
-		SenderPhone:       sender,
-		SenderDisplayName: event.Info.PushName,
+		FromPhone:         from,
+		FromName:          event.Info.PushName,
 		Content:           content,
 		ProviderMessageID: id,
 		IsGroup:           event.Info.IsGroup,
@@ -84,7 +84,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	select {
 	case a.incoming <- message:
 	case <-a.stop:
-		a.log.Debug("message not delivered; adapter stopped", "sender", sender)
+		a.log.Debug("message not delivered; adapter stopped", "contact", from)
 	}
 }
 
@@ -123,7 +123,7 @@ func (a *Adapter) onOwnMessage(
 	case a.outbound <- message:
 	case <-a.stop:
 		a.log.Debug("own message not delivered; adapter stopped",
-			"sender", pn.User)
+			"contact", pn.User)
 	}
 }
 
@@ -140,19 +140,19 @@ func (a *Adapter) onHistory(event *events.HistorySync) {
 }
 
 func (a *Adapter) onContact(raw any) {
-	if a.contacts == nil {
+	if a.addressBook == nil {
 		return
 	}
-	a.contacts.Handle(context.Background(), raw)
+	a.addressBook.Handle(context.Background(), raw)
 }
 
 // onceConnected copies the cached address book once per adapter: a reconnect
 // whose snapshot was applied silently would otherwise never reach the store.
 func (a *Adapter) onceConnected() {
-	if a.contacts == nil {
+	if a.addressBook == nil {
 		return
 	}
-	a.contactsOnce.Do(func() { go a.importAllContacts() })
+	a.addressBookOnce.Do(func() { go a.importAllContacts() })
 }
 
 // importAllContacts runs off the event loop because the book can hold
@@ -164,7 +164,7 @@ func (a *Adapter) importAllContacts() {
 	if client == nil || client.Store == nil {
 		return
 	}
-	a.contacts.ImportCached(context.Background(), client.Store.Contacts)
+	a.addressBook.ImportCached(context.Background(), client.Store.Contacts)
 }
 
 // importHistory drains the queued sync chunks until the adapter stops. It is

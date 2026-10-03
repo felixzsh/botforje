@@ -41,15 +41,15 @@ var ErrBotNotRunning = errors.New("bot is not running")
 // read that owns it (ADR 0044).
 var ErrInvalidCursor = errors.New("invalid cursor")
 
-// IncomingMessage is one inbound message. SenderPhone is the resolved phone
+// IncomingMessage is one inbound message. FromPhone is the resolved phone
 // number in plain digits; the JID and any LID stay inside the channel adapter
-// (ADR 0020). SenderDisplayName is a best-effort push name, never an
-// identifier (ADR 0029). ProviderMessageID is the channel's id, stored for
-// dedup against a later history sync (ADR 0026).
+// (ADR 0020). FromName is a best-effort push name, never an identifier
+// (ADR 0029). ProviderMessageID is the channel's id, stored for dedup against
+// a later history sync (ADR 0026).
 type IncomingMessage struct {
 	Bot               string
-	SenderPhone       string
-	SenderDisplayName string
+	FromPhone         string
+	FromName          string
 	Content           MessageContent
 	ProviderMessageID string
 	IsGroup           bool

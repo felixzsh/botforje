@@ -229,17 +229,17 @@ func (f *fakeAccessTokens) Revoke(_ context.Context, id int64, at time.Time) err
 	return botflota.ErrNotFound
 }
 
-type fakeContacts struct{ contacts []botflota.Contact }
+type fakeAddressBook struct{ entries []botflota.AddressBookEntry }
 
-func (f fakeContacts) Put(context.Context, *botflota.Contact) error { return nil }
+func (f fakeAddressBook) Put(context.Context, *botflota.AddressBookEntry) error { return nil }
 
-func (f fakeContacts) List(
+func (f fakeAddressBook) List(
 	_ context.Context, scope, bot string, limit int,
-) ([]botflota.Contact, error) {
-	out := make([]botflota.Contact, 0, len(f.contacts))
-	for _, contact := range f.contacts {
-		if contact.Scope == scope && contact.Bot == bot {
-			out = append(out, contact)
+) ([]botflota.AddressBookEntry, error) {
+	out := make([]botflota.AddressBookEntry, 0, len(f.entries))
+	for _, entry := range f.entries {
+		if entry.Scope == scope && entry.Bot == bot {
+			out = append(out, entry)
 		}
 	}
 	if limit > 0 && len(out) > limit {
@@ -248,41 +248,47 @@ func (f fakeContacts) List(
 	return out, nil
 }
 
-// fakeSenders serves the scope's profiles and records the last list read, so
-// a test can assert the query parameters reached the store.
-type fakeSenders struct {
-	senders    map[string]botflota.Sender
-	listPage   botflota.SenderPage
+// fakeContacts serves the scope's identities and records the last list read,
+// so a test can assert the query parameters reached the store.
+type fakeContacts struct {
+	contacts   map[string]botflota.Contact
+	listPage   botflota.ContactPage
 	listErr    error
 	lastSince  time.Time
 	lastLimit  int
 	lastCursor string
 }
 
-func (f fakeSenders) Get(_ context.Context, scope, phone string) (*botflota.Sender, error) {
-	sender, ok := f.senders[scope+"/"+phone]
+func (f fakeContacts) Get(_ context.Context, scope, phone string) (*botflota.Contact, error) {
+	contact, ok := f.contacts[scope+"/"+phone]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
-	return &sender, nil
+	return &contact, nil
 }
 
-func (f fakeSenders) Upsert(
+func (f fakeContacts) EnsureContact(
+	context.Context, string, string, time.Time,
+) (*botflota.Contact, error) {
+	return nil, nil
+}
+
+func (f fakeContacts) RecordInbound(
 	context.Context, string, string, string, time.Time,
-) (*botflota.Sender, bool, error) {
+) (*botflota.Contact, bool, error) {
 	return nil, false, nil
 }
 
-func (f fakeSenders) SetDisplayName(context.Context, string, string, string, time.Time) error {
+func (f fakeContacts) SetDisplayName(context.Context, string, string, string, time.Time) error {
 	return nil
 }
 
-func (f *fakeSenders) List(
+func (f *fakeContacts) List(
 	_ context.Context, _ string, since time.Time, limit int, cursor string,
-) (botflota.SenderPage, error) {
+) (botflota.ContactPage, error) {
 	f.lastSince, f.lastLimit, f.lastCursor = since, limit, cursor
 	if f.listErr != nil {
-		return botflota.SenderPage{}, f.listErr
+		return botflota.ContactPage{}, f.listErr
 	}
 	return f.listPage, nil
 }
@@ -297,11 +303,11 @@ func (f fakeChats) Ensure(
 	return nil, nil
 }
 
-func (f fakeChats) ForSender(
-	_ context.Context, scope, bot string, senderID int64,
+func (f fakeChats) ForContact(
+	_ context.Context, scope, bot string, contactID int64,
 ) (*botflota.Chat, error) {
 	for _, summary := range f.chats {
-		if summary.Scope == scope && summary.Bot == bot && summary.SenderID == senderID {
+		if summary.Scope == scope && summary.Bot == bot && summary.ContactID == contactID {
 			chat := summary.Chat
 			return &chat, nil
 		}
@@ -520,23 +526,23 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 		},
 		changed: map[string]time.Time{"support/demo": testTime},
 	}
-	sender := botflota.Sender{
+	contact := botflota.Contact{
 		ID: 7, Scope: "support", Phone: "5215500000000", DisplayName: "Ana",
 	}
 	chat := botflota.ChatSummary{
 		Chat: botflota.Chat{
-			ID: 3, Scope: "support", Bot: "demo", SenderID: sender.ID,
+			ID: 3, Scope: "support", Bot: "demo", ContactID: contact.ID,
 			StartedAt: testTime, UpdatedAt: testTime, MessageCount: 2,
 		},
-		Phone: sender.Phone, DisplayName: sender.DisplayName,
+		Phone: contact.Phone, DisplayName: contact.DisplayName,
 		Messages: 5, Sync: 3, Live: 2,
 	}
-	quiet := botflota.Sender{
+	quiet := botflota.Contact{
 		ID: 8, Scope: "support", Phone: "5215599999999", DisplayName: "Luis",
 	}
 	quietChat := botflota.ChatSummary{
 		Chat: botflota.Chat{
-			ID: 4, Scope: "support", Bot: "demo", SenderID: quiet.ID,
+			ID: 4, Scope: "support", Bot: "demo", ContactID: quiet.ID,
 			StartedAt: testTime, UpdatedAt: testTime,
 		},
 		Phone: quiet.Phone, DisplayName: quiet.DisplayName,
@@ -564,11 +570,11 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 		Fleet:    live,
 		Accounts: &accounts,
 		Pairings: pairings,
-		Senders: &fakeSenders{senders: map[string]botflota.Sender{
-			"support/" + sender.Phone: sender,
-			"support/" + quiet.Phone:  quiet,
+		Contacts: &fakeContacts{contacts: map[string]botflota.Contact{
+			"support/" + contact.Phone: contact,
+			"support/" + quiet.Phone:   quiet,
 		}},
-		Contacts: fakeContacts{contacts: []botflota.Contact{
+		AddressBook: fakeAddressBook{entries: []botflota.AddressBookEntry{
 			{
 				Scope: "support", Bot: "demo", Phone: "5215500000001",
 				Name: "Ana", UpdatedAt: testTime,

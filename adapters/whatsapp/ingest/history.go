@@ -22,7 +22,7 @@ import (
 type HistoryImporter struct {
 	scope     string
 	bot       string
-	senders   botflota.SenderStore
+	contacts  botflota.ContactStore
 	chats     botflota.ChatStore
 	messages  botflota.MessageStore
 	lookup    PNLookup
@@ -43,17 +43,17 @@ type HistoryImporter struct {
 // treat the import as disabled.
 func NewHistory(
 	scope, bot string,
-	senders botflota.SenderStore, chats botflota.ChatStore,
+	contacts botflota.ContactStore, chats botflota.ChatStore,
 	messages botflota.MessageStore, lookup PNLookup, log *slog.Logger,
 ) *HistoryImporter {
-	if senders == nil || chats == nil || messages == nil {
+	if contacts == nil || chats == nil || messages == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
 	return &HistoryImporter{
-		scope: scope, bot: bot, senders: senders, chats: chats,
+		scope: scope, bot: bot, contacts: contacts, chats: chats,
 		messages: messages, lookup: lookup, log: log, now: time.Now,
 		pushNames: map[string]string{},
 	}
@@ -184,8 +184,8 @@ func addTotals(a, b ImportTotals) ImportTotals {
 }
 
 // importPushNames applies the contact names WhatsApp sends in its own chunk.
-// It only names senders Botflota already knows; a name for a contact that
-// never wrote is remembered for a sender created by a later chunk.
+// It only names identities Botflota already knows; a name for a contact that
+// never wrote is remembered for an identity created by a later chunk.
 func (h *HistoryImporter) importPushNames(
 	ctx context.Context, names []*waHistorySync.Pushname, stats *ImportTotals,
 ) {
@@ -202,7 +202,7 @@ func (h *HistoryImporter) importPushNames(
 		}
 		h.pushNames[phone] = name
 		stats.PushNames++
-		if err := h.senders.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
+		if err := h.contacts.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
 			h.log.Warn("import history push name", "error", err)
 		}
 	}
@@ -210,7 +210,7 @@ func (h *HistoryImporter) importPushNames(
 
 // importConversation stores the content messages and call attempts of one
 // conversation, oldest first, and widens the chat's activity to cover them. It
-// registers its sender and chat only when it stored at least one message or
+// registers its contact and chat only when it stored at least one message or
 // call: WhatsApp sends a control-only shell for every number the account's
 // address book knows (ADR 0035).
 func (h *HistoryImporter) importConversation(
@@ -255,7 +255,7 @@ func (h *HistoryImporter) importConversation(
 		records = append(records, record)
 	}
 	// A conversation whose entries are all control traffic registers nothing:
-	// no sender, no chat, no row.
+	// no contact, no chat, no row.
 	if len(records) == 0 {
 		return 0, 0, skipped, received, nil
 	}
@@ -269,11 +269,16 @@ func (h *HistoryImporter) importConversation(
 	if ensureAt.IsZero() {
 		ensureAt = h.now().UTC()
 	}
-	sender, _, err := h.senders.Upsert(ctx, h.scope, phone, name, ensureAt)
+	contact, err := h.contacts.EnsureContact(ctx, h.scope, phone, ensureAt)
 	if err != nil {
-		return 0, 0, skipped, received, fmt.Errorf("sender %s: %w", phone, err)
+		return 0, 0, skipped, received, fmt.Errorf("contact %s: %w", phone, err)
 	}
-	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, sender.ID, ensureAt)
+	if name != "" {
+		if err := h.contacts.SetDisplayName(ctx, h.scope, phone, name, ensureAt); err != nil {
+			return 0, 0, skipped, received, fmt.Errorf("contact name %s: %w", phone, err)
+		}
+	}
+	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, contact.ID, ensureAt)
 	if err != nil {
 		return 0, 0, skipped, received, fmt.Errorf("chat %s: %w", phone, err)
 	}

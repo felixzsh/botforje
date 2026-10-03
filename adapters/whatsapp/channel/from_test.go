@@ -8,7 +8,7 @@ import (
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
-func TestResolveSender(t *testing.T) {
+func TestResolveFrom(t *testing.T) {
 	pn := types.NewJID("5215500000000", types.DefaultUserServer)
 	lid := types.NewJID("212150010273830", types.HiddenUserServer)
 	found := func(types.JID) (types.JID, bool) { return pn, true }
@@ -39,9 +39,9 @@ func TestResolveSender(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := resolveSender(tc.info, tc.lookup)
+			got, ok := resolveFrom(tc.info, tc.lookup)
 			if got != tc.want || ok != tc.ok {
-				t.Fatalf("resolveSender = (%s, %v), want (%s, %v)", got, ok, tc.want, tc.ok)
+				t.Fatalf("resolveFrom = (%s, %v), want (%s, %v)", got, ok, tc.want, tc.ok)
 			}
 		})
 	}

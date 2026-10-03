@@ -42,11 +42,11 @@ func (c *chatsServer) lastQuery(t *testing.T) string {
 
 const twoChats = `{"chats":[
 	{"id":3,"scope":"support","bot":"demo",
-	 "sender":{"phone":"5215500000000","name":"Ana"},
+	 "contact":{"phone":"5215500000000","name":"Ana"},
 	 "started_at":"2026-09-13T10:00:00Z","updated_at":"2026-09-13T10:05:00Z",
 	 "messages":5,"sync":3,"live":2},
 	{"id":1,"scope":"support","bot":"demo",
-	 "sender":{"phone":"5215500000001","name":""},
+	 "contact":{"phone":"5215500000001","name":""},
 	 "started_at":"2026-09-12T09:00:00Z","updated_at":"2026-09-12T09:00:00Z",
 	 "messages":0,"sync":0,"live":0}
 ]}`
@@ -110,15 +110,15 @@ func TestChatsQueryPath(t *testing.T) {
 // bulk walk must skip it.
 const chatsWithBlankPhone = `{"chats":[
 	{"id":3,"scope":"support","bot":"demo",
-	 "sender":{"phone":"5215500000000","name":"Ana"},
+	 "contact":{"phone":"5215500000000","name":"Ana"},
 	 "started_at":"2026-09-13T10:00:00Z","updated_at":"2026-09-13T10:05:00Z",
 	 "messages":5,"sync":3,"live":2},
 	{"id":2,"scope":"support","bot":"demo",
-	 "sender":{"phone":"","name":"no phone"},
+	 "contact":{"phone":"","name":"no phone"},
 	 "started_at":"2026-09-13T09:00:00Z","updated_at":"2026-09-13T09:00:00Z",
 	 "messages":0,"sync":0,"live":0},
 	{"id":1,"scope":"support","bot":"demo",
-	 "sender":{"phone":"5215500000001","name":""},
+	 "contact":{"phone":"5215500000001","name":""},
 	 "started_at":"2026-09-12T09:00:00Z","updated_at":"2026-09-12T09:00:00Z",
 	 "messages":0,"sync":0,"live":0}
 ]}`
@@ -140,7 +140,7 @@ func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 			_, _ = w.Write([]byte(chatsWithBlankPhone))
 		case "/api/v1/scopes/support/chats/sync":
 			mu.Lock()
-			synced = append(synced, r.URL.Query().Get("sender"))
+			synced = append(synced, r.URL.Query().Get("contact"))
 			mu.Unlock()
 			_, _ = w.Write([]byte(`{"received":3,"rounds":1,"imported":2,` +
 				`"duplicate":1,"skipped":0,"stable":true}`))
@@ -187,7 +187,7 @@ func TestSyncEveryChatKeepsGoingAfterAFailure(t *testing.T) {
 		case "/api/v1/scopes/support/chats":
 			_, _ = w.Write([]byte(twoChats))
 		case "/api/v1/scopes/support/chats/sync":
-			if r.URL.Query().Get("sender") == "5215500000000" {
+			if r.URL.Query().Get("contact") == "5215500000000" {
 				w.WriteHeader(http.StatusBadGateway)
 				_, _ = w.Write([]byte(
 					`{"error":{"code":"sync_failed","message":"no answer"}}`))

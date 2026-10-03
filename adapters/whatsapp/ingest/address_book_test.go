@@ -16,7 +16,7 @@ import (
 func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewContacts("dev", "bot", db.Contacts(), nil, nil)
+	importer := NewAddressBook("dev", "bot", db.AddressBook(), nil, nil)
 	importer.Handle(ctx, &events.Contact{
 		JID: types.NewJID("5215500000000", types.DefaultUserServer),
 		Action: &waSyncAction.ContactAction{
@@ -28,7 +28,7 @@ func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 		JID:         types.NewJID("5215500000000", types.DefaultUserServer),
 		NewPushName: "anita",
 	})
-	contacts, err := db.Contacts().List(ctx, "dev", "bot", 0)
+	contacts, err := db.AddressBook().List(ctx, "dev", "bot", 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -55,9 +55,9 @@ func TestContactImporterResolvesALID(t *testing.T) {
 		}
 		return types.NewJID("5215500000000", types.DefaultUserServer), true
 	}
-	importer := NewContacts("dev", "bot", db.Contacts(), lookup, nil)
+	importer := NewAddressBook("dev", "bot", db.AddressBook(), lookup, nil)
 	importer.Handle(ctx, &events.PushName{JID: lid, NewPushName: "Ana"})
-	contacts, err := db.Contacts().List(ctx, "dev", "bot", 0)
+	contacts, err := db.AddressBook().List(ctx, "dev", "bot", 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

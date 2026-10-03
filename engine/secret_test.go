@@ -53,7 +53,7 @@ func testRun() *run {
 		engine: New(Options{}),
 		tctx:   newtemplateContext(),
 		msg: botflota.IncomingMessage{
-			SenderPhone: "5215500000000", Content: botflota.TextContent{Body: "hi"},
+			FromPhone: "5215500000000", Content: botflota.TextContent{Body: "hi"},
 		},
 	}
 }
@@ -182,7 +182,7 @@ func (h *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestRequestHeaderRevealsSecret(t *testing.T) {
 	transport := &headerTransport{}
 	r := testRun()
-	if err := r.tctx.Reset(botflota.RootSender, map[string]any{"phone": "52155"}); err != nil {
+	if err := r.tctx.Reset(botflota.RootContact, map[string]any{"phone": "52155"}); err != nil {
 		t.Fatal(err)
 	}
 	r.engine = New(Options{HTTPClient: &http.Client{Transport: transport}})
@@ -190,7 +190,7 @@ func TestRequestHeaderRevealsSecret(t *testing.T) {
 		Name: "ping", URL: "http://example.test",
 		Headers: map[string]spec.Secret{
 			"Authorization": spec.NewSecretRef("Bearer ${API_TOKEN}", "Bearer sk-live"),
-			"X-Phone":       spec.NewSecret("{{sender.phone}}"),
+			"X-Phone":       spec.NewSecret("{{contact.phone}}"),
 		},
 	})
 	if err != nil {

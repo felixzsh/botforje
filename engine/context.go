@@ -28,7 +28,7 @@ type templateContext struct {
 func newtemplateContext() *templateContext {
 	c := &templateContext{values: map[botflota.Root]map[string]any{}}
 	for _, root := range []botflota.Root{
-		botflota.RootGraph, botflota.RootNode, botflota.RootSender,
+		botflota.RootGraph, botflota.RootNode, botflota.RootContact,
 		botflota.RootMessage, botflota.RootBot, botflota.RootInput,
 	} {
 		c.values[root] = map[string]any{}

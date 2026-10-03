@@ -11,7 +11,7 @@ hosting platform:
 - Graph conversations with sessions persisted in SQLite.
 - Actions with `message`, `request`, `location`, `media`, `contact`, and `poll`
   steps; cooldown guards.
-- Filters (groups, allow/ignore senders) and a per-bot outbox with
+- Filters (groups, allow/ignore contacts) and a per-bot outbox with
   configurable delay and jitter, plus human-like presence.
 - CLI: `config` and `bot` groups, plus `fleet`.
 - REST API with token-based auth.

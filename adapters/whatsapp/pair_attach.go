@@ -72,7 +72,7 @@ func attachHistory(
 		}
 		return pn, true
 	}
-	importer := ingest.NewHistory(opts.Scope, opts.Bot, opts.Senders, opts.Chats,
+	importer := ingest.NewHistory(opts.Scope, opts.Bot, opts.Contacts, opts.Chats,
 		opts.Messages, lookup, opts.Log)
 	if importer == nil {
 		return nil, nil
@@ -96,7 +96,7 @@ func attachHistory(
 // missed (ADR 0037).
 func attachContacts(
 	ctx context.Context, client *whatsmeow.Client, opts PairOptions,
-) *ingest.ContactImporter {
+) *ingest.AddressBookImporter {
 	if !opts.ImportContacts {
 		return nil
 	}
@@ -110,7 +110,7 @@ func attachContacts(
 		}
 		return pn, true
 	}
-	importer := ingest.NewContacts(opts.Scope, opts.Bot, opts.Contacts, lookup, opts.Log)
+	importer := ingest.NewAddressBook(opts.Scope, opts.Bot, opts.AddressBook, lookup, opts.Log)
 	if importer == nil {
 		return nil
 	}

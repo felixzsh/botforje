@@ -24,14 +24,14 @@ const (
 	maxRetryDelay    = time.Minute
 )
 
-type outboxSender func(ctx context.Context, msg botflota.OutgoingMessage) (string, error)
+type outboxSend func(ctx context.Context, msg botflota.OutgoingMessage) (string, error)
 
-// Only Store, Scope, Bot, and Sender are required.
+// Only Store, Scope, Bot, and Send are required.
 type outboxConfig struct {
 	Store        botflota.OutboxStore
 	Scope        string
 	Bot          string
-	Sender       outboxSender
+	Send         outboxSend
 	Delay        time.Duration
 	Jitter       time.Duration
 	MaxPerMinute int
@@ -302,7 +302,7 @@ func (q *outbox) retryDelay(attempts int) time.Duration {
 // send is one delivery attempt; its outcome is recorded on the queue entry,
 // never only in a log (ADR 0011).
 func (q *outbox) send(entry botflota.OutboxEntry) {
-	if q.cfg.Sender == nil {
+	if q.cfg.Send == nil {
 		return
 	}
 	// A reply read before the chat was handed over may have been cancelled
@@ -324,7 +324,7 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), q.cfg.SendTimeout)
 	defer cancel()
-	providerID, err := q.cfg.Sender(ctx, msg)
+	providerID, err := q.cfg.Send(ctx, msg)
 	attempts := entry.Attempts + 1
 	if err == nil {
 		if markErr := q.cfg.Store.MarkSent(context.Background(),

@@ -121,13 +121,13 @@ dashboard and integrations are API-only and never see local files.
   by references and persisted state. Optional `display_name` is presentation
   metadata only; interfaces fall back to the key when it is absent. Changing
   a key is an identity change, not a display rename (ADR 0016).
-- Sender — the durable profile of one person who writes to bots in a scope:
-  phone, push name, and first/last seen, keyed by (scope, phone). The
-  bot-person thread is the chat; a person may write to several bots of the same
-  scope (ADR 0029).
-- Contact — an address-book entry of one bot's linked account, keyed by
+- Contact — the durable identity of one person a scope knows: phone, push
+  name, and first/last inbound, keyed by (scope, phone). The bot-person thread
+  is the chat; a person may write to several bots of the same scope
+  (ADR 0029).
+- Address-book entry — an entry of one bot's linked account, keyed by
   (scope, bot, phone) and copied only when the bot sets `import_contacts`. It
-  is an identity the account knows, never a chat or a sender, and it takes no
+  is an identity the account knows, never a chat or a contact, and it takes no
   part in routing (ADR 0037).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0030), and a map of nodes.
@@ -191,16 +191,16 @@ coordinates survive the store and the read API can serve them.
 Inbound:
 
 1. Channel receives an event, classifies it into a kind, maps it to an
-   `IncomingMessage`, and resolves the sender to a phone number; a message with
-   no known phone number, or an unclassifiable live payload, is dropped
+   `IncomingMessage`, and resolves the contact to a phone number; a message
+   with no known phone number, or an unclassifiable live payload, is dropped
    (ADR 0020, ADR 0036).
 2. The fleet routes the event to the bot; the bot's filter drops it (groups,
-   allow/ignore lists) or passes it to the engine, which upserts the sender
-   profile before routing (ADR 0029). A profile the upsert creates is the
-   first-contact hook: the engine hands it to the configured notifier, whose
-   webhook sink queues signed deliveries (ADR 0045). The dedup check in
-   step 5 reads that sender and chat first, so only a message about to run
-   writes them.
+   allow/ignore lists) or passes it to the engine, which records the inbound
+   on the contact identity before routing (ADR 0029). The write that claims
+   `first_seen` is the first-contact hook: the engine hands it to the
+   configured notifier, whose webhook sink queues signed deliveries
+   (ADR 0045). The dedup check in step 5 reads that contact and chat first, so
+   only a message about to run writes them.
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -210,7 +210,7 @@ Inbound:
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
 5. A redelivery whose provider id the chat already stores stops here, before
-   any action runs and before the sender or chat is written (ADR 0040).
+   any action runs and before the contact or chat is written (ADR 0040).
    Steps 6–8 are the Phase 8 target: the fleet injects no model yet, so only
    the deterministic path runs today.
 6. When the graph routing mode is `always`, or nothing matched and the mode
@@ -233,7 +233,7 @@ Inbound:
     (anchor plus fallback); a policy check runs before anything is queued.
 11. The session, the stored messages, the chat activity, the guards, and the
     queued replies commit as one transaction; a failure rolls all of it back
-    (ADR 0040). The sender profile and chat created in step 2 sit outside
+    (ADR 0040). The contact identity and chat created in step 2 sit outside
     that transaction, so a failed turn can leave those two rows and nothing
     else. The outbox worker then delivers the replies with the pacing below.
 
@@ -261,14 +261,14 @@ Outbound:
 ## Templates
 
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
-`{{sender.phone}}` and `{{sender.name}}`, `{{message.*}}`, `{{bot.*}}`, tool
+`{{contact.phone}}` and `{{contact.name}}`, `{{message.*}}`, `{{bot.*}}`, tool
 arguments as `{{input.<name>}}`, and request results as
 `{{node.<request-name>.resp.body.*}}`,
 `{{node.<request-name>.resp.headers.*}}`, `{{node.<request-name>.status}}`,
 and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 (Phase 4).
 
-`graph` and `node` are read-write; `sender`, `message`, `bot`, and `input` are
+`graph` and `node` are read-write; `contact`, `message`, `bot`, and `input` are
 read-only, and `node` resets on every node entry. A missing path, an unknown
 root, and a whole map or slice are errors, never empty or literal text; a
 literal `{{` is written `\{{` (ADR 0018). The language lives in the core
@@ -331,7 +331,7 @@ step (interval, timeout, success condition) is an open decision for Phase 4/8.
 ## Webhooks
 
 The instance can mirror outbound events to an external system through signed
-webhooks (ADR 0045). The engine reports a sender profile's creation through
+webhooks (ADR 0045). The engine reports a contact's first inbound through
 the core `FirstContactNotifier` port; the `webhook` package implements it as a
 sink that freezes one envelope per event and queues one delivery per
 subscribed target in SQLite. A worker polls the queue, signs the raw body with
@@ -344,9 +344,9 @@ restart.
 
 ## Chats and sessions
 
-A chat is the durable thread with one sender, keyed by (scope, bot, sender);
-`sender` is the resolved phone number in plain digits (ADR 0020) and the chat
-references its profile (ADR 0029). It never ends and gathers every message. A
+A chat is the durable thread with one contact, keyed by (scope, bot, contact);
+the contact is the resolved phone number in plain digits (ADR 0020) and the
+chat references its identity (ADR 0029). It never ends and gathers every message. A
 session is one bounded run of the graph for a chat: it starts at the root and
 expires after the graph timeout (or `default_timeout`). An expired session is
 replaced by a new run; the next message starts at root. Chat, session, and
@@ -366,14 +366,14 @@ content message is kept under its kind (ADR 0036), and every row is `sync`
 with `unknown` origin and routing and no session run. The import never runs the
 engine and ignores the bot filter, because it is not a conversation turn;
 `settings.history_sync: false` turns it off. A conversation registers its
-sender and chat only when it stored at least one message or call, so the
+contact and chat only when it stored at least one message or call, so the
 control-only shells WhatsApp sends for the account's address book never become
 chats. The address book itself is a separate, opt-in import
-(`settings.import_contacts`): it fills the `contacts` resource per bot and
-never touches senders, chats, or the engine (ADR 0037).
+(`settings.import_contacts`): it fills the `bot_contacts` resource per bot and
+never touches the scope's contacts, chats, or the engine (ADR 0037).
 `provider_message_id` (the channel's own id) is the dedup key, both for a
 redelivered sync chunk and for a live reply the sync echoes afterwards. The
-`PUSH_NAME` chunk names the senders the import knows, and importing a
+`PUSH_NAME` chunk names the contacts the import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`
 pages older messages back from the chat's oldest stored message in sequential
 batches, re-anchoring on the oldest message each page returned, until a page
@@ -411,17 +411,18 @@ composition and mechanics.
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
 scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
-`contacts`, `senders`, `sessions`, and `messages`. Every addressable object carries its scope, a
+`contacts`, `sessions`, and `messages`, and a bot exposes its imported address
+book at `/bots/{bot}/contacts`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
-pair plus the sender's phone number. `messages` returns the last messages of a
+pair plus the contact's phone number. `messages` returns the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
 polls, and each message carries its kind, its visible text, and the structured
-`content`; `chats` lists a bot's chats with their sender profiles, which is how
+`content`; `chats` lists a bot's chats with their contact identities, which is how
 `chat list` reads them; `status` and `bots` report each bot's active sessions;
 `POST chats/sync` asks the phone for older messages of one chat over the live
 connection and reports the batch counts. A scope's `messages` route also
 accepts a `POST`: an API-origin send that stores and queues one text message
-to any phone — creating the sender and the chat when missing — so the bot's
+to any phone — creating the contact and the chat when missing — so the bot's
 outbox delivers it like a reply (ADR 0044). Errors use one shape,
 `{"error":{"code","message"}}`.
 
@@ -498,12 +499,12 @@ locally when it does not; replacing a pairing is an unpair followed by a
 pair, whichever way the instance is running.
 
 An account change never changes history. Unlinking keeps the bot's chats,
-messages, sessions, and contacts, so a relink or a replacement picks them up;
-`adapters/whatsapp/pair.go` removes credentials, the account record, and the
+messages, sessions, and address book, so a relink or a replacement picks them
+up; `adapters/whatsapp/pair.go` removes credentials, the account record, and the
 pairing status only. Deleting a bot's history is a separate explicit
-operation, and a migration moves chats, messages, and contacts to another bot
-of the same scope — a recreated bot or a peer bot — while senders stay with
-the scope they are shared by (ADR 0029). A migration is a move, not a copy:
+operation, and a migration moves chats, messages, and the address book to
+another bot of the same scope — a recreated bot or a peer bot — while contact
+identities stay with the scope they are shared by (ADR 0029). A migration is a move, not a copy:
 it runs with both bots stopped, fails the source's queued replies before the
 old link can send them, and ends the source's active sessions instead of
 pretending the destination's graph sits at the same node. Neither operation

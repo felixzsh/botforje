@@ -72,7 +72,7 @@ func TestDisconnectStopsWorkersAfterConnectFails(t *testing.T) {
 	adapter, err := New(Options{
 		Scope: account.Scope, Bot: account.Bot,
 		Devices: devices, Accounts: db.LinkedAccounts(),
-		Pairings: db.Pairings(), Senders: db.Senders(), Chats: db.Chats(),
+		Pairings: db.Pairings(), Contacts: db.Contacts(), Chats: db.Chats(),
 		Messages: db.Messages(), History: true, Log: botflota.DiscardLogger(),
 	})
 	if err != nil {

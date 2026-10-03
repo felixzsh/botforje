@@ -14,12 +14,12 @@ import (
 func TestChatEnsureIsGetOrCreate(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	sender := ensureSender(t, db)
+	contact := ensureContact(t, db)
 	first := ensureChat(t, db)
 	if first.ID == 0 {
 		t.Fatal("Ensure did not set an id")
 	}
-	again, err := db.Chats().Ensure(ctx, "support", "support-bot", sender.ID, t2)
+	again, err := db.Chats().Ensure(ctx, "support", "support-bot", contact.ID, t2)
 	if err != nil {
 		t.Fatalf("Ensure again: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestChatEnsureIsGetOrCreate(t *testing.T) {
 	if err := db.Chats().RecordMessage(ctx, first.ID, t1); err != nil {
 		t.Fatalf("RecordMessage: %v", err)
 	}
-	got, err := db.Chats().Ensure(ctx, "support", "support-bot", sender.ID, t2)
+	got, err := db.Chats().Ensure(ctx, "support", "support-bot", contact.ID, t2)
 	if err != nil {
 		t.Fatalf("Ensure after record: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestChatGuardsRoundTrip(t *testing.T) {
 	if err := db.Chats().SaveGuards(ctx, chat.ID, want); err != nil {
 		t.Fatalf("SaveGuards: %v", err)
 	}
-	got, err := db.Chats().Ensure(ctx, "support", "support-bot", ensureSender(t, db).ID, t2)
+	got, err := db.Chats().Ensure(ctx, "support", "support-bot", ensureContact(t, db).ID, t2)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -72,19 +72,19 @@ func TestChatGuardsRoundTrip(t *testing.T) {
 func TestChatGetAndList(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	sender := ensureSender(t, db)
+	contact := ensureContact(t, db)
 	chat := ensureChat(t, db)
-	got, err := db.Chats().ForSender(ctx, "support", "support-bot", sender.ID)
+	got, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
 	if err != nil {
-		t.Fatalf("ForSender: %v", err)
+		t.Fatalf("ForContact: %v", err)
 	}
 	if got.ID != chat.ID {
-		t.Fatalf("ForSender = %d, want %d", got.ID, chat.ID)
+		t.Fatalf("ForContact = %d, want %d", got.ID, chat.ID)
 	}
-	if _, err := db.Chats().ForSender(ctx, "support", "other", sender.ID); !errors.Is(
+	if _, err := db.Chats().ForContact(ctx, "support", "other", contact.ID); !errors.Is(
 		err, botflota.ErrNotFound,
 	) {
-		t.Fatalf("ForSender missing = %v, want ErrNotFound", err)
+		t.Fatalf("ForContact missing = %v, want ErrNotFound", err)
 	}
 	chats, err := db.Chats().Recent(ctx, "support", "", 10)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestChatGetAndList(t *testing.T) {
 		t.Fatalf("Recent = %#v", chats)
 	}
 	if chats[0].Phone != "5215500000000" || chats[0].DisplayName != "Ana" {
-		t.Fatalf("Recent sender profile = %#v", chats[0])
+		t.Fatalf("Recent contact profile = %#v", chats[0])
 	}
 	if byBot, err := db.Chats().Recent(ctx, "support", "support-bot", 10); err != nil ||
 		len(byBot) != 1 {
@@ -152,10 +152,10 @@ func TestChatNoteHistoryWidensActivity(t *testing.T) {
 	if err := db.Chats().NoteHistory(ctx, chat.ID, from, to); err != nil {
 		t.Fatalf("NoteHistory: %v", err)
 	}
-	senderID := ensureSender(t, db).ID
-	got, err := db.Chats().ForSender(ctx, "support", "support-bot", senderID)
+	contactID := ensureContact(t, db).ID
+	got, err := db.Chats().ForContact(ctx, "support", "support-bot", contactID)
 	if err != nil {
-		t.Fatalf("ForSender: %v", err)
+		t.Fatalf("ForContact: %v", err)
 	}
 	if !got.StartedAt.Equal(from) || !got.UpdatedAt.Equal(to) {
 		t.Fatalf("activity = %v..%v, want %v..%v", got.StartedAt, got.UpdatedAt, from, to)
@@ -164,28 +164,28 @@ func TestChatNoteHistoryWidensActivity(t *testing.T) {
 		t0.Add(-12*time.Hour)); err != nil {
 		t.Fatalf("NoteHistory narrower: %v", err)
 	}
-	got, err = db.Chats().ForSender(ctx, "support", "support-bot", senderID)
+	got, err = db.Chats().ForContact(ctx, "support", "support-bot", contactID)
 	if err != nil {
-		t.Fatalf("ForSender: %v", err)
+		t.Fatalf("ForContact: %v", err)
 	}
 	if !got.StartedAt.Equal(from) || !got.UpdatedAt.Equal(to) {
 		t.Fatalf("activity moved the wrong way: %v..%v", got.StartedAt, got.UpdatedAt)
 	}
 }
 
-func TestOneSenderManyChats(t *testing.T) {
+func TestOneContactManyChats(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	sender := ensureSender(t, db)
-	alpha, err := db.Chats().Ensure(ctx, "support", "alpha", sender.ID, t0)
+	contact := ensureContact(t, db)
+	alpha, err := db.Chats().Ensure(ctx, "support", "alpha", contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure alpha: %v", err)
 	}
-	beta, err := db.Chats().Ensure(ctx, "support", "beta", sender.ID, t0)
+	beta, err := db.Chats().Ensure(ctx, "support", "beta", contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure beta: %v", err)
 	}
 	if alpha.ID == beta.ID {
-		t.Fatal("two bots must have two chats with the same sender")
+		t.Fatal("two bots must have two chats with the same contact")
 	}
 }

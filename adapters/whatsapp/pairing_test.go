@@ -116,8 +116,8 @@ func TestPairManagerPairingSucceeds(t *testing.T) {
 			History: ingest.ImportTotals{
 				Conversations: 3, Imported: 40, Duplicate: 2, Skipped: 1,
 			},
-			Contacts: 7,
-			Elapsed:  90 * time.Second,
+			AddressBook: 7,
+			Elapsed:     90 * time.Second,
 		}, nil
 	}
 
@@ -132,7 +132,7 @@ func TestPairManagerPairingSucceeds(t *testing.T) {
 	result := final.Result
 	if result.Phone != "5215500000001" || result.Chats != 3 ||
 		result.Messages != 40 || result.Duplicate != 2 || result.Skipped != 1 ||
-		result.Contacts != 7 || result.Elapsed != 90*time.Second {
+		result.AddressBook != 7 || result.Elapsed != 90*time.Second {
 		t.Fatalf("result = %#v", result)
 	}
 	if !activated {

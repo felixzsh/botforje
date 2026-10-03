@@ -38,12 +38,12 @@ func TestPrintPairImport(t *testing.T) {
 					Chunks: 706, Conversations: 184, Imported: 2727,
 					Duplicate: 31, Skipped: 58,
 				},
-				Contacts: 312,
-				Elapsed:  2*time.Minute + 10*time.Second,
+				AddressBook: 312,
+				Elapsed:     2*time.Minute + 10*time.Second,
 			},
 			want: []string{
 				"history: 184 chats, 2727 messages (31 duplicate, 58 skipped) in 2m10s",
-				"contacts: 312 imported",
+				"address book: 312 imported",
 			},
 		},
 		{
@@ -51,13 +51,13 @@ func TestPrintPairImport(t *testing.T) {
 			settings: settings(nil, nil),
 			result:   whatsapp.PairResult{},
 			want:     []string{"history: nothing arrived"},
-			absent:   []string{"contacts:"},
+			absent:   []string{"address book:"},
 		},
 		{
 			name:     "history disabled",
 			settings: settings(&off, &on),
-			result:   whatsapp.PairResult{Contacts: 5},
-			want:     []string{"contacts: 5 imported"},
+			result:   whatsapp.PairResult{AddressBook: 5},
+			want:     []string{"address book: 5 imported"},
 			absent:   []string{"history:"},
 		},
 	}
@@ -137,7 +137,7 @@ func TestPairThroughAPI(t *testing.T) {
 				w.WriteHeader(http.StatusAccepted)
 				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
 					`"phone":"5215500000001","chunks":9,"chats":2,` +
-					`"messages":30,"duplicate":1,"skipped":0,"contacts":4,` +
+					`"messages":30,"duplicate":1,"skipped":0,"address_book":4,` +
 					`"elapsed_seconds":65}}`))
 			default:
 				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -161,7 +161,7 @@ func TestPairThroughAPI(t *testing.T) {
 	for _, want := range []string{
 		`bot "alpha" (scope "dev") is paired as 5215500000001`,
 		"history: 2 chats, 30 messages (1 duplicate, 0 skipped) in 1m5s",
-		"contacts: 4 imported",
+		"address book: 4 imported",
 	} {
 		if !strings.Contains(printed, want) {
 			t.Errorf("output %q is missing %q", printed, want)

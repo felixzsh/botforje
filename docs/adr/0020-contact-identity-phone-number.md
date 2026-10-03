@@ -1,4 +1,4 @@
-# ADR 0020 — Sender identity is the phone number
+# ADR 0020 — Contact identity is the phone number
 
 Status: Accepted (2026-09)
 
@@ -17,8 +17,8 @@ filters, templates, and the session table.
 ## Decision
 
 The domain only ever sees the phone number in plain digits (for example
-`5215500000000`) as a sender identity. It keys sessions, matches the bot's
-filter, appears in logs, and is what templates read as `sender.phone`.
+`5215500000000`) as a contact identity. It keys sessions, matches the bot's
+filter, appears in logs, and is what templates read as `contact.phone`.
 
 The JID and the LID live only inside the whatsapp adapter:
 
@@ -33,7 +33,7 @@ The JID and the LID live only inside the whatsapp adapter:
   phone-number JID. The transport address is never logged or shown to
   templates.
 
-Groups are handled separately: the sender is the participant, and the chat is
+Groups are handled separately: the contact is the participant, and the chat is
 the group.
 
 ## Consequences
@@ -44,6 +44,6 @@ the group.
 - A message whose phone number is unknown is dropped (rare, and the LID store
   fills the mapping in from history sync). Losing it is preferred over keying
   anything on a LID.
-- `sender.lid` is not part of the template context and the session does not
+- `contact.lid` is not part of the template context and the session does not
   store a LID.
 - The LID store remains necessary, but only for resolution inside the adapter.

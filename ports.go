@@ -128,11 +128,11 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 // implements them (ADR 0006). The persisted shapes live in records.go.
 
 // ChatStore records the durable chat with each person (ADR 0026, ADR 0027,
-// ADR 0029, ADR 0035). Ensure is a get-or-create keyed by the sender's
-// profile.
+// ADR 0029, ADR 0035). Ensure is a get-or-create keyed by the contact's
+// identity.
 type ChatStore interface {
-	Ensure(ctx context.Context, scope, bot string, senderID int64, at time.Time) (*Chat, error)
-	ForSender(ctx context.Context, scope, bot string, senderID int64) (*Chat, error)
+	Ensure(ctx context.Context, scope, bot string, contactID int64, at time.Time) (*Chat, error)
+	ForContact(ctx context.Context, scope, bot string, contactID int64) (*Chat, error)
 	// Recent returns the most recently active chats first. A zero limit means
 	// every chat, which is how `chat sync --all` walks them (ADR 0035).
 	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
@@ -144,40 +144,46 @@ type ChatStore interface {
 	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
 }
 
-// SenderStore records the profile of each person who writes to a bot. Upsert
-// reports whether the profile is new, the first-contact hook (ADR 0029).
-// SetDisplayName records a name from channel contact data without touching
-// first or last seen (ADR 0035). List is the scope-level read: profiles most
-// recently seen first, filtered by first_seen when since is not zero, with an
-// opaque cursor a caller passes back unchanged (ADR 0044).
-type SenderStore interface {
-	Upsert(ctx context.Context, scope, phone, name string, at time.Time) (*Sender, bool, error)
-	Get(ctx context.Context, scope, phone string) (*Sender, error)
+// ContactStore records the identity of each person a scope knows.
+// EnsureContact creates an identity without a first inbound message, so the
+// address book and an API send never consume the first-contact hook.
+// RecordInbound records a live inbound: it sets first_seen only once and
+// reports that first message as the hook (ADR 0029). SetDisplayName records a
+// name from channel contact
+// data without touching first or last seen (ADR 0035). List is the
+// scope-level read: identities most recently seen first, filtered by
+// first_seen when since is not zero, with an opaque cursor a caller passes
+// back unchanged (ADR 0044).
+type ContactStore interface {
+	EnsureContact(ctx context.Context, scope, phone string, at time.Time) (*Contact, error)
+	RecordInbound(
+		ctx context.Context, scope, phone, name string, at time.Time,
+	) (*Contact, bool, error)
+	Get(ctx context.Context, scope, phone string) (*Contact, error)
 	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
 	List(
 		ctx context.Context, scope string, since time.Time, limit int, cursor string,
-	) (SenderPage, error)
+	) (ContactPage, error)
 }
 
-// SenderPage is one page of a scope's sender profiles. NextCursor is empty on
-// the last page; a caller sends it back through List to read the next one.
-type SenderPage struct {
-	Senders    []Sender
+// ContactPage is one page of a scope's contact identities. NextCursor is empty
+// on the last page; a caller sends it back through List to read the next one.
+type ContactPage struct {
+	Contacts   []Contact
 	NextCursor string
 }
 
-// EventSenderFirstSeen is the first-contact event: a phone wrote to a bot of
+// EventContactFirstSeen is the first-contact event: a phone wrote to a bot of
 // the scope for the first time (ADR 0045).
-const EventSenderFirstSeen = "sender.first_seen"
+const EventContactFirstSeen = "contact.first_seen"
 
-// FirstContact is one sender's first allowed inbound message in a scope: the
-// created profile of the sender upsert (ADR 0029), carrying the bot that saw
-// it and when (ADR 0045).
+// FirstContact is one contact's first allowed inbound message in a scope,
+// carrying the bot that saw it and when (ADR 0029, ADR 0045).
 type FirstContact struct {
-	Scope  string
-	Bot    string
-	Sender Sender
-	At     time.Time
+	Scope   string
+	Bot     string
+	Contact Contact
+	At      time.Time
 }
 
 // FirstContactNotifier receives the first-contact hook so an adapter can
@@ -188,11 +194,11 @@ type FirstContactNotifier interface {
 }
 
 // HistoryStore owns the operations that span one bot's whole history — its
-// chats, sessions, messages, and contacts — and must be atomic across all of
-// them. DeleteBot removes that history and leaves the scope's senders alone
-// (ADR 0029); MoveBot moves it to another bot of the same scope and refuses a
-// destination that already holds a chat, because history is moved and never
-// merged (ADR 0042).
+// chats, sessions, messages, and address book — and must be atomic across all
+// of them. DeleteBot removes that history and leaves the scope's contact
+// identities alone (ADR 0029); MoveBot moves it to another bot of the same
+// scope and refuses a destination that already holds a chat, because history
+// is moved and never merged (ADR 0042).
 type HistoryStore interface {
 	HistoryReader
 	DeleteBot(ctx context.Context, scope, bot string) (HistoryCounts, error)
@@ -204,9 +210,9 @@ type HistoryStore interface {
 // HistoryReader streams everything one bot's history holds, so it can leave the
 // instance without buffering a whole conversation (ADR 0042). The sink is called
 // once per stored row, table by table, in stored order; an error from any call
-// stops the read and is returned. Senders are not history — they belong to the
-// scope (ADR 0029) — but a chat carries its sender's phone and name so the
-// result stands on its own.
+// stops the read and is returned. Contact identities are not history — they
+// belong to the scope (ADR 0029) — but a chat carries its contact's phone and
+// name so the result stands on its own.
 type HistoryReader interface {
 	ReadHistory(ctx context.Context, scope, bot string, sink HistorySink) error
 }
@@ -216,10 +222,10 @@ type HistoryReader interface {
 type HistoryTable string
 
 const (
-	TableChats    HistoryTable = "chats"
-	TableSessions HistoryTable = "sessions"
-	TableMessages HistoryTable = "messages"
-	TableContacts HistoryTable = "contacts"
+	TableChats       HistoryTable = "chats"
+	TableSessions    HistoryTable = "sessions"
+	TableMessages    HistoryTable = "messages"
+	TableAddressBook HistoryTable = "bot_contacts"
 )
 
 // HistorySink receives one bot's history as it is read. BeginTable is called
@@ -231,17 +237,17 @@ type HistorySink interface {
 	Chat(HistoryChat) error
 	Session(Session) error
 	Message(Message) error
-	Contact(Contact) error
+	AddressBookEntry(AddressBookEntry) error
 }
 
-// ContactStore records the address-book entries of each bot's linked account
-// when contact import is on (ADR 0037). Put merges the non-empty name fields
-// and never clears one; List returns the most recently updated entries first,
-// and a zero limit means every one. It is optional for a channel with no
+// AddressBookStore records the address-book entries of each bot's linked
+// account when contact import is on (ADR 0037). Put merges the non-empty name
+// fields and never clears one; List returns the most recently updated entries
+// first, and a zero limit means every one. It is optional for a channel with no
 // address book (ADR 0029).
-type ContactStore interface {
-	Put(ctx context.Context, contact *Contact) error
-	List(ctx context.Context, scope, bot string, limit int) ([]Contact, error)
+type AddressBookStore interface {
+	Put(ctx context.Context, entry *AddressBookEntry) error
+	List(ctx context.Context, scope, bot string, limit int) ([]AddressBookEntry, error)
 }
 
 // SessionStore records a chat's session runs (ADR 0026). Save inserts a run
@@ -274,8 +280,8 @@ type MessageStore interface {
 }
 
 // SendRecord is one message the API asks a bot to deliver outside a turn: no
-// session run, no inbound message (ADR 0044). The store creates the sender
-// profile and the chat when they are missing, so a notice can reach a phone
+// session run, no inbound message (ADR 0044). The store creates the contact
+// identity and the chat when they are missing, so a notice can reach a phone
 // that never wrote first.
 type SendRecord struct {
 	Scope   string
@@ -293,8 +299,8 @@ type SendResult struct {
 	OutboxID  int64
 }
 
-// SendStore commits one API-origin outbound message as one unit: the sender
-// profile, the chat, the stored message, the chat's activity, and the queued
+// SendStore commits one API-origin outbound message as one unit: the contact
+// identity, the chat, the stored message, the chat's activity, and the queued
 // delivery either all land or none does. A ClientID the bot already accepted
 // reports ErrDuplicate with the accepted message id in the result, so a caller
 // that lost the response can reconcile (ADR 0044).
@@ -321,7 +327,7 @@ type TurnRecord struct {
 }
 
 // OutboundRecord is one reply of the turn: the stored message and the phone
-// number it goes to, which may differ from the chat's sender when a step
+// number it goes to, which may differ from the chat's contact when a step
 // overrides the recipient.
 type OutboundRecord struct {
 	Message   *Message

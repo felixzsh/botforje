@@ -94,15 +94,15 @@ func backfillChat(
 // record are not valid anchors, so they are never chosen.
 func oldestCursor(
 	ctx context.Context, scope, bot, phone string,
-	senders botflota.SenderStore, chats botflota.ChatStore,
+	contacts botflota.ContactStore, chats botflota.ChatStore,
 	messages botflota.MessageStore,
 ) (*historyCursor, error) {
-	sender, err := senders.Get(ctx, scope, phone)
+	contact, err := contacts.Get(ctx, scope, phone)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"whatsapp: no sender %s in scope %q: %w", phone, scope, err)
+			"whatsapp: no contact %s in scope %q: %w", phone, scope, err)
 	}
-	chat, err := chats.ForSender(ctx, scope, bot, sender.ID)
+	chat, err := chats.ForContact(ctx, scope, bot, contact.ID)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"whatsapp: no chat with %s for bot %q: %w", phone, bot, err)
@@ -146,7 +146,7 @@ func (a *Adapter) SyncHistory(
 	defer a.endSync()
 
 	load := func() (*historyCursor, error) {
-		return oldestCursor(ctx, a.scope, a.bot, phone, a.senders, a.chats, a.messages)
+		return oldestCursor(ctx, a.scope, a.bot, phone, a.contacts, a.chats, a.messages)
 	}
 	request := func(
 		requestCtx context.Context, from *historyCursor, batch int,

@@ -52,7 +52,7 @@ func NewSink(store botflota.WebhookStore, targets []Target) *Sink {
 func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) error {
 	subscribed := make([]Target, 0, len(s.targets))
 	for _, target := range s.targets {
-		if slices.Contains(target.Events, botflota.EventSenderFirstSeen) {
+		if slices.Contains(target.Events, botflota.EventContactFirstSeen) {
 			subscribed = append(subscribed, target)
 		}
 	}
@@ -65,16 +65,16 @@ func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) er
 	}
 	payload, err := json.Marshal(firstContactEnvelope{
 		ID:         eventID,
-		Event:      botflota.EventSenderFirstSeen,
+		Event:      botflota.EventContactFirstSeen,
 		OccurredAt: formatTime(event.At),
 		Scope:      event.Scope,
 		Data: firstContactData{
 			Bot: event.Bot,
-			Sender: envelopeSender{
-				Phone:       event.Sender.Phone,
-				DisplayName: event.Sender.DisplayName,
+			Contact: envelopeContact{
+				Phone:       event.Contact.Phone,
+				DisplayName: event.Contact.DisplayName,
 			},
-			FirstSeen: formatTime(event.Sender.FirstSeen),
+			FirstSeen: formatTime(event.Contact.FirstSeen),
 		},
 	})
 	if err != nil {
@@ -87,7 +87,7 @@ func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) er
 		}
 		if err := s.store.Enqueue(ctx, &botflota.WebhookDelivery{
 			EventID: eventID, DeliveryID: deliveryID, URL: target.URL,
-			Event: botflota.EventSenderFirstSeen, Scope: event.Scope,
+			Event: botflota.EventContactFirstSeen, Scope: event.Scope,
 			Payload: payload,
 		}); err != nil {
 			return err
@@ -96,8 +96,8 @@ func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) er
 	return nil
 }
 
-// firstContactEnvelope is the frozen wire shape of the sender.first_seen
-// event, signed and sent exactly as it was queued (ADR 0045).
+// firstContactEnvelope is the wire shape of the contact.first_seen event,
+// signed and sent exactly as it was queued (ADR 0045).
 type firstContactEnvelope struct {
 	ID         string           `json:"id"`
 	Event      string           `json:"event"`
@@ -107,12 +107,12 @@ type firstContactEnvelope struct {
 }
 
 type firstContactData struct {
-	Bot       string         `json:"bot"`
-	Sender    envelopeSender `json:"sender"`
-	FirstSeen string         `json:"first_seen"`
+	Bot       string          `json:"bot"`
+	Contact   envelopeContact `json:"contact"`
+	FirstSeen string          `json:"first_seen"`
 }
 
-type envelopeSender struct {
+type envelopeContact struct {
 	Phone       string `json:"phone"`
 	DisplayName string `json:"display_name"`
 }

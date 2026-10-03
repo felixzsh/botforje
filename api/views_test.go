@@ -126,7 +126,7 @@ func TestBotsEndpointPrefersLivePresence(t *testing.T) {
 func TestMessagesEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/messages?bot=demo&sender=5215500000000&limit=1",
+		"/api/v1/scopes/support/messages?bot=demo&contact=5215500000000&limit=1",
 		testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
@@ -172,7 +172,7 @@ func TestMessagesEndpoint(t *testing.T) {
 func TestSessionsEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/sessions?bot=demo&sender=5215500000000", testOwnerToken)
+		"/api/v1/scopes/support/sessions?bot=demo&contact=5215500000000", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -190,10 +190,10 @@ func TestSessionsEndpoint(t *testing.T) {
 	}
 }
 
-func TestContactsEndpoint(t *testing.T) {
+func TestAddressBookEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/contacts?bot=demo", testOwnerToken)
+		"/api/v1/scopes/support/bots/demo/contacts", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
 	}

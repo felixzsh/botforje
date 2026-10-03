@@ -9,9 +9,9 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// SendStore commits one API-origin outbound message outside a turn: the sender
-// profile, the chat, the message, the chat's activity, and the queued delivery
-// in one transaction (ADR 0044).
+// SendStore commits one API-origin outbound message outside a turn: the
+// contact identity, the chat, the message, the chat's activity, and the queued
+// delivery in one transaction (ADR 0044).
 type SendStore struct{ db *sql.DB }
 
 func NewSendStore(db *sql.DB) *SendStore { return &SendStore{db: db} }
@@ -39,13 +39,13 @@ func (s *SendStore) CommitSend(
 		}
 	}()
 
-	senders := SenderStore{db: tx}
-	sender, _, err := senders.Upsert(ctx, send.Scope, send.To, "", send.At)
+	contacts := ContactStore{db: tx}
+	contact, err := contacts.EnsureContact(ctx, send.Scope, send.To, send.At)
 	if err != nil {
 		return botflota.SendResult{}, err
 	}
 	chats := ChatStore{db: tx}
-	chat, err := chats.Ensure(ctx, send.Scope, send.Bot, sender.ID, send.At)
+	chat, err := chats.Ensure(ctx, send.Scope, send.Bot, contact.ID, send.At)
 	if err != nil {
 		return botflota.SendResult{}, err
 	}

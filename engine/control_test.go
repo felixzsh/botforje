@@ -15,7 +15,7 @@ func TestRecordSuppressedKeepsHistoryWithoutASession(t *testing.T) {
 	eng := fixtureEngine(t, store)
 	sender := "5215500000000"
 	msg := botflota.IncomingMessage{
-		Bot: "support-bot", SenderPhone: sender, At: t0,
+		Bot: "support-bot", FromPhone: sender, At: t0,
 		ProviderMessageID: "M1",
 		Content:           botflota.TextContent{Body: "hola"},
 	}

@@ -32,9 +32,11 @@ func (a LinkedAccount) Phone() string {
 	return number
 }
 
-// Sender is one person's durable profile in a scope (ADR 0029). DisplayName
-// is a best-effort push name: possibly empty, never an identifier.
-type Sender struct {
+// Contact is one person's durable identity in a scope (ADR 0029). DisplayName
+// is a best-effort push name: possibly empty, never an identifier. FirstSeen
+// and LastSeen are the first and last live inbound message; both stay zero
+// when the identity was first known through the address book or an API send.
+type Contact struct {
 	ID            int64
 	Scope         string
 	Phone         string
@@ -44,10 +46,10 @@ type Sender struct {
 	LastSeen      time.Time
 }
 
-// Contact is an address-book entry of a bot's linked account (ADR 0037),
-// keyed by (scope, bot, phone) because the book belongs to the account, not
-// the scope. It is an identity the account knows, never a Sender or a Chat.
-type Contact struct {
+// AddressBookEntry is an address-book entry of a bot's linked account
+// (ADR 0037), keyed by (scope, bot, phone) because the book belongs to the
+// account, not the scope. It is an identity the account knows, never a Chat.
+type AddressBookEntry struct {
 	Scope        string
 	Bot          string
 	Phone        string
@@ -58,25 +60,25 @@ type Contact struct {
 }
 
 // DisplayName is the name a reader shows; best effort, never an identifier.
-func (c Contact) DisplayName() string {
+func (a AddressBookEntry) DisplayName() string {
 	switch {
-	case c.Name != "":
-		return c.Name
-	case c.BusinessName != "":
-		return c.BusinessName
+	case a.Name != "":
+		return a.Name
+	case a.BusinessName != "":
+		return a.BusinessName
 	default:
-		return c.PushName
+		return a.PushName
 	}
 }
 
-// Chat is the durable thread between one bot and one sender; it never ends
+// Chat is the durable thread between one bot and one contact; it never ends
 // (ADR 0026). MessageCount is the live inbound count, not the stored history;
 // Guards is the per-action guard state (ADR 0027).
 type Chat struct {
 	ID           int64
 	Scope        string
 	Bot          string
-	SenderID     int64
+	ContactID    int64
 	StartedAt    time.Time
 	UpdatedAt    time.Time
 	MessageCount int64
@@ -150,22 +152,22 @@ type Message struct {
 }
 
 // HistoryCounts is what a history operation removed or moved: one bot's chats
-// and their cascaded sessions, messages, and queued replies, plus its contacts.
-// A caller reports them, and a limit set releases the storage they held
+// and their cascaded sessions, messages, and queued replies, plus its address
+// book. A caller reports them, and a limit set releases the storage they held
 // (ADR 0042).
 type HistoryCounts struct {
-	Chats    int64
-	Sessions int64
-	Messages int64
-	Contacts int64
+	Chats       int64
+	Sessions    int64
+	Messages    int64
+	AddressBook int64
 }
 
-// HistoryChat is one chat as an export reads it, with its sender's identity
+// HistoryChat is one chat as an export reads it, with its contact's identity
 // beside it so the exported file stands alone (ADR 0042).
 type HistoryChat struct {
 	Chat
-	SenderPhone string
-	SenderName  string
+	ContactPhone string
+	ContactName  string
 }
 
 // ChatControlMode is the effective automation of one chat (ADR 0043). It is
@@ -185,7 +187,7 @@ type ChatControl struct {
 	PausedTill time.Time
 }
 
-// ChatSummary is a chat joined with its sender profile, for the read API.
+// ChatSummary is a chat joined with its contact identity, for the read API.
 // Messages, Sync, and Live count the stored rows by ingest kind; the embedded
 // MessageCount stays the live inbound count (ADR 0035).
 type ChatSummary struct {

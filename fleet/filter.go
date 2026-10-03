@@ -25,7 +25,7 @@ func (f Filter) Allow(msg botflota.IncomingMessage) bool {
 
 func matches(list []string, msg botflota.IncomingMessage) bool {
 	for _, id := range list {
-		if id == msg.SenderPhone {
+		if id == msg.FromPhone {
 			return true
 		}
 	}

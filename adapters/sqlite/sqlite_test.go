@@ -96,13 +96,13 @@ func TestOpenAddsContentColumn(t *testing.T) {
 		t.Fatalf("content column count = %d, want 1", columns)
 	}
 	// A legacy row decodes from its kind and visible text.
-	sender, _, err := db.Senders().Upsert(context.Background(), "support",
+	contact, _, err := db.Contacts().RecordInbound(context.Background(), "support",
 		"5215500000000", "Ana", t0)
 	if err != nil {
-		t.Fatalf("seed sender: %v", err)
+		t.Fatalf("seed contact: %v", err)
 	}
 	chat, err := db.Chats().Ensure(context.Background(), "support",
-		"support-bot", sender.ID, t0)
+		"support-bot", contact.ID, t0)
 	if err != nil {
 		t.Fatalf("seed chat: %v", err)
 	}

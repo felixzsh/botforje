@@ -19,7 +19,7 @@ right now, not to stored history.
 
 ## Decision
 
-- **A chat, not a bot.** Control state is per chat `(scope, bot, sender
+- **A chat, not a bot.** Control state is per chat `(scope, bot, contact
   phone)`. Pausing one chat never pauses another and never stops the bot.
 
 - **Two ways in.** A live message that leaves the linked account without

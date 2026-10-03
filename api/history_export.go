@@ -21,7 +21,7 @@ var historyExportFiles = map[botflota.HistoryTable]struct {
 	header []string
 }{
 	botflota.TableChats: {"chats.csv", []string{
-		"id", "scope", "bot", "sender_id", "sender_phone", "sender_name",
+		"id", "scope", "bot", "contact_id", "contact_phone", "contact_name",
 		"started_at", "updated_at", "message_count", "guards",
 	}},
 	botflota.TableSessions: {"sessions.csv", []string{
@@ -32,7 +32,7 @@ var historyExportFiles = map[botflota.HistoryTable]struct {
 		"id", "chat_id", "session_id", "direction", "kind", "body", "content",
 		"sent_at", "provider_message_id", "ingest_kind", "origin", "routing",
 	}},
-	botflota.TableContacts: {"contacts.csv", []string{
+	botflota.TableAddressBook: {"address-book.csv", []string{
 		"scope", "bot", "phone", "name", "push_name", "business_name", "updated_at",
 	}},
 }
@@ -149,8 +149,8 @@ func (e *historyExports) Chat(chat botflota.HistoryChat) error {
 		return err
 	}
 	return e.write([]string{
-		i64(chat.ID), chat.Scope, chat.Bot, i64(chat.SenderID),
-		chat.SenderPhone, chat.SenderName,
+		i64(chat.ID), chat.Scope, chat.Bot, i64(chat.ContactID),
+		chat.ContactPhone, chat.ContactName,
 		at(chat.StartedAt), at(chat.UpdatedAt), i64(chat.MessageCount), guards,
 	})
 }
@@ -189,10 +189,10 @@ func (e *historyExports) Message(message botflota.Message) error {
 	})
 }
 
-func (e *historyExports) Contact(contact botflota.Contact) error {
+func (e *historyExports) AddressBookEntry(entry botflota.AddressBookEntry) error {
 	return e.write([]string{
-		contact.Scope, contact.Bot, contact.Phone, contact.Name,
-		contact.PushName, contact.BusinessName, at(contact.UpdatedAt),
+		entry.Scope, entry.Bot, entry.Phone, entry.Name,
+		entry.PushName, entry.BusinessName, at(entry.UpdatedAt),
 	})
 }
 

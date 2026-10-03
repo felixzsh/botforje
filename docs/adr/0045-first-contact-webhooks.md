@@ -4,11 +4,11 @@ Status: Accepted (2026-09)
 
 ## Context
 
-ADR 0029 records a sender's first allowed inbound as the first-contact hook and
+ADR 0029 records a contact's first allowed inbound as the first-contact hook and
 left delivery "as a later phase"; ROADMAP Phase 14 owns signed outbound
 webhooks. An external system that hosts Botflota needs the fact in near real
 time — to open a lead, notify a human, or sync its own records — without
-polling the sender read (ADR 0044). Botflota must not know who consumes it, so
+polling the contact read (ADR 0044). Botflota must not know who consumes it, so
 the webhook is generic, signed, and configured per instance; the engine cannot
 import adapters (ADR 0034), so the hook crosses a port in the core.
 
@@ -19,18 +19,18 @@ import adapters (ADR 0034), so the hook crosses a port in the core.
   secret field, so `${ENV_VAR}` is allowed there (ADR 0014, amended). Changing
   the list is a restart-required global setting, like the other instance
   settings a reload never publishes.
-- **One event today: `sender.first_seen`.** It fires exactly once per phone per
-  scope, from the `created` result of the sender upsert (ADR 0029): the first
+- **One event today: `contact.first_seen`.** It fires exactly once per phone
+  per scope, from the `first_seen` claim of the inbound write (ADR 0029): the first
   allowed inbound message, whether the graph handles it or a human hold
   suppresses it. It never fires on history import, contact import, an operator
   reply, or an API-origin send.
 - **It is emitted when the profile is durable, not after the turn.** The
-  sender row is written before the turn transaction and survives a failed turn
+  contact row is written before the turn transaction and survives a failed turn
   (ADR 0040), while a later message would not report `created` again, so
   waiting for the commit could lose the event forever. Emission is synchronous
   and only records the event; the HTTP call is the worker's.
 - **A core port carries the fact**: `FirstContactNotifier` with a
-  `FirstContact` record (`Scope`, `Bot`, `Sender`, `At`). The engine calls it
+  `FirstContact` record (`Scope`, `Bot`, `Contact`, `At`). The engine calls it
   and knows nothing else; `webhook` (ADR 0034) implements it as the sink.
 - **Delivery is durable, at-least-once, and outside the engine**: the sink
   builds one envelope per event and enqueues one delivery row per configured
@@ -41,10 +41,10 @@ import adapters (ADR 0034), so the hook crosses a port in the core.
   other; only a duplicate with the same `(event_id, url)` is refused.
 - **The envelope is frozen at enqueue**:
 
-      { "id": "<event uuid>", "event": "sender.first_seen",
+      { "id": "<event uuid>", "event": "contact.first_seen",
         "occurred_at": "2026-09-28T20:24:20Z", "scope": "bardo",
         "data": { "bot": "bardo",
-                  "sender": { "phone": "5218994251984", "display_name": "Ana" },
+                  "contact": { "phone": "5218994251984", "display_name": "Ana" },
                   "first_seen": "2026-09-28T20:24:20Z" } }
 
   with headers `X-Botflota-Event`, `X-Botflota-Delivery` (the delivery row's

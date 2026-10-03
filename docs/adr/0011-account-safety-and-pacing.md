@@ -29,7 +29,7 @@ Treat account safety as a first-class, testable policy:
   inbound message as read (`read_receipts`), then wait `reply_delay`, showing a
   composing indicator when `simulate_typing` is on, before the reply.
 - Vary reply text: variant lists resolve at random.
-- Rate limits: per-sender guards limit repetition (`cooldown` for a minimum
+- Rate limits: per-contact guards limit repetition (`cooldown` for a minimum
   interval, `rate_limit` for a maximum per window); an optional
   `max_messages_per_minute` caps a bot as a safety valve (`0` = no limit).
   Guard state is kept per chat, not per session (ADR 0027).

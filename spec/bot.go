@@ -19,8 +19,8 @@ type BotSettings struct {
 	Jitter           int      `yaml:"jitter" json:"jitter,omitempty"`
 	MaxMsgPerMinute  int      `yaml:"max_messages_per_minute" json:"max_messages_per_minute,omitempty"`
 	IgnoreGroups     *bool    `yaml:"ignore_groups" json:"ignore_groups,omitempty"`
-	AllowedSenders   []string `yaml:"allowed_senders" json:"allowed_senders,omitempty"`
-	IgnoredSenders   []string `yaml:"ignored_senders" json:"ignored_senders,omitempty"`
+	AllowedContacts  []string `yaml:"allowed_contacts" json:"allowed_contacts,omitempty"`
+	IgnoredContacts  []string `yaml:"ignored_contacts" json:"ignored_contacts,omitempty"`
 	// HistorySync imports the messages WhatsApp delivers when the account is
 	// linked. It defaults to true; false stores none of that backlog.
 	HistorySync *bool `yaml:"history_sync" json:"history_sync,omitempty"`

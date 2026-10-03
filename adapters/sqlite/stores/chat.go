@@ -14,32 +14,32 @@ type ChatStore struct{ db dbtx }
 
 func NewChatStore(db *sql.DB) *ChatStore { return &ChatStore{db: db} }
 
-const chatColumns = `id, scope, bot, sender_id, started_at, updated_at, message_count, guards`
+const chatColumns = `id, scope, bot, contact_id, started_at, updated_at, message_count, guards`
 
 func (s *ChatStore) Ensure(
-	ctx context.Context, scope, bot string, senderID int64, at time.Time,
+	ctx context.Context, scope, bot string, contactID int64, at time.Time,
 ) (*botflota.Chat, error) {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO chats (scope, bot, sender_id, started_at, updated_at)
+		`INSERT INTO chats (scope, bot, contact_id, started_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT (scope, bot, sender_id) DO NOTHING`,
-		scope, bot, senderID, formatTime(at), formatTime(at))
+		 ON CONFLICT (scope, bot, contact_id) DO NOTHING`,
+		scope, bot, contactID, formatTime(at), formatTime(at))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
 	}
-	chat, err := s.ForSender(ctx, scope, bot, senderID)
+	chat, err := s.ForContact(ctx, scope, bot, contactID)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
 	}
 	return chat, nil
 }
 
-func (s *ChatStore) ForSender(
-	ctx context.Context, scope, bot string, senderID int64,
+func (s *ChatStore) ForContact(
+	ctx context.Context, scope, bot string, contactID int64,
 ) (*botflota.Chat, error) {
 	row := s.db.QueryRowContext(ctx,
-		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND sender_id = ?",
-		scope, bot, senderID)
+		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND contact_id = ?",
+		scope, bot, contactID)
 	chat, err := scanChat(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, botflota.ErrNotFound
@@ -59,10 +59,10 @@ func (s *ChatStore) Recent(
 	if limit <= 0 {
 		limit = -1
 	}
-	const query = `SELECT c.id, c.scope, c.bot, c.sender_id, c.started_at,
+	const query = `SELECT c.id, c.scope, c.bot, c.contact_id, c.started_at,
 			c.updated_at, c.message_count, c.guards, s.phone, s.display_name,
 			COALESCE(m.total, 0), COALESCE(m.sync, 0), COALESCE(m.live, 0)
-		FROM chats c JOIN senders s ON s.id = c.sender_id
+		FROM chats c JOIN contacts s ON s.id = c.contact_id
 		LEFT JOIN (
 			SELECT chat_id, COUNT(*) AS total,
 			       SUM(ingest_kind = 'sync') AS sync,
@@ -84,7 +84,7 @@ func (s *ChatStore) Recent(
 			guards               string
 		)
 		if err := rows.Scan(&summary.ID, &summary.Scope, &summary.Bot,
-			&summary.SenderID, &startedAt, &updatedAt, &summary.MessageCount,
+			&summary.ContactID, &startedAt, &updatedAt, &summary.MessageCount,
 			&guards, &summary.Phone, &summary.DisplayName,
 			&summary.Messages, &summary.Sync, &summary.Live); err != nil {
 			return nil, err
@@ -105,7 +105,7 @@ func scanChat(row interface{ Scan(...any) error }) (*botflota.Chat, error) {
 		startedAt, updatedAt string
 		guards               string
 	)
-	if err := row.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.SenderID,
+	if err := row.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.ContactID,
 		&startedAt, &updatedAt, &chat.MessageCount, &guards); err != nil {
 		return nil, err
 	}

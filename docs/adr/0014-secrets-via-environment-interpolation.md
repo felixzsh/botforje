@@ -9,7 +9,7 @@ YAML. Tokens are needed in a few places: model API keys, outbound request
 headers, and the signing secret of an outbound webhook (ADR 0045).
 
 The template engine resolves runtime conversation values (`graph`, `node`,
-`sender`, `message`, `bot`, `input`, request results). Adding secrets to it
+`contact`, `message`, `bot`, `input`, request results). Adding secrets to it
 would let a secret flow into a generated message or a log. Treating every
 config string as interpolable has the same risk: any string could carry a
 secret and lose its disguise.

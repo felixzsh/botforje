@@ -19,7 +19,7 @@ that nobody reads.
   every reply, the chat activity, the guard state, and the queued replies in
   one transaction. Either the whole turn lands or none of it does.
 - Deduplicate first: before loading or routing, the engine drops a message
-  whose provider id the chat already stores, reading the sender and chat
+  whose provider id the chat already stores, reading the contact and chat
   without writing them, so a redelivery never repeats an action or an HTTP
   side effect and never moves `last_seen`.
 - Queue with the turn: every reply is inserted into the `outbox` table in
@@ -48,9 +48,9 @@ that nobody reads.
 ## Consequences
 
 - A failed turn leaves no partial state among what it commits, so history
-  and sessions can be trusted without reconciliation. The sender profile and
+  and sessions can be trusted without reconciliation. The contact profile and
   the chat are prepared before that transaction, outside it: a failed turn
-  can leave a sender and an empty chat, never a half-written session,
+  can leave a contact and an empty chat, never a half-written session,
   message, guard, or queued reply.
 - Replies survive restarts, `fleet status` reports the queue's real depth,
   and a permanently failing reply becomes a visible `failed` row instead of

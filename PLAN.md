@@ -86,7 +86,7 @@ Goal: `{{...}}` values resolve correctly in messages and requests.
 Deliverables:
 
 - [x] Syntax and resolver for `{{path.to.value}}`.
-- [x] Contexts: graph, node, sender, message, bot, and request results.
+- [x] Contexts: graph, node, contact, message, bot, and request results.
 - [x] Read/write versus read-only context rules; node context resets on re-entry.
 - [x] Tests: resolution, missing paths, escaping, and request result capture.
 
@@ -136,7 +136,7 @@ Deliverables:
   roots, bad paths, and references to variables not declared in
   `initial_context` or tool `inputs`, with valid and invalid fixtures
   (ADR 0018).
-- [x] Guards: cooldown and rate limit per sender per action; blocked-action
+- [x] Guards: cooldown and rate limit per contact per action; blocked-action
   behavior.
 - [x] Hybrid intent semantics: classification fallback and rendering modes
   with anchor plus fallback (shape settled in Phase 1; ADR 0032). The policy
@@ -179,7 +179,7 @@ Goal: multiple bots in one process, paced and isolated.
 Deliverables:
 
 - [x] Fleet supervisor that builds one actor per bot from config.
-- [x] Filter: ignore groups and allow/ignore senders; deduplication lives in
+- [x] Filter: ignore groups and allow/ignore contacts; deduplication lives in
   the channel adapter, which sees the event first.
 - [x] Outbox: per-bot FIFO with `queue_delay` plus a shared random `jitter`,
   an optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
@@ -237,28 +237,28 @@ Deliverables:
   the `PUSH_NAME` contact names, widen each chat's activity to the imported
   range, and expose `chat sync` to page older messages on demand.
 - [x] Message history commands: list or tail one chat with
-  `message list|tail <bot> <sender> [--limit n] [--follow]`, served through
+  `message list|tail <bot> <contact> [--limit n] [--follow]`, served through
   the REST API.
-- [x] Sender profiles: record each sender's push name and first/last seen from
-  the first allowed message, keyed by (scope, phone) and shared by the scope's
+- [x] Contact identities: record each contact's push name and first/last
+  inbound from the first allowed message, keyed by (scope, phone) and shared by the scope's
   bots (ADR 0029). `chats.message_count` counts inbound messages until message
   history is recorded.
-- [x] Sender reads over the API (ADR 0044): `GET
-  /api/v1/scopes/{scope}/senders` lists the scope's profiles newest activity
+- [x] Contact reads over the API (ADR 0044): `GET
+  /api/v1/scopes/{scope}/contacts` lists the scope's identities newest activity
   first, with `since` over `first_seen` and an opaque keyset cursor, and `GET
-  .../senders/{phone}` answers one profile or 404; `GET .../bots/{bot}` reads
+  .../contacts/{phone}` answers one identity or 404; `GET .../bots/{bot}` reads
   one bot or 404.
 - [x] API-origin outbound send (ADR 0044): `POST
   /api/v1/scopes/{scope}/messages` stores and queues one text message to any
-  phone of one `(scope, bot)` in a single transaction — creating the sender and
+  phone of one `(scope, bot)` in a single transaction — creating the contact and
   the chat when missing — with `ingest=api`, `origin=api`, no session run, and
   an optional `client_id` whose repeat answers 409 with the accepted id. The
   existing outbox worker paces and retries it; the chat's control state is
   neither read nor changed; the channel's echo correlation keeps it from
   pausing the chat (ADR 0043).
 - [x] First-contact webhooks (ADR 0045): `webhooks` in the main config file and
-  a `FirstContactNotifier` port; `sender.first_seen` is emitted when a sender
-  profile is created and delivered at-least-once through a durable SQLite queue
+  a `FirstContactNotifier` port; `contact.first_seen` is emitted when a contact
+  claims its first inbound and delivered at-least-once through a durable SQLite queue
   with exponential backoff and an HMAC-SHA256 signature over the raw body.
 - [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
   Config reload is automatic and needs no signal (ADR 0009). Starting,
@@ -335,7 +335,7 @@ Deliverables:
   (`docs/access-policy.md`).
 - [x] Account history: unlinking keeps chats, messages, sessions, and
   contacts; deleting one bot's history is an explicit confirmed operation that
-  never touches the scope's senders or another bot and reports what it removed;
+  never touches the scope's contacts or another bot and reports what it removed;
   exporting one bot's history is a streamed zip of one CSV per table the
   deletion removes, so an irreversible deletion can be an informed one;
   migration **moves** a bot's chats and contacts to a bot of the same scope
@@ -445,7 +445,7 @@ Deliverables:
   linked account's address book into its own `contacts` resource, keyed by
   (scope, bot, phone), with the address-book, business, and push names kept
   apart; `contact list` and the scope `contacts` route read it. A control-only
-  conversation shell registers no sender and no chat.
+  conversation shell registers no contact and no chat.
 - [x] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over the running fleet's connection, in
   sequence and never in parallel, keeping the walk going when one chat fails.
@@ -456,8 +456,8 @@ Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several
 authorized scopes is atomic and leaves every other scope untouched. An owner
 can delete one bot's history and migrate it to another bot of the same scope
-without touching senders or a peer bot. An integration can send a message to
-any phone, read the scope's senders, and receive a signed first-contact
+without touching contacts or a peer bot. An integration can send a message to
+any phone, read the scope's contacts, and receive a signed first-contact
 webhook.
 
 The host-facing half of this phase — provisioning, limit sets, and quotas —

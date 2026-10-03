@@ -60,12 +60,12 @@ type Options struct {
 	Presence botflota.DevicePresence
 	// Unpairer drops a bot's link; the handler stops the running bot before
 	// asking for it (ADR 0021, ADR 0039).
-	Unpairer botflota.AccountUnpairer
-	Senders  botflota.SenderStore
-	Contacts botflota.ContactStore
-	Chats    botflota.ChatStore
-	Sessions botflota.SessionStore
-	Messages botflota.MessageStore
+	Unpairer    botflota.AccountUnpairer
+	Contacts    botflota.ContactStore
+	AddressBook botflota.AddressBookStore
+	Chats       botflota.ChatStore
+	Sessions    botflota.SessionStore
+	Messages    botflota.MessageStore
 	// Sends commits an API-origin outbound message outside a turn; it is
 	// optional so a server without it answers 501 on the send route (ADR 0044).
 	Sends botflota.SendStore
@@ -84,28 +84,28 @@ type Options struct {
 }
 
 type Server struct {
-	cfg      *config.Source
-	saved    *config.Source
-	writer   *config.Writer
-	applier  ConfigApplier
-	fleet    Fleet
-	accounts botflota.LinkedAccountStore
-	pairings botflota.PairingStore
-	pairing  botflota.PairingRunner
-	presence botflota.DevicePresence
-	unpairer botflota.AccountUnpairer
-	senders  botflota.SenderStore
-	contacts botflota.ContactStore
-	chats    botflota.ChatStore
-	sessions botflota.SessionStore
-	messages botflota.MessageStore
-	sends    botflota.SendStore
-	history  botflota.HistoryStore
-	pauser   BotPauser
-	tokens   botflota.AccessTokenStore
-	resolver PrincipalResolver
-	log      *slog.Logger
-	limiter  *rateLimiter
+	cfg         *config.Source
+	saved       *config.Source
+	writer      *config.Writer
+	applier     ConfigApplier
+	fleet       Fleet
+	accounts    botflota.LinkedAccountStore
+	pairings    botflota.PairingStore
+	pairing     botflota.PairingRunner
+	presence    botflota.DevicePresence
+	unpairer    botflota.AccountUnpairer
+	contacts    botflota.ContactStore
+	addressBook botflota.AddressBookStore
+	chats       botflota.ChatStore
+	sessions    botflota.SessionStore
+	messages    botflota.MessageStore
+	sends       botflota.SendStore
+	history     botflota.HistoryStore
+	pauser      BotPauser
+	tokens      botflota.AccessTokenStore
+	resolver    PrincipalResolver
+	log         *slog.Logger
+	limiter     *rateLimiter
 	// opsMu guards the per-bot operation locks pairing start, cancel, and
 	// unpair share (ADR 0021, ADR 0039).
 	opsMu sync.Mutex
@@ -143,11 +143,11 @@ func New(opts Options) (*Server, error) {
 	if opts.Unpairer == nil {
 		return nil, errors.New("api: no account unpairer")
 	}
-	if opts.Senders == nil {
-		return nil, errors.New("api: no sender store")
-	}
 	if opts.Contacts == nil {
 		return nil, errors.New("api: no contact store")
+	}
+	if opts.AddressBook == nil {
+		return nil, errors.New("api: no address-book store")
 	}
 	if opts.Chats == nil {
 		return nil, errors.New("api: no chat store")
@@ -180,7 +180,7 @@ func New(opts Options) (*Server, error) {
 		accounts: opts.Accounts, pairings: opts.Pairings,
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,
-		senders:  opts.Senders, contacts: opts.Contacts, chats: opts.Chats,
+		contacts: opts.Contacts, addressBook: opts.AddressBook, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages, sends: opts.Sends,
 		history: opts.History,
 		pauser:  opts.Pauser,
@@ -231,14 +231,14 @@ func (s *Server) routes() http.Handler {
 
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots/{bot}", s.handleScopeBot)
-	mux.HandleFunc("GET /api/v1/scopes/{scope}/senders", s.handleSenders)
-	mux.HandleFunc("GET /api/v1/scopes/{scope}/senders/{phone}", s.handleSender)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts", s.handleContacts)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts/{phone}", s.handleContact)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots/{bot}/contacts", s.handleAddressBook)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/config", s.handleScopeConfig)
 	mux.HandleFunc("PUT /api/v1/scopes/{scope}/config", s.handleScopeConfigPut)
 	mux.HandleFunc("POST /api/v1/config/publications", s.handleConfigPublications)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/chats", s.handleChats)
 	mux.HandleFunc("PUT /api/v1/scopes/{scope}/chats/control", s.handleChatControl)
-	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts", s.handleContacts)
 	mux.HandleFunc("POST /api/v1/scopes/{scope}/chats/sync", s.handleChatSync)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/sessions", s.handleSessions)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)

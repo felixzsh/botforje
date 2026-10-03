@@ -38,7 +38,7 @@ func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
 	live := &fakeSyncFleet{}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000&count=75&timeout=30",
+		"/api/v1/scopes/support/chats/sync?bot=demo&contact=5215500000000&count=75&timeout=30",
 		testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
@@ -66,7 +66,7 @@ func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
 func TestChatSyncReportsAFleetWithoutHistory(t *testing.T) {
 	server := testServer(t)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
+		"/api/v1/scopes/support/chats/sync?bot=demo&contact=5215500000000",
 		testOwnerToken)
 	if recorder.Code != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want 501", recorder.Code)
@@ -77,7 +77,7 @@ func TestChatSyncRejectsAnUnknownChat(t *testing.T) {
 	live := &fakeSyncFleet{}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&sender=000", testOwnerToken)
+		"/api/v1/scopes/support/chats/sync?bot=demo&contact=000", testOwnerToken)
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", recorder.Code)
 	}
@@ -92,7 +92,7 @@ func TestChatSyncHidesUpstreamFailure(t *testing.T) {
 	}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&sender=5215500000000",
+		"/api/v1/scopes/support/chats/sync?bot=demo&contact=5215500000000",
 		testOwnerToken)
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", recorder.Code)
@@ -135,13 +135,13 @@ func TestChatsEndpoint(t *testing.T) {
 	}
 	var body struct {
 		Chats []struct {
-			ID     int64  `json:"id"`
-			Scope  string `json:"scope"`
-			Bot    string `json:"bot"`
-			Sender struct {
+			ID      int64  `json:"id"`
+			Scope   string `json:"scope"`
+			Bot     string `json:"bot"`
+			Contact struct {
 				Phone string `json:"phone"`
 				Name  string `json:"name"`
-			} `json:"sender"`
+			} `json:"contact"`
 			Messages int64 `json:"messages"`
 			Sync     int64 `json:"sync"`
 			Live     int64 `json:"live"`
@@ -155,7 +155,7 @@ func TestChatsEndpoint(t *testing.T) {
 	}
 	chat := body.Chats[0]
 	if chat.ID != 3 || chat.Scope != "support" || chat.Bot != "demo" ||
-		chat.Sender.Phone != "5215500000000" || chat.Sender.Name != "Ana" ||
+		chat.Contact.Phone != "5215500000000" || chat.Contact.Name != "Ana" ||
 		chat.Messages != 5 || chat.Sync != 3 || chat.Live != 2 {
 		t.Fatalf("chat = %#v", chat)
 	}
@@ -181,7 +181,7 @@ func TestChatsEndpoint(t *testing.T) {
 // The ?after_id= cursor is the polling contract of `message tail --follow`.
 func TestMessagesAfterCursor(t *testing.T) {
 	server := testServer(t)
-	base := "/api/v1/scopes/support/messages?bot=demo&sender=5215500000000"
+	base := "/api/v1/scopes/support/messages?bot=demo&contact=5215500000000"
 	var body struct {
 		Messages []struct {
 			ID   int64  `json:"id"`
@@ -211,11 +211,11 @@ func TestMessagesAfterCursor(t *testing.T) {
 	}
 }
 
-func TestContactsEndpointNeedsABot(t *testing.T) {
+func TestAddressBookEndpointUnknownBot(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/contacts", testOwnerToken)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", recorder.Code)
+		"/api/v1/scopes/support/bots/ghost/contacts", testOwnerToken)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
 	}
 }

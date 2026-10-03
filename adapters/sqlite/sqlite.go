@@ -18,27 +18,27 @@ import (
 // database); versioned migrations start at the first release (ADR 0006).
 // Shapes: ADR 0026, ADR 0027, ADR 0029.
 var schema = []string{
-	`CREATE TABLE IF NOT EXISTS senders (
+	`CREATE TABLE IF NOT EXISTS contacts (
 		id              INTEGER PRIMARY KEY AUTOINCREMENT,
 		scope           TEXT NOT NULL,
 		phone           TEXT NOT NULL,
 		display_name    TEXT NOT NULL DEFAULT '',
 		name_updated_at TEXT NOT NULL DEFAULT '',
-		first_seen      TEXT NOT NULL,
-		last_seen       TEXT NOT NULL,
+		first_seen      TEXT NOT NULL DEFAULT '',
+		last_seen       TEXT NOT NULL DEFAULT '',
 		UNIQUE (scope, phone)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chats (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
 		scope         TEXT NOT NULL,
 		bot           TEXT NOT NULL,
-		sender_id     INTEGER NOT NULL
-			REFERENCES senders (id),
+		contact_id    INTEGER NOT NULL
+			REFERENCES contacts (id),
 		started_at    TEXT NOT NULL,
 		updated_at    TEXT NOT NULL,
 		message_count INTEGER NOT NULL DEFAULT 0,
 		guards        TEXT NOT NULL DEFAULT '{}',
-		UNIQUE (scope, bot, sender_id)
+		UNIQUE (scope, bot, contact_id)
 	)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +73,7 @@ var schema = []string{
 	`CREATE UNIQUE INDEX IF NOT EXISTS messages_provider
 		ON messages (chat_id, provider_message_id)
 		WHERE provider_message_id != ''`,
-	`CREATE TABLE IF NOT EXISTS contacts (
+	`CREATE TABLE IF NOT EXISTS bot_contacts (
 		scope         TEXT NOT NULL,
 		bot           TEXT NOT NULL,
 		phone         TEXT NOT NULL,
@@ -83,8 +83,8 @@ var schema = []string{
 		updated_at    TEXT NOT NULL,
 		PRIMARY KEY (scope, bot, phone)
 	)`,
-	`CREATE INDEX IF NOT EXISTS contacts_updated
-		ON contacts (scope, bot, updated_at DESC)`,
+	`CREATE INDEX IF NOT EXISTS bot_contacts_updated
+		ON bot_contacts (scope, bot, updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS linked_accounts (
 		scope TEXT NOT NULL,
 		bot   TEXT NOT NULL,
@@ -195,9 +195,11 @@ func Open(path string) (*DB, error) {
 
 func (d *DB) Chats() *stores.ChatStore { return stores.NewChatStore(d.DB) }
 
-func (d *DB) Senders() *stores.SenderStore { return stores.NewSenderStore(d.DB) }
-
 func (d *DB) Contacts() *stores.ContactStore { return stores.NewContactStore(d.DB) }
+
+func (d *DB) AddressBook() *stores.AddressBookStore {
+	return stores.NewAddressBookStore(d.DB)
+}
 
 func (d *DB) Sessions() *stores.SessionStore { return stores.NewSessionStore(d.DB) }
 

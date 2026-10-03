@@ -4,7 +4,7 @@ scopes:
       greet:
         steps:
           - message:
-              body: "Hi {{sender.phone}}, welcome {{graph.customer_name}}."
+              body: "Hi {{contact.phone}}, welcome {{graph.customer_name}}."
       lookup:
         inputs:
           query:

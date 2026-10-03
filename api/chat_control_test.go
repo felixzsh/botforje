@@ -54,7 +54,7 @@ func setChatControl(
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	path := "/api/v1/scopes/" + scope + "/chats/control?bot=demo&sender=" + sender
+	path := "/api/v1/scopes/" + scope + "/chats/control?bot=demo&contact=" + sender
 	request := httptest.NewRequest(http.MethodPut, path, bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
@@ -67,7 +67,7 @@ func decodeControl(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	var body struct {
 		Scope   string         `json:"scope"`
 		Bot     string         `json:"bot"`
-		Sender  string         `json:"sender"`
+		Contact string         `json:"contact"`
 		ChatID  int64          `json:"chat_id"`
 		Control map[string]any `json:"control"`
 	}
@@ -197,9 +197,9 @@ func TestChatListReportsControlOfAHeldChat(t *testing.T) {
 	}
 	var body struct {
 		Chats []struct {
-			Sender struct {
+			Contact struct {
 				Phone string `json:"phone"`
-			} `json:"sender"`
+			} `json:"contact"`
 			Control string `json:"control"`
 		} `json:"chats"`
 	}
@@ -208,7 +208,7 @@ func TestChatListReportsControlOfAHeldChat(t *testing.T) {
 	}
 	found := false
 	for _, chat := range body.Chats {
-		if chat.Sender.Phone != "5215500000000" {
+		if chat.Contact.Phone != "5215500000000" {
 			continue
 		}
 		found = true

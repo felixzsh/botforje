@@ -43,7 +43,7 @@ func buildFleetWithClock(
 	channels := map[string]*fakeChannel{}
 	store := newStore()
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Contacts: store, Messages: store,
 		Turn: store, Outbox: store, DefaultTimeout: time.Minute,
 		Now: now,
 		NewChannel: func(bot BotSpec) (botflota.MessageChannel, error) {
@@ -73,7 +73,7 @@ func TestApplyConfigAppliesAMultiScopeCandidate(t *testing.T) {
 		{"dev", "alpha"}, {"other", "gamma"},
 	} {
 		channels[target.scope+"/"+target.bot].incoming <- botflota.IncomingMessage{
-			Bot: target.bot, SenderPhone: "before-" + target.bot,
+			Bot: target.bot, FromPhone: "before-" + target.bot,
 			Content: botflota.TextContent{Body: "hi"},
 		}
 		receive(t, channels[target.scope+"/"+target.bot].sent)
@@ -107,7 +107,7 @@ func TestApplyConfigAppliesAMultiScopeCandidate(t *testing.T) {
 		{"dev", "alpha"}, {"other", "gamma"},
 	} {
 		channels[target.scope+"/"+target.bot].incoming <- botflota.IncomingMessage{
-			Bot: target.bot, SenderPhone: "after-" + target.bot,
+			Bot: target.bot, FromPhone: "after-" + target.bot,
 			Content: botflota.TextContent{Body: "hi"},
 		}
 		reply := receive(t, channels[target.scope+"/"+target.bot].sent)
@@ -134,7 +134,7 @@ func TestApplyConfigDefersUntilSessionsExpire(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["dev/alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "active",
+		Bot: "alpha", FromPhone: "active",
 		Content: botflota.TextContent{Body: "hi"},
 	}
 	receive(t, channels["dev/alpha"].sent)

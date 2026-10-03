@@ -19,16 +19,16 @@ import (
 // fakeHistory serves the rows a test hands it, so the endpoint's archive can be
 // checked without a database, and records the delete and move it was asked for.
 type fakeHistory struct {
-	chats     []botflota.HistoryChat
-	sessions  []botflota.Session
-	messages  []botflota.Message
-	contacts  []botflota.Contact
-	err       error
-	writeErr  error
-	deleted   []string
-	moved     []string
-	occupancy map[string]bool
-	at        time.Time
+	chats       []botflota.HistoryChat
+	sessions    []botflota.Session
+	messages    []botflota.Message
+	addressBook []botflota.AddressBookEntry
+	err         error
+	writeErr    error
+	deleted     []string
+	moved       []string
+	occupancy   map[string]bool
+	at          time.Time
 }
 
 func (f *fakeHistory) DeleteBot(
@@ -38,7 +38,7 @@ func (f *fakeHistory) DeleteBot(
 		return botflota.HistoryCounts{}, f.writeErr
 	}
 	f.deleted = append(f.deleted, scope+"/"+bot)
-	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Contacts: 4}, nil
+	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, AddressBook: 4}, nil
 }
 
 func (f *fakeHistory) MoveBot(
@@ -52,7 +52,7 @@ func (f *fakeHistory) MoveBot(
 	}
 	f.moved = append(f.moved, scope+"/"+from+"->"+to)
 	f.at = at
-	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Contacts: 4}, nil
+	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, AddressBook: 4}, nil
 }
 
 func (f *fakeHistory) ReadHistory(
@@ -86,11 +86,11 @@ func (f *fakeHistory) ReadHistory(
 			return err
 		}
 	}
-	if err := sink.BeginTable(botflota.TableContacts); err != nil {
+	if err := sink.BeginTable(botflota.TableAddressBook); err != nil {
 		return err
 	}
-	for _, contact := range f.contacts {
-		if err := sink.Contact(contact); err != nil {
+	for _, entry := range f.addressBook {
+		if err := sink.AddressBookEntry(entry); err != nil {
 			return err
 		}
 	}
@@ -149,11 +149,11 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	server := newHistoryServer(t, &fakeHistory{
 		chats: []botflota.HistoryChat{{
 			Chat: botflota.Chat{
-				ID: 3, Scope: "support", Bot: "demo", SenderID: 7,
+				ID: 3, Scope: "support", Bot: "demo", ContactID: 7,
 				StartedAt: testTime, UpdatedAt: testTime, MessageCount: 1,
 				Guards: map[string]botflota.GuardState{"greet": {}},
 			},
-			SenderPhone: "5215500000000", SenderName: "Ana",
+			ContactPhone: "5215500000000", ContactName: "Ana",
 		}},
 		sessions: []botflota.Session{{
 			ID: 9, ChatID: 3, Node: "menu", VisitedNodes: []string{"menu"},
@@ -164,7 +164,7 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 			Content: botflota.TextContent{Body: "hola, mundo"},
 			At:      testTime, Ingest: botflota.IngestLive,
 		}},
-		contacts: []botflota.Contact{{
+		addressBook: []botflota.AddressBookEntry{{
 			Scope: "support", Bot: "demo", Phone: "5215500000000",
 			Name: "Ana", PushName: "anita", UpdatedAt: testTime,
 		}},
@@ -180,7 +180,7 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	}
 
 	files := readArchive(t, recorder)
-	for _, name := range []string{"chats.csv", "sessions.csv", "messages.csv", "contacts.csv"} {
+	for _, name := range []string{"chats.csv", "sessions.csv", "messages.csv", "address-book.csv"} {
 		if _, ok := files[name]; !ok {
 			t.Fatalf("%s is missing: %v", name, files)
 		}
@@ -205,8 +205,8 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	}
 
 	chats := csvRows(t, files["chats.csv"])
-	if chats[1][slices.Index(chats[0], "sender_phone")] != "5215500000000" {
-		t.Fatalf("chats row = %v, want the sender's phone", chats[1])
+	if chats[1][slices.Index(chats[0], "contact_phone")] != "5215500000000" {
+		t.Fatalf("chats row = %v, want the contact's phone", chats[1])
 	}
 	if chats[1][slices.Index(chats[0], "guards")] != `{"greet":{}}` {
 		t.Fatalf("guards = %q, want the stored JSON",
@@ -225,10 +225,10 @@ func TestHistoryExportWritesAHeaderForEveryTable(t *testing.T) {
 	// A table with no rows still gets its file and its header, so a reader can
 	// tell "nothing here" from "not exported".
 	for name, wantHeader := range map[string]string{
-		"chats.csv":    "sender_phone",
-		"sessions.csv": "graph_context",
-		"messages.csv": "provider_message_id",
-		"contacts.csv": "business_name",
+		"chats.csv":        "contact_phone",
+		"sessions.csv":     "graph_context",
+		"messages.csv":     "provider_message_id",
+		"address-book.csv": "business_name",
 	} {
 		content, ok := files[name]
 		if !ok {

@@ -7,8 +7,8 @@ import (
 )
 
 func TestFilterAllow(t *testing.T) {
-	direct := botflota.IncomingMessage{SenderPhone: "52155"}
-	group := botflota.IncomingMessage{SenderPhone: "52155", IsGroup: true}
+	direct := botflota.IncomingMessage{FromPhone: "52155"}
+	group := botflota.IncomingMessage{FromPhone: "52155", IsGroup: true}
 
 	cases := []struct {
 		name   string

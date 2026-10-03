@@ -113,7 +113,7 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 			ID:    chat.ID,
 			Scope: chat.Scope,
 			Bot:   chat.Bot,
-			Sender: senderView{
+			Contact: contactView{
 				Phone: chat.Phone,
 				Name:  chat.DisplayName,
 			},
@@ -133,47 +133,6 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 		views = append(views, view)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"chats": views})
-}
-
-func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
-	scope, ok := s.scopeParam(w, r)
-	if !ok {
-		return
-	}
-	bot, ok := s.botParam(w, r, scope)
-	if !ok {
-		return
-	}
-	if bot == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "bot is required")
-		return
-	}
-	limit, err := limitParam(r, false)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return
-	}
-	contacts, err := s.contacts.List(r.Context(), scope, bot, limit)
-	if err != nil {
-		s.fail(w, "list contacts", err)
-		return
-	}
-	views := make([]contactView, 0, len(contacts))
-	for _, contact := range contacts {
-		views = append(views, contactView{
-			Scope:        contact.Scope,
-			Bot:          contact.Bot,
-			Phone:        contact.Phone,
-			DisplayName:  contact.DisplayName(),
-			Name:         contact.Name,
-			PushName:     contact.PushName,
-			BusinessName: contact.BusinessName,
-			UpdatedAt:    contact.UpdatedAt,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"scope": scope, "bot": bot, "contacts": views,
-	})
 }
 
 // historySyncer is the live fleet's optional history capability (ADR 0035);
@@ -206,7 +165,7 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	phone := r.URL.Query().Get("sender")
+	phone := r.URL.Query().Get("contact")
 	result, err := syncer.HistorySync(r.Context(), scope, bot, phone, count, timeout)
 	if err != nil {
 		// The upstream failure names the phone, the device, or the provider;
@@ -220,7 +179,7 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"scope":     scope,
 		"bot":       bot,
-		"sender":    phone,
+		"contact":   phone,
 		"chat_id":   chat.ID,
 		"received":  result.Received,
 		"rounds":    result.Rounds,

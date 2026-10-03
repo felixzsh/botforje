@@ -102,9 +102,9 @@ type messageQuery struct {
 
 func (q messageQuery) path(afterID int64) string {
 	values := url.Values{
-		"bot":    {q.bot},
-		"sender": {q.phone},
-		"limit":  {strconv.Itoa(q.limit)},
+		"bot":     {q.bot},
+		"contact": {q.phone},
+		"limit":   {strconv.Itoa(q.limit)},
 	}
 	if afterID > 0 {
 		values.Set("after_id", strconv.FormatInt(afterID, 10))

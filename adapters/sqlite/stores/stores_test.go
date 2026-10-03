@@ -26,21 +26,21 @@ func open(t *testing.T, path string) *sqlite.DB {
 	return db
 }
 
-func ensureSender(t *testing.T, db *sqlite.DB) *botflota.Sender {
+func ensureContact(t *testing.T, db *sqlite.DB) *botflota.Contact {
 	t.Helper()
-	sender, _, err := db.Senders().Upsert(context.Background(), "support",
+	contact, _, err := db.Contacts().RecordInbound(context.Background(), "support",
 		"5215500000000", "Ana", t0)
 	if err != nil {
-		t.Fatalf("Upsert sender: %v", err)
+		t.Fatalf("RecordMessage contact: %v", err)
 	}
-	return sender
+	return contact
 }
 
 func ensureChat(t *testing.T, db *sqlite.DB) *botflota.Chat {
 	t.Helper()
-	sender := ensureSender(t, db)
+	contact := ensureContact(t, db)
 	chat, err := db.Chats().Ensure(context.Background(), "support", "support-bot",
-		sender.ID, t0)
+		contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestForeignKeysEnforced(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 
 	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", 999, t0); err == nil {
-		t.Fatal("Ensure with unknown sender succeeded, want a foreign key error")
+		t.Fatal("Ensure with unknown contact succeeded, want a foreign key error")
 	}
 
 	orphanChat := &botflota.Message{

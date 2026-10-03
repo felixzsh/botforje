@@ -130,21 +130,21 @@ implemented; the decisions behind them are in ADR 0042.
 - **Unlink keeps everything** (current). `DELETE .../bots/{bot}/account` and
   `bot unpair` remove the credentials, the account record, and the pairing
   status, and fail the replies the old link still owes (ADR 0040). Chats,
-  sessions, messages, sender profiles, and contacts stay exactly as they are,
+  sessions, messages, contact identities, and address-book entries stay as they are,
   so a temporary unlink or a later replacement never costs history.
 - **Deleting history is its own explicit operation**, confirmed by the caller
   and addressed to one `(scope, bot)`: it drops that bot's chats, and with them
-  the cascaded sessions, messages, and queued replies, plus its contacts. It
-  never touches the scope's `senders` — those are shared by the scope's bots
-  (ADR 0029) — and it never touches another bot. The API reports what was
+  the cascaded sessions, messages, and queued replies, plus its address-book
+  entries. It never touches the scope's contact identities — those are shared
+  by the scope's bots (ADR 0029) — and it never touches another bot. The API reports what was
   removed. Nothing else calls it: no pairing, replacement, or config edit
   deletes history as a side effect.
 - **Migration transfers history, not identity.** A migration moves a bot's
-  chats and contacts to another bot **of the same scope**, so a bot replacing a
-  lost account starts from the same conversations and Botflota treats the result
-  as an ordinary bot. Scope never changes: references and sessions never cross
-  scopes (ADR 0016), so there is no cross-scope move. Senders are already shared
-  by the scope and need no copy. A bot that only relinks its account needs no
+  chats and address book to another bot **of the same scope**, so a bot replacing
+  a lost account starts from the same conversations and Botflota treats the
+  result as an ordinary bot. Scope never changes: references and sessions never
+  cross scopes (ADR 0016), so there is no cross-scope move. Contact identities
+  are already shared by the scope and need no copy. A bot that only relinks its account needs no
   migration at all — its history is keyed by bot, not by account.
 - **History can be exported before it is deleted** (current). One `zip`
   download, one CSV per table the deletion removes — chats, sessions, messages,
@@ -247,12 +247,12 @@ Publication:
 
 Account history:
 
-- Unlink, replace, pair, and unpair leave chats, sessions, messages, and
-  contacts untouched, and the next pairing resumes them.
-- Explicit history deletion removes exactly one bot's history and contacts,
-  never the scope's senders or another bot, and reports what it removed. A
-  confirmation that does not repeat the target is refused.
-- Migration moves a bot's chats and contacts to another bot of the same scope,
+- Unlink, replace, pair, and unpair leave chats, sessions, messages, and the
+  address book untouched, and the next pairing resumes them.
+- Explicit history deletion removes exactly one bot's history and address book,
+  never the scope's contact identities or another bot, and reports what it
+  removed. A confirmation that does not repeat the target is refused.
+- Migration moves a bot's chats and address book to another bot of the same scope,
   never across scopes, with both bots stopped, the source's queued replies
   failed before anything transfers, and its active sessions expired; it lands
   all of them or none after an error or restart, and a repeat does not

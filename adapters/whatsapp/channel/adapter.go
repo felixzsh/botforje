@@ -1,6 +1,6 @@
 // Package channel is the live WhatsApp connection: the whatsmeow
 // implementation of botflota.MessageChannel for one bot (ADR 0001, ADR 0004).
-// It owns reconnection, dedup, sender resolution, presence, and on-demand
+// It owns reconnection, dedup, contact resolution, presence, and on-demand
 // history sync (ADR 0011, ADR 0035).
 package channel
 
@@ -52,14 +52,15 @@ type Options struct {
 	Devices  *whatsapp.Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
-	// Senders, Chats, and Messages are all required to import the account-wide
+	// Contacts, Chats, and Messages are all required to import the account-wide
 	// history sync WhatsApp delivers after linking.
-	Senders  botflota.SenderStore
+	Contacts botflota.ContactStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
 	// History enables the inert import of that sync (ADR 0035).
-	History  bool
-	Contacts botflota.ContactStore
+	History bool
+	// AddressBook receives the imported book when ImportContacts is on.
+	AddressBook botflota.AddressBookStore
 	// ImportContacts is off by default: the book may hold people this account
 	// never wrote to.
 	ImportContacts bool
@@ -104,13 +105,13 @@ type Adapter struct {
 	// so the fleet can hand the chat to a human (ADR 0043).
 	outbound chan botflota.OutboundMessage
 
-	senders      botflota.SenderStore
-	chats        botflota.ChatStore
-	messages     botflota.MessageStore
-	importer     *ingest.HistoryImporter
-	contacts     *ingest.ContactImporter
-	contactsOnce sync.Once
-	history      chan *events.HistorySync
+	contacts        botflota.ContactStore
+	chats           botflota.ChatStore
+	messages        botflota.MessageStore
+	importer        *ingest.HistoryImporter
+	addressBook     *ingest.AddressBookImporter
+	addressBookOnce sync.Once
+	history         chan *events.HistorySync
 	// historyDone closes when the import worker has drained and stopped.
 	historyDone chan struct{}
 
@@ -136,9 +137,9 @@ type Adapter struct {
 }
 
 type lastInbound struct {
-	id     types.MessageID
-	chat   types.JID
-	sender types.JID
+	id   types.MessageID
+	chat types.JID
+	from types.JID
 }
 
 func New(opts Options) (*Adapter, error) {
@@ -183,7 +184,7 @@ func New(opts Options) (*Adapter, error) {
 		rnd:       rnd,
 		sleep:     opts.Sleep,
 		onState:   opts.OnState,
-		senders:   opts.Senders,
+		contacts:  opts.Contacts,
 		chats:     opts.Chats,
 		messages:  opts.Messages,
 		incoming:  make(chan botflota.IncomingMessage, queue),
@@ -197,10 +198,10 @@ func New(opts Options) (*Adapter, error) {
 		stopped:   make(chan struct{}),
 	}
 	if opts.ImportContacts {
-		a.contacts = ingest.NewContacts(a.scope, a.bot, opts.Contacts, a.lookupPN, log)
+		a.addressBook = ingest.NewAddressBook(a.scope, a.bot, opts.AddressBook, a.lookupPN, log)
 	}
 	if opts.History {
-		a.importer = ingest.NewHistory(a.scope, a.bot, opts.Senders, opts.Chats,
+		a.importer = ingest.NewHistory(a.scope, a.bot, opts.Contacts, opts.Chats,
 			opts.Messages, a.lookupPN, log)
 		if a.importer != nil {
 			a.history = make(chan *events.HistorySync, 16)
@@ -232,7 +233,7 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	client.DisableLoginAutoReconnect = true
 	// A full address-book sync is otherwise applied silently, which would skip
 	// every contact event this import runs on (ADR 0037).
-	client.EmitAppStateEventsOnFullSync = a.contacts != nil
+	client.EmitAppStateEventsOnFullSync = a.addressBook != nil
 	client.AddEventHandler(a.handleEvent)
 	if a.importer != nil {
 		a.importer.SetOwnPhone(whatsapp.DevicePhone(device))

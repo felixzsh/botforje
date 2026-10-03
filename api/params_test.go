@@ -16,14 +16,14 @@ func TestQueryErrors(t *testing.T) {
 		{"unknown bot", "/api/v1/scopes/support/chats?bot=nope", http.StatusNotFound},
 		{"bad limit", "/api/v1/scopes/support/chats?limit=zero", http.StatusBadRequest},
 		{"bad after_id",
-			"/api/v1/scopes/support/messages?bot=demo&sender=5215500000000&after_id=abc",
+			"/api/v1/scopes/support/messages?bot=demo&contact=5215500000000&after_id=abc",
 			http.StatusBadRequest},
 		{"missing sender",
 			"/api/v1/scopes/support/messages?bot=demo", http.StatusBadRequest},
 		{"unknown sender",
-			"/api/v1/scopes/support/messages?bot=demo&sender=000", http.StatusNotFound},
+			"/api/v1/scopes/support/messages?bot=demo&contact=000", http.StatusNotFound},
 		{"no session",
-			"/api/v1/scopes/support/sessions?bot=demo&sender=5215599999999",
+			"/api/v1/scopes/support/sessions?bot=demo&contact=5215599999999",
 			http.StatusNotFound},
 	}
 	for _, tc := range cases {

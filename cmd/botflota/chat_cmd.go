@@ -209,7 +209,7 @@ func requestChatSync(
 ) (chatSyncResult, error) {
 	values := url.Values{
 		"bot":     {bot},
-		"sender":  {phone},
+		"contact": {phone},
 		"count":   {strconv.Itoa(count)},
 		"timeout": {strconv.Itoa(timeoutSeconds)},
 	}
@@ -227,9 +227,9 @@ func listChatPhones(
 ) ([]string, error) {
 	var body struct {
 		Chats []struct {
-			Sender struct {
+			Contact struct {
 				Phone string `json:"phone"`
-			} `json:"sender"`
+			} `json:"contact"`
 		} `json:"chats"`
 	}
 	query := chatsQuery{scope: scope, bot: bot, limit: 0}
@@ -238,8 +238,8 @@ func listChatPhones(
 	}
 	phones := make([]string, 0, len(body.Chats))
 	for _, chat := range body.Chats {
-		if chat.Sender.Phone != "" {
-			phones = append(phones, chat.Sender.Phone)
+		if chat.Contact.Phone != "" {
+			phones = append(phones, chat.Contact.Phone)
 		}
 	}
 	return phones, nil
@@ -284,10 +284,10 @@ func (q chatsQuery) path() string {
 func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuery) error {
 	var body struct {
 		Chats []struct {
-			Sender struct {
+			Contact struct {
 				Phone string `json:"phone"`
 				Name  string `json:"name"`
-			} `json:"sender"`
+			} `json:"contact"`
 			Messages  int64     `json:"messages"`
 			Sync      int64     `json:"sync"`
 			Live      int64     `json:"live"`
@@ -302,7 +302,7 @@ func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuer
 		"PHONE", "NAME", "MESSAGES", "SYNC", "LIVE", "STARTED", "UPDATED")
 	for _, chat := range body.Chats {
 		fmt.Fprintf(w, "%-15s %-20s %8d %6d %6d  %-19s  %s\n",
-			chat.Sender.Phone, dash(chat.Sender.Name), chat.Messages,
+			chat.Contact.Phone, dash(chat.Contact.Name), chat.Messages,
 			chat.Sync, chat.Live,
 			chat.StartedAt.Local().Format("2006-01-02 15:04:05"),
 			chat.UpdatedAt.Local().Format("2006-01-02 15:04:05"))

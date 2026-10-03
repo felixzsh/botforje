@@ -7,12 +7,12 @@ Status: Accepted (2026-09)
 Linking a companion to WhatsApp triggers an account-wide history sync: the
 server pushes chunks with conversations for every chat it chooses, each with
 the messages it chooses (recent activity, a limited number per chat). It is
-not per sender, it is not the whole thread, and it arrives once, on whichever
+not per contact, it is not the whole thread, and it arrives once, on whichever
 connection is alive right after linking. If Botflota does not capture it, it
 is gone.
 
 A bot that only records live traffic starts every conversation blind, even one
-the sender has been having with the phone for months. Keeping the delivered
+the contact has been having with the phone for months. Keeping the delivered
 backlog gives the dashboard and the future LLM context something honest to
 read, and it costs the engine nothing: the sync is data, not a conversation
 turn.
@@ -47,12 +47,12 @@ Import the history sync, inertly and honestly:
   `unknown` fallback. A control message — an edit, reaction, deletion, poll
   vote, pin, keep, or key-distribution traffic — stores no row. Groups,
   broadcasts, status, and channels are skipped. A conversation registers its
-  sender and chat only when it stored at least one message or call: WhatsApp
+  contact and chat only when it stored at least one message or call: WhatsApp
   sends a control-only shell for every number the account's address book knows,
   and a chat with no message is not history (ADR 0037).
-- The account-wide `PUSH_NAME` chunk names the senders Botflota already knows,
+- The account-wide `PUSH_NAME` chunk names the contacts Botflota already knows,
   without creating a profile for a contact that never wrote and without moving
-  first or last seen. A name learned this way is remembered for a sender a
+  first or last seen. A name learned this way is remembered for a contact a
   later chunk creates.
 - Importing a conversation widens the chat's activity to cover what arrived:
   `started_at` moves back to the oldest imported message and `updated_at`
@@ -63,8 +63,8 @@ Import the history sync, inertly and honestly:
   The past cannot say who wrote an outbound message outside Botflota, so the
   import never guesses.
 - The import is inert: it never runs the engine, queues a reply, or touches
-  the outbox. The bot's filter (`ignore_groups`, `allowed_senders`,
-  `ignored_senders`) does not apply, because the import is not a conversation.
+  the outbox. The bot's filter (`ignore_groups`, `allowed_contacts`,
+  `ignored_contacts`) does not apply, because the import is not a conversation.
 - The conversation's chat phone number resolves as usual (ADR 0020): the
   conversation's phone JID first, then the LID store. A chat with no known
   phone number is skipped.
@@ -82,7 +82,7 @@ Import the history sync, inertly and honestly:
   import first and reports it partial. The accounting, the ceilings, and the
   pause that follows are the owner policy's (`docs/access-policy.md`).
 - Older messages beyond the delivered backlog are requested by `chat sync
-  <bot> <sender>`, the path a pairing without `--import-history` relies on. It
+  <bot> <contact>`, the path a pairing without `--import-history` relies on. It
   pages backwards from the chat's oldest stored message,
   asking the primary device for batches of up to 50 messages older than it
   (`BuildHistorySyncRequest`) and importing every correlated `ON_DEMAND` chunk
@@ -96,7 +96,7 @@ Import the history sync, inertly and honestly:
 - `chat sync` runs over the live connection of the running fleet, not over a
   second connection, because one phone number has one companion connection at
   a time. The fleet exposes the operation through `botflota.HistorySyncer` and
-  `api` serves it as `POST /api/v1/scopes/{scope}/chats/sync?bot=&sender=`,
+  `api` serves it as `POST /api/v1/scopes/{scope}/chats/sync?bot=&contact=`,
   so the CLI is an API client and a dashboard asks for a backfill the same
   way. `?count=N` limits the total requested entries and zero means all
   accessible history; one sync runs per bot at a time. A missing reply is a
@@ -115,7 +115,7 @@ Import the history sync, inertly and honestly:
 
 ## Consequences
 
-- A pairing can populate the database with many senders and chats at once,
+- A pairing can populate the database with many contacts and chats at once,
   each with the messages WhatsApp delivered. Listing a chat starts from real
   history, and `message_count` still counts live inbound only (ADR 0029). A
   chat appears only when it stored at least one message or call. A chat with no

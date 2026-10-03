@@ -33,7 +33,7 @@
 - Tool loop — the LLM-driven tool mode, the alternative to the tool pipeline
   for nodes a pipeline cannot bound.
 - Step — single operation inside an action.
-- Guard — rule that limits how often an action runs per sender, such as a
+- Guard — rule that limits how often an action runs per contact, such as a
   cooldown (minimum interval) or a rate limit (maximum per window).
 - Policy — constraints for LLM decisions, tool selection, and generated text.
   Node policy is ambient; message policy refines it.
@@ -41,22 +41,23 @@
   video, audio, document, sticker, location, contact, poll, event, interactive,
   commerce, call, or unknown. A channel implements the subset it can produce
   and send (ADR 0036).
-- Chat — durable thread between one bot and one sender, keyed by
-  (scope, bot, sender); it never ends and gathers every message.
+- Chat — durable thread between one bot and one contact, keyed by
+  (scope, bot, contact); it never ends and gathers every message.
 - Session — one bounded run of a bot's graph for a chat, stored in the
   database; it starts at the root and ends on the graph timeout.
 - PN (phone number) — WhatsApp's phone-number address; Botflota keys sessions
   on the plain number (`5215500000000`), without the JID suffix.
 - LID (hidden user) — WhatsApp's `user@lid` address; kept internal to
   WhatsApp handling for resolution and delivery.
-- Sender identity — the resolved phone number in plain digits, resolved by the
-  WhatsApp channel.
-- Sender — the durable profile of one person who writes to bots in a scope:
-  their phone, push name, and first/last seen. One per (scope, phone), shared by
-  the scope's bots; the bot-person thread is the chat.
-- Contact — an address-book entry of one bot's linked account, keyed by
+- Contact identity — the resolved phone number in plain digits, resolved by
+  the WhatsApp channel.
+- Contact — the durable identity of one person a scope knows: their phone,
+  push name, and first/last inbound. One per (scope, phone), shared by the
+  scope's bots; the bot-person thread is the chat. `first_seen` is set by the
+  first live inbound message, never by an import or an API send (ADR 0029).
+- Address-book entry — an entry of one bot's linked account, keyed by
   (scope, bot, phone), copied only when the bot sets `import_contacts`. It is
-  an identity the account knows, never a chat or a sender (ADR 0037).
+  an identity the account knows, never a chat or a contact (ADR 0037).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp
@@ -79,18 +80,18 @@
 - Agent — a conventional external agent runtime (for example OpenClaw), a
   possible future integration. It does not name Botflota's own LLM behavior;
   that is the tool loop.
-- Filter — one bot's inbound rules (ignore groups, allow/ignore senders)
+- Filter — one bot's inbound rules (ignore groups, allow/ignore contacts)
   applied before the engine; the fleet routes events to the bot.
 - Outbox — per-bot FIFO queue that paces outbound messages.
 - Webhook — an instance-level signed HTTP delivery of an outbound event to an
-  external system; the first event is `sender.first_seen` (ADR 0045).
+  external system; the first event is `contact.first_seen` (ADR 0045).
 - Secret reference — a `${ENV_VAR}` placeholder, allowed only in fields enabled
   for secrets (model `api_key`, request header values), resolved from the
   process environment at load; the whole string is sensitive.
 - Template — a string with `{{path.to.value}}` references resolved against the
   runtime context; a missing path is an error.
 - Runtime context — the values a template reads: graph and node variables,
-  sender, message, bot, tool inputs, and request results.
+  contact, message, bot, tool inputs, and request results.
 - Device store — the WhatsApp device credentials that keep a companion device
   linked: its identity keys, prekeys, and registration. It lives in the
   database, so a bot can run on a server.
@@ -125,6 +126,6 @@
   imported history one bot keeps for its linked account. Ordinary bot config
   in bytes; Botflota knows no tier and no percentage.
 - History migration — moving, never copying, a bot's chats, messages, and
-  contacts to another bot of the same scope, so a recreated or peer bot starts
+  address book to another bot of the same scope, so a recreated or peer bot starts
   from the same conversations; it runs with both bots stopped
   (`docs/current-plan.md`). Unlinking an account never deletes history.

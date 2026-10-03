@@ -24,15 +24,15 @@ type Guards struct {
 	RateLimit *RateLimit `yaml:"rate_limit" json:"rate_limit,omitempty"`
 }
 
-// Cooldown blocks the same sender for `duration` seconds, then runs the
+// Cooldown blocks the same contact for `duration` seconds, then runs the
 // `on_blocked` steps.
 type Cooldown struct {
 	Duration  int    `yaml:"duration" json:"duration"`
 	OnBlocked []Step `yaml:"on_blocked" json:"on_blocked,omitempty"`
 }
 
-// RateLimit allows at most `limit` runs per sender in `window` seconds and
-// runs the `on_blocked` steps when the sender exceeds it.
+// RateLimit allows at most `limit` runs per contact in `window` seconds and
+// runs the `on_blocked` steps when the contact exceeds it.
 type RateLimit struct {
 	Limit     int    `yaml:"limit" json:"limit"`
 	Window    int    `yaml:"window" json:"window"`
@@ -51,7 +51,7 @@ type Step struct {
 
 // Message is a reply: a fixed body, an LLM-realized reply, or both. To is an
 // optional recipient override, a phone number or a template; empty means the
-// sender.
+// contact.
 type Message struct {
 	Body   Text   `yaml:"body" json:"body,omitempty"`
 	Intent string `yaml:"intent" json:"intent,omitempty"`

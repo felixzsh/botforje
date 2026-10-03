@@ -31,7 +31,7 @@ func (s *HistoryStore) ReadHistory(
 		{botflota.TableChats, readHistoryChats},
 		{botflota.TableSessions, readHistorySessions},
 		{botflota.TableMessages, readHistoryMessages},
-		{botflota.TableContacts, readHistoryContacts},
+		{botflota.TableAddressBook, readHistoryAddressBook},
 	} {
 		if err := sink.BeginTable(table.name); err != nil {
 			return err
@@ -43,17 +43,17 @@ func (s *HistoryStore) ReadHistory(
 	return nil
 }
 
-// readHistoryChats carries the sender's phone and name, which the scope owns and
-// keeps, so the exported file can be read without them (ADR 0029).
+// readHistoryChats carries the contact's phone and name, which the scope owns
+// and keeps, so the exported file can be read without them (ADR 0029).
 func readHistoryChats(
 	ctx context.Context, tx *sql.Tx, scope, bot string, sink botflota.HistorySink,
 ) error {
-	// Senders are joined by subquery rather than a join, so the shared column
+	// Identities are joined by subquery rather than a join, so the shared column
 	// list stays unqualified and cannot drift from the chat store's.
 	rows, err := tx.QueryContext(ctx,
 		`SELECT `+chatColumns+`,
-			(SELECT phone FROM senders WHERE senders.id = chats.sender_id),
-			(SELECT display_name FROM senders WHERE senders.id = chats.sender_id)
+			(SELECT phone FROM contacts WHERE contacts.id = chats.contact_id),
+			(SELECT display_name FROM contacts WHERE contacts.id = chats.contact_id)
 		 FROM chats WHERE chats.scope = ? AND chats.bot = ? ORDER BY chats.id`,
 		scope, bot)
 	if err != nil {
@@ -81,9 +81,9 @@ func scanHistoryChat(rows *sql.Rows) (botflota.HistoryChat, error) {
 		startedAt, updatedAt string
 		guards               string
 	)
-	err := rows.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.SenderID,
+	err := rows.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.ContactID,
 		&startedAt, &updatedAt, &chat.MessageCount, &guards,
-		&chat.SenderPhone, &chat.SenderName)
+		&chat.ContactPhone, &chat.ContactName)
 	if err != nil {
 		return botflota.HistoryChat{}, err
 	}
@@ -146,41 +146,41 @@ func readHistoryMessages(
 	return nil
 }
 
-func readHistoryContacts(
+func readHistoryAddressBook(
 	ctx context.Context, tx *sql.Tx, scope, bot string, sink botflota.HistorySink,
 ) error {
 	rows, err := tx.QueryContext(ctx,
-		`SELECT `+contactColumns+` FROM contacts
+		`SELECT `+addressBookColumns+` FROM bot_contacts
 		 WHERE scope = ? AND bot = ? ORDER BY phone`, scope, bot)
 	if err != nil {
-		return fmt.Errorf("sqlite: read history contacts: %w", err)
+		return fmt.Errorf("sqlite: read history address book: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		contact, err := scanHistoryContact(rows)
+		entry, err := scanHistoryAddressBook(rows)
 		if err != nil {
-			return fmt.Errorf("sqlite: read history contacts: %w", err)
+			return fmt.Errorf("sqlite: read history address book: %w", err)
 		}
-		if err := sink.Contact(contact); err != nil {
+		if err := sink.AddressBookEntry(entry); err != nil {
 			return err
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("sqlite: read history contacts: %w", err)
+		return fmt.Errorf("sqlite: read history address book: %w", err)
 	}
 	return nil
 }
 
-func scanHistoryContact(rows *sql.Rows) (botflota.Contact, error) {
+func scanHistoryAddressBook(rows *sql.Rows) (botflota.AddressBookEntry, error) {
 	var (
-		contact   botflota.Contact
+		entry     botflota.AddressBookEntry
 		updatedAt string
 	)
-	err := rows.Scan(&contact.Scope, &contact.Bot, &contact.Phone, &contact.Name,
-		&contact.PushName, &contact.BusinessName, &updatedAt)
+	err := rows.Scan(&entry.Scope, &entry.Bot, &entry.Phone, &entry.Name,
+		&entry.PushName, &entry.BusinessName, &updatedAt)
 	if err != nil {
-		return botflota.Contact{}, err
+		return botflota.AddressBookEntry{}, err
 	}
-	contact.UpdatedAt = parseTime(updatedAt)
-	return contact, nil
+	entry.UpdatedAt = parseTime(updatedAt)
+	return entry, nil
 }

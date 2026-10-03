@@ -23,7 +23,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	phone := r.URL.Query().Get("sender")
+	phone := r.URL.Query().Get("contact")
 	var body struct {
 		Mode string `json:"mode"`
 	}
@@ -60,7 +60,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 	}
 	state, _ := controller.ChatControl(scope, bot, phone)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"scope": scope, "bot": bot, "sender": phone, "chat_id": chat.ID,
+		"scope": scope, "bot": bot, "contact": phone, "chat_id": chat.ID,
 		"control": controlView(state),
 	})
 }

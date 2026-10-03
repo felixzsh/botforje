@@ -21,7 +21,7 @@ the braces is ignored. The first segment selects a root:
 
 - `graph`, `node` — read-write variables (ADR 0033); `node` resets on every
   node entry.
-- `sender`, `message`, `bot`, `input` — read-only for the duration of a
+- `contact`, `message`, `bot`, `input` — read-only for the duration of a
   message; the engine seeds them.
 - Request results live under `node.<request>`, addressed as
   `resp.body.*`, `resp.headers.*`, `status`, and `duration` (milliseconds).

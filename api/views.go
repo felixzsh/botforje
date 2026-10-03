@@ -22,14 +22,16 @@ type botView struct {
 	Sessions   int        `json:"sessions"`
 }
 
-type senderView struct {
+// contactView is the contact a chat or message is with.
+type contactView struct {
 	Phone string `json:"phone"`
 	Name  string `json:"name,omitempty"`
 }
 
-// senderProfileView is the scope-level sender read (ADR 0044). DisplayName is
-// the best-effort push name, always present, possibly empty.
-type senderProfileView struct {
+// contactProfileView is the scope-level identity read (ADR 0044). DisplayName
+// is the best-effort push name, always present, possibly empty. FirstSeen and
+// LastSeen are zero for an identity only known through the address book.
+type contactProfileView struct {
 	Phone       string    `json:"phone"`
 	DisplayName string    `json:"display_name"`
 	FirstSeen   time.Time `json:"first_seen"`
@@ -37,12 +39,12 @@ type senderProfileView struct {
 }
 
 type chatView struct {
-	ID        int64      `json:"id"`
-	Scope     string     `json:"scope"`
-	Bot       string     `json:"bot"`
-	Sender    senderView `json:"sender"`
-	StartedAt time.Time  `json:"started_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ID        int64       `json:"id"`
+	Scope     string      `json:"scope"`
+	Bot       string      `json:"bot"`
+	Contact   contactView `json:"contact"`
+	StartedAt time.Time   `json:"started_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
 	// Messages is the stored history total; Sync and Live split it by
 	// ingest kind.
 	Messages int64 `json:"messages"`
@@ -54,7 +56,8 @@ type chatView struct {
 	PausedTill *time.Time `json:"paused_till,omitempty"`
 }
 
-type contactView struct {
+// addressBookView is one imported address-book entry (ADR 0037).
+type addressBookView struct {
 	Scope string `json:"scope"`
 	Bot   string `json:"bot"`
 	Phone string `json:"phone"`

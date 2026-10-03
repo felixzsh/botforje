@@ -8,14 +8,15 @@ import (
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
-// resolveSender returns the sender's phone number JID, trying the JID itself,
-// then SenderAlt, then the LID store. False means no phone number is known:
-// the caller drops the message rather than key anything on a LID (ADR 0020).
-func resolveSender(info types.MessageInfo, lookup ingest.PNLookup) (types.JID, bool) {
+// resolveFrom returns the phone number JID a message came from, trying the
+// message's sender JID, then SenderAlt, then the LID store. False means no
+// phone number is known: the caller drops the message rather than key anything
+// on a LID (ADR 0020).
+func resolveFrom(info types.MessageInfo, lookup ingest.PNLookup) (types.JID, bool) {
 	return resolveJID(info.Sender, info.SenderAlt, lookup)
 }
 
-// resolveJID returns the phone number JID behind a sender or chat, trying the
+// resolveJID returns the phone number JID behind a message or chat, trying the
 // JID itself, then its alternate, then the LID store. False means no phone
 // number is known.
 func resolveJID(jid, alt types.JID, lookup ingest.PNLookup) (types.JID, bool) {

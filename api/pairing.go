@@ -27,7 +27,7 @@ type pairingView struct {
 		Messages      int     `json:"messages"`
 		Duplicate     int     `json:"duplicate"`
 		Skipped       int     `json:"skipped"`
-		Contacts      int     `json:"contacts"`
+		AddressBook   int     `json:"address_book"`
 		ElapsedSecond float64 `json:"elapsed_seconds"`
 	} `json:"result,omitempty"`
 }
@@ -51,14 +51,16 @@ func pairingViewOf(session *botflota.PairingSession) pairingView {
 			Messages      int     `json:"messages"`
 			Duplicate     int     `json:"duplicate"`
 			Skipped       int     `json:"skipped"`
-			Contacts      int     `json:"contacts"`
+			AddressBook   int     `json:"address_book"`
 			ElapsedSecond float64 `json:"elapsed_seconds"`
 		}{
-			Phone: session.Result.Phone, Chunks: session.Result.Chunks,
-			Chats:     session.Result.Chats,
-			Messages:  session.Result.Messages,
-			Duplicate: session.Result.Duplicate,
-			Skipped:   session.Result.Skipped, Contacts: session.Result.Contacts,
+			Phone:         session.Result.Phone,
+			Chunks:        session.Result.Chunks,
+			Chats:         session.Result.Chats,
+			Messages:      session.Result.Messages,
+			Duplicate:     session.Result.Duplicate,
+			Skipped:       session.Result.Skipped,
+			AddressBook:   session.Result.AddressBook,
 			ElapsedSecond: session.Result.Elapsed.Seconds(),
 		}
 	}

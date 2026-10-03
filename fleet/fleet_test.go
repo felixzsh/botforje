@@ -113,94 +113,106 @@ func (c *fakeChannel) sendCount() int {
 }
 
 type memStore struct {
-	mu         sync.Mutex
-	senders    map[string]*botflota.Sender
-	chats      map[string]*botflota.Chat
-	sessions   map[int64]*botflota.Session
-	messages   []*botflota.Message
-	outbox     []queuedReply
-	nextSender int64
-	nextChat   int64
-	nextSess   int64
-	nextMsg    int64
-	nextOut    int64
+	mu          sync.Mutex
+	contacts    map[string]*botflota.Contact
+	chats       map[string]*botflota.Chat
+	sessions    map[int64]*botflota.Session
+	messages    []*botflota.Message
+	outbox      []queuedReply
+	nextContact int64
+	nextChat    int64
+	nextSess    int64
+	nextMsg     int64
+	nextOut     int64
 }
 
 func newStore() *memStore {
 	return &memStore{
-		senders:  map[string]*botflota.Sender{},
+		contacts: map[string]*botflota.Contact{},
 		chats:    map[string]*botflota.Chat{},
 		sessions: map[int64]*botflota.Session{},
 	}
 }
 
-func senderKey(scope, phone string) string { return scope + "\x00" + phone }
+func contactKey(scope, phone string) string { return scope + "\x00" + phone }
 
-func sessionKey(scope, bot string, senderID int64) string {
-	return scope + "\x00" + bot + "\x00" + strconv.FormatInt(senderID, 10)
+func sessionKey(scope, bot string, contactID int64) string {
+	return scope + "\x00" + bot + "\x00" + strconv.FormatInt(contactID, 10)
 }
 
-func (s *memStore) Upsert(
-	_ context.Context, scope, phone, name string, at time.Time,
-) (*botflota.Sender, bool, error) {
+func (s *memStore) EnsureContact(
+	_ context.Context, scope, phone string, at time.Time,
+) (*botflota.Contact, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if sender, ok := s.senders[senderKey(scope, phone)]; ok {
-		if name != "" && name != sender.DisplayName {
-			sender.DisplayName = name
-			sender.NameUpdatedAt = at
-		}
-		sender.LastSeen = at
-		return sender, false, nil
+	if contact, ok := s.contacts[contactKey(scope, phone)]; ok {
+		return contact, nil
 	}
-	s.nextSender++
-	sender := &botflota.Sender{
-		ID: s.nextSender, Scope: scope, Phone: phone, DisplayName: name,
-		FirstSeen: at, LastSeen: at,
+	s.nextContact++
+	contact := &botflota.Contact{ID: s.nextContact, Scope: scope, Phone: phone}
+	s.contacts[contactKey(scope, phone)] = contact
+	return contact, nil
+}
+
+func (s *memStore) RecordInbound(
+	_ context.Context, scope, phone, name string, at time.Time,
+) (*botflota.Contact, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	contact, ok := s.contacts[contactKey(scope, phone)]
+	if !ok {
+		s.nextContact++
+		contact = &botflota.Contact{ID: s.nextContact, Scope: scope, Phone: phone}
+		s.contacts[contactKey(scope, phone)] = contact
 	}
-	if name != "" {
-		sender.NameUpdatedAt = at
+	first := contact.FirstSeen.IsZero()
+	if first {
+		contact.FirstSeen = at
 	}
-	s.senders[senderKey(scope, phone)] = sender
-	return sender, true, nil
+	contact.LastSeen = at
+	if name != "" && name != contact.DisplayName {
+		contact.DisplayName = name
+		contact.NameUpdatedAt = at
+	}
+	return contact, first, nil
 }
 
 func (s *memStore) Get(
 	_ context.Context, scope, phone string,
-) (*botflota.Sender, error) {
+) (*botflota.Contact, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sender, ok := s.senders[senderKey(scope, phone)]
+	contact, ok := s.contacts[contactKey(scope, phone)]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
-	return sender, nil
+	return contact, nil
 }
 
 func (s *memStore) Ensure(
-	_ context.Context, scope, bot string, senderID int64, at time.Time,
+	_ context.Context, scope, bot string, contactID int64, at time.Time,
 ) (*botflota.Chat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := sessionKey(scope, bot, senderID)
+	key := sessionKey(scope, bot, contactID)
 	if chat, ok := s.chats[key]; ok {
 		return chat, nil
 	}
 	s.nextChat++
 	chat := &botflota.Chat{
-		ID: s.nextChat, Scope: scope, Bot: bot, SenderID: senderID,
+		ID: s.nextChat, Scope: scope, Bot: bot, ContactID: contactID,
 		StartedAt: at, UpdatedAt: at,
 	}
 	s.chats[key] = chat
 	return chat, nil
 }
 
-func (s *memStore) ForSender(
-	_ context.Context, scope, bot string, senderID int64,
+func (s *memStore) ForContact(
+	_ context.Context, scope, bot string, contactID int64,
 ) (*botflota.Chat, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	chat, ok := s.chats[sessionKey(scope, bot, senderID)]
+	chat, ok := s.chats[sessionKey(scope, bot, contactID)]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
@@ -245,9 +257,9 @@ func (s *memStore) SetDisplayName(
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if sender, ok := s.senders[senderKey(scope, phone)]; ok && name != "" {
-		sender.DisplayName = name
-		sender.NameUpdatedAt = at
+	if contact, ok := s.contacts[contactKey(scope, phone)]; ok && name != "" {
+		contact.DisplayName = name
+		contact.NameUpdatedAt = at
 	}
 	return nil
 }
@@ -256,8 +268,8 @@ func (s *memStore) SetDisplayName(
 // SQLite store.
 func (s *memStore) List(
 	context.Context, string, time.Time, int, string,
-) (botflota.SenderPage, error) {
-	return botflota.SenderPage{}, errors.New("memstore: List is not implemented")
+) (botflota.ContactPage, error) {
+	return botflota.ContactPage{}, errors.New("memstore: List is not implemented")
 }
 
 func (s *memStore) NoteHistory(
@@ -648,7 +660,7 @@ func buildFleetWithStore(
 	runner, err := New(cfg, Options{
 		Store:          store,
 		Chats:          store,
-		Senders:        store,
+		Contacts:       store,
 		Messages:       store,
 		Turn:           store,
 		Outbox:         store,
@@ -694,7 +706,7 @@ func TestHistorySyncRoutesToTheChannelThatSupportsIt(t *testing.T) {
 	store := newStore()
 	channel := &syncChannel{fakeChannel: *newFakeChannel()}
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Senders: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
 		Outbox:     store,
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) { return channel, nil },
 	})
@@ -736,7 +748,7 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 	runner, err := New(cfg, Options{
 		Store:    store,
 		Chats:    store,
-		Senders:  store,
+		Contacts: store,
 		Messages: store,
 		Turn:     store,
 		Outbox:   store,
@@ -769,7 +781,7 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 	runner, err := New(cfg, Options{
 		Store:    store,
 		Chats:    store,
-		Senders:  store,
+		Contacts: store,
 		Messages: store,
 		Turn:     store,
 		Outbox:   store,
@@ -830,7 +842,7 @@ func TestEmptyFleetLivesUntilTheInstanceStops(t *testing.T) {
 	runner, err := New(cfg, Options{
 		Store:    store,
 		Chats:    store,
-		Senders:  store,
+		Contacts: store,
 		Messages: store,
 		Turn:     store,
 		Outbox:   store,
@@ -884,7 +896,7 @@ func TestStoppingTheLastBotKeepsTheFleetRunning(t *testing.T) {
 	runner, err := New(cfg, Options{
 		Store:    store,
 		Chats:    store,
-		Senders:  store,
+		Contacts: store,
 		Messages: store,
 		Turn:     store,
 		Outbox:   store,
@@ -931,7 +943,7 @@ func TestApplyConfigAppliesAtTheNextMessage(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	first := receive(t, channels["alpha"].sent)
 	if got := botflota.ContentText(first.Content); got != "hello from alpha" {
@@ -954,7 +966,7 @@ func TestApplyConfigAppliesAtTheNextMessage(t *testing.T) {
 	}
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "other",
+		Bot: "alpha", FromPhone: "other",
 		Content: botflota.TextContent{Body: "hi"},
 	}
 	if reply := receive(t, channels["alpha"].sent); botflota.ContentText(reply.Content) != "reloaded" {
@@ -971,7 +983,7 @@ func TestApplyConfigDefersGraphTopologyWithLiveSession(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "active",
+		Bot: "alpha", FromPhone: "active",
 		Content: botflota.TextContent{Body: "hi"},
 	}
 	receive(t, channels["alpha"].sent)
@@ -1016,7 +1028,7 @@ func TestApplyConfigLeavesOtherScopeRuntimeUntouched(t *testing.T) {
 	store := newStore()
 	channels := map[string]*fakeChannel{}
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Contacts: store, Messages: store,
 		Turn: store, Outbox: store, DefaultTimeout: time.Minute,
 		Now: func() time.Time { return t0 },
 		NewChannel: func(bot BotSpec) (botflota.MessageChannel, error) {
@@ -1037,7 +1049,7 @@ func TestApplyConfigLeavesOtherScopeRuntimeUntouched(t *testing.T) {
 		{"dev", "alpha"}, {"other", "gamma"},
 	} {
 		channels[target.scope+"/"+target.bot].incoming <- botflota.IncomingMessage{
-			Bot: target.bot, SenderPhone: "before-" + target.bot,
+			Bot: target.bot, FromPhone: "before-" + target.bot,
 			Content: botflota.TextContent{Body: "hi"},
 		}
 		receive(t, channels[target.scope+"/"+target.bot].sent)
@@ -1066,7 +1078,7 @@ func TestApplyConfigLeavesOtherScopeRuntimeUntouched(t *testing.T) {
 	}
 
 	channels["other/gamma"].incoming <- botflota.IncomingMessage{
-		Bot: "gamma", SenderPhone: "after-gamma",
+		Bot: "gamma", FromPhone: "after-gamma",
 		Content: botflota.TextContent{Body: "hi"},
 	}
 	got := botflota.ContentText(receive(t, channels["other/gamma"].sent).Content)
@@ -1089,7 +1101,7 @@ func TestNewSkipsBotWithSessionAtRemovedNode(t *testing.T) {
 		ChatID: 1, Node: "removed", ExpiresAt: time.Now().Add(time.Hour),
 	}
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Senders: store, Messages: store,
+		Store: store, Chats: store, Contacts: store, Messages: store,
 		Turn: store, Outbox: store,
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil
@@ -1192,7 +1204,7 @@ func TestStopBotWaitsForTheQueuedSend(t *testing.T) {
 	alpha := channels["alpha"]
 
 	alpha.incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	<-alpha.entered // the outbox worker is inside the send
 
@@ -1241,7 +1253,7 @@ func TestTwoBotsAreIndependent(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	reply := receive(t, channels["alpha"].sent)
 	if got := botflota.ContentText(reply.Content); got != "hello from alpha" {
@@ -1265,7 +1277,7 @@ func TestOutboundProviderIDIsStored(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["alpha"].incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	reply := receive(t, channels["alpha"].sent)
 	want := "wamid." + botflota.ContentText(reply.Content)
@@ -1298,7 +1310,7 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	waitConnected(t, runner)
 
 	channels["beta"].incoming <- botflota.IncomingMessage{
-		Bot: "beta", SenderPhone: "999", Content: botflota.TextContent{Body: "hi"},
+		Bot: "beta", FromPhone: "999", Content: botflota.TextContent{Body: "hi"},
 	}
 	select {
 	case reply := <-channels["beta"].sent:
@@ -1307,7 +1319,7 @@ func TestFilterDropsIgnoredSender(t *testing.T) {
 	}
 
 	channels["beta"].incoming <- botflota.IncomingMessage{
-		Bot: "beta", SenderPhone: "1", Content: botflota.TextContent{Body: "hi"},
+		Bot: "beta", FromPhone: "1", Content: botflota.TextContent{Body: "hi"},
 	}
 	reply := receive(t, channels["beta"].sent)
 	if got := botflota.ContentText(reply.Content); got != "hello from beta" {
@@ -1330,7 +1342,7 @@ func TestShutdownDrainsBeforeDisconnect(t *testing.T) {
 	waitConnected(t, runner)
 
 	alpha.incoming <- botflota.IncomingMessage{
-		Bot: "alpha", SenderPhone: "s", Content: botflota.TextContent{Body: "hi"},
+		Bot: "alpha", FromPhone: "s", Content: botflota.TextContent{Body: "hi"},
 	}
 	<-alpha.entered
 	cancel()

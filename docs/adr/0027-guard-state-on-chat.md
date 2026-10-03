@@ -5,7 +5,7 @@ Status: Accepted (2026-09)
 ## Context
 
 A guard is declared on an action (`cooldown`, `rate_limit`) and applies per
-sender, but the rule alone cannot enforce anything: it needs to remember what
+contact, but the rule alone cannot enforce anything: it needs to remember what
 already happened for that person. The first implementation kept that memory on
 the session. That ties protection to a graph run: if the session expires (for
 example after `default_timeout`) while a rate limit window is still open, the
@@ -17,7 +17,7 @@ deserve it.
 Guard state lives on the **chat**, keyed by **action key**, in one JSON blob
 (`chats.guards`):
 
-- The chat already pins `(scope, bot, sender)`, so state is per bot and per
+- The chat already pins `(scope, bot, contact)`, so state is per bot and per
   person, isolated across bots and scopes.
 - The action is the right key: a guard belongs to an action, and when two nodes
   invoke the same action they share its limit for that person.

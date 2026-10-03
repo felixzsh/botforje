@@ -27,13 +27,13 @@ rate_limit:                        # API budgets per fixed minute
 exclusive_scopes: false
 
 # Outbound webhooks (optional). Each target receives signed POSTs for the
-# events it subscribes to; only `sender.first_seen` exists today. The secret
+# events it subscribes to; only `contact.first_seen` exists today. The secret
 # signs the raw body with HMAC-SHA256 (X-Botflota-Signature) and is resolved
 # from the environment. Changing this list requires a restart.
 webhooks:
   - url: "https://example.com/botflota/events"
     secret: "${BOTFLOTA_WEBHOOK_SECRET}"
-    events: ["sender.first_seen"]
+    events: ["contact.first_seen"]
 
 
 # Multi-file organization: every file uses the `scopes` shape, and
@@ -169,22 +169,22 @@ scopes:
               method: POST
               headers:
                 X-API-Key: "your-crm-key"
-              body: '{"phone": "{{sender.phone}}", "note": "{{message.body}}"}'
+              body: '{"phone": "{{contact.phone}}", "note": "{{message.body}}"}'
               timeout: 5000
               retry: 2
           - message:
               body: "Thanks! We created lead {{node.lead-capture.resp.body.id}}."
 
       # Send to a different recipient: `to` is a phone number or a template,
-      # and empty means the sender. Here the operator is notified on WhatsApp
+      # and empty means the contact. Here the operator is notified on WhatsApp
       # instead of the customer.
       notify-owner:
         steps:
           - message:
               to: "{{graph.owner_phone}}"
-              body: "New request from {{sender.name}} ({{sender.phone}}): {{message.body}}"
+              body: "New request from {{contact.name}} ({{contact.phone}}): {{message.body}}"
 
-      # Guarded action: a sender cannot trigger it twice within the cooldown,
+      # Guarded action: a contact cannot trigger it twice within the cooldown,
       # nor more than 3 times per hour.
       escalate:
         guards:
@@ -208,7 +208,7 @@ scopes:
               method: POST
               headers:
                 Authorization: "Bearer ${API_TOKEN}"
-              body: '{"phone": "{{sender.phone}}"}'
+              body: '{"phone": "{{contact.phone}}"}'
               timeout: 10000
               retry: 3
 
@@ -435,8 +435,8 @@ scopes:
           jitter: 400                 # Extra random 0-400 ms per delay
           max_messages_per_minute: 0  # Outbound ceiling; 0 means no limit
           ignore_groups: true
-          allowed_senders: []         # Empty means all senders allowed
-          ignored_senders: ["5215500000000"]  # Plain phone numbers, no JID suffix
+          allowed_contacts: []        # Empty means all contacts allowed
+          ignored_contacts: ["5215500000000"]  # Plain phone numbers, no JID suffix
           history_sync: true          # Import the WhatsApp backlog when linking
           import_contacts: false      # Copy the account's address book too
           external_reply_pause: 900000  # Hand a chat over after a phone reply (ms)

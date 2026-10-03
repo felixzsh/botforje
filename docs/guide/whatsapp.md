@@ -28,7 +28,7 @@ To replace a pairing, run `./bin/botflota bot pair --force support-bot`; it
 removes the same things `bot unpair` does: the linked-account row, the
 pairing status, and the channel's device row with its keys, sessions,
 app-state cache, hidden-user map, contact cache, and message secrets.
-Botflota's own senders, chats, sessions, messages, and imported contacts are
+Botflota's own contacts, chats, sessions, messages, and address book are
 never touched.
 
 Two things to expect. The phone keeps listing the old companion until you remove
@@ -80,22 +80,22 @@ read only while registering, so changing it needs a new registration
   call"), or `unknown` for anything else — so a chat whose history is all media
   still has an anchor for `chat sync`. Groups, broadcasts, status, and channels
   are not stored, and neither are edits, reactions, deletions, or poll votes.
-  A conversation registers its sender and chat only when it stored at least one
+  A conversation registers its contact and chat only when it stored at least one
   message or call, so `chat list` shows conversations rather than the
   control-only shells WhatsApp sends for the account's address book.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
-- The account's contact names arrive with the sync and name the senders
+- The account's contact names arrive with the sync and name the contacts
   Botflota already knows.
 - The import does not run the bot and does not reply. The bot filter does not
-  apply: a chat outside `allowed_senders` is still stored.
+  apply: a chat outside `allowed_contacts` is still stored.
 - The sync arrives in chunks. `bot pair` captures what it sees before it
   exits; `fleet run` captures the rest when it connects, so start the fleet
   after pairing if the backlog does not appear at once. A sync delivered to a
   connection nobody captured is gone: the server sends it once.
 - Set `settings.history_sync: false` on a bot to store none of it.
 
-See which senders arrived with `./bin/botflota chat list <bot>`, then read one
+See which contacts arrived with `./bin/botflota chat list <bot>`, then read one
 thread with `./bin/botflota message list <bot> <phone>`. `chat list` shows the
 stored message total split into `SYNC` and `LIVE`, and the first and last
 activity.
@@ -140,7 +140,7 @@ It is best effort, not a guarantee:
   retried automatically. Repeat it to page further back.
 - WhatsApp, not Botflota, decides whether and how much to send.
 
-## Contacts
+## Address book
 
 An address book is not a conversation. WhatsApp Business knows every number in
 the phone's contact list, including people you only talk to from a personal
@@ -158,11 +158,11 @@ bots:
 ```
 
 The import stores one record per number, keyed by bot, and never creates a chat
-or a sender:
+or a contact:
 
 ```bash
-./bin/botflota contact list support-bot
-./bin/botflota contact list --limit 500 support-bot
+./bin/botflota address-book list support-bot
+./bin/botflota address-book list --limit 500 support-bot
 ```
 
 The name shown is the address-book name, falling back to the verified business
@@ -223,11 +223,11 @@ Deterministic flow (a bot with no `llm`):
 - [ ] With the fleet running, `bot list` reports the bot as `paired` with its
   phone in the `PHONE` column.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
-  senders in the sync, and none of it generated a reply.
-- [ ] The contact names arrive and name those senders.
-- [ ] `chat list <bot>` lists those senders with the stored total split into
+  contacts in the sync, and none of it generated a reply.
+- [ ] The contact names arrive and name those contacts.
+- [ ] `chat list <bot>` lists those contacts with the stored total split into
   `SYNC` and `LIVE`, and the first and last activity.
-- [ ] With the fleet running, `chat sync <bot> <sender>` pages one request of
+- [ ] With the fleet running, `chat sync <bot> <contact>` pages one request of
   older messages back from the phone, or reports that it did not answer.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.

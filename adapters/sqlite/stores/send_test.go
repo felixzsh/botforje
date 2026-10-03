@@ -9,7 +9,7 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-func TestCommitSendCreatesProfileChatAndQueue(t *testing.T) {
+func TestCommitSendCreatesContactChatAndQueue(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	result, err := db.Sends().CommitSend(ctx, botflota.SendRecord{
@@ -24,14 +24,16 @@ func TestCommitSendCreatesProfileChatAndQueue(t *testing.T) {
 		t.Fatalf("result = %#v, want both ids", result)
 	}
 
-	sender, err := db.Senders().Get(ctx, "support", "5215599999999")
+	contact, err := db.Contacts().Get(ctx, "support", "5215599999999")
 	if err != nil {
-		t.Fatalf("sender: %v", err)
+		t.Fatalf("contact: %v", err)
 	}
-	if !sender.FirstSeen.Equal(t1) || !sender.LastSeen.Equal(t1) {
-		t.Fatalf("sender seen = %v/%v, want %v", sender.FirstSeen, sender.LastSeen, t1)
+	// An API send is not a live inbound: it must not consume the first-contact
+	// hook or move first/last seen (ADR 0044, ADR 0045).
+	if !contact.FirstSeen.IsZero() || !contact.LastSeen.IsZero() {
+		t.Fatalf("contact seen = %v/%v, want zero", contact.FirstSeen, contact.LastSeen)
 	}
-	chat, err := db.Chats().ForSender(ctx, "support", "support-bot", sender.ID)
+	chat, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -136,14 +138,14 @@ func TestCommitSendClientIDIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestCommitSendKeepsTheExistingProfileAndChat(t *testing.T) {
+func TestCommitSendKeepsTheExistingContactAndChat(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	sender, _, err := db.Senders().Upsert(ctx, "support", "5215599999999", "Ana", t0)
+	contact, _, err := db.Contacts().RecordInbound(ctx, "support", "5215599999999", "Ana", t0)
 	if err != nil {
-		t.Fatalf("Upsert: %v", err)
+		t.Fatalf("RecordMessage: %v", err)
 	}
-	chat, err := db.Chats().Ensure(ctx, "support", "support-bot", sender.ID, t0)
+	chat, err := db.Chats().Ensure(ctx, "support", "support-bot", contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -153,14 +155,15 @@ func TestCommitSendKeepsTheExistingProfileAndChat(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CommitSend: %v", err)
 	}
-	got, err := db.Senders().Get(ctx, "support", "5215599999999")
+	got, err := db.Contacts().Get(ctx, "support", "5215599999999")
 	if err != nil {
-		t.Fatalf("sender: %v", err)
+		t.Fatalf("contact: %v", err)
 	}
-	if got.ID != sender.ID || got.DisplayName != "Ana" || !got.LastSeen.Equal(t1) {
-		t.Fatalf("sender = %#v, want the kept profile with last_seen %v", got, t1)
+	// The send neither renames nor moves the identity's message times.
+	if got.ID != contact.ID || got.DisplayName != "Ana" || !got.LastSeen.Equal(t0) {
+		t.Fatalf("contact = %#v, want the kept identity with last_seen %v", got, t0)
 	}
-	again, err := db.Chats().ForSender(ctx, "support", "support-bot", sender.ID)
+	again, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}

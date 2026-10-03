@@ -51,7 +51,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 		}, nil},
 		{"filter adopts", func(c *Config) {
 			botSettings(c, func(s *spec.BotSettings) {
-				s.IgnoredSenders = []string{"999"}
+				s.IgnoredContacts = []string{"999"}
 			})
 		}, nil},
 		{"channel settings", func(c *Config) {
@@ -75,7 +75,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 			c.Webhooks = []WebhookSettings{{
 				URL:    "https://hooks.example.test/events",
 				Secret: spec.NewSecret("secret"),
-				Events: []string{"sender.first_seen"},
+				Events: []string{"contact.first_seen"},
 			}}
 		}, []string{"global setting webhooks"}},
 	}

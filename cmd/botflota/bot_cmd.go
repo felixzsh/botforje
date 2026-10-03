@@ -157,12 +157,12 @@ func runPair(args []string) int {
 		Devices:        devices,
 		Accounts:       db.LinkedAccounts(),
 		Pairings:       db.Pairings(),
-		Senders:        db.Senders(),
+		Contacts:       db.Contacts(),
 		Chats:          db.Chats(),
 		Messages:       db.Messages(),
 		History:        historyEnabled(botSpec.Settings),
 		FullHistory:    *cmd.importHistory,
-		Contacts:       db.Contacts(),
+		AddressBook:    db.AddressBook(),
 		ImportContacts: contactsEnabled(botSpec.Settings),
 		Outbox:         db.Outbox(),
 		Log:            logger,
@@ -203,7 +203,7 @@ func printPairImport(w io.Writer, settings *spec.BotSettings, result whatsapp.Pa
 		}
 	}
 	if contactsEnabled(settings) {
-		fmt.Fprintf(w, "contacts: %d imported\n", result.Contacts)
+		fmt.Fprintf(w, "address book: %d imported\n", result.AddressBook)
 	}
 }
 
@@ -308,7 +308,7 @@ type pairSessionView struct {
 		Messages      int     `json:"messages"`
 		Duplicate     int     `json:"duplicate"`
 		Skipped       int     `json:"skipped"`
-		Contacts      int     `json:"contacts"`
+		AddressBook   int     `json:"address_book"`
 		ElapsedSecond float64 `json:"elapsed_seconds"`
 	} `json:"result"`
 }
@@ -344,8 +344,8 @@ func importTotalsOf(session pairSessionView) whatsapp.PairResult {
 			Duplicate:     session.Result.Duplicate,
 			Skipped:       session.Result.Skipped,
 		},
-		Contacts: session.Result.Contacts,
-		Elapsed:  time.Duration(session.Result.ElapsedSecond * float64(time.Second)),
+		AddressBook: session.Result.AddressBook,
+		Elapsed:     time.Duration(session.Result.ElapsedSecond * float64(time.Second)),
 	}
 }
 

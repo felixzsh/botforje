@@ -44,14 +44,14 @@ func waitDepthZero(t *testing.T, store *memStore) {
 	t.Fatal("the queue never drained")
 }
 
-// recordingSender fails its first failures calls and records every attempt.
-type recordingSender struct {
+// recordingSend fails its first failures calls and records every attempt.
+type recordingSend struct {
 	mu       sync.Mutex
 	sent     []botflota.OutgoingMessage
 	failures int
 }
 
-func (s *recordingSender) send(
+func (s *recordingSend) send(
 	_ context.Context, msg botflota.OutgoingMessage,
 ) (string, error) {
 	s.mu.Lock()
@@ -64,13 +64,13 @@ func (s *recordingSender) send(
 	return "wamid." + strconv.Itoa(len(s.sent)), nil
 }
 
-func (s *recordingSender) attempts() int {
+func (s *recordingSend) attempts() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.sent)
 }
 
-func (s *recordingSender) bodies() []string {
+func (s *recordingSend) bodies() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	bodies := make([]string, 0, len(s.sent))
@@ -80,10 +80,10 @@ func (s *recordingSender) bodies() []string {
 	return bodies
 }
 
-func workerConfig(store *memStore, sender outboxSender) outboxConfig {
+func workerConfig(store *memStore, sender outboxSend) outboxConfig {
 	return outboxConfig{
 		Store: store, Scope: "dev", Bot: "alpha",
-		Sender: sender, Poll: 5 * time.Millisecond,
+		Send: sender, Poll: 5 * time.Millisecond,
 	}
 }
 
@@ -92,7 +92,7 @@ func TestOutboxSendsQueuedRepliesInOrder(t *testing.T) {
 	for i := 1; i <= 3; i++ {
 		seedReply(store, i)
 	}
-	sender := &recordingSender{}
+	sender := &recordingSend{}
 	queue := newOutbox(workerConfig(store, sender.send))
 	queue.Start()
 
@@ -112,7 +112,7 @@ func TestOutboxDrainsAfterClose(t *testing.T) {
 	store := newStore()
 	seedReply(store, 1)
 	seedReply(store, 2)
-	sender := &recordingSender{}
+	sender := &recordingSend{}
 	queue := newOutbox(workerConfig(store, sender.send))
 	queue.Start()
 	queue.Close()
@@ -165,7 +165,7 @@ func TestOutboxPacingWaitsBetweenReplies(t *testing.T) {
 	seedReply(store, 1)
 	seedReply(store, 2)
 	clk := &clock{now: time.Unix(1, 0)}
-	sender := &recordingSender{}
+	sender := &recordingSend{}
 	cfg := workerConfig(store, sender.send)
 	cfg.Delay = 10 * time.Millisecond
 	cfg.Now = clk.Now
@@ -191,7 +191,7 @@ func TestOutboxRateLimitWaitsTheWindow(t *testing.T) {
 		seedReply(store, i)
 	}
 	clk := &clock{now: time.Unix(1, 0)}
-	sender := &recordingSender{}
+	sender := &recordingSend{}
 	cfg := workerConfig(store, sender.send)
 	cfg.MaxPerMinute = 2
 	cfg.Now = clk.Now
@@ -217,7 +217,7 @@ func TestOutboxRateLimitWaitsTheWindow(t *testing.T) {
 func TestOutboxRetriesThenSends(t *testing.T) {
 	store := newStore()
 	seedReply(store, 1)
-	sender := &recordingSender{failures: 2}
+	sender := &recordingSend{failures: 2}
 	cfg := workerConfig(store, sender.send)
 	cfg.MaxAttempts = 5
 	cfg.RetryBase = time.Millisecond
@@ -244,7 +244,7 @@ func TestOutboxRetriesThenSends(t *testing.T) {
 func TestOutboxGivesUpAfterMaxAttempts(t *testing.T) {
 	store := newStore()
 	seedReply(store, 1)
-	sender := &recordingSender{failures: 100}
+	sender := &recordingSend{failures: 100}
 	var mu sync.Mutex
 	var reported []error
 	cfg := workerConfig(store, sender.send)
@@ -280,7 +280,7 @@ func TestOutboxGivesUpAfterMaxAttempts(t *testing.T) {
 }
 
 // waitAttempts waits until the sender has recorded at least want attempts.
-func waitAttempts(t *testing.T, sender *recordingSender, want int) {
+func waitAttempts(t *testing.T, sender *recordingSend, want int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for sender.attempts() < want {
@@ -297,7 +297,7 @@ func waitAttempts(t *testing.T, sender *recordingSender, want int) {
 func TestOutboxRetryHeadBlocksTheRepliesBehindIt(t *testing.T) {
 	store := newStore()
 	seedReply(store, 1)
-	sender := &recordingSender{failures: 1}
+	sender := &recordingSend{failures: 1}
 	cfg := workerConfig(store, sender.send)
 	cfg.RetryBase = 20 * time.Millisecond
 	queue := newOutbox(cfg)
@@ -322,7 +322,7 @@ func TestOutboxRetryHeadBlocksTheRepliesBehindIt(t *testing.T) {
 func TestOutboxCloseKeepsScheduledRepliesPending(t *testing.T) {
 	store := newStore()
 	seedReply(store, 1)
-	sender := &recordingSender{failures: 1}
+	sender := &recordingSend{failures: 1}
 	cfg := workerConfig(store, sender.send)
 	cfg.RetryBase = time.Minute
 	queue := newOutbox(cfg)

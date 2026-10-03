@@ -20,7 +20,7 @@ replace its own pairing with `bot pair --force`.
 the pairing status, and the channel's device row with everything that hangs off
 it — its keys, sessions, app-state cache, hidden-user map, contact cache, and
 message secrets. The bot's queued replies end failed with the reason, so a
-re-pair never sends them from another account. Botflota's own senders, chats,
+re-pair never sends them from another account. Botflota's own contacts, chats,
 sessions, messages, and imported contacts are never touched.
 
 The phone keeps listing the removed companion until it is unlinked there, so a

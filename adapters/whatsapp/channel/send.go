@@ -35,7 +35,7 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (strin
 			return "", err
 		}
 		if err := client.MarkRead(ctx, []types.MessageID{last.id}, a.now(),
-			last.chat, last.sender); err != nil {
+			last.chat, last.from); err != nil {
 			a.log.Warn("read receipt failed", "error", err)
 		}
 	}

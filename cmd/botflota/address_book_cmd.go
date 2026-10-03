@@ -11,31 +11,31 @@ import (
 	"time"
 )
 
-type contactCmd struct {
+type addressBookCmd struct {
 	fs     *flag.FlagSet
 	config *string
 	scope  *string
 	limit  *int
 }
 
-func newContactListCmd() *contactCmd {
-	fs := flag.NewFlagSet("contact list", flag.ContinueOnError)
+func newAddressBookListCmd() *addressBookCmd {
+	fs := flag.NewFlagSet("address-book list", flag.ContinueOnError)
 	fs.Usage = func() {}
-	return &contactCmd{
+	return &addressBookCmd{
 		fs:     fs,
 		config: configFlag(fs),
 		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
-		limit:  fs.Int("limit", 200, "`N` contacts to fetch"),
+		limit:  fs.Int("limit", 200, "`N` entries to fetch"),
 	}
 }
 
-func runContactList(args []string) int {
-	cmd := newContactListCmd()
+func runAddressBookList(args []string) int {
+	cmd := newAddressBookListCmd()
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
 	if cmd.fs.NArg() < 1 {
-		printHelp(os.Stderr, "contact", "list")
+		printHelp(os.Stderr, "address-book", "list")
 		return 2
 	}
 	botName := cmd.fs.Arg(0)
@@ -53,30 +53,28 @@ func runContactList(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	query := contactQuery{scope: scopeName, bot: botName, limit: *cmd.limit}
-	if err := printContacts(context.Background(), os.Stdout, client, query); err != nil {
+	query := addressBookQuery{scope: scopeName, bot: botName, limit: *cmd.limit}
+	if err := printAddressBook(context.Background(), os.Stdout, client, query); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	return 0
 }
 
-type contactQuery struct {
+type addressBookQuery struct {
 	scope string
 	bot   string
 	limit int
 }
 
-func (q contactQuery) path() string {
-	values := url.Values{
-		"bot":   {q.bot},
-		"limit": {strconv.Itoa(q.limit)},
-	}
-	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/contacts?" + values.Encode()
+func (q addressBookQuery) path() string {
+	values := url.Values{"limit": {strconv.Itoa(q.limit)}}
+	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/bots/" +
+		url.PathEscape(q.bot) + "/contacts?" + values.Encode()
 }
 
-func printContacts(
-	ctx context.Context, w io.Writer, client *apiClient, q contactQuery,
+func printAddressBook(
+	ctx context.Context, w io.Writer, client *apiClient, q addressBookQuery,
 ) error {
 	var body struct {
 		Contacts []struct {
@@ -92,11 +90,11 @@ func printContacts(
 	}
 	fmt.Fprintf(w, "%-15s %-24s %-20s %-20s %s\n",
 		"PHONE", "NAME", "PUSH NAME", "BUSINESS NAME", "UPDATED")
-	for _, contact := range body.Contacts {
+	for _, entry := range body.Contacts {
 		fmt.Fprintf(w, "%-15s %-24s %-20s %-20s %s\n",
-			contact.Phone, dash(contact.DisplayName), dash(contact.PushName),
-			dash(contact.BusinessName),
-			contact.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
+			entry.Phone, dash(entry.DisplayName), dash(entry.PushName),
+			dash(entry.BusinessName),
+			entry.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
 	}
 	return nil
 }

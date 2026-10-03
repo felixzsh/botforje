@@ -37,9 +37,9 @@ type PairOptions struct {
 	Devices  *Devices
 	Accounts botflota.LinkedAccountStore
 	Pairings botflota.PairingStore
-	// Senders, Chats, and Messages are all required to import the history
+	// Contacts, Chats, and Messages are all required to import the history
 	// sync; the fleet connection imports what this session misses (ADR 0035).
-	Senders  botflota.SenderStore
+	Contacts botflota.ContactStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
 	// History stores whatever WhatsApp delivers while the pairing connection
@@ -49,7 +49,8 @@ type PairOptions struct {
 	// for it; without it only the default recent window arrives and `chat
 	// sync` pages older messages per chat (ADR 0035).
 	FullHistory bool
-	Contacts    botflota.ContactStore
+	// AddressBook receives the imported book when ImportContacts is on.
+	AddressBook botflota.AddressBookStore
 	// ImportContacts is off by default: the book may hold people this account
 	// never wrote to.
 	ImportContacts bool
@@ -79,10 +80,10 @@ type PairOptions struct {
 // PairResult is what a successful pairing produced; the command prints it as
 // the result instead of the log stream (ADR 0038).
 type PairResult struct {
-	JID      string
-	History  ingest.ImportTotals
-	Contacts int
-	Elapsed  time.Duration
+	JID         string
+	History     ingest.ImportTotals
+	AddressBook int
+	Elapsed     time.Duration
 }
 
 // Pair runs the QR login and records the account. An already-paired bot
@@ -206,7 +207,7 @@ func pairOnce(
 					result.History = historyImporter.Totals()
 				}
 				if contactImport != nil && client.Store != nil {
-					result.Contacts = contactImport.ImportCached(ctx, client.Store.Contacts)
+					result.AddressBook = contactImport.ImportCached(ctx, client.Store.Contacts)
 				}
 				return result, false, nil
 			case whatsmeow.QRChannelTimeout.Event:

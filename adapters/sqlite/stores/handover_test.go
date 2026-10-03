@@ -94,12 +94,13 @@ func TestFailPendingForChatLeavesOtherChats(t *testing.T) {
 
 func ensureChatFor(t *testing.T, db *sqlite.DB, phone, name string) *botflota.Chat {
 	t.Helper()
-	sender, _, err := db.Senders().Upsert(context.Background(), "support", phone, name, t0)
+	contact, _, err := db.Contacts().RecordInbound(
+		context.Background(), "support", phone, name, t0)
 	if err != nil {
-		t.Fatalf("Upsert sender: %v", err)
+		t.Fatalf("RecordMessage contact: %v", err)
 	}
 	chat, err := db.Chats().Ensure(context.Background(), "support", "support-bot",
-		sender.ID, t0)
+		contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure chat: %v", err)
 	}

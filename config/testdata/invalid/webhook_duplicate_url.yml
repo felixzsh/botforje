@@ -1,8 +1,8 @@
 webhooks:
   - url: "https://hooks.example.test/botflota"
     secret: "${BOTFLOTA_WEBHOOK_SECRET}"
-    events: ["sender.first_seen"]
+    events: ["contact.first_seen"]
   - url: "https://hooks.example.test/botflota"
     secret: "${BOTFLOTA_WEBHOOK_SECRET}"
-    events: ["sender.first_seen"]
+    events: ["contact.first_seen"]
 scopes: {}

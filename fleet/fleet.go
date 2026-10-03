@@ -28,11 +28,11 @@ type BotSpec struct {
 	Settings spec.BotSettings
 }
 
-// Store, Chats, Senders, Messages, Turn, Outbox, and NewChannel are required.
+// Store, Chats, Contacts, Messages, Turn, Outbox, and NewChannel are required.
 type Options struct {
 	Store    botflota.SessionStore
 	Chats    botflota.ChatStore
-	Senders  botflota.SenderStore
+	Contacts botflota.ContactStore
 	Messages botflota.MessageStore
 	Turn     botflota.TurnStore
 	Outbox   botflota.OutboxStore
@@ -136,8 +136,8 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.Chats == nil {
 		return nil, errors.New("fleet: no chat store")
 	}
-	if opts.Senders == nil {
-		return nil, errors.New("fleet: no sender store")
+	if opts.Contacts == nil {
+		return nil, errors.New("fleet: no contact store")
 	}
 	if opts.Messages == nil {
 		return nil, errors.New("fleet: no message store")
@@ -218,7 +218,7 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 		Store:        opts.Outbox,
 		Scope:        scopeName,
 		Bot:          botName,
-		Sender:       channel.Send,
+		Send:         channel.Send,
 		Delay:        time.Duration(settings.QueueDelay) * time.Millisecond,
 		Jitter:       time.Duration(settings.Jitter) * time.Millisecond,
 		MaxPerMinute: settings.MaxMsgPerMinute,
@@ -276,7 +276,7 @@ func (f *Fleet) buildRuntime(
 	botLog := opts.Log.With("scope", scopeName, "bot", botName)
 	eng := engine.New(engine.Options{
 		Bot: botName, Scope: scopeName, Graph: graph, Actions: scope.Actions,
-		Store: opts.Store, Chats: opts.Chats, Senders: opts.Senders,
+		Store: opts.Store, Chats: opts.Chats, Contacts: opts.Contacts,
 		Messages:   opts.Messages,
 		Turn:       opts.Turn,
 		Notify:     opts.Notify,
@@ -287,8 +287,8 @@ func (f *Fleet) buildRuntime(
 	})
 	filter := Filter{
 		IgnoreGroups: ignoreGroups(settings),
-		Allowed:      settings.AllowedSenders,
-		Ignored:      settings.IgnoredSenders,
+		Allowed:      settings.AllowedContacts,
+		Ignored:      settings.IgnoredContacts,
 	}
 	return eng, filter, settings, nil
 }
@@ -672,7 +672,7 @@ func (b *Bot) handleMessage(ctx context.Context, msg botflota.IncomingMessage) {
 	b.runtimeMu.Lock()
 	defer b.runtimeMu.Unlock()
 	b.log.Debug("message received",
-		"sender", msg.SenderPhone, "id", msg.ProviderMessageID,
+		"contact", msg.FromPhone, "id", msg.ProviderMessageID,
 		"group", msg.IsGroup,
 		"kind", string(botflota.ContentKind(msg.Content)),
 		"body", botflota.ContentText(msg.Content))
@@ -680,21 +680,21 @@ func (b *Bot) handleMessage(ctx context.Context, msg botflota.IncomingMessage) {
 		b.log.Warn("apply config change", "error", err)
 	}
 	if !b.filter.Allow(msg) {
-		b.log.Debug("message filtered", "sender", msg.SenderPhone)
+		b.log.Debug("message filtered", "contact", msg.FromPhone)
 		return
 	}
-	if b.paused(msg.SenderPhone, b.now()) {
+	if b.paused(msg.FromPhone, b.now()) {
 		b.log.Info("chat held by a human; message stored without a reply",
-			"sender", msg.SenderPhone)
+			"contact", msg.FromPhone)
 		if err := b.engine.RecordSuppressed(ctx, msg); err != nil {
-			b.log.Error("record held message", "sender", msg.SenderPhone, "error", err)
+			b.log.Error("record held message", "contact", msg.FromPhone, "error", err)
 			b.onError(err)
 		}
 		return
 	}
 	replies, err := b.engine.Handle(ctx, msg)
 	if err != nil {
-		b.log.Error("engine failed", "sender", msg.SenderPhone, "error", err)
+		b.log.Error("engine failed", "contact", msg.FromPhone, "error", err)
 		b.onError(err)
 		return
 	}
@@ -712,24 +712,24 @@ func (b *Bot) handleExternal(ctx context.Context, out botflota.OutboundMessage) 
 	// reply leaves after the operator's own (ADR 0043).
 	if err := b.fleet.cancelChat(ctx, b.scope, b.name, out.RecipientPhone); err != nil {
 		b.log.Warn("cancel queued replies for a hand-over",
-			"sender", out.RecipientPhone, "error", err)
+			"contact", out.RecipientPhone, "error", err)
 	}
 	b.noteExternal(out.RecipientPhone, b.now())
 	if err := b.engine.RecordOperator(ctx, out); err != nil {
 		b.log.Warn("record operator reply",
-			"sender", out.RecipientPhone, "error", err)
+			"contact", out.RecipientPhone, "error", err)
 	}
 	b.log.Info("chat handed to a human",
-		"sender", out.RecipientPhone, "pause", b.externalPause)
+		"contact", out.RecipientPhone, "pause", b.externalPause)
 }
 
 // paused reports whether one chat is held right now: an indefinite manual hold
 // or an automatic countdown still running. A finished countdown is forgotten,
 // so the map does not grow with every chat that was ever paused (ADR 0043).
-func (b *Bot) paused(sender string, now time.Time) bool {
+func (b *Bot) paused(phone string, now time.Time) bool {
 	b.controlMu.Lock()
 	defer b.controlMu.Unlock()
-	state, ok := b.control[sender]
+	state, ok := b.control[phone]
 	if !ok {
 		return false
 	}
@@ -739,37 +739,37 @@ func (b *Bot) paused(sender string, now time.Time) bool {
 	if now.Before(state.pausedTill) {
 		return true
 	}
-	delete(b.control, sender)
+	delete(b.control, phone)
 	return false
 }
 
 // noteExternal restarts one chat's hand-over countdown after an external reply
 // (ADR 0043).
-func (b *Bot) noteExternal(sender string, now time.Time) {
+func (b *Bot) noteExternal(phone string, now time.Time) {
 	b.controlMu.Lock()
 	defer b.controlMu.Unlock()
-	state := b.control[sender]
+	state := b.control[phone]
 	state.pausedTill = now.Add(b.externalPause)
-	b.control[sender] = state
+	b.control[phone] = state
 }
 
 // setHuman holds one chat until it is released, clearing any countdown; a
 // release forgets the state (ADR 0043).
-func (b *Bot) setHuman(sender string, human bool) {
+func (b *Bot) setHuman(phone string, human bool) {
 	b.controlMu.Lock()
 	defer b.controlMu.Unlock()
 	if !human {
-		delete(b.control, sender)
+		delete(b.control, phone)
 		return
 	}
-	b.control[sender] = chatControl{human: true}
+	b.control[phone] = chatControl{human: true}
 }
 
 // controlOf reports one chat's effective control for the read API (ADR 0043).
-func (b *Bot) controlOf(sender string, now time.Time) botflota.ChatControl {
+func (b *Bot) controlOf(phone string, now time.Time) botflota.ChatControl {
 	b.controlMu.Lock()
 	defer b.controlMu.Unlock()
-	state, ok := b.control[sender]
+	state, ok := b.control[phone]
 	if !ok {
 		return botflota.ChatControl{Mode: botflota.ChatAuto}
 	}
@@ -824,14 +824,14 @@ func (f *Fleet) bot(scope, bot string) (*Bot, bool) {
 // cancelChat fails the pending replies stored under one chat, so a hand-over
 // never sends an automatic reply already queued (ADR 0043).
 func (f *Fleet) cancelChat(ctx context.Context, scope, bot, phone string) error {
-	sender, err := f.opts.Senders.Get(ctx, scope, phone)
+	contact, err := f.opts.Contacts.Get(ctx, scope, phone)
 	if errors.Is(err, botflota.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("fleet: sender for control: %w", err)
+		return fmt.Errorf("fleet: contact for control: %w", err)
 	}
-	chat, err := f.opts.Chats.ForSender(ctx, scope, bot, sender.ID)
+	chat, err := f.opts.Chats.ForContact(ctx, scope, bot, contact.ID)
 	if errors.Is(err, botflota.ErrNotFound) {
 		return nil
 	}
@@ -845,7 +845,7 @@ func (f *Fleet) cancelChat(ctx context.Context, scope, bot, phone string) error 
 	}
 	if count > 0 {
 		f.opts.Log.Info("cancelled queued replies for a hand-over",
-			"scope", scope, "bot", bot, "sender", phone, "count", count)
+			"scope", scope, "bot", bot, "contact", phone, "count", count)
 	}
 	return nil
 }

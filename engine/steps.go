@@ -111,10 +111,10 @@ func (r *run) pickVariant(body spec.Text) string {
 	}
 }
 
-// A `to` that resolves empty is an error, never a silent reply to the sender.
+// A `to` that resolves empty is an error, never a silent reply to the contact.
 func (r *run) recipient(to string) (string, error) {
 	if to == "" {
-		return r.msg.SenderPhone, nil
+		return r.msg.FromPhone, nil
 	}
 	rendered, err := botflota.RenderTemplate(to, r.tctx.Get)
 	if err != nil {
@@ -356,7 +356,7 @@ func (r *run) location(loc spec.Location) error {
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:            r.engine.bot,
-		RecipientPhone: r.msg.SenderPhone,
+		RecipientPhone: r.msg.FromPhone,
 		Content: botflota.LocationContent{
 			Latitude:    loc.Latitude,
 			Longitude:   loc.Longitude,

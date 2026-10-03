@@ -13,11 +13,11 @@ import (
 // collector is a HistorySink that keeps what it was handed, so a test can check
 // the read without a zip in the way.
 type collector struct {
-	tables   []botflota.HistoryTable
-	chats    []botflota.HistoryChat
-	sessions []botflota.Session
-	messages []botflota.Message
-	contacts []botflota.Contact
+	tables      []botflota.HistoryTable
+	chats       []botflota.HistoryChat
+	sessions    []botflota.Session
+	messages    []botflota.Message
+	addressBook []botflota.AddressBookEntry
 }
 
 func (c *collector) BeginTable(table botflota.HistoryTable) error {
@@ -40,8 +40,8 @@ func (c *collector) Message(message botflota.Message) error {
 	return nil
 }
 
-func (c *collector) Contact(contact botflota.Contact) error {
-	c.contacts = append(c.contacts, contact)
+func (c *collector) AddressBookEntry(entry botflota.AddressBookEntry) error {
+	c.addressBook = append(c.addressBook, entry)
 	return nil
 }
 
@@ -63,17 +63,17 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 			t.Fatalf("Append %q: %v", body, err)
 		}
 	}
-	if err := db.Contacts().Put(ctx, &botflota.Contact{
+	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
 		Scope: "support", Bot: "support-bot", Phone: "5215500000000",
 		Name: "Ana", UpdatedAt: t0,
 	}); err != nil {
-		t.Fatalf("Put contact: %v", err)
+		t.Fatalf("Put address-book entry: %v", err)
 	}
 	// Another bot of the same scope must stay out of the export.
-	if err := db.Contacts().Put(ctx, &botflota.Contact{
+	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
 		Scope: "support", Bot: "other-bot", Phone: "5215500000001", UpdatedAt: t0,
 	}); err != nil {
-		t.Fatalf("Put other contact: %v", err)
+		t.Fatalf("Put other address-book entry: %v", err)
 	}
 
 	got := &collector{}
@@ -84,10 +84,10 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 	if len(got.chats) != 1 || got.chats[0].ID != chat.ID {
 		t.Fatalf("chats = %+v, want the bot's own", got.chats)
 	}
-	// The sender's identity rides along, so the exported file stands alone.
-	if got.chats[0].SenderPhone != "5215500000000" || got.chats[0].SenderName != "Ana" {
-		t.Fatalf("chat sender = %q / %q, want the scope's sender",
-			got.chats[0].SenderPhone, got.chats[0].SenderName)
+	// The contact's identity rides along, so the exported file stands alone.
+	if got.chats[0].ContactPhone != "5215500000000" || got.chats[0].ContactName != "Ana" {
+		t.Fatalf("chat contact = %q / %q, want the scope's contact",
+			got.chats[0].ContactPhone, got.chats[0].ContactName)
 	}
 	if len(got.sessions) != 1 || got.sessions[0].Node != "purchase" {
 		t.Fatalf("sessions = %+v", got.sessions)
@@ -99,13 +99,13 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 		t.Fatalf("messages are not in stored order: %d then %d",
 			got.messages[0].ID, got.messages[1].ID)
 	}
-	if len(got.contacts) != 1 || got.contacts[0].Bot != "support-bot" {
-		t.Fatalf("contacts = %+v, want only the bot's own", got.contacts)
+	if len(got.addressBook) != 1 || got.addressBook[0].Bot != "support-bot" {
+		t.Fatalf("address book = %+v, want only the bot's own", got.addressBook)
 	}
 	// Every table is announced, in the order a sink writes its files, including
 	// the one the bot never filled.
 	want := []botflota.HistoryTable{botflota.TableChats, botflota.TableSessions,
-		botflota.TableMessages, botflota.TableContacts}
+		botflota.TableMessages, botflota.TableAddressBook}
 	if !slices.Equal(got.tables, want) {
 		t.Fatalf("tables = %v, want %v", got.tables, want)
 	}
@@ -136,4 +136,6 @@ func (f failOnMessage) BeginTable(botflota.HistoryTable) error { return nil }
 func (f failOnMessage) Chat(botflota.HistoryChat) error        { return nil }
 func (f failOnMessage) Session(botflota.Session) error         { return nil }
 func (f failOnMessage) Message(botflota.Message) error         { return f.err }
-func (f failOnMessage) Contact(botflota.Contact) error         { return nil }
+func (f failOnMessage) AddressBookEntry(botflota.AddressBookEntry) error {
+	return nil
+}

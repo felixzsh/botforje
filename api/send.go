@@ -80,7 +80,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // plainDigits reports a phone number in the plain-digit form a scope keys its
-// senders on (ADR 0020).
+// contacts on (ADR 0020).
 func plainDigits(phone string) bool {
 	if phone == "" {
 		return false

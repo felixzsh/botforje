@@ -30,24 +30,24 @@ func (s *Server) chatParams(
 		writeError(w, http.StatusBadRequest, "invalid_request", "bot is required")
 		return "", "", nil, false
 	}
-	phone := r.URL.Query().Get("sender")
+	phone := r.URL.Query().Get("contact")
 	if phone == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "sender is required")
+		writeError(w, http.StatusBadRequest, "invalid_request", "contact is required")
 		return "", "", nil, false
 	}
 	ctx := r.Context()
-	sender, err := s.senders.Get(ctx, scope, phone)
+	contact, err := s.contacts.Get(ctx, scope, phone)
 	if errors.Is(err, botflota.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "unknown sender")
+		writeError(w, http.StatusNotFound, "not_found", "unknown contact")
 		return "", "", nil, false
 	}
 	if err != nil {
-		s.fail(w, "read sender", err)
+		s.fail(w, "read contact", err)
 		return "", "", nil, false
 	}
-	chat, err = s.chats.ForSender(ctx, scope, bot, sender.ID)
+	chat, err = s.chats.ForContact(ctx, scope, bot, contact.ID)
 	if errors.Is(err, botflota.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "no chat for that sender")
+		writeError(w, http.StatusNotFound, "not_found", "no chat for that contact")
 		return "", "", nil, false
 	}
 	if err != nil {

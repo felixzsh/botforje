@@ -12,31 +12,31 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// ContactImporter copies the linked account's address book into ContactStore
-// (ADR 0037).
-type ContactImporter struct {
-	scope    string
-	bot      string
-	contacts botflota.ContactStore
-	lookup   PNLookup
-	log      *slog.Logger
-	now      func() time.Time
+// AddressBookImporter copies the linked account's address book into the
+// AddressBookStore (ADR 0037).
+type AddressBookImporter struct {
+	scope  string
+	bot    string
+	book   botflota.AddressBookStore
+	lookup PNLookup
+	log    *slog.Logger
+	now    func() time.Time
 }
 
-// NewContacts returns nil when the store is missing, so a caller can
-// treat contact import as disabled.
-func NewContacts(
-	scope, bot string, contacts botflota.ContactStore,
+// NewAddressBook returns nil when the store is missing, so a caller can treat
+// address-book import as disabled.
+func NewAddressBook(
+	scope, bot string, book botflota.AddressBookStore,
 	lookup PNLookup, log *slog.Logger,
-) *ContactImporter {
-	if contacts == nil {
+) *AddressBookImporter {
+	if book == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
-	return &ContactImporter{
-		scope: scope, bot: bot, contacts: contacts,
+	return &AddressBookImporter{
+		scope: scope, bot: bot, book: book,
 		lookup: lookup, log: log, now: time.Now,
 	}
 }
@@ -44,28 +44,28 @@ func NewContacts(
 // Handle stores one contact-related event. The address-book name, the push
 // name, and the business name stay in separate fields, so a later push name
 // never erases the name the phone's address book holds.
-func (h *ContactImporter) Handle(ctx context.Context, raw any) {
+func (h *AddressBookImporter) Handle(ctx context.Context, raw any) {
 	switch event := raw.(type) {
 	case *events.Contact:
 		if event.Action == nil {
 			return
 		}
 		h.put(ctx, event.JID, event.Action.GetPnJID(),
-			contactAt(event.Timestamp, h.now), botflota.Contact{
+			contactAt(event.Timestamp, h.now), botflota.AddressBookEntry{
 				Name: contactName(event.Action.GetFullName(), event.Action.GetFirstName()),
 			})
 	case *events.PushName:
 		h.put(ctx, event.JID, "", contactAt(time.Time{}, h.now),
-			botflota.Contact{PushName: event.NewPushName})
+			botflota.AddressBookEntry{PushName: event.NewPushName})
 	case *events.BusinessName:
 		h.put(ctx, event.JID, "", contactAt(time.Time{}, h.now),
-			botflota.Contact{BusinessName: event.NewBusinessName})
+			botflota.AddressBookEntry{BusinessName: event.NewBusinessName})
 	}
 }
 
 // ImportCached covers a session that ended before every contact event
 // arrived, and a reconnect whose address-book snapshot was applied silently.
-func (h *ContactImporter) ImportCached(
+func (h *AddressBookImporter) ImportCached(
 	ctx context.Context, known store.ContactStore,
 ) int {
 	if known == nil {
@@ -79,7 +79,7 @@ func (h *ContactImporter) ImportCached(
 	return h.ImportAll(ctx, contacts)
 }
 
-func (h *ContactImporter) ImportAll(
+func (h *AddressBookImporter) ImportAll(
 	ctx context.Context, known map[types.JID]types.ContactInfo,
 ) int {
 	stored := 0
@@ -87,7 +87,7 @@ func (h *ContactImporter) ImportAll(
 		if !info.Found {
 			continue
 		}
-		if h.put(ctx, jid, "", h.now().UTC(), botflota.Contact{
+		if h.put(ctx, jid, "", h.now().UTC(), botflota.AddressBookEntry{
 			Name:         contactName(info.FullName, info.FirstName),
 			PushName:     info.PushName,
 			BusinessName: info.BusinessName,
@@ -100,23 +100,23 @@ func (h *ContactImporter) ImportAll(
 
 // put stores one entry and reports whether it did; a group, broadcast, or
 // unresolved hidden-user contact is skipped.
-func (h *ContactImporter) put(
+func (h *AddressBookImporter) put(
 	ctx context.Context, jid types.JID, pnJID string, at time.Time,
-	contact botflota.Contact,
+	entry botflota.AddressBookEntry,
 ) bool {
-	if contact.Name == "" && contact.PushName == "" && contact.BusinessName == "" {
+	if entry.Name == "" && entry.PushName == "" && entry.BusinessName == "" {
 		return false
 	}
 	phone, ok := contactPhone(jid, pnJID, h.lookup)
 	if !ok {
 		return false
 	}
-	contact.Scope = h.scope
-	contact.Bot = h.bot
-	contact.Phone = phone
-	contact.UpdatedAt = at
-	if err := h.contacts.Put(ctx, &contact); err != nil {
-		h.log.Warn("import contact", "phone", phone, "error", err)
+	entry.Scope = h.scope
+	entry.Bot = h.bot
+	entry.Phone = phone
+	entry.UpdatedAt = at
+	if err := h.book.Put(ctx, &entry); err != nil {
+		h.log.Warn("import address-book entry", "phone", phone, "error", err)
 		return false
 	}
 	return true

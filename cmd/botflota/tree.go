@@ -28,7 +28,7 @@ func cliTree() *commandHelp {
 			"botflota fleet run",
 			"botflota fleet status",
 			"botflota chat list support-bot",
-			"botflota contact list support-bot",
+			"botflota address-book list support-bot",
 			"botflota message tail support-bot 5215500000000 --follow",
 		},
 		flags: func() *flag.FlagSet {
@@ -216,8 +216,8 @@ func cliTree() *commandHelp {
 				sub: []commandHelp{
 					{
 						name:    "list",
-						summary: "list one bot's chats and their senders",
-						long: "Print one row per chat with its sender's phone and name, the\n" +
+						summary: "list one bot's chats and their contacts",
+						long: "Print one row per chat with its contact's phone and name, the\n" +
 							"stored message total split into sync and live, and the first\n" +
 							"and last activity, newest activity first. The running instance\n" +
 							"answers through the REST API, so fleet run must be up. The bot\n" +
@@ -241,7 +241,7 @@ func cliTree() *commandHelp {
 							"--all walks every chat of the bot, newest activity first, one at a\n" +
 							"time, printing a line per chat and a final total; the command takes\n" +
 							"only the bot, and a chat that fails is reported and skipped.",
-						usage: "botflota chat sync [options] <bot> [sender]",
+						usage: "botflota chat sync [options] <bot> [contact]",
 						examples: []string{
 							"botflota chat sync support-bot 5215500000000",
 							"botflota chat sync --count 75 support-bot 5215500000000",
@@ -253,33 +253,33 @@ func cliTree() *commandHelp {
 				},
 			},
 			{
-				name:    "contact",
+				name:    "address-book",
 				summary: "list the address book a bot imported",
-				long: "List the contacts Botflota copied from one bot's linked\n" +
-					"account. A contact is an identity the account knows, whether or\n" +
+				long: "List the entries Botflota copied from one bot's linked\n" +
+					"account. An entry is an identity the account knows, whether or\n" +
 					"not it ever wrote; it is not a chat. Only a bot that sets\n" +
 					"settings.import_contacts has any.",
-				usage: "botflota contact <command> [options]",
+				usage: "botflota address-book <command> [options]",
 				examples: []string{
-					"botflota contact list support-bot",
+					"botflota address-book list support-bot",
 				},
-				moreHelp: "for more help: botflota contact <command> --help",
+				moreHelp: "for more help: botflota address-book <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "list",
-						summary: "print one bot's imported contacts",
-						long: "Print one row per contact, most recently updated first, with\n" +
+						summary: "print one bot's imported address book",
+						long: "Print one row per entry, most recently updated first, with\n" +
 							"the address-book name, the push name, and the business name.\n" +
 							"The running instance answers through the REST API, so fleet run\n" +
 							"must be up. The bot is named as in bot list; add --scope when\n" +
 							"the name exists in more than one scope.",
-						usage: "botflota contact list [options] <bot>",
+						usage: "botflota address-book list [options] <bot>",
 						examples: []string{
-							"botflota contact list support-bot",
-							"botflota contact list --limit 500 support-bot",
+							"botflota address-book list support-bot",
+							"botflota address-book list --limit 500 support-bot",
 						},
-						flags: func() *flag.FlagSet { return newContactListCmd().fs },
-						run:   runContactList,
+						flags: func() *flag.FlagSet { return newAddressBookListCmd().fs },
+						run:   runAddressBookList,
 					},
 				},
 			},
@@ -297,10 +297,10 @@ func cliTree() *commandHelp {
 					{
 						name:    "list",
 						summary: "print the newest messages of one chat",
-						long: "Print the last messages exchanged with one sender, oldest\n" +
+						long: "Print the last messages exchanged with one contact, oldest\n" +
 							"first. The bot is named as in bot list; add --scope when the\n" +
 							"name exists in more than one scope.",
-						usage: "botflota message list [options] <bot> <sender>",
+						usage: "botflota message list [options] <bot> <contact>",
 						examples: []string{
 							"botflota message list support-bot 5215500000000",
 							"botflota message list --limit 100 support-bot 5215500000000",
@@ -313,7 +313,7 @@ func cliTree() *commandHelp {
 						summary: "follow one chat's messages",
 						long: "Print the newest messages and, with --follow, keep polling\n" +
 							"for new ones until interrupted.",
-						usage: "botflota message tail [options] <bot> <sender>",
+						usage: "botflota message tail [options] <bot> <contact>",
 						examples: []string{
 							"botflota message tail support-bot 5215500000000",
 							"botflota message tail --follow support-bot 5215500000000",

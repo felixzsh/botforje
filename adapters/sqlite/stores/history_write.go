@@ -10,8 +10,9 @@ import (
 )
 
 // DeleteBot removes one bot's chats — and with them, by cascade, their sessions,
-// messages, and queued replies — plus its contacts. Senders belong to the scope
-// and stay (ADR 0029). One transaction: a crash leaves all of it or none of it.
+// messages, and queued replies — plus its address book. Contact identities
+// belong to the scope and stay (ADR 0029). One transaction: a crash leaves all
+// of it or none of it.
 func (s *HistoryStore) DeleteBot(
 	ctx context.Context, scope, bot string,
 ) (botflota.HistoryCounts, error) {
@@ -27,21 +28,21 @@ func (s *HistoryStore) DeleteBot(
 			return fmt.Errorf("sqlite: delete chats: %w", err)
 		}
 		result, err := tx.ExecContext(ctx,
-			`DELETE FROM contacts WHERE scope = ? AND bot = ?`, scope, bot)
+			`DELETE FROM bot_contacts WHERE scope = ? AND bot = ?`, scope, bot)
 		if err != nil {
-			return fmt.Errorf("sqlite: delete contacts: %w", err)
+			return fmt.Errorf("sqlite: delete address book: %w", err)
 		}
 		removed, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("sqlite: delete contacts: %w", err)
+			return fmt.Errorf("sqlite: delete address book: %w", err)
 		}
-		counts.Contacts = removed
+		counts.AddressBook = removed
 		return nil
 	})
 	return counts, err
 }
 
-// MoveBot re-keys one bot's chats and contacts to another bot of the same scope.
+// MoveBot re-keys one bot's chats and address book to another bot of the same scope.
 // Nothing is merged: the destination must hold no chat, so every moved chat
 // keeps its start, activity, guards, and session runs and lands conflict-free.
 // The source's queued replies are removed rather than carried, because the
@@ -61,7 +62,7 @@ func (s *HistoryStore) MoveBot(
 		// A source with nothing left is a repeat of a migration that already
 		// landed: it reports zero rather than finding its own history at the
 		// destination and refusing itself (ADR 0042: a retry needs no key).
-		if counts.Chats == 0 && counts.Contacts == 0 {
+		if counts.Chats == 0 && counts.AddressBook == 0 {
 			return nil
 		}
 		occupied, err := destinationHasChats(ctx, tx, scope, to)
@@ -92,21 +93,21 @@ func (s *HistoryStore) MoveBot(
 		// A phone the destination already knows keeps the destination's row: its
 		// own address book is the newer truth about that person (ADR 0037).
 		result, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO contacts
+			`INSERT OR IGNORE INTO bot_contacts
 				(scope, bot, phone, name, push_name, business_name, updated_at)
 			 SELECT scope, ?, phone, name, push_name, business_name, updated_at
-			 FROM contacts WHERE scope = ? AND bot = ?`, to, scope, from)
+			 FROM bot_contacts WHERE scope = ? AND bot = ?`, to, scope, from)
 		if err != nil {
-			return fmt.Errorf("sqlite: move contacts: %w", err)
+			return fmt.Errorf("sqlite: move address book: %w", err)
 		}
 		moved, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("sqlite: move contacts: %w", err)
+			return fmt.Errorf("sqlite: move address book: %w", err)
 		}
-		counts.Contacts = moved
+		counts.AddressBook = moved
 		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM contacts WHERE scope = ? AND bot = ?`, scope, from); err != nil {
-			return fmt.Errorf("sqlite: delete moved contacts: %w", err)
+			`DELETE FROM bot_contacts WHERE scope = ? AND bot = ?`, scope, from); err != nil {
+			return fmt.Errorf("sqlite: delete moved address book: %w", err)
 		}
 		return nil
 	})

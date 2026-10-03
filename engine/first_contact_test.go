@@ -47,7 +47,7 @@ func TestFirstContactFiresOncePerProfile(t *testing.T) {
 	}
 	event := events[0]
 	if event.Scope != "support" || event.Bot != "support-bot" ||
-		event.Sender.Phone != sender || !event.At.Equal(t0) {
+		event.Contact.Phone != sender || !event.At.Equal(t0) {
 		t.Fatalf("event = %#v", event)
 	}
 }
@@ -58,14 +58,14 @@ func TestFirstContactFiresForAHeldChat(t *testing.T) {
 	hook := &hookNotifier{}
 	eng := fixtureEngineNotify(t, newMemStore(), hook)
 	err := eng.RecordSuppressed(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", SenderPhone: "5215500000002", At: t0,
+		Bot: "support-bot", FromPhone: "5215500000002", At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
 		t.Fatalf("RecordSuppressed: %v", err)
 	}
 	if events := hook.recorded(); len(events) != 1 ||
-		events[0].Sender.Phone != "5215500000002" {
+		events[0].Contact.Phone != "5215500000002" {
 		t.Fatalf("events = %#v", events)
 	}
 }

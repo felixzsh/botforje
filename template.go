@@ -12,7 +12,7 @@ type Root string
 const (
 	RootGraph   Root = "graph"
 	RootNode    Root = "node"
-	RootSender  Root = "sender"
+	RootContact Root = "contact"
 	RootMessage Root = "message"
 	RootBot     Root = "bot"
 	RootInput   Root = "input"
@@ -26,7 +26,7 @@ var (
 
 func (r Root) Known() bool {
 	switch r {
-	case RootGraph, RootNode, RootSender, RootMessage, RootBot, RootInput:
+	case RootGraph, RootNode, RootContact, RootMessage, RootBot, RootInput:
 		return true
 	default:
 		return false
