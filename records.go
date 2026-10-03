@@ -44,6 +44,10 @@ type Contact struct {
 	NameUpdatedAt time.Time
 	FirstSeen     time.Time
 	LastSeen      time.Time
+	// InAddressBook and HasChat are derived on read from bot_contacts and
+	// chats; they are never stored on the identity row.
+	InAddressBook bool
+	HasChat       bool
 }
 
 // AddressBookEntry is an address-book entry of a bot's linked account

@@ -127,8 +127,9 @@ dashboard and integrations are API-only and never see local files.
   (ADR 0029).
 - Address-book entry — an entry of one bot's linked account, keyed by
   (scope, bot, phone) and copied only when the bot sets `import_contacts`. It
-  is an identity the account knows, never a chat or a contact, and it takes no
-  part in routing (ADR 0037).
+  is never a chat; importing it also registers the phone as a scope contact,
+  so the directory holds the people the account knows. Membership shows as the
+  derived `in_address_book` (ADR 0037).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0030), and a map of nodes.
 - Node — goal, policy, entry/exit actions, tools, and optional node-local

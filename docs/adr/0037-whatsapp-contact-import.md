@@ -12,10 +12,10 @@ already known, so a number the account knows but never wrote to was invisible.
 
 The book is not a conversation. An entry may be a person this account never
 messaged, and it can overlap with the address book of a personal account linked
-on the same phone, because both apps read the phone's contacts. Importing it
-into the scope's contact identities and creating a chat per entry would invent
-threads that do not exist and would put people into the conversation model who
-never wrote.
+on the same phone, because both apps read the phone's contacts. Creating a chat
+per entry would invent threads that do not exist and put people into the
+conversation model who never wrote; registering the identity without a thread
+does not, and it is what makes the directory complete.
 
 WhatsApp also sends a conversation shell for many of those numbers: a
 conversation with a single control entry and no message. The history importer
@@ -24,20 +24,22 @@ chats.
 
 ## Decision
 
-Keep the address book and the scope's contact identities apart, and let a bot
-opt in:
+Let a bot opt in, and keep the book a relation over the scope's directory:
 
 - `settings.import_contacts` is a per-bot switch, off by default. It is per
   bot, not per scope, because the address book belongs to the linked account:
   two bots of one scope may link accounts with different books.
 - An imported entry is its own record, keyed by `(scope, bot, phone)` in
-  `bot_contacts`, and is never a contact identity, a chat, or a message. The
-  address-book name, the push name, and the verified business name live in
-  separate fields and never clear each other; a reader shows the address-book
-  name first, then the business name, then the push name.
-- A number that is only in the book has no `contacts` row; the scope's
-  directory holds people it actually knows, and membership in a bot's book is
-  derived from `bot_contacts` by phone.
+  `bot_contacts`, and is never a chat or a message. The address-book name, the
+  push name, and the verified business name live in separate fields and never
+  clear each other; a reader shows the address-book name first, then the
+  business name, then the push name.
+- Importing registers each entry's phone as a scope contact through
+  `ContactStore.EnsureContact`, so the directory holds the people the account
+  knows. The identity carries no first message: `first_seen` stays empty until
+  the person actually writes (ADR 0029). Membership in a bot's book is derived
+  from `bot_contacts` by phone, and the contact read exposes it as
+  `in_address_book` beside `has_chat` (ADR 0044).
 - The import reads the channel's contact data. A full address-book sync is
   applied silently by the library unless events are requested, so the channel
   asks for those events while the import is on, and also copies the cached book
@@ -60,16 +62,18 @@ opt in:
 ## Consequences
 
 - A bot that wants a CRM-style address book sets `import_contacts: true`; a bot
-  that wants only real threads leaves it off and keeps the store free of
-  personal data it did not ask for.
-- The address book can hold personal data of people who never wrote to the bot.
+  that wants only real threads leaves it off and keeps its store free of the
+  names it did not ask for. Importing still registers identities in the shared
+  scope directory, which is the price of a complete contact read.
+- The import can register personal data of people who never wrote to the bot.
   The switch is the control, and retention follows the scope's rules like any
   other record.
 - A chat now appears only when at least one message or call was stored, so
   `chat list` shows conversations rather than address-book shells. A chat whose
   every entry is an unrecognized payload still appears, because the import
   keeps it as `unknown` (ADR 0036).
-- Address-book entries do not take part in the engine, the filter, or routing.
-  They are read-only data for the API and the dashboard.
+- A registered identity takes part in nothing by itself: no chat, no routing,
+  no first-contact event. It is read-only data for the API and the dashboard
+  until a real message arrives.
 - The library's own contact store is unaffected: it stays the channel's cache,
   whether or not Botflota copies from it.

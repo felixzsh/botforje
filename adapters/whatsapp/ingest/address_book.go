@@ -13,30 +13,32 @@ import (
 )
 
 // AddressBookImporter copies the linked account's address book into the
-// AddressBookStore (ADR 0037).
+// AddressBookStore and registers each entry's phone as a scope contact, so the
+// directory holds the people the account knows (ADR 0029, ADR 0037).
 type AddressBookImporter struct {
-	scope  string
-	bot    string
-	book   botflota.AddressBookStore
-	lookup PNLookup
-	log    *slog.Logger
-	now    func() time.Time
+	scope    string
+	bot      string
+	contacts botflota.ContactStore
+	book     botflota.AddressBookStore
+	lookup   PNLookup
+	log      *slog.Logger
+	now      func() time.Time
 }
 
-// NewAddressBook returns nil when the store is missing, so a caller can treat
-// address-book import as disabled.
+// NewAddressBook returns nil when either store is missing, so a caller can
+// treat address-book import as disabled.
 func NewAddressBook(
-	scope, bot string, book botflota.AddressBookStore,
+	scope, bot string, contacts botflota.ContactStore, book botflota.AddressBookStore,
 	lookup PNLookup, log *slog.Logger,
 ) *AddressBookImporter {
-	if book == nil {
+	if contacts == nil || book == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
 	return &AddressBookImporter{
-		scope: scope, bot: bot, book: book,
+		scope: scope, bot: bot, contacts: contacts, book: book,
 		lookup: lookup, log: log, now: time.Now,
 	}
 }
@@ -115,6 +117,13 @@ func (h *AddressBookImporter) put(
 	entry.Bot = h.bot
 	entry.Phone = phone
 	entry.UpdatedAt = at
+	// The book links to the scope's directory by phone: registering the
+	// identity here is what makes an address-book-only number appear as a
+	// contact, while the entry's names stay per bot.
+	if _, err := h.contacts.EnsureContact(ctx, h.scope, phone, at); err != nil {
+		h.log.Warn("register contact for address-book entry", "phone", phone, "error", err)
+		return false
+	}
 	if err := h.book.Put(ctx, &entry); err != nil {
 		h.log.Warn("import address-book entry", "phone", phone, "error", err)
 		return false

@@ -68,9 +68,11 @@ func (s *Server) handleContact(w http.ResponseWriter, r *http.Request) {
 
 func contactProfile(contact botflota.Contact) contactProfileView {
 	return contactProfileView{
-		Phone:       contact.Phone,
-		DisplayName: contact.DisplayName,
-		FirstSeen:   contact.FirstSeen,
-		LastSeen:    contact.LastSeen,
+		Phone:         contact.Phone,
+		DisplayName:   contact.DisplayName,
+		FirstSeen:     contact.FirstSeen,
+		LastSeen:      contact.LastSeen,
+		InAddressBook: contact.InAddressBook,
+		HasChat:       contact.HasChat,
 	}
 }

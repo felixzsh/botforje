@@ -16,7 +16,7 @@ import (
 func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewAddressBook("dev", "bot", db.AddressBook(), nil, nil)
+	importer := NewAddressBook("dev", "bot", db.Contacts(), db.AddressBook(), nil, nil)
 	importer.Handle(ctx, &events.Contact{
 		JID: types.NewJID("5215500000000", types.DefaultUserServer),
 		Action: &waSyncAction.ContactAction{
@@ -41,6 +41,15 @@ func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 	if contacts[0].DisplayName() != "Ana Perez" {
 		t.Fatalf("display name = %q, want the address-book name", contacts[0].DisplayName())
 	}
+	// The imported phone is a contact the directory knows, marked as booked
+	// and without a first message of its own.
+	contact, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	if err != nil {
+		t.Fatalf("Get contact: %v", err)
+	}
+	if !contact.InAddressBook || contact.HasChat || !contact.FirstSeen.IsZero() {
+		t.Fatalf("contact = %#v, want booked, no chat, never messaged", contact)
+	}
 }
 
 // TestContactImporterResolvesALID checks the contact import stores the phone
@@ -55,7 +64,7 @@ func TestContactImporterResolvesALID(t *testing.T) {
 		}
 		return types.NewJID("5215500000000", types.DefaultUserServer), true
 	}
-	importer := NewAddressBook("dev", "bot", db.AddressBook(), lookup, nil)
+	importer := NewAddressBook("dev", "bot", db.Contacts(), db.AddressBook(), lookup, nil)
 	importer.Handle(ctx, &events.PushName{JID: lid, NewPushName: "Ana"})
 	contacts, err := db.AddressBook().List(ctx, "dev", "bot", 0)
 	if err != nil {

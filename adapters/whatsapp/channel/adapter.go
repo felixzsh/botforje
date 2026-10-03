@@ -198,7 +198,8 @@ func New(opts Options) (*Adapter, error) {
 		stopped:   make(chan struct{}),
 	}
 	if opts.ImportContacts {
-		a.addressBook = ingest.NewAddressBook(a.scope, a.bot, opts.AddressBook, a.lookupPN, log)
+		a.addressBook = ingest.NewAddressBook(
+			a.scope, a.bot, opts.Contacts, opts.AddressBook, a.lookupPN, log)
 	}
 	if opts.History {
 		a.importer = ingest.NewHistory(a.scope, a.bot, opts.Contacts, opts.Chats,

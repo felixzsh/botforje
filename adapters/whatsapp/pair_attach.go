@@ -110,7 +110,8 @@ func attachContacts(
 		}
 		return pn, true
 	}
-	importer := ingest.NewAddressBook(opts.Scope, opts.Bot, opts.AddressBook, lookup, opts.Log)
+	importer := ingest.NewAddressBook(
+		opts.Scope, opts.Bot, opts.Contacts, opts.AddressBook, lookup, opts.Log)
 	if importer == nil {
 		return nil
 	}

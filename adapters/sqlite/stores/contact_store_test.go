@@ -97,6 +97,81 @@ func TestContactFirstMessageAfterAnImport(t *testing.T) {
 	}
 }
 
+// TestContactFlagsAreDerived covers the two relations a reader sees: a book
+// entry turns InAddressBook on, and a chat turns HasChat on, without storing
+// either on the identity row.
+func TestContactFlagsAreDerived(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	contact, err := db.Contacts().EnsureContact(ctx, "support", "52155", t0)
+	if err != nil {
+		t.Fatalf("EnsureContact: %v", err)
+	}
+	got, err := db.Contacts().Get(ctx, "support", "52155")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.InAddressBook || got.HasChat {
+		t.Fatalf("flags = %#v, want both off before any relation", got)
+	}
+	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
+		Scope: "support", Bot: "support-bot", Phone: "52155",
+		Name: "Ana", UpdatedAt: t0,
+	}); err != nil {
+		t.Fatalf("Put address-book entry: %v", err)
+	}
+	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", contact.ID, t0); err != nil {
+		t.Fatalf("Ensure chat: %v", err)
+	}
+	got, err = db.Contacts().Get(ctx, "support", "52155")
+	if err != nil {
+		t.Fatalf("Get after relations: %v", err)
+	}
+	if !got.InAddressBook || !got.HasChat {
+		t.Fatalf("flags = %#v, want booked and with a chat", got)
+	}
+	// A book entry for another scope must not mark this identity.
+	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
+		Scope: "other", Bot: "support-bot", Phone: "52155", UpdatedAt: t0,
+	}); err != nil {
+		t.Fatalf("Put other entry: %v", err)
+	}
+	people, err := db.Contacts().List(ctx, "other", time.Time{}, 10, "")
+	if err != nil {
+		t.Fatalf("List other: %v", err)
+	}
+	if len(people.Contacts) != 0 {
+		t.Fatalf("other scope = %#v, want no identity", people.Contacts)
+	}
+}
+
+// TestContactListPagesAnIdentityThatNeverWrote covers the cursor for an
+// address-book-only identity: its last_seen is empty, and the cursor the list
+// hands back must round-trip instead of failing the next page.
+func TestContactListPagesAnIdentityThatNeverWrote(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	for _, phone := range []string{"5215500000001", "5215500000002"} {
+		if _, err := db.Contacts().EnsureContact(ctx, "support", phone, t0); err != nil {
+			t.Fatalf("EnsureContact %s: %v", phone, err)
+		}
+	}
+	page, err := db.Contacts().List(ctx, "support", time.Time{}, 1, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(page.Contacts) != 1 || page.NextCursor == "" {
+		t.Fatalf("page = %#v, want one row and a cursor", page)
+	}
+	next, err := db.Contacts().List(ctx, "support", time.Time{}, 1, page.NextCursor)
+	if err != nil {
+		t.Fatalf("next page with an empty last_seen: %v", err)
+	}
+	if len(next.Contacts) != 1 || next.NextCursor != "" {
+		t.Fatalf("next = %#v, want the last row and no cursor", next)
+	}
+}
+
 // TestContactSetDisplayName covers names learned from channel contact data:
 // the name changes without touching first or last seen, and a missing identity
 // is a no-op.

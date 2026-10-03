@@ -57,7 +57,8 @@
   first live inbound message, never by an import or an API send (ADR 0029).
 - Address-book entry — an entry of one bot's linked account, keyed by
   (scope, bot, phone), copied only when the bot sets `import_contacts`. It is
-  an identity the account knows, never a chat or a contact (ADR 0037).
+  never a chat; importing it also registers the phone as a contact, so the
+  directory holds the people the account knows (ADR 0037).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp
