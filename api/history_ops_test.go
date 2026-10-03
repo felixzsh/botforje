@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
@@ -278,13 +279,19 @@ func TestHistoryOperationsPauseAndResumeTheBots(t *testing.T) {
 		}
 	})
 
-	t.Run("a pause that fails does not stop the operation", func(t *testing.T) {
-		server := newHistoryServer(t, &fakeHistory{})
+	t.Run("a pause that fails stops the operation", func(t *testing.T) {
+		// The work is only sound with the bot stopped, so a bot that cannot be
+		// stopped is reported instead of raced (ADR 0042).
+		history := &fakeHistory{}
+		server := newHistoryServer(t, history)
 		server.pauser = &fakePauser{err: errors.New("no channel")}
 		recorder := deleteHistory(t, server, "support", testOwnerToken, "support/demo")
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("status = %d, want the work done anyway: %s",
+		if recorder.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want the operation refused: %s",
 				recorder.Code, recorder.Body.String())
+		}
+		if len(history.deleted) != 0 {
+			t.Fatalf("deleted = %v, want no history touched", history.deleted)
 		}
 	})
 }
@@ -302,5 +309,41 @@ func TestHistoryOperationsWithoutAStoreSaySo(t *testing.T) {
 	recorder = migrateHistory(t, server, "support", testOwnerToken, "replacement")
 	if recorder.Code != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want 501", recorder.Code)
+	}
+}
+
+// TestHistoryOperationsHoldTheBotLock keeps one bot's write operations from
+// overlapping: a history request waits for the lock pairing and unpairing take,
+// so neither can restart the bot the other is still working on (ADR 0042).
+func TestHistoryOperationsHoldTheBotLock(t *testing.T) {
+	history := &fakeHistory{}
+	server := newHistoryServer(t, history)
+	unlock := server.lockBot("support", "demo")
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		request := httptest.NewRequest(http.MethodDelete,
+			"/api/v1/scopes/support/bots/demo/history?confirm=support/demo", nil)
+		request.Header.Set("Authorization", "Bearer "+testOwnerToken)
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, request)
+		done <- recorder
+	}()
+	select {
+	case <-done:
+		unlock()
+		t.Fatal("the delete ran while the bot's operation lock was held")
+	case <-time.After(30 * time.Millisecond):
+	}
+	unlock()
+	select {
+	case recorder := <-done:
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the delete never ran")
+	}
+	if len(history.deleted) != 1 {
+		t.Fatalf("deleted = %v, want exactly one", history.deleted)
 	}
 }

@@ -41,7 +41,7 @@ func (l Loader) Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg := &Config{origin: map[string]string{}, source: abs}
+	cfg := &Config{origin: map[entityRef]string{}, source: abs}
 	reader := newFileReader(l.Overlay)
 	state := &includeState{loaded: map[string]bool{abs: true}}
 	if err := state.loadMain(abs, cfg, reader); err != nil {
@@ -202,13 +202,13 @@ func mergeEntities[V any](
 			return nil, duplicateError(cfg, file, kind, scope, name)
 		}
 		dst[name] = src[name]
-		cfg.origin[originKey(kind, scope, name)] = file
+		cfg.origin[entityRef{kind: kind, scope: scope, name: name}] = file
 	}
 	return dst, nil
 }
 
 func duplicateError(cfg *Config, file, kind, scope, name string) error {
-	if prev := cfg.origin[originKey(kind, scope, name)]; prev != "" {
+	if prev := cfg.origin[entityRef{kind: kind, scope: scope, name: name}]; prev != "" {
 		return fmt.Errorf("%s: duplicate %s %q in scope %q (already defined in %s)",
 			file, kind, name, scope, prev)
 	}
@@ -232,12 +232,12 @@ func recordOrigins(cfg *Config, path string) {
 // writer can change that label in place instead of moving it (ADR 0016: a
 // scope's non-empty display_name may be declared in one contributing file).
 func recordScopeOrigin(cfg *Config, file, scope string) {
-	cfg.origin["display/"+scope] = file
+	cfg.origin[entityRef{kind: "display", scope: scope}] = file
 }
 
 func recordOrigin[V any](cfg *Config, file, kind, scope string, names map[string]V) {
 	for name := range names {
-		cfg.origin[originKey(kind, scope, name)] = file
+		cfg.origin[entityRef{kind: kind, scope: scope, name: name}] = file
 	}
 }
 
@@ -291,15 +291,20 @@ func resolveInclude(dir, entry string, reader fileReader) ([]string, error) {
 	return files, nil
 }
 
-func originKey(kind, scope, name string) string {
-	return kind + "/" + scope + "/" + name
+// entityRef names one entity of one scope, or a scope's display label, whose
+// name is empty. It is a struct rather than a joined string, so free-string
+// names containing separators cannot alias each other (ADR 0016).
+type entityRef struct {
+	kind  string
+	scope string
+	name  string
 }
 
 func (c *Config) originOf(kind, scope, name string) string {
 	if c == nil || c.origin == nil {
 		return ""
 	}
-	return c.origin[originKey(kind, scope, name)]
+	return c.origin[entityRef{kind: kind, scope: scope, name: name}]
 }
 
 // OriginFile names the file that defines one entity, or the empty string when
@@ -315,7 +320,7 @@ func (c *Config) DisplayNameOrigin(scope string) string {
 	if c == nil || c.origin == nil {
 		return ""
 	}
-	return c.origin["display/"+scope]
+	return c.origin[entityRef{kind: "display", scope: scope}]
 }
 
 // SortedKeys returns a map's keys in sorted order, so validation output stays

@@ -38,7 +38,15 @@ func (s *Server) handleHistoryDelete(w http.ResponseWriter, r *http.Request) {
 			"history operations are not available")
 		return
 	}
-	resume := s.pauseBots(scope, bot, true)
+	// The bot lock keeps the operation away from pairing, unpairing, and a
+	// second history request: the bot stays stopped for all of it.
+	unlock := s.lockBot(scope, bot)
+	defer unlock()
+	resume, err := s.pauseBots(scope, bot, true)
+	if err != nil {
+		s.fail(w, "stop bot before deleting history", err)
+		return
+	}
 	defer resume()
 	counts, err := s.history.DeleteBot(r.Context(), scope, bot)
 	if err != nil {
@@ -85,10 +93,24 @@ func (s *Server) handleHistoryMigrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The source is stopped with its queue dropped and the destination drained:
-	// neither may keep writing the rows the move is re-keying.
-	resume := s.pauseBots(scope, bot, true)
+	// neither may keep writing the rows the move is re-keying. Both locks are
+	// taken in one stable order, so an overlapping operation cannot deadlock.
+	unlock := s.lockBots(
+		botflota.BotRef{Scope: scope, Bot: bot},
+		botflota.BotRef{Scope: scope, Bot: body.To},
+	)
+	defer unlock()
+	resume, err := s.pauseBots(scope, bot, true)
+	if err != nil {
+		s.fail(w, "stop bot before moving history", err)
+		return
+	}
 	defer resume()
-	resumeDestination := s.pauseBots(scope, body.To, false)
+	resumeDestination, err := s.pauseBots(scope, body.To, false)
+	if err != nil {
+		s.fail(w, "stop destination bot before moving history", err)
+		return
+	}
 	defer resumeDestination()
 
 	counts, err := s.history.MoveBot(r.Context(), scope, bot, body.To, time.Now())
@@ -124,23 +146,22 @@ func (s *Server) historyTarget(
 
 // pauseBots stops one bot for the duration of an operation and returns the
 // function that puts it back. A bot that was not running is left alone, and a
-// server without a pauser never stops anything.
-func (s *Server) pauseBots(scope, bot string, discard bool) func() {
+// server without a pauser never stops anything. An operation that could not
+// stop its bot is refused instead of running beside it (ADR 0042).
+func (s *Server) pauseBots(scope, bot string, discard bool) (func(), error) {
 	pauser, ok := s.pauser.(BotPauser)
 	if !ok {
-		return func() {}
+		return func() {}, nil
 	}
 	if !s.botRunning(scope, bot) {
-		return func() {}
+		return func() {}, nil
 	}
 	stop := pauser.StopBot
 	if discard {
 		stop = pauser.StopBotForUnpair
 	}
 	if err := stop(scope, bot); err != nil {
-		s.log.Error("api history pause failed", "scope", scope, "bot", bot,
-			"error", err)
-		return func() {}
+		return nil, err
 	}
 	return func() {
 		if err := pauser.StartBot(scope, bot); err != nil {
@@ -149,7 +170,7 @@ func (s *Server) pauseBots(scope, bot string, discard bool) func() {
 			s.log.Error("api history resume failed", "scope", scope, "bot", bot,
 				"error", err)
 		}
-	}
+	}, nil
 }
 
 // botRunning reports whether the fleet holds a live actor for one bot. A state

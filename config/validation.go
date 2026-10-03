@@ -9,8 +9,11 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// ValidationError names the file, the entity, and the reason.
+// ValidationError names the file, the entity, and the reason. Scope is the
+// scope the problem belongs to, empty for an instance-level problem: an API
+// caller is shown only the problems inside its own authority (docs/api.md).
 type ValidationError struct {
+	Scope  string
 	File   string
 	Entity string
 	Reason string
@@ -36,13 +39,19 @@ func Validate(cfg *Config) []ValidationError {
 		return []ValidationError{{Reason: "nil config"}}
 	}
 	var errs []ValidationError
-	add := func(file, entity, format string, args ...any) {
-		errs = append(errs, ValidationError{
-			File:   file,
-			Entity: entity,
-			Reason: fmt.Sprintf(format, args...),
-		})
+	// addScope reports one scope's problems; add reports instance-level ones,
+	// which no scoped caller may see (docs/api.md).
+	addScope := func(scope string) addError {
+		return func(file, entity, format string, args ...any) {
+			errs = append(errs, ValidationError{
+				Scope:  scope,
+				File:   file,
+				Entity: entity,
+				Reason: fmt.Sprintf(format, args...),
+			})
+		}
 	}
+	add := addScope("")
 
 	switch cfg.LogLevel {
 	case "", "debug", "info", "warn", "error":
@@ -63,26 +72,27 @@ func Validate(cfg *Config) []ValidationError {
 		}
 	}
 	validateWebhooks(cfg.Webhooks, add)
-	validateLabels(cfg, add)
+	validateLabels(cfg, addScope)
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
+		scoped := addScope(scopeName)
 		for _, name := range SortedKeys(scope.LLMs) {
-			validateLLM(cfg, scopeName, name, scope.LLMs[name], add)
-			checkSecretRefs(cfg, add, "llm", scopeName, name, scope.LLMs[name])
+			validateLLM(cfg, scopeName, name, scope.LLMs[name], scoped)
+			checkSecretRefs(cfg, scoped, "llm", scopeName, name, scope.LLMs[name])
 		}
 		for _, name := range SortedKeys(scope.Actions) {
-			validateAction(cfg, scopeName, name, scope.Actions[name], add)
-			checkSecretRefs(cfg, add, "action", scopeName, name, scope.Actions[name])
+			validateAction(cfg, scopeName, name, scope.Actions[name], scoped)
+			checkSecretRefs(cfg, scoped, "action", scopeName, name, scope.Actions[name])
 		}
 		for _, name := range SortedKeys(scope.Graphs) {
-			validateGraph(cfg, scopeName, scope, name, scope.Graphs[name], add)
-			checkSecretRefs(cfg, add, "graph", scopeName, name, scope.Graphs[name])
+			validateGraph(cfg, scopeName, scope, name, scope.Graphs[name], scoped)
+			checkSecretRefs(cfg, scoped, "graph", scopeName, name, scope.Graphs[name])
 		}
 		for _, name := range SortedKeys(scope.Bots) {
-			validateBot(cfg, scopeName, scope, name, scope.Bots[name], add)
-			checkSecretRefs(cfg, add, "bot", scopeName, name, scope.Bots[name])
+			validateBot(cfg, scopeName, scope, name, scope.Bots[name], scoped)
+			checkSecretRefs(cfg, scoped, "bot", scopeName, name, scope.Bots[name])
 		}
-		validateScopeTemplates(cfg, scopeName, scope, add)
+		validateScopeTemplates(cfg, scopeName, scope, scoped)
 	}
 	return errs
 }

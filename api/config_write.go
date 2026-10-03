@@ -252,9 +252,23 @@ func (s *Server) writePublicationError(
 		writeError(w, http.StatusPreconditionFailed, "stale_version",
 			"the scope changed since it was read")
 	case errors.As(err, &invalid):
+		// The writer validates the whole tree, so one publication can meet a
+		// problem in a scope the caller may not see. It is told only about its
+		// own scopes; anything else is one generic refusal, and the owner reads
+		// every diagnostic (docs/current-plan.md).
+		principal := principalFrom(r.Context())
 		messages := make([]string, 0, len(invalid.Problems))
 		for _, problem := range invalid.Problems {
+			if !principal.Owner() &&
+				(problem.Scope == "" || !principal.Allows(problem.Scope)) {
+				continue
+			}
 			messages = append(messages, problem.Error())
+		}
+		if len(messages) == 0 {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_config",
+				"the configuration cannot be published; the reason is available to the instance owner")
+			return
 		}
 		writeError(w, http.StatusUnprocessableEntity, "invalid_config",
 			strings.Join(messages, "; "))

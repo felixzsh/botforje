@@ -237,9 +237,12 @@ func ensurePhoneAvailable(
 func duplicateAccountError(
 	phone string, first, second botflota.LinkedAccount,
 ) error {
+	// The detail is for the instance log; a caller reads only the sentinel
+	// text, because the other owner may sit in a scope it cannot see.
 	return fmt.Errorf(
-		"whatsapp: phone number %s is assigned to bots %q (scope %q) and %q (scope %q)",
+		"whatsapp: phone number %s is assigned to bots %q (scope %q) and %q (scope %q): %w",
 		phone, first.Bot, first.Scope, second.Bot, second.Scope,
+		botflota.ErrAccountInUse,
 	)
 }
 

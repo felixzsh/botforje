@@ -90,7 +90,7 @@ func TestConnectFailureClosesUnstartedWorkers(t *testing.T) {
 		t.Fatal("the channel did not start connecting")
 	}
 
-	bot := runner.bots["dev/alpha"]
+	bot := runner.bots[botflota.BotRef{Scope: "dev", Bot: "alpha"}]
 	select {
 	case <-bot.done:
 	case <-time.After(2 * time.Second):
@@ -142,7 +142,7 @@ func TestStopBotForUnpairDiscardsTheRemainingQueue(t *testing.T) {
 	ticker := time.NewTicker(time.Millisecond)
 	defer deadline.Stop()
 	defer ticker.Stop()
-	for !runner.bots["dev/alpha"].outbox.discard.Load() {
+	for !runner.bots[botflota.BotRef{Scope: "dev", Bot: "alpha"}].outbox.discard.Load() {
 		select {
 		case <-deadline.C:
 			t.Fatal("StopBotForUnpair did not discard the queue")

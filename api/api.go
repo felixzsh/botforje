@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -106,10 +107,10 @@ type Server struct {
 	resolver    PrincipalResolver
 	log         *slog.Logger
 	limiter     *rateLimiter
-	// opsMu guards the per-bot operation locks pairing start, cancel, and
-	// unpair share (ADR 0021, ADR 0039).
+	// opsMu guards the per-bot operation locks pairing, account, and history
+	// operations share (ADR 0021, ADR 0039, ADR 0042).
 	opsMu sync.Mutex
-	ops   map[string]*sync.Mutex
+	ops   map[botflota.BotRef]*sync.Mutex
 	// mintMu pairs the exclusive-scope check with the insert it guards, so
 	// two concurrent mints cannot both pass a check the other then breaks
 	// (config: exclusive_scopes; ADR 0039: one process owns the instance).
@@ -186,7 +187,7 @@ func New(opts Options) (*Server, error) {
 		pauser:  opts.Pauser,
 		tokens:  opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
-		ops: map[string]*sync.Mutex{},
+		ops: map[botflota.BotRef]*sync.Mutex{},
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -203,20 +204,43 @@ func (s *Server) config() *config.Config { return s.cfg.Current() }
 func (s *Server) savedConfig() *config.Config { return s.saved.Current() }
 
 // lockBot serializes the write operations of one bot — pairing start,
-// cancel, and unpair — so an unpair never overlaps the session that stored
-// the account, and a re-pair starts only after the unpair finished (ADR
-// 0021, ADR 0039). The caller releases the lock through the return value.
+// cancel, unpair, and the history operations that stop it — so they never
+// overlap, and one of them cannot restart a bot another is still working on
+// (ADR 0021, ADR 0039, ADR 0042). The caller releases the lock through the
+// return value.
 func (s *Server) lockBot(scope, bot string) func() {
-	key := scope + "/" + bot
-	s.opsMu.Lock()
-	lock, ok := s.ops[key]
-	if !ok {
-		lock = &sync.Mutex{}
-		s.ops[key] = lock
+	return s.lockBots(botflota.BotRef{Scope: scope, Bot: bot})
+}
+
+// lockBots takes several bot locks in a stable order, so two operations that
+// overlap on two bots cannot deadlock each other. Repeats are ignored.
+func (s *Server) lockBots(refs ...botflota.BotRef) func() {
+	sort.Slice(refs, func(i, j int) bool {
+		if refs[i].Scope != refs[j].Scope {
+			return refs[i].Scope < refs[j].Scope
+		}
+		return refs[i].Bot < refs[j].Bot
+	})
+	unlocks := make([]func(), 0, len(refs))
+	for i, ref := range refs {
+		if i > 0 && ref == refs[i-1] {
+			continue
+		}
+		s.opsMu.Lock()
+		lock, ok := s.ops[ref]
+		if !ok {
+			lock = &sync.Mutex{}
+			s.ops[ref] = lock
+		}
+		s.opsMu.Unlock()
+		lock.Lock()
+		unlocks = append(unlocks, lock.Unlock)
 	}
-	s.opsMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
+	return func() {
+		for i := len(unlocks) - 1; i >= 0; i-- {
+			unlocks[i]()
+		}
+	}
 }
 
 func (s *Server) routes() http.Handler {

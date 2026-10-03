@@ -27,6 +27,12 @@ var ErrUnsupportedKind = errors.New("unsupported message content")
 // as a second pairing session for one bot (ADR 0025).
 var ErrBusy = errors.New("already in progress")
 
+// ErrAccountInUse reports a pairing whose phone number is already linked to
+// another bot, which one instance refuses (ADR 0021). The conflict may sit in
+// a scope the caller cannot see, so the text a caller gets names neither the
+// other bot nor its scope; the diagnostic detail goes to the instance log.
+var ErrAccountInUse = errors.New("phone number is already linked to a bot")
+
 // ErrDestinationNotEmpty reports a history migration whose destination already
 // holds a chat. History is moved, never merged, so the caller empties the
 // destination first or picks another bot (ADR 0042).

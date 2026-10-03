@@ -77,7 +77,7 @@ func TestPairManagerCloseWaitsForPublishedSession(t *testing.T) {
 		}
 	}()
 	manager.mu.Lock()
-	manager.sessions["dev/alpha"] = session
+	manager.sessions[botflota.BotRef{Scope: "dev", Bot: "alpha"}] = session
 	manager.mu.Unlock()
 
 	closed := make(chan struct{})

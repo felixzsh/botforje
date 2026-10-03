@@ -69,10 +69,10 @@ type Config struct {
 	Include  []string              `yaml:"include" json:"include,omitempty"`
 	Scopes   map[string]spec.Scope `yaml:"scopes" json:"scopes"`
 
-	origin     map[string]string `yaml:"-" json:"-"`
-	source     string            `yaml:"-" json:"-"`
-	files      []string          `yaml:"-"`
-	watchPaths []string          `yaml:"-"`
+	origin     map[entityRef]string `yaml:"-" json:"-"`
+	source     string               `yaml:"-" json:"-"`
+	files      []string             `yaml:"-"`
+	watchPaths []string             `yaml:"-"`
 }
 
 // RateBudgets resolves the per-minute budgets: the defaults unless

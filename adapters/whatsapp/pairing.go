@@ -35,7 +35,7 @@ type PairManager struct {
 	// pair is a field so a test can drive a session without a phone.
 	pair     func(context.Context, PairOptions) (PairResult, error)
 	mu       sync.Mutex
-	sessions map[string]*pairingSession
+	sessions map[botflota.BotRef]*pairingSession
 	// closed stops new sessions.
 	closed bool
 }
@@ -79,7 +79,7 @@ func NewPairManager(opts PairManagerOptions) *PairManager {
 		opts.Lifetime = defaultPairLifetime
 	}
 	return &PairManager{
-		opts: opts, pair: Pair, sessions: make(map[string]*pairingSession),
+		opts: opts, pair: Pair, sessions: make(map[botflota.BotRef]*pairingSession),
 	}
 }
 
@@ -95,7 +95,7 @@ func (m *PairManager) StartPair(
 	}
 	now := m.opts.Now().UTC()
 	pairCtx, cancel := context.WithCancel(context.Background())
-	key := scope + "/" + bot
+	key := botflota.BotRef{Scope: scope, Bot: bot}
 	session := &pairingSession{
 		state: botflota.PairingSession{
 			Scope: scope, Bot: bot, Method: "qr",
@@ -172,7 +172,7 @@ func (m *PairManager) CurrentPair(
 ) (*botflota.PairingSession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	session, ok := m.sessions[scope+"/"+bot]
+	session, ok := m.sessions[botflota.BotRef{Scope: scope, Bot: bot}]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
@@ -181,7 +181,7 @@ func (m *PairManager) CurrentPair(
 }
 
 func (m *PairManager) CancelPair(ctx context.Context, scope, bot string) error {
-	key := scope + "/" + bot
+	key := botflota.BotRef{Scope: scope, Bot: bot}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	session, ok := m.sessions[key]
@@ -209,7 +209,7 @@ func (m *PairManager) EndPair(ctx context.Context, scope, bot string) error {
 	if m == nil {
 		return errors.New("whatsapp: no pairing manager")
 	}
-	key := scope + "/" + bot
+	key := botflota.BotRef{Scope: scope, Bot: bot}
 	m.mu.Lock()
 	session, ok := m.sessions[key]
 	if !ok {
@@ -233,7 +233,7 @@ func (m *PairManager) EndPair(ctx context.Context, scope, bot string) error {
 	}
 }
 
-func (m *PairManager) setCode(key, code string) {
+func (m *PairManager) setCode(key botflota.BotRef, code string) {
 	if code == "" {
 		return
 	}
@@ -252,7 +252,7 @@ func (m *PairManager) setCode(key, code string) {
 
 // markSaved records that the account is stored: it stops the expiry timer and
 // makes the session immune to a cancel or expiry racing the success report.
-func (m *PairManager) markSaved(key string, session *pairingSession) {
+func (m *PairManager) markSaved(key botflota.BotRef, session *pairingSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.sessions[key] != session {
@@ -262,7 +262,7 @@ func (m *PairManager) markSaved(key string, session *pairingSession) {
 	session.timer.Stop()
 }
 
-func (m *PairManager) expire(key string, session *pairingSession) {
+func (m *PairManager) expire(key botflota.BotRef, session *pairingSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.sessions[key] != session || session.state.Final() {
@@ -283,11 +283,22 @@ func (m *PairManager) endLocked(session *pairingSession, state botflota.PairStat
 	session.cancel()
 }
 
+// pairingErrorText is what a pairing session reports to its caller. One kind
+// of failure lives in a scope the caller may not see — the phone is already
+// linked to another bot — so it reports the reason alone and leaves the names
+// to the instance log (ADR 0021).
+func pairingErrorText(err error) string {
+	if errors.Is(err, botflota.ErrAccountInUse) {
+		return botflota.ErrAccountInUse.Error()
+	}
+	return err.Error()
+}
+
 // finish applies what the pairing produced, unless Cancel or expiry already
 // decided the outcome. A successful pairing activates the bot before the
 // session reports it, so whoever reads "paired" sees a started bot.
 func (m *PairManager) finish(
-	key string, session *pairingSession, result PairResult, err error,
+	key botflota.BotRef, session *pairingSession, result PairResult, err error,
 ) {
 	session.timer.Stop()
 	m.mu.Lock()
@@ -303,7 +314,7 @@ func (m *PairManager) finish(
 	// cancellation); the pairing itself happened and still reports success.
 	if err != nil && !session.saved {
 		state.State = botflota.PairFailed
-		state.Error = err.Error()
+		state.Error = pairingErrorText(err)
 		scope, bot := state.Scope, state.Bot
 		m.mu.Unlock()
 		m.opts.Log.Warn("pairing failed", "scope", scope, "bot", bot, "error", err)

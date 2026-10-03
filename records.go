@@ -10,6 +10,15 @@ import (
 // in adapters/sqlite (ADR 0006, ADR 0026); the ports that read and write them
 // live in ports.go.
 
+// BotRef names one bot as its scope and bot key together, never a bare name
+// (ADR 0016). It is comparable so registries can key on the pair without
+// concatenating it: scope and bot names are free strings and may each contain
+// any separator a string join would make ambiguous.
+type BotRef struct {
+	Scope string
+	Bot   string
+}
+
 // LinkedAccount is a bot's linked channel identity: the WhatsApp device JID
 // (ADR 0006, ADR 0016). Its lifecycle is PairingStatus.
 type LinkedAccount struct {
@@ -158,8 +167,8 @@ type Message struct {
 
 // HistoryCounts is what a history operation removed or moved: one bot's chats
 // and their cascaded sessions, messages, and queued replies, plus its address
-// book. A caller reports them, and a limit set releases the storage they held
-// (ADR 0042).
+// book. A caller reports them; whether they release any storage ceiling is
+// TBD and not an implemented contract (ADR 0042; docs/access-policy.md).
 type HistoryCounts struct {
 	Chats       int64
 	Sessions    int64

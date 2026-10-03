@@ -12,7 +12,7 @@ func labelsOf(t *testing.T, cfg *Config) []string {
 	problems := Validate(cfg)
 	labels := make([]string, 0, len(problems))
 	for _, problem := range problems {
-		if strings.Contains(problem.Reason, "already used by") {
+		if strings.Contains(problem.Reason, "already used") {
 			labels = append(labels, problem.Error())
 		}
 	}
@@ -183,6 +183,32 @@ func TestLabelsAreUniquePerNamespace(t *testing.T) {
 					len(got), tc.wantCount, got)
 			}
 		})
+	}
+}
+
+// TestScopeLabelCollisionNamesNoOtherScope holds the isolation promise for the
+// one finding that spans scopes: the message may not name the entry in the
+// other scope that holds the label (docs/api.md).
+func TestScopeLabelCollisionNamesNoOtherScope(t *testing.T) {
+	cfg := &Config{Scopes: map[string]spec.Scope{
+		"first":  {DisplayName: "Shared"},
+		"second": {DisplayName: "shared"},
+	}}
+	var found []ValidationError
+	for _, problem := range Validate(cfg) {
+		if strings.Contains(problem.Reason, "already used") {
+			found = append(found, problem)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("found %d label problems, want 1: %v", len(found), found)
+	}
+	if found[0].Scope != "second" {
+		t.Fatalf("scope = %q, want the finding attributed to its own scope",
+			found[0].Scope)
+	}
+	if strings.Contains(found[0].Reason, "first") {
+		t.Fatalf("reason = %q, want no other scope named", found[0].Reason)
 	}
 }
 

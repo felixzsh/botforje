@@ -383,6 +383,135 @@ func TestWriterRecoversAnInterruptedPublication(t *testing.T) {
 	}
 }
 
+// interruptedPublication stages and applies a change to one scope, stopping
+// after every file was replaced and before the journal is dropped, which is
+// where a crash leaves the tree recoverable. It returns the record and what
+// each file held before.
+func interruptedPublication(
+	t *testing.T, main, scope string, next spec.Scope,
+) (*journal, map[string]string) {
+	t.Helper()
+	writer, err := NewWriter(main)
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	current := loadWriterTree(t, main)
+	before := map[string]string{}
+	for _, path := range current.Files() {
+		before[path] = string(readFile(t, path))
+	}
+	files, err := writer.render(current, Publication{Scopes: map[string]ScopeWrite{
+		scope: {Version: scopeVersion(t, current, scope), Scope: next},
+	}})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	record, err := stage(main, files)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	for _, entry := range record.Entries {
+		if err := os.Rename(stagedPath(entry.Path), entry.Path); err != nil {
+			t.Fatalf("rename: %v", err)
+		}
+	}
+	return record, before
+}
+
+func TestWriterRecoversFromACrashBeforeTheCommit(t *testing.T) {
+	main := writerTree(t)
+	next := copyScope(loadWriterTree(t, main).Scopes["support"])
+	next.Bots["extra"] = spec.Bot{}
+	record, before := interruptedPublication(t, main, "support", next)
+
+	for _, entry := range record.Entries {
+		if !entry.Existed {
+			continue
+		}
+		if _, err := os.Stat(backupPath(entry.Path)); err != nil {
+			t.Fatalf("the backup of %s is gone before the commit: %v", entry.Path, err)
+		}
+	}
+	if err := Recover(main); err != nil {
+		t.Fatalf("Recover: %v", err)
+	}
+	for path, content := range before {
+		if string(readFile(t, path)) != content {
+			t.Fatalf("%s was not restored", path)
+		}
+	}
+}
+
+func TestRecoverRefusesAMissingBackup(t *testing.T) {
+	main := writerTree(t)
+	next := copyScope(loadWriterTree(t, main).Scopes["support"])
+	next.Bots["extra"] = spec.Bot{}
+	record, _ := interruptedPublication(t, main, "support", next)
+	for _, entry := range record.Entries {
+		if !entry.Existed {
+			continue
+		}
+		if err := os.Remove(backupPath(entry.Path)); err != nil {
+			t.Fatalf("remove backup: %v", err)
+		}
+		break
+	}
+	// Restoring what is left would mix old and new files, so the tree stays
+	// untouched and the operator is told.
+	if err := Recover(main); err == nil {
+		t.Fatal("Recover accepted a missing backup")
+	}
+}
+
+func TestWriterDeletesADefinitionWhoseFileHoldsNothingElse(t *testing.T) {
+	main := writerTree(t)
+	writer, _ := NewWriter(main)
+	current := loadWriterTree(t, main)
+
+	// scopes/support.yml holds the scope's action and nothing else, so an
+	// omitted definition must still rewrite that file.
+	next := copyScope(current.Scopes["support"])
+	delete(next.Actions, "greet")
+	if _, err := writer.Publish(context.Background(), Publication{
+		Scopes: map[string]ScopeWrite{
+			"support": {Version: scopeVersion(t, current, "support"), Scope: next},
+		},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	after := loadWriterTree(t, main)
+	if _, ok := after.Scopes["support"].Actions["greet"]; ok {
+		t.Fatal("the omitted action is still loaded")
+	}
+	if _, ok := after.Scopes["support"]; !ok {
+		t.Fatal("the scope disappeared with the file that held the action")
+	}
+}
+
+func TestWriterClearsAScopeItEmpties(t *testing.T) {
+	main := writerTree(t)
+	writer, _ := NewWriter(main)
+	current := loadWriterTree(t, main)
+
+	if _, err := writer.Publish(context.Background(), Publication{
+		Scopes: map[string]ScopeWrite{
+			"support": {
+				Version: scopeVersion(t, current, "support"), Scope: spec.Scope{},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	scope, ok := loadWriterTree(t, main).Scopes["support"]
+	if !ok {
+		t.Fatal("the scope disappeared; a publication never removes a scope")
+	}
+	if scope.DisplayName != "" || len(scope.LLMs) != 0 || len(scope.Actions) != 0 ||
+		len(scope.Graphs) != 0 || len(scope.Bots) != 0 {
+		t.Fatalf("scope = %+v, want it emptied", scope)
+	}
+}
+
 func TestWriterRoundTripKeepsTheDocumentTheSame(t *testing.T) {
 	main := writerTree(t)
 	before, err := (Loader{}).Load(main)

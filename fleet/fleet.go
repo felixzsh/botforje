@@ -56,7 +56,7 @@ type Fleet struct {
 	// a built *Bot is immutable afterwards.
 	mu      sync.Mutex
 	applyMu sync.Mutex
-	bots    map[string]*Bot
+	bots    map[botflota.BotRef]*Bot
 	cfg     *config.Config
 	opts    Options
 	// ctx is set by Run and cleared when it returns; a bot may start only
@@ -158,7 +158,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 		opts.Log = botflota.DiscardLogger()
 	}
 	fleet := &Fleet{
-		cfg: cfg, opts: opts, bots: make(map[string]*Bot),
+		cfg: cfg, opts: opts, bots: make(map[botflota.BotRef]*Bot),
 		scopeGen: make(map[string]int64),
 	}
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
@@ -190,7 +190,7 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			if err != nil {
 				return nil, err
 			}
-			fleet.bots[scopeName+"/"+botName] = built
+			fleet.bots[botflota.BotRef{Scope: scopeName, Bot: botName}] = built
 		}
 	}
 	return fleet, nil
@@ -351,7 +351,7 @@ func (f *Fleet) StartBot(scope, name string) error {
 		return fmt.Errorf("fleet: active session for %s/%s references a removed node",
 			scope, name)
 	}
-	key := scope + "/" + name
+	key := botflota.BotRef{Scope: scope, Bot: name}
 	if bot, ok := f.bots[key]; ok && bot.running.Load() {
 		return nil
 	}
@@ -397,7 +397,7 @@ func (f *Fleet) StopBotForUnpair(scope, name string) error {
 
 func (f *Fleet) stopBot(scope, name string, discard bool) error {
 	f.mu.Lock()
-	bot, ok := f.bots[scope+"/"+name]
+	bot, ok := f.bots[botflota.BotRef{Scope: scope, Bot: name}]
 	if !ok || !bot.started {
 		f.mu.Unlock()
 		return nil
@@ -786,7 +786,9 @@ func (b *Bot) controlOf(phone string, now time.Time) botflota.ChatControl {
 
 // SetChatHuman holds or releases one chat's automation; taking the hold
 // cancels the replies the bot still owes that chat, so a hand-over never sends
-// an automatic reply already queued (ADR 0043).
+// an automatic reply already queued (ADR 0043). The bot's turn lock covers the
+// cancellation and the hold together: a turn already past its pause check must
+// not commit a fresh reply after the cancellation ran.
 func (f *Fleet) SetChatHuman(
 	ctx context.Context, scope, bot, phone string, human bool,
 ) error {
@@ -794,6 +796,8 @@ func (f *Fleet) SetChatHuman(
 	if !ok || !target.running.Load() {
 		return fmt.Errorf("%w: %s/%s", botflota.ErrBotNotRunning, scope, bot)
 	}
+	target.runtimeMu.Lock()
+	defer target.runtimeMu.Unlock()
 	if human {
 		if err := f.cancelChat(ctx, scope, bot, phone); err != nil {
 			return err
@@ -817,7 +821,7 @@ func (f *Fleet) ChatControl(scope, bot, phone string) (botflota.ChatControl, boo
 func (f *Fleet) bot(scope, bot string) (*Bot, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	found, ok := f.bots[scope+"/"+bot]
+	found, ok := f.bots[botflota.BotRef{Scope: scope, Bot: bot}]
 	return found, ok
 }
 

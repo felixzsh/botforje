@@ -489,3 +489,64 @@ func TestPublishRejectsAMalformedBody(t *testing.T) {
 		t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+// TestPublishHidesProblemsOutsideTheCallersScopes holds the publication
+// contract: one candidate is validated as a whole, but a scoped caller is told
+// only about its own scopes and the owner reads every diagnostic
+// (docs/current-plan.md).
+func TestPublishHidesProblemsOutsideTheCallersScopes(t *testing.T) {
+	server := testServerWithConfig(t, &fakeFleet{}, func(cfg *config.Config) {
+		// A manual edit left ventas broken; the caller holds support only.
+		cfg.Scopes["ventas"] = spec.Scope{
+			Graphs: map[string]spec.Graph{"main": testGraph},
+			Bots:   map[string]spec.Bot{"other": {Graph: "missing"}},
+		}
+	})
+	pub := publishServer{Server: server, main: server.writer.MainPath()}
+	current := savedScope(t, pub.main, "support")
+	version, _ := config.ScopeVersion(current)
+
+	t.Run("the owner reads the whole diagnostic", func(t *testing.T) {
+		recorder := putScope(t, pub.Server, "support", testOwnerToken, map[string]any{
+			"version": version,
+			"config":  relabelled(t, current, "Customer support"),
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "ventas") {
+			t.Fatalf("body = %s, want the problem named for the owner",
+				recorder.Body.String())
+		}
+	})
+
+	t.Run("a scoped caller learns nothing outside its scopes", func(t *testing.T) {
+		recorder := putScope(t, pub.Server, "support", testAccessToken, map[string]any{
+			"version": version,
+			"config":  relabelled(t, current, "Customer support"),
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+		body := recorder.Body.String()
+		for _, secret := range []string{"ventas", "missing", pub.main} {
+			if strings.Contains(body, secret) {
+				t.Fatalf("body = %s, want no detail from outside its scopes", body)
+			}
+		}
+	})
+
+	t.Run("its own scope is still explained", func(t *testing.T) {
+		next := relabelled(t, current, "Customer support")
+		next.Bots = map[string]spec.Bot{"demo": {Graph: "gone"}}
+		recorder := putScope(t, pub.Server, "support", testAccessToken, map[string]any{
+			"version": version, "config": next,
+		})
+		if recorder.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("status = %d, want 422: %s", recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "support") {
+			t.Fatalf("body = %s, want its own problem reported", recorder.Body.String())
+		}
+	})
+}

@@ -215,6 +215,13 @@ func (w *Writer) Publish(
 		return nil, err
 	}
 	if err := applyWrite(w.main, record, 0); err != nil {
+		// Nothing is committed until every file is in place, so the tree goes
+		// back to what it was instead of staying half-published.
+		if recovery := Recover(w.main); recovery != nil {
+			return nil, fmt.Errorf(
+				"config: publish failed and could not recover: %w",
+				errors.Join(err, recovery))
+		}
 		return nil, err
 	}
 	for i := range outcomes {
@@ -262,7 +269,8 @@ func (w *Writer) render(
 ) (map[string][]byte, error) {
 	files := map[string][]byte{}
 	for _, name := range SortedKeys(pub.Scopes) {
-		part := splitScope(current, name, pub.Scopes[name].Scope)
+		managed := managedFragment(w.main, name)
+		part := splitScope(current, name, pub.Scopes[name].Scope, managed)
 		for _, path := range SortedKeys(part.perFile) {
 			doc, err := openDocument(w.main, path, files)
 			if err != nil {
@@ -275,22 +283,10 @@ func (w *Writer) render(
 			}
 			files[path] = content
 		}
-		if emptyScope(part.managed) {
-			continue
-		}
-		path := managedFragment(w.main, name)
-		doc, err := openDocument(w.main, path, files)
-		if err != nil {
-			return nil, err
-		}
-		doc.setScope(name, part.managed)
-		content, err := doc.encode()
-		if err != nil {
-			return nil, err
-		}
-		files[path] = content
-		if err := w.includeManaged(path, files); err != nil {
-			return nil, err
+		if part.newManaged {
+			if err := w.includeManaged(managed, files); err != nil {
+				return nil, err
+			}
 		}
 	}
 	for path, content := range files {
@@ -304,52 +300,94 @@ func (w *Writer) render(
 
 // scopePlacement is one scope's new content divided by the file that will hold
 // each part of it. A definition keeps the file that declares it today; a
-// definition no file declares is new and goes to the managed fragment.
+// definition no file declares is new and goes to the managed fragment. Every
+// file that holds the scope today gets an entry, even an empty one: a
+// publication replaces the whole scope, so an omitted entity is deleted where
+// it lives (ADR 0002).
 type scopePlacement struct {
 	perFile map[string]*spec.Scope
-	managed spec.Scope
+	// newManaged marks content the managed fragment receives that no file
+	// declares today, which is when the loader needs the include that reaches
+	// it.
+	newManaged bool
 }
 
-func splitScope(current *Config, name string, next spec.Scope) scopePlacement {
+func splitScope(
+	current *Config, name string, next spec.Scope, managed string,
+) scopePlacement {
 	placement := scopePlacement{perFile: map[string]*spec.Scope{}}
-	// part returns where content with no file goes: the managed fragment, the
-	// empty path, until render turns it into a real one.
 	part := func(path string) *spec.Scope {
-		if path == "" {
-			return &placement.managed
-		}
 		if _, ok := placement.perFile[path]; !ok {
 			placement.perFile[path] = &spec.Scope{}
 		}
 		return placement.perFile[path]
 	}
+	// origin is where a definition lives today, or the managed fragment for one
+	// no file declares yet.
+	origin := func(kind, key string) string {
+		file := current.OriginFile(kind, name, key)
+		if file == "" {
+			placement.newManaged = true
+			return managed
+		}
+		return file
+	}
 	for _, llm := range SortedKeys(next.LLMs) {
-		target := part(current.OriginFile("llm", name, llm))
+		target := part(origin("llm", llm))
 		put(target, &target.LLMs, next.LLMs, llm)
 	}
 	for _, action := range SortedKeys(next.Actions) {
-		target := part(current.OriginFile("action", name, action))
+		target := part(origin("action", action))
 		put(target, &target.Actions, next.Actions, action)
 	}
 	for _, graph := range SortedKeys(next.Graphs) {
-		target := part(current.OriginFile("graph", name, graph))
+		target := part(origin("graph", graph))
 		put(target, &target.Graphs, next.Graphs, graph)
 	}
 	for _, bot := range SortedKeys(next.Bots) {
-		target := part(current.OriginFile("bot", name, bot))
+		target := part(origin("bot", bot))
 		put(target, &target.Bots, next.Bots, bot)
 	}
 	if displayHolder := current.DisplayNameOrigin(name); displayHolder != "" {
 		part(displayHolder).DisplayName = next.DisplayName
-	} else {
-		placement.managed.DisplayName = next.DisplayName
+	} else if next.DisplayName != "" {
+		placement.newManaged = true
+		part(managed).DisplayName = next.DisplayName
 	}
-	for path, scope := range placement.perFile {
-		if emptyScope(*scope) {
-			delete(placement.perFile, path)
-		}
+	for _, file := range scopeFiles(current, name) {
+		part(file)
 	}
 	return placement
+}
+
+// scopeFiles lists every file that holds content for one scope today, which is
+// what a full replacement must rewrite: a file left out would keep definitions
+// the publication omitted.
+func scopeFiles(cfg *Config, scope string) []string {
+	current, ok := cfg.Scopes[scope]
+	if !ok {
+		return nil
+	}
+	found := map[string]bool{}
+	add := func(file string) {
+		if file != "" {
+			found[file] = true
+		}
+	}
+	for _, name := range SortedKeys(current.LLMs) {
+		add(cfg.originOf("llm", scope, name))
+	}
+	for _, name := range SortedKeys(current.Actions) {
+		add(cfg.originOf("action", scope, name))
+	}
+	for _, name := range SortedKeys(current.Graphs) {
+		add(cfg.originOf("graph", scope, name))
+	}
+	for _, name := range SortedKeys(current.Bots) {
+		add(cfg.originOf("bot", scope, name))
+	}
+	add(cfg.DisplayNameOrigin(scope))
+	return SortedKeys(found)
 }
 
 func put[V any](scope *spec.Scope, field *map[string]V, values map[string]V, name string) {
@@ -357,11 +395,6 @@ func put[V any](scope *spec.Scope, field *map[string]V, values map[string]V, nam
 		*field = map[string]V{}
 	}
 	(*field)[name] = values[name]
-}
-
-func emptyScope(scope spec.Scope) bool {
-	return scope.DisplayName == "" && len(scope.LLMs) == 0 &&
-		len(scope.Actions) == 0 && len(scope.Graphs) == 0 && len(scope.Bots) == 0
 }
 
 // includeManaged adds a managed fragment to the main file's include list, so
@@ -378,7 +411,6 @@ func (w *Writer) includeManaged(path string, files map[string][]byte) error {
 	if slices.Contains(doc.conf.Include, entry) {
 		return nil
 	}
-	doc.conf.Include = append(doc.conf.Include, entry)
 	doc.conf.Include = append(doc.conf.Include, entry)
 	content, err := doc.encode()
 	if err != nil {
@@ -534,9 +566,11 @@ func writeJournal(path string, record *journal) error {
 	return os.Rename(temporary, path)
 }
 
-// applyWrite puts every staged file in place and then clears the journal.
-// stopAfter replaces only that many files so a test can stop where a crash
-// would; 0 replaces them all.
+// applyWrite puts every staged file in place and commits by dropping the
+// journal. stopAfter replaces only that many files so a test can stop where a
+// crash would; 0 replaces them all. Backups are cleanup, after the commit: a
+// crash before it must find every backup in place, or recovery could not
+// restore the tree as a whole.
 func applyWrite(main string, record *journal, stopAfter int) error {
 	for i, entry := range record.Entries {
 		if stopAfter > 0 && i >= stopAfter {
@@ -546,13 +580,15 @@ func applyWrite(main string, record *journal, stopAfter int) error {
 			return err
 		}
 	}
-	for _, entry := range record.Entries {
-		if err := os.Remove(backupPath(entry.Path)); err != nil &&
-			!errors.Is(err, os.ErrNotExist) {
-			return err
-		}
+	if err := os.Remove(journalPath(main)); err != nil {
+		return err
 	}
-	return os.Remove(journalPath(main))
+	for _, entry := range record.Entries {
+		// A backup left behind is inert: the next publication overwrites it in
+		// stage, so cleanup cannot be the reason a committed publication fails.
+		_ = os.Remove(backupPath(entry.Path))
+	}
+	return nil
 }
 
 // Recover restores the tree a publication was replacing when it did not finish.
@@ -578,6 +614,13 @@ func Recover(main string) error {
 			if err := os.WriteFile(entry.Path, backup, 0o644); err != nil {
 				return err
 			}
+		case entry.Existed && !errors.Is(err, os.ErrNotExist):
+			return err
+		case entry.Existed:
+			// The journal is still here, so the publication never committed
+			// and its backups are complete. One missing is corruption; leaving
+			// that target unrepaired would mix old and new files.
+			return fmt.Errorf("config: recover %s: backup is missing", entry.Path)
 		case !entry.Existed:
 			// The publication created this file, so undoing means removing it.
 			if err := os.Remove(entry.Path); err != nil &&

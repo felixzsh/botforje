@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -245,5 +246,29 @@ func TestNumber(t *testing.T) {
 		if got := Number(in); got != want {
 			t.Fatalf("Number(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestOwnershipConflictNamesNoOtherBot holds the public text of the one-phone
+// rule: the conflict may live in a scope the caller cannot see, so a pairing
+// session reports only the reason and the detail stays in the instance log
+// (ADR 0021).
+func TestOwnershipConflictNamesNoOtherBot(t *testing.T) {
+	err := duplicateAccountError("5215500000000",
+		botflota.LinkedAccount{
+			Scope: "hidden", Bot: "peer", JID: "5215500000000@s.whatsapp.net",
+		},
+		botflota.LinkedAccount{Scope: "support", Bot: "demo"})
+	if !errors.Is(err, botflota.ErrAccountInUse) {
+		t.Fatalf("error = %v, want ErrAccountInUse", err)
+	}
+	text := pairingErrorText(err)
+	for _, leak := range []string{"hidden", "peer", "5215500000000"} {
+		if strings.Contains(text, leak) {
+			t.Fatalf("session error = %q, want no name from another scope", text)
+		}
+	}
+	if text == "" {
+		t.Fatal("the session reports no reason")
 	}
 }
