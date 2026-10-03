@@ -19,6 +19,9 @@ automation.
   Phase 8 target (see Status below), not the current runtime.
 - Config can be authored by hand, by a UI, or AI-assisted; the runtime does
   not change for any of them.
+- Independent hosts own their applications and identity models; Botflota owns
+  execution and its generic control plane. A host does not need a Botflota
+  dashboard or browser handoff (`docs/integration.md`; ADR 0046).
 
 ## Status
 
@@ -46,6 +49,7 @@ opt-in LLM realization — all of them Phase 8 in `PLAN.md`.
 - `docs/guide/` — pairing an account, running bots, and running as a systemd
   service.
 - `docs/glossary.md` — terms used across the docs.
+- `docs/integration.md` — runtime versus host responsibilities and integration.
 
 ## Development
 

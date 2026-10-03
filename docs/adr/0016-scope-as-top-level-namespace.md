@@ -20,8 +20,8 @@ catalog the host provides (ADR 0031). Each scope holds its own `system_one`,
 ```yaml
 address: "127.0.0.1"
 scopes:
-  client-a:
-    display_name: "Customer Support"
+  support:
+    display_name: "Support"
     actions: { greet: {...} }
     graphs:  { faq:   {...} }
     bots:    { support-bot: {...} }
@@ -33,9 +33,9 @@ scopes:
   Interfaces show it when non-empty and otherwise show the map key. Changing the
   label never changes the key, references, or persisted runtime identity.
 - A UI-created child entity uses its initial submitted name as its map key.
-  Later UI renames change `display_name`, not the key. Scope provisioning is
-  the exception: its owner operation generates the scope key without setting
-  `display_name`; the owner may assign a visible label later.
+  Later UI renames change `display_name`, not the key. A future owner scope
+  provisioning API and its naming rules are TBD under ADR 0046 and
+  `docs/access-policy.md`; no generated-key exception is an implemented contract.
 - Effective display labels are unique within their UI namespace: scopes across
   the instance, each entity category within a scope, nodes within a graph, and
   model catalogs within their owner. Different categories or scopes may reuse

@@ -27,8 +27,8 @@ When Phase 9 closes, a clean machine and one config file give:
   `fleet run`, answering from YAML graphs deterministically, with System One routing
   plus prescribed replies, or with an optional LLM.
 - SQLite persistence for the device store, chats, sessions, and messages.
-- CLI groups `config`, `bot`, `fleet`, and `message`, plus a REST API with a
-  single owner token and no UI.
+- CLI groups `config`, `bot`, `fleet`, and `message`, plus a REST API with owner
+  and scoped tokens and no UI.
 - One reference bot and operational notes for systemd, backup, and account
   safety.
 
@@ -37,11 +37,12 @@ phase below builds on.
 
 ## Settled direction
 
-These shape every phase and become ADRs when the phase that owns them starts.
+ADR 0046 owns the runtime/host boundary. Open design details become ADRs when
+their owning phase starts; proposed policy is not a release commitment.
 
-- One binary, two audiences: the host's instance view can access every scope;
-  a scoped view reaches one or more authorized scopes and cannot prove another
-  scope exists.
+- One runtime, independent callers: an owner can access every scope; a scoped
+  principal reaches only its granted scopes. A host can expose its own
+  application and keep integration credentials server-side.
 - Scope is the isolation boundary. Isolation is enforced on the server for
   every route, never in the UI.
 - The API is the complete control plane for scope operations: every
@@ -59,10 +60,11 @@ These shape every phase and become ADRs when the phase that owns them starts.
 - Botflota knows nothing about whoever hosts it: it knows trusted issuers,
   scoped credentials, and webhooks, and the host's account system lives outside
   this repository.
-- How a host maps its own accounts to scopes is its convention, not a rule
-  Botflota enforces.
-- The dashboard ships inside the release binary: no auxiliary process and no
-  Node runtime in production.
+- How a host maps external identities to scopes and instances is its convention,
+  not a rule Botflota enforces. Logical scope isolation is not a sandbox;
+  untrusted-definition execution safety is TBD (`docs/integration.md`).
+- A future operator dashboard is optional and embedded in the release binary.
+  It is not a host application's required UI and does not gate integration.
 - Behavior stays in YAML, including when the dashboard edits it: the API
   writes validated fragments and reloads them, so the UI is never a second
   source of truth (ADR 0002).
@@ -104,16 +106,16 @@ Deliverables:
 - [ ] Bounded per-stream buffers and a documented slow-consumer policy that
   drops and resyncs instead of blocking a bot actor.
 - [ ] The principal is resolved in one place, so Phase 13 only swaps the
-  resolver; authentication stays the owner token for now.
+  resolver; owner and scoped bearer tokens already exist.
 - [ ] Tests: handlers, cursor pagination, stream ordering, and backpressure.
 
 Gate: a script follows a live conversation and reconstructs chat, session, and
 message state from the API and stream alone, with the fleet running.
 
-### Phase 11 — Dashboard, instance view
+### Phase 11 — Optional operator dashboard
 
-Goal: the host operator watches the whole instance from the browser, with no
-SSH and no file access.
+Goal: an operator watches an instance from the browser without SSH or file
+access. This is deferred tooling, not the UI for an independent host application.
 
 Deliverables:
 
@@ -122,11 +124,9 @@ Deliverables:
   an embedded single-page app.
 - [ ] Login with the owner token, browser session cookie, and logout.
 - [ ] Fleet overview: per-bot connection state, uptime, outbox depth, active
-  sessions, last error, and stored-message use against the set's ceiling, so
-  the pause a full storage brings is visible before it stops a bot.
-- [ ] Scope list and per-scope bot list. The scope is part of every URL and
-  page title, so the scoped view of Phase 13 is the same pages limited to the
-  scopes authorized for that principal.
+  sessions, and last error. No limit-set catalog or exhaustion policy is assumed.
+- [ ] Scope list and per-scope bot list, with scope identity visible in URLs
+  and titles. Any scoped projection must enforce authority server-side.
 - [ ] Live conversation view: inbound and outbound timeline per chat,
   streaming, with the session and its visited nodes beside it.
 - [ ] Chat and message search over history, with the indexes those reads need
@@ -174,26 +174,24 @@ with no bot reply in between and a complete audit trail.
 
 ### Phase 13 — Authority and scoped credentials
 
-Goal: one instance natively serves two audiences — the host, who sees the
-whole instance, and a scoped principal, who sees one or more authorized scopes
-and cannot prove another exists.
+Goal: complete and test the generic authority model without requiring a
+dashboard, delegated issuer, or external account model.
 
 Deliverables:
 
-- [ ] ADR: authority model. A credential yields a principal with an authority:
-  `instance` (owner) or one or more scopes, plus an expiry; these two are the
-  complete model and no roles are planned. Every route resolves a target
-  scope, and authorization is one check against that principal.
+- [ ] ADR: formalize the implemented owner/scoped authority model and its
+  remaining lifecycle decisions. Every scope operation checks its principal.
 - [ ] It replaces the resolver Phase 7 and Phase 10 introduced, not the route
   shapes those phases settled.
-- [ ] ADR: delegated sign-in (see below).
+- [ ] TBD — grant replacement and rotation, including `exclusive_scopes`;
+  separate these operations from aggregate resource policy.
 - [x] Scoped access tokens: mint, list, revoke, hashed at rest, optional
   expiry, usable by scripts and by server-to-server callers. (Landed with the
   authorization base in Phase 7.) A scope grant is shareable between tokens
   by default and exclusive only where the instance sets `exclusive_scopes`,
   which also refuses startup on an overlap already stored (`docs/api.md`).
-- [ ] Browser sessions: scope-limited, HttpOnly cookie, CSRF token on mutating
-  requests, logout invalidates the session.
+- [ ] Optional operator browser sessions: HttpOnly cookies, CSRF protection on
+  mutations, and logout invalidation. Server-to-server integration needs none.
 - [ ] Isolation guarantees, enforced as tests: a scoped principal cannot read,
   write, list, or infer the existence of another scope (out-of-scope targets
   answer 404, never 403), cannot read instance settings, logs, or backups, and
@@ -204,163 +202,94 @@ Deliverables:
 - [ ] Tests: one authorization matrix over every route by authority, plus a
   stream leak test.
 
-#### Delegated sign-in (recommended shape)
+#### Optional delegated sign-in — TBD
 
-- Botflota trusts issuers, never a particular product. Configuration lists
-  each issuer with its key source (JWKS URL or static public key), audience,
-  clock skew, and claim mapping (default: a `scope` claim, or a `scopes`
-  list).
-- The issuer signs a short-lived token with subject, audience, scope, and
-  expiry; it may not widen the scopes the issuer is allowed to grant.
-- The browser lands on Botflota with the token, Botflota verifies the
-  signature offline, rejects reuse, sets the session cookie, and redirects to
-  the dashboard. The token is never stored server side and never stays in the
-  address bar.
-- A host with no issuer mints scoped access tokens with the owner token. The
-  fallback of one-time login links minted by the API stays in reserve.
-- Rationale: no callback, no shared session state, no vendor vocabulary, and a
-  token minted for one instance is useless on another.
+Only design issuer trust and browser handoff if a real operator-interface
+integration requires it. Token format, transport, replay prevention, issuer
+grant ceilings, and key rotation need an ADR first. A host application can
+authenticate its own callers and use existing scoped bearer tokens from its
+backend; this path does not require delegated sign-in.
 
-Gate: the same binary serves an instance dashboard that sees every scope and
-a scoped dashboard that sees only its one or more authorized scopes; the
-isolation test suite passes with no route exempt.
+Gate: the API authorization matrix and stream isolation tests pass, and
+credential lifecycle does not grant wider access than requested. Browser
+tooling is a separate optional gate, not a requirement for host integration.
 
-### Phase 14 — Scoped surface and host integration
+### Phase 14 — Independent host integration
 
-Goal: a scoped user lands in Botflota and sees only their authorized scopes,
-while the system that authenticated them stays something Botflota knows
-nothing about.
+Goal: an external application operates authorized resources through the API
+without depending on Botflota's UI or writing its live files or database.
 
 Deliverables:
 
-- [ ] Scope projection of the dashboard: the same pages, navigation limited
-  to the credential's authorized scopes, no instance settings, and the active
-  scope shown in the header.
-- [ ] Host flow consumes Phase 7 owner provisioning: request a limit set,
-  initial generated-key scopes, and a scoped token through the owner API,
-  then hand only the scoped credential to its user. An existing limit set can
-  start empty and gain scopes later; the limit alone never creates scopes.
-  Phase 14 adds the scoped surface, not a second provisioning writer.
-- [ ] Instance identity: `instance_id`, version, and build info in responses
-  and events, so a caller with several instances can tell them apart.
-- [ ] Signed outbound webhooks with retries and backoff: bot connected,
-  disconnected, logged out, or banned; bot created or removed; per-scope
-  message counters and connected bot time as integration facts; threshold
-  warnings. The first-contact event and the delivery mechanism (config,
-  durable queue, signature, retries) landed with ADR 0045 (`PLAN.md`, Phase
-  7); this phase widens the event catalog over it.
-- [ ] `docs/integration/scoped-hosting.md`: the Botflota side of the contract
-  only (issuer configuration, token claims, webhook payloads and signatures,
-  scope naming, API versioning and deprecation). The other side is out of
-  this repository.
-- [ ] Tests: a stub issuer signs a token, a browser lands in the scoped
-  dashboard, and webhooks are delivered with retry and signature checks.
+- [x] Responsibility map and server-to-server flow in `docs/integration.md`
+  (ADR 0046). The host owns its application and external identity mapping.
+- [ ] TBD — minimal independent owner provisioning and grant operations,
+  after their ADR; no required combined policy/scope/token operation.
+- [ ] Instance identity, version, and build information where independent
+  callers need to distinguish instances.
+- [ ] Extend ADR 0045's signed durable delivery with independently useful bot
+  lifecycle events. Usage facts require explicit counting semantics and are not
+  an exact enforcement mechanism (`docs/access-policy.md`).
+- [ ] Document implemented payloads, lifecycle, recovery, and versioning in
+  `docs/integration.md` and `docs/api.md`, without describing a particular host.
+- [ ] Integration tests: a backend retains credentials, publishes an existing
+  authorized scope, drives pairing, reads conversations, and verifies a webhook.
+  Out-of-scope operations fail without affecting peer bots.
 
-Gate: an external harness acting as an issuer creates scopes, signs a
-sign-in token, lands a browser, sees only the token's authorized scopes, and
-receives usage webhooks; scope provisioning leaves peer bots running, with no
-code for any particular host inside Botflota.
+Gate: an independent client proves that flow without a dashboard or issuer.
+New scope creation adds a gate only after its separate contract is accepted.
+Untrusted authors sharing a process wait for the threat-model decision.
 
-### Phase 15 — Behavior editor and YAML publishing
+### Phase 15 — Authoring integration primitives
 
-Goal: everything YAML expresses today can be edited in the dashboard, with
-validation and review, while YAML stays the source of truth
-(ADR 0002).
+Goal: callers can author behavior independently while Botflota retains one
+validator, YAML source of truth, and activation path (ADR 0002, ADR 0046).
 
 Deliverables:
 
-- [ ] Use Phase 7's single- or multi-scope publication API in the editor;
-  this phase does not add another writer. Existing definitions stay in their
-  source files, new ones use managed fragments, and stale batches conflict.
-- [ ] Validation before publish: the same semantic rules as `config validate`
-  plus template reference checks, so a dashboard edit and a hand edit pass
-  the same gate.
-- [ ] Reload classes already apply (ADR 0009): safe changes go live,
-  incompatible ones are kept and reported as restart-required.
-- [ ] Editors for bots, graphs, nodes, edges, actions, steps, guards, llms,
-  and scope settings, with a YAML view beside the form. Optional `display_name`
-  labels are editable without changing entity keys; a child entity's initial
-  UI name becomes its key, and later renames set `display_name`. Scope creation
-  uses the generated-key provisioning operation. Enforce unique effective
-  labels within each UI namespace on the server; when absent, the UI shows the
-  key. Cover System One models (SOMs) when that catalog is implemented. Storage is
-  a bounded control rather than a free number: `settings.history_import_max_bytes`
-  is a slider from 0 up to a small share of the set's
-  `max_stored_message_bytes` (5–10 %), while the API keeps accepting whatever
-  byte count the caller's authority allows and `max_stored_message_bytes`
-  stays the only irreducible bound.
-- [ ] Scope publication starts, stops, or rebuilds only affected bot actors;
-  peer bots remain live. Revisit the current restart classification in ADR
-  0009 when implementing this; instance-wide settings stay owner-only.
-- [ ] Graph editor: topology view with node and edge editing, and
-  reachability and reference errors shown in place.
-- [ ] Simulator: run a scripted conversation against the draft graph on the
-  fake channel, with no WhatsApp account; save the script as a case.
-- [ ] Starter templates: packaged graphs (support menu, appointment request,
-  quote) a scope can instantiate and edit.
-- [ ] Import and export of a whole scope as YAML, with the publish validation.
-- [ ] Tests: concurrent edit conflict, rejected publish, and simulator cases.
+- [ ] Consider draft validation and a deterministic simulation capability only
+  when a real caller needs them. Settle the API and side-effect boundary first;
+  simulation must not silently run external requests or channel sends.
+- [ ] Revisit scope/bot membership activation so a scoped change can update
+  affected actors without restarting peers (ADR 0009).
+- [ ] Consider whole-scope YAML import/export as runtime data operations, with
+  reference validation and explicit treatment of shared model profiles.
+- [ ] Tests for each accepted primitive: invalid definitions are rejected,
+  simulations isolate effects, and activation preserves unrelated scopes.
 
-Gate: an operator with no file access creates a bot from a template, edits its
-graph, simulates a conversation, publishes it, and sees the fragment on disk
-and the change live. This phase may split into the publishing
-layer and the editors; the gate applies to both.
+The existing publication API is reused, not replaced. Visual editors, template
+journeys, and draft storage belong to the caller's application, not this phase.
+Gate: an independent authoring client can validate and publish through accepted
+runtime primitives without an embedded editor.
 
-### Phase 16 — Onboarding assistant and history analysis
+### Phase 16 — Runtime history and retention
 
-Goal: a newly paired WhatsApp account proposes a draft graph built from its
-own conversations, for a human to review.
+Goal: independent applications can use authorized history without owning the
+runtime's stores. Botflota does not build an onboarding assistant.
 
 Deliverables:
 
-- [ ] Opt-in history ingestion: request and store the history WhatsApp offers
-  for a newly paired account, in the scope's own tables; off by default.
-  Accounts served through the Cloud API are out of this phase: that channel
-  exposes no history sync (ADR 0028).
-- [ ] Retention and privacy: per-scope retention window, purge, and export;
-  analysis runs on stored history and clearly states what leaves the instance
-  when the configured provider requires it.
-- [ ] Past a full storage ceiling: a retention flag that drops the oldest
-  messages to keep receiving new ones, or answering while storing nothing,
-  each with the dedup, outbox, and session consequences settled first. The MVP
-  pauses instead (`PLAN.md`, Phase 7).
-- [ ] Analysis: cluster conversations, infer intents and slots, and propose
-  nodes, edges, and actions, each with the messages that support it.
-- [ ] Draft output: a scope config document that passes `config validate`. A
-  suggested step whose endpoint or script does not exist becomes an explicit
-  stub, flagged in validation and listed as a checklist item.
-- [ ] Review flow in the dashboard: accept or reject each suggestion, then
-  publish through Phase 15.
-- [ ] Tests: fixture transcripts to a deterministic draft shape, stub
-  detection, and a publish of the generated draft.
+- [ ] TBD — retention defaults and authority, purge, and scope export, with
+  explicit privacy and deduplication/outbox consequences.
+- [ ] TBD — storage exhaustion and whether any retention policy can safely
+  release capacity (`docs/access-policy.md`). No current aggregate pause policy
+  is implied.
+- [ ] Document channel history capabilities and limitations; account import and
+  per-chat sync already exist, while Cloud API offers no history sync.
+- [ ] Tests for accepted retention and export operations, including authority
+  and consistency of runtime records.
 
-Gate: a freshly paired account yields a reviewed, validated graph that answers
-the most common intents in its own history, with unimplemented steps listed
-instead of silently invented.
+Applications may analyze authorized history and propose drafts outside Botflota.
+They own consent, provider disclosure, review, and the assisted setup experience.
+Gate: accepted history operations preserve isolation and explicit data lifecycle.
 
-### Phase 17 — Autonomous evolution
+### Phase 17 — Reserved; application-level evolution is outside the boundary
 
-Goal: graphs improve from live traffic under evaluation and approval,
-never on their own authority.
-
-Deliverables:
-
-- [ ] Proposal engine: from live conversations, outcomes, and unresolved
-  intents, propose edits to nodes, edges, and actions.
-- [ ] Evaluation harness: golden conversations per graph and a score
-  (resolution rate, handover rate, policy violations, cost); a proposal with
-  no score is not eligible.
-- [ ] Approval policy per scope: always manual by default, automatic only
-  inside declared bounds.
-- [ ] Canary: run a proposal on a share of chats, watch the score, then
-  promote it or drop it.
-- [ ] Budgets: per-scope token and request budgets that bound the loop.
-- [ ] Tests: regression detection, canary drop, budget enforcement, and
-  audit completeness.
-
-Gate: a proposal that lowers the score is dropped by the canary with no human
-involved and one that raises it waits for approval, both visible in the audit
-log.
+Proposal generation, outcome scoring, approval workflows, and autonomous
+authoring are not Botflota commitments (ADR 0046). Independent applications may
+use authorized reads and version-checked publication for those workflows.
+Any requested evaluation or canary execution primitive needs its own runtime
+case and ADR; no such mechanism is approved by reserving this phase number.
 
 ### Phase 18 — Reach and scale
 
@@ -377,9 +306,8 @@ Deliverables:
 - [ ] Instance sharding: several instances, one identity each, and documented
   guidance for spreading scopes across instances; aggregation **across
   instances** lives outside Botflota.
-- [ ] Document that Phase 7 limit sets are per-instance; spreading scopes
-  across instances does not create a cross-instance limit. The host owns
-  cross-instance coordination. Per-scope runtime controls remain separate.
+- [ ] Document that the host owns cross-instance coordination and policy.
+  No limit-set implementation or aggregate enforcement model is assumed.
 - [ ] Each channel maps its own settings from `config.BotSettings` (the CLI
   translates them for WhatsApp today), so a second provider adds no switch in
   `cmd/`.
@@ -403,22 +331,23 @@ Deliverables:
   timeouts) for the script step.
 - [ ] Script step in the engine with the same inputs, guards, and result
   capture as `request`, and the same template rules.
-- [ ] Editor support in the simulator so a script can be tried before publish.
+- [ ] If a simulation primitive is accepted, support testing scripts without
+  external side effects; application editor support stays outside this project.
 - [ ] Tests: sandbox escapes, timeout, and resource limits.
 
 Gate: a graph runs a script step deterministically, and the sandbox denies
 network and filesystem access unless the ADR allows them.
 
 This phase is independent and may be pulled earlier when users ask for logic
-beyond an HTTP request. It also completes the stubs Phase 16 can generate.
+beyond an HTTP request. A script capability still needs its own safety decision.
 
 ## Cross-cutting themes
 
 ### Isolation
 
-- Scope is the only isolation boundary. Every query and every event is scoped;
-  instance-level reads are the only cross-scope reads and they are read-only
-  aggregations.
+- Scope is the logical namespace and authorization boundary. Scope-owned queries
+  and events carry it; owner authority covers the instance. This does not isolate
+  filesystem access, network access, or resource use by untrusted definitions.
 - Nothing leaks by inference: out-of-scope targets answer 404, lists never
   include foreign names or counts, and errors and logs never name another
   scope.
@@ -427,20 +356,19 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 
 ### Data, privacy, and retention
 
-- WhatsApp content is third-party personal data. Retention is per scope and
-  defaults to what operations need, not to forever.
+- WhatsApp content is third-party personal data. Retention defaults and authority
+  are TBD; no automatic purge policy is implemented by this roadmap.
 - Export and delete are first-class operations, not SQL handed to the host.
-- A bot never answers a message it could not store: when a limit set is out
-  of `max_stored_message_bytes`, import stops and the bot pauses its turns
-  (Phase 7). Whether it should instead drop the oldest messages or answer
-  without storing is a Phase 16 decision.
+- Turn and outbox consistency remain governed by ADR 0040. Proposed content
+  ceilings, exhaustion behavior, and retention are TBD (`docs/access-policy.md`);
+  no implemented aggregate pause policy is implied.
 - Whether instance authority reads message bodies of every scope, or only
   metadata, is an open decision below.
 
-### One binary, embedded UI
+### Optional embedded operator UI
 
-- The release binary serves the dashboard from embedded assets; no sidecar and
-  no Node runtime in production.
+- If implemented, Botflota's operator dashboard uses embedded assets, with no
+  sidecar or Node runtime in production. Hosts can build independent interfaces.
 - A frontend toolchain, if any, is a build-time dependency only.
 
 ### API contract and compatibility
@@ -467,42 +395,49 @@ beyond an HTTP request. It also completes the stubs Phase 16 can generate.
 
 ## Ordering and dependencies
 
-- 10 → 11 → 12 is the shortest path to running a fleet without a terminal:
-  watch and take over.
-- 13 before 14, authority before the scoped surface, never the reverse.
-- 14 before onboarding real users: provisioning, sign-in, and webhooks come
-  first.
-- 15 before 16: the assistant's output must be reviewable and publishable.
-- 17 last: it needs 15 (publishing), 16 (analysis), and a base of real
-  conversations to evaluate against.
-- 18 runs in parallel once 13 and 14 are stable; the Cloud API can be pulled
-  earlier if account safety becomes the limiting factor.
+- 10 and the API controls of 12 serve independent callers before UI work.
+- 11 is optional tooling; it does not gate 12, 13, or 14's server-side work.
+- Existing scoped tokens and publication already permit integration work;
+  remaining authority and provisioning operations require their own gates.
+- Shared-process onboarding of untrusted authors requires the threat-model
+  decision, regardless of which interface they use.
+- 15 and 16 supply only accepted runtime primitives, not a host application.
+- 17 carries no implementation commitment.
+- 18 can proceed when the required runtime contracts are stable; the Cloud API
+  can be pulled earlier if account safety becomes the limiting factor.
 - 19 is independent; pull it when a graph needs logic beyond an HTTP request.
 
 ## Open decisions
 
-- UI stack for the embedded dashboard (Phase 11).
+- TBD — priority and UI stack for the optional operator dashboard (Phase 11).
 - Whether instance authority sees message bodies of every scope by default,
   or metadata only with explicit opt-in (Phase 11/13).
-- Token transport for delegated sign-in: landing page with a fragment and a
-  one-time exchange, or a code exchange (Phase 13).
+- TBD — whether delegated sign-in is needed at all, and its contract if so
+  (Phase 13). Backend integration uses existing bearer tokens.
 - Whether `shared` may ever carry `actions` or `graphs`, and the governance
   that would need (Phase 15).
 - How export and import inline a scope's reference to `shared` (Phase 18).
 - Retention defaults per scope and who may change them (Phase 16).
-- Scope provisioning: where the writable config directory lives (Phase 7).
-- Sharding threshold, and whether the host or Botflota maps accounts to
-  instances (Phase 18).
-- Limit-set semantics, usage counters, and owner-policy recovery (Phase 7;
-  `docs/access-policy.md`).
+- TBD — minimal scope provisioning, grant replacement, naming, and recovery
+  (Phase 7; `docs/access-policy.md`).
+- TBD — operational sharding guidance (Phase 18). External identity-to-instance
+  mapping belongs to the host (ADR 0046).
+- TBD — aggregate policy ownership, exact enforcement, periods, durable usage,
+  and owner-policy recovery (Phase 7; `docs/access-policy.md`).
+- TBD — untrusted-definition isolation and optional implicit-scope syntax
+  (`docs/integration.md`; `PLAN.md`).
 
 ## Outside the boundary
 
-Recorded here only to keep the boundary visible. Botflota is the runner, not
-the account system: accounts, signup, plans, and branding belong to whatever
-hosts it. Such a system reaches a Botflota instance through the Phase 13 and
-Phase 14 surface and nothing else: it configures an issuer, signs short-lived
-scoped tokens, listens to webhooks for usage, and provisions scopes.
+ADR 0046 owns this boundary; `docs/integration.md` describes the flow. A host
+owns its application, external identity model, guided authoring, assisted
+onboarding, and application-level evolution. It maps its own identities to
+scopes and instances and interprets runtime facts for its own policies.
+
+The API is the integration seam. A host backend can retain scoped credentials
+and consume API reads, publication, pairing, and signed events without an
+issuer, browser handoff, or embedded dashboard. Provisioning and aggregate
+policy remain TBD, not prerequisites bundled into that flow.
 
 Providing the model is the same boundary: a host-run gateway is just an `llm`
 entry with a `base_url` and a key, so Botflota needs no new concept to route
@@ -510,8 +445,9 @@ model traffic through a gateway.
 
 ## Explicitly not planned
 
-- Account-system features inside Botflota: user registry, signup, plans, or
-  branding.
+- External identity registries, host branding, and host-specific offering rules.
+- A required host dashboard, visual authoring application, onboarding assistant,
+  or autonomous proposal engine inside Botflota.
 - Browser automation for WhatsApp.
 - Behavior tables in SQLite: YAML stays the behavior source of truth and the
   dashboard edits it through the API (ADR 0002).

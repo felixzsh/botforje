@@ -1,22 +1,45 @@
-# Host access policy (proposed)
+# Resource policy and provisioning — TBD
 
-Phase 7 plan for the policy a host installs on an instance: provisioning a
-limit set with generated-key scopes and a scoped access token, the aggregate
-ceilings that set enforces across its scopes, how usage is counted, when the
-outbound period starts, and what happens when storage runs out. It covers
-proposed endpoints, SQLite tables, the all-or-nothing commit across YAML and
-SQLite, and acceptance tests.
+ADR 0046 separates runtime protections from the policies of a host application.
+Nothing in this document is implemented or an approved enforcement contract.
+Publication and account history remain independent capabilities
+(`current-plan.md`); they do not require limit sets.
 
-Nothing here is implemented. The work is deliberately held back while the host
-settles how access, periods, and offerings are assigned, because that decision
-reshapes these endpoints and tables. The configuration publication API and the
-account history operations are **not** here: they are ordinary Botflota
-capabilities in `docs/current-plan.md`. An ADR must settle this policy before
-any of it is coded. Phase 14 consumes these APIs in the scoped surface; Phase 18
-does not reimplement them.
+## Decisions requiring creator approval
 
-Vocabulary is the glossary's: the integrator is the **host**, isolation is a
-**scope**, and the credential is a **scoped access token**.
+- **TBD — aggregate policy ownership and mechanism.** Whether Botflota needs
+  aggregate ceilings at all, and which independently useful enforcement
+  primitives it should expose. No mandatory limit-set catalog is approved.
+- **TBD — exact versus eventual enforcement.** The host can reject a proposed
+  configuration before publication, but automatic replies execute inside the
+  runtime. Webhooks report facts after execution and cannot enforce an exact
+  admission ceiling. Decide required guarantees before designing the seam.
+- **TBD — periods and durable usage.** The host owns interpretation and period
+  selection. No provision-time monthly anchor is a runtime decision. Decide
+  whether any runtime ledger is needed, how retries count, and whether deleting
+  history may affect usage. Stored history is not automatically a durable ledger.
+- **TBD — scope provisioning and grants.** Decide minimal owner operations,
+  naming, idempotency, token replacement, and file/database recovery without
+  coupling scope creation to a resource-policy group. Current publication only
+  changes existing scopes; current token grants change by mint and revoke.
+- **TBD — exhausted storage and lowered ceilings.** Choose explicit behavior,
+  including inbound handling, loss risk, retention, and recovery. There is no
+  implemented policy that pauses a scope at an aggregate content ceiling.
+- **TBD — technical protection defaults.** Structural limits, bounded imports,
+  timeouts, and backpressure must be justified by execution safety, not by an
+  external offering. Proposed new configuration fields are not available yet.
+
+The shared-process threat model and optional implicit-scope syntax are separate
+TBD decisions in `integration.md` and `PLAN.md`. No new implementation starts
+until the relevant decision is accepted in an ADR.
+
+## Candidate design for evaluation only
+
+The remaining sections describe one possible design, not a required catalog,
+settled semantics, route contract, or implementation gate. Every detail below
+is TBD under the decisions above; omit or replace it when it does not earn a
+runtime responsibility. In particular, combined provisioning, mandatory
+ceilings, monthly anchors, and protected policy storage are not commitments.
 
 ## Ownership and boundary
 
@@ -32,8 +55,8 @@ Vocabulary is the glossary's: the integrator is the **host**, isolation is a
   or token-grant changes. An owner may set a ceiling; even an owner
   publication must honor the current ceiling until the policy changes
   explicitly.
-- A host expresses its own tiers by provisioning as many scopes as it sells.
-  Botflota stores no tier name, no plan, and no percentage.
+- External groupings belong to the host. Scope count does not define a
+  runtime policy group, and provisioning need not create policy.
 
 Proposed owner endpoints (all absent today):
 
@@ -54,7 +77,7 @@ object, a `scope_count` of at least one, and a token request (`name`, optional
 and no `display_name`, and one access token authorized for all of them. Naming
 those scopes is a later configuration edit, not part of provisioning. The
 server anchors the set's first outbound quota period to the commit timestamp of
-this operation; the request does not supply a billing date, and the anchor is
+this operation; the request does not supply a period boundary, and the anchor is
 available from the limit-set read API, not the provisioning response. An empty
 set is not a provisioning case: it comes from `POST /api/v1/limit-sets`, and
 its anchor stays null until its first scope is added. Botflota generates
@@ -99,7 +122,7 @@ across the member scopes of one limit set:
 | `max_outbound_messages_per_month` | Outbound messages in the set's anchored UTC monthly period. |
 | `max_stored_message_bytes` | Logical stored message content, not DB file size. |
 
-Settled for this catalog:
+Candidate semantics — TBD:
 
 - **No `max_scopes`.** The host provisions the scopes a set holds and may add
   or remove them later, so the count is decided where the scopes are created,
@@ -120,7 +143,7 @@ Settled for this catalog:
   it. The period is a rolling calendar month from the limit set's anchor, not
   the first through last day of a calendar month.
 
-What counts, and when (settled):
+Candidate counting semantics — TBD:
 
 - **Definitions** — `max_bots`, `max_graphs`, `max_actions`, `max_llms`, and
   `max_soms` count the entities in the **saved YAML** of every scope of the
@@ -176,8 +199,7 @@ This is a proposed **complete initial catalog**, not a promise to limit every
 possible future resource. Shared instance-level model profiles are not
 multiplied by scope. Counting for message variants and how explicit history
 deletion affects the outbound count are still for the ADR to settle; the rest
-of this section is decided above, and the ADR records it instead of reopening
-it.
+of this section is also TBD. An accepted ADR must resolve it before implementation.
 
 ## Ceilings that live in config
 
@@ -269,7 +291,7 @@ or moves to YAML.
 
 Enforce projected totals while holding publication/provisioning locks; a
 scoped caller must not bypass limits via two scopes, parallel requests, or a
-direct API call. The storage refusal policy is settled above: import stops,
+direct API call. The candidate storage refusal policy is TBD: import stops,
 then the affected bot pauses its turns; it never answers a message it could
 not store, so the pause stays inside the atomic turn of ADR 0040.
 
@@ -292,8 +314,8 @@ its membership, and never a token without the scopes it was minted for.
 
 ADR 0002 makes YAML canonical for **behavior** and currently describes SQLite
 as runtime/credential storage. Update it and record a canonical policy ADR
-before implementing owner policy in SQLite. That ADR records the rules settled
-above — counting, lowering a ceiling, startup, manual edits, and the
+before implementing owner policy in SQLite. That ADR must decide the candidate
+rules above — counting, lowering a ceiling, startup, manual edits, and the
 all-or-nothing cross-store commit — and still settles treatment of unmatched
 scopes, changing membership, counting for variants and queued replies, and the
 owner API's failure model.
@@ -365,4 +387,4 @@ that clear credential.
   persisted counter exists.
 
 When implementation begins, request build permission before checks. Do not
-implement this policy before its ADR records the settled rules above.
+implement this candidate before an ADR resolves the TBD decisions above.

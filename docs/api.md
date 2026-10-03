@@ -51,43 +51,29 @@ refuses to start in this mode while a scope is already granted to several
 active tokens; the owner resolves that overlap first.
 
 A grant changes only by minting a token and revoking one: no renewal or
-scope-grant update exists yet, and the owner operation that adds a scope to
-a credential is still planned (`docs/access-policy.md`). In exclusive
+scope-grant update exists yet. Owner grant replacement and provisioning are
+TBD (`access-policy.md`), independently of aggregate policy. In exclusive
 mode, rotating a credential will need a coordinated replacement that leaves
 no gap, which is not designed yet either.
 
-Planned owner provisioning can create a protected limit set, a requested
-number of generated-key scopes, and a scoped token authorized for those
-scopes as one operation. Provisioned scopes start without a `display_name`,
-so their keys serve as their initial visible labels until the owner changes
-them. An empty limit set is a separate owner operation that creates neither
-scopes nor a token: how many scopes a set holds is
-the owner's provisioning decision, and Botflota keeps no ceiling on that
-number — a host expresses its own tiers by provisioning that many scopes.
-Botflota knows only complete numeric resource ceilings, not the host's reason
-for selecting them. The limits belong to the set of scopes, never to an
-access token or scoped-editable YAML; how large a bot's imported history may
-grow is ordinary bot configuration in bytes, not a tier Botflota knows.
-Rotating a token does not reset usage. A ceiling is never lowered below
-current use — nothing is deleted to make a number true — and a hand-edited
-file that exceeds one is refused at load without being rewritten. The catalog,
-the ceilings that live in instance config instead, and storage exhaustion are
-in `docs/access-policy.md`; their final enforcement contract needs an ADR
-before implementation, and the whole policy may be reshaped with the host's
-access model. Configuration publication and the account history operations are
-separate capabilities in `docs/current-plan.md`.
+Aggregate resource policy, catalogs, periods, and combined provisioning are
+TBD, not API contracts (`access-policy.md`). Scopes and tokens express isolation
+and authority; the host owns external identity mappings and application policy
+(ADR 0046; `integration.md`). Logical scope isolation is not a sandbox for
+untrusted definitions. Current publication and history operations require no
+limit sets.
 
 ## Configuration and scope operations
 
-YAML remains the source of behavior. The target API lets a scoped principal
+YAML remains the source of behavior. The current API lets a scoped principal
 read and publish only its authorized scopes' configuration, including bots,
 graphs, actions, and settings; the owner can read and publish any scopes. No
 read-only scoped token is planned. A publication may contain one or several
 **existing** scopes: every target must be authorized and carry its own
 expected version; all are validated and saved atomically or none are.
 Activation may still be pending per scope. Neither scoped nor owner config
-publication creates scopes or edits owner policy; owner provisioning is a
-separate operation (PLAN Phase 7; ADRs 0002, 0009, and 0016).
+publication creates scopes or edits owner policy; an owner provisioning API is
+separately TBD (PLAN Phase 7; ADRs 0002, 0009, 0016, and 0046).
 
 Configuration entities keep their YAML map keys as identifiers. Their optional
 `display_name` is presentation metadata, not a reference or identity. A UI
@@ -95,9 +81,8 @@ shows the key when the field is absent or empty; editing that label writes the
 field without renaming the key. API read models must distinguish the stored
 optional field from its presentation fallback rather than writing the fallback
 into YAML. Changing a key is not a display rename and must not be inferred as
-one during reload. Future scope provisioning generates a unique scope key
-without setting `display_name`; interfaces initially show the key, and the
-owner may assign a visible name later. Manual YAML authors choose their own
+one during reload. Future provisioning and its naming rules are TBD, not
+an implemented generated-key contract. Manual YAML authors choose their own
 keys. For UI-created child entities, the submitted initial name is the YAML
 key; later renames update only `display_name`.
 
@@ -116,9 +101,9 @@ Instance-wide configuration and shared resources are owner operations. Scope
 configuration does not become a second source of truth in the API or dashboard:
 the API validates and publishes YAML fragments.
 
-### Source files and publication concurrency (planned)
+### Source files and publication concurrency (current)
 
-The API writer is not implemented yet. The API treats a scope as one logical
+The implemented API writer treats a scope as one logical
 document, independent of how its entities are distributed across the main YAML
 and nested includes. The loader already records the source file for each
 entity. The writer must use that origin map to update or remove existing
@@ -151,8 +136,8 @@ physical file. Re-publishing identical content is a no-op. The API uses the
 same load, validate, compatibility, and scope activation pipeline as the file
 watcher; it does not edit a separate in-memory YAML source.
 
-The UI keeps drafts client-side. On a conflict it reloads the latest scope
-version and asks the user to reconcile before saving again.
+The caller owns drafts and their storage. On a conflict it reads the latest
+scope version and reconciles before saving again; Botflota stores no draft UI.
 
 Bot operations address one `(scope, bot)` at a time. Pairing and unpairing
 already work through the API while the instance runs; unpairing stops only that
@@ -163,7 +148,7 @@ one bot's history is a separate explicit confirmed operation that reports what
 it removed, and migration moves it to another bot of the same scope for a bot
 replacing a lost account; both work through the API (ADR 0042), and a bot can
 export its history first so deleting it is an informed choice
-(`docs/access-policy.md` holds the limits that bound them). The target adds the
+(`docs/access-policy.md` holds TBD resource-policy decisions). The target adds the
 remaining scope operations, including bot controls and complete configuration
 editing, without stopping peer bots. Ordinary errors in one bot must remain
 local to
@@ -251,10 +236,10 @@ well; the watcher loads and validates them and activates only safe changed
 scopes (ADR 0009). The CLI uses the API for operational commands while the
 instance is running.
 
-The full target is not implemented yet: browser sessions, the complete set of
-bot and conversation controls, and the embedded dashboard remain planned. Scope
-publication is a Phase 7 deliverable;
-the later dashboard consumes it. Scope and bot membership changes and channel
+The full target is not implemented yet: the complete set of bot and conversation
+controls remains planned, while browser sessions and an operator dashboard are
+optional tooling. Hosts can use the current publication API from their own
+backends without either (ADR 0046). Scope and bot membership changes and channel
 settings currently remain pending until restart; a graph topology change waits
 for active sessions in its scope to expire (ADR 0009).
 
@@ -262,7 +247,7 @@ For direct manual edits, Botflota cannot lock out independent editors that
 write files themselves. Use one editor per file and atomic file replacement;
 separate per-scope include fragments let editors work on different scopes
 without writing the same file. Use the API publication path for version-checked
-conflict detection when it becomes available. An invalid manual edit is left
+conflict detection. An invalid manual edit is left
 on disk; the watcher keeps the last valid active snapshot, logs the cause for
 the owner, and never rolls files back. The owner can inspect and correct the
 file directly or run `config validate` for detailed diagnostics.

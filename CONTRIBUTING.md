@@ -24,6 +24,8 @@ the reasoning behind the design.
 - Keep concurrency contained and intentional.
 - Minimize shared mutable state.
 - Keep package boundaries clear and easy to explain.
+- Keep runtime capabilities independent of host applications (ADR 0046).
+  A neutral name alone does not justify importing a host-specific rule.
 
 ## Always
 

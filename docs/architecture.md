@@ -88,6 +88,13 @@ UI), `auth` (authority and credentials), and one package per channel or model
 provider under `adapters/`. The dashboard edits behavior by publishing
 config through the API; it never becomes a second source of truth (ADR 0002).
 
+The dashboard is optional operator tooling, not the interface a host must use.
+A host owns its application and can retain integration credentials server-side;
+its backend calls the same API as other clients. Visual authoring and assisted
+onboarding are outside this runtime's commitments (ADR 0046;
+`integration.md`). Scope authorization is logical isolation, not a sandbox for
+untrusted definitions; shared-process execution safety remains TBD.
+
 `fleet run` is the composition root: it loads config, opens stores and channel
 devices, builds the fleet, and gives those live dependencies to `api`. API
 handlers start with the smallest direct operation; a narrow service is

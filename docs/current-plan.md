@@ -3,15 +3,15 @@
 Phase 7 plan for the capabilities Botflota needs on its own, whatever hosts it:
 reading and publishing **existing** scopes by API, the visible-name rules that
 make those edits safe, and the account history operations (keep, delete,
-migrate). It covers the proposed endpoints, concurrency, recovery, and
-acceptance tests. Nothing below is implemented unless marked current.
+migrate). Publication, label validation, account history operations, and the
+watcher coverage below are implemented. This document records their delivery
+contract and acceptance gates; `api.md` describes current API behavior.
 
 What is deliberately **not** here: creating scopes, changing token grants, and
-every ceiling or quota. Those belong to the host's access policy and may be
-redesigned with it (`docs/access-policy.md`). This document never creates a
-scope or a credential, and it never needs a limit set to be useful. Phase 14
-uses these APIs in the scoped surface. Do not start Phase 8 or build the
-dashboard here.
+every proposed ceiling or quota. Their ownership and mechanism remain TBD
+(`access-policy.md`). This slice never creates a scope or credential and needs
+no limit set to be useful. Independent applications use these APIs without a
+dashboard or browser handoff (ADR 0046; `integration.md`).
 
 ## Baseline
 
@@ -19,9 +19,9 @@ dashboard here.
   nested includes and records each entity's source file; config validation
   checks the whole candidate. SQLite holds runtime state and credentials
   (ADR 0006).
-- Today `GET /api/v1/scopes/{scope}/config` reads the active snapshot. There is
-  no publication API; saved valid YAML and active runtime may differ (ADR
-  0009).
+- `GET /api/v1/scopes/{scope}/config` reads the saved scope and reports saved
+  and active versions. Publication exists; saved valid YAML and active runtime
+  may differ (ADR 0009).
 - The owner can address any scope. A scoped token can authorize one or more
   scopes and can both read and write them; no read-only scoped token is
   planned. It cannot create scopes, change its own grants, or edit owner
@@ -37,15 +37,14 @@ dashboard here.
 - No config revision history or general rollback. An opaque logical version per
   scope prevents stale API writes; a multi-scope publication carries one
   expected version per scope. These are not schema versions or archives.
-- Quotas do not exist yet, so a publication is validated against the config
-  itself. When ceilings arrive (`docs/access-policy.md`), the same writer takes
-  them into account without changing this contract.
+- Aggregate quotas do not exist. Publication validates configuration itself;
+  no additional policy mechanism is assumed (`access-policy.md`).
 
 ## Delivery order
 
-### 1. Read and publish existing scopes
+### 1. Read and publish existing scopes (current)
 
-Keep Phase 7's `PLAN.md` publication deliverable open until its tests pass.
+Phase 7's `PLAN.md` publication deliverable and its tests are complete.
 ADR 0002 permits edits to authorized scopes even when they live in the main
 file. Preserve global settings and every unaddressed scope. Existing
 definitions stay in their source files; new ones use managed fragments and the
@@ -69,7 +68,7 @@ organization, not an API requirement; formatting is not a config contract.
   absent; presentation may fall back to the key without changing the document
   or its ETag.
 - Every requested scope has its own expected version. Missing or stale
-  versions, validation errors, or quota failures reject **the entire batch**
+  versions or validation errors reject **the entire batch**
   without writing any scope. Resolve source files and serialize overlapping
   commits. Rebase writes to untouched scopes in shared physical files; never
   overwrite a newer edit to a requested scope. Identical batches are no-ops.
@@ -91,10 +90,10 @@ organization, not an API requirement; formatting is not a config contract.
   manual document blocks API publication until corrected by the owner.
 
 Keep draft-only validation out of this slice unless needed. Do not conflate a
-label edit with a key migration. A scoped dashboard can batch edits to its
-already authorized scopes.
+label edit with a key migration. Any authorized caller can batch edits to its
+already authorized scopes; draft storage belongs to that caller.
 
-### 2. Visible names and label uniqueness
+### 2. Visible names and label uniqueness (current)
 
 Creation and rename have different semantics. When an editor creates a bot,
 graph, action, node, or model profile, its submitted initial name is used
@@ -184,7 +183,7 @@ each:
   live, stays pending when the same candidate is offered again, and applies
   once that session expires — with no new edit and no restart (ADR 0009).
 
-## Wire examples (proposed, not implemented)
+## Wire examples (current publication)
 
 `GET /api/v1/scopes/scope_a7f3/config` returns only that saved scope, its opaque
 version/ETag, and its active version/status. A missing `display_name` stays
@@ -211,11 +210,11 @@ submitted config or change a scope key as part of publication.
 
 Publication outcomes: 200 for saved and active/no-op, 202 if any requested scope
 is saved but pending, 428 for missing expected versions, 412 if any version is
-stale, 409 for a quota or grant conflict, 422 for invalid config, 404 for an
-unknown/out-of-scope target, and 401 for invalid credentials. The owner gets
+stale, 422 for invalid config, 404 for an unknown/out-of-scope target, and 401 for
+invalid credentials. The owner gets
 detailed diagnostics; a scoped caller must not learn paths, other scopes,
-owner policy, or whether the failure came from an unauthorized scope. This
-status sketch needs finalization with the canonical API contract.
+owner policy, or whether the failure came from an unauthorized scope.
+Publication is independent of proposed quotas or grant replacement.
 
 ## Acceptance gates
 

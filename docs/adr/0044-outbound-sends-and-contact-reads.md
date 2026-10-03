@@ -5,7 +5,7 @@ Status: Accepted (2026-09)
 ## Context
 
 An external system that hosts a Botflota instance may need a bot to message a
-phone that never wrote first — a status notice to a customer, an alert to an
+phone that never wrote first — a status notice to a contact, an alert to an
 operator — without impersonating a human and without a graph turn. Today every
 outbound message comes from a turn: `TurnStore.CommitTurn` requires a session
 and an inbound message, and the engine writes no rows directly (ADR 0040). The

@@ -2,6 +2,14 @@
 
 What Botflota includes.
 
+Botflota owns execution and a generic control plane, not a host application.
+`integration.md` describes the separation (ADR 0046). Scopes and tokens work
+without an external account system; YAML publication is a runtime capability.
+An optional future dashboard serves operators, not a required host experience.
+Visual authoring and assisted onboarding belong to independent applications.
+Resource policy and untrusted-definition isolation remain TBD, not guarantees
+of the current scope model.
+
 A config-driven fleet runner with these capabilities, without a dashboard or a
 hosting platform:
 
