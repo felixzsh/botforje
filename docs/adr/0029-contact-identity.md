@@ -44,8 +44,11 @@ chats    (id, scope, bot, contact_id -> contacts, started_at, updated_at,
   The filter runs first (ADR 0011), so ignored contacts, a contact outside the
   allow list, and ignored groups are never persisted.
 - The contact store separates the two writes: `EnsureContact` creates an
-  identity without claiming `first_seen`, and `RecordInbound` records a live
-  message and reports whether it claimed `first_seen` — the first-contact hook.
+  identity without claiming `first_seen`, and `RecordInbound` claims it with a
+  conditional update and reports that claim — the first-contact hook. The
+  affected rows are the answer, so two messages sharing one timestamp still
+  report first only once, and the claim commits with the activity and the
+  name, so a failure rolls all three back together (ADR 0045).
 - The channel maps the push name into `IncomingMessage`; the engine seeds it as
   `{{contact.name}}` alongside `{{contact.phone}}` (ADR 0018). The stored name
   fills the reference when a message carries none.

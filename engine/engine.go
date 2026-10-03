@@ -132,9 +132,6 @@ func (e *Engine) Handle(
 	if err != nil {
 		return nil, err
 	}
-	if current.firstMessage {
-		e.notifyFirstContact(ctx, current.contact, now)
-	}
 	r := &run{
 		ctx:     ctx,
 		engine:  e,
@@ -236,9 +233,6 @@ func (e *Engine) RecordSuppressed(
 	current, err := e.load(ctx, msg, now)
 	if err != nil {
 		return err
-	}
-	if current.firstMessage {
-		e.notifyFirstContact(ctx, current.contact, now)
 	}
 	record := &botflota.Message{
 		ChatID:            current.chat.ID,
@@ -377,15 +371,15 @@ func (e *Engine) commitTurn(
 }
 
 // loaded is what one inbound message needs before routing: the durable chat
-// and contact identity, the session run it continues or starts, and whether
-// the message was the identity's first inbound (the first-contact hook) or
-// started the run (ADR 0029, ADR 0045).
+// and contact identity, and the session run it continues or starts. The
+// first-contact hook is fired inside load, the moment the claim is durable,
+// because a failure to load the chat or session afterwards must not lose it
+// (ADR 0029, ADR 0045).
 type loaded struct {
-	chat         *botflota.Chat
-	contact      *botflota.Contact
-	session      *botflota.Session
-	newSession   bool
-	firstMessage bool
+	chat       *botflota.Chat
+	contact    *botflota.Contact
+	session    *botflota.Session
+	newSession bool
 }
 
 func (e *Engine) load(
@@ -399,6 +393,11 @@ func (e *Engine) load(
 	if err != nil {
 		return loaded{}, fmt.Errorf("engine: contact: %w", err)
 	}
+	// The identity is durable and first_seen is claimed, so the hook reports
+	// before anything else can fail or consume the claim (ADR 0045).
+	if firstMessage {
+		e.notifyFirstContact(ctx, contact, now)
+	}
 	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, contact.ID, now)
 	if err != nil {
 		return loaded{}, fmt.Errorf("engine: chat: %w", err)
@@ -407,7 +406,6 @@ func (e *Engine) load(
 	if err == nil && !session.Expired(now) {
 		return loaded{
 			chat: chat, contact: contact, session: session,
-			firstMessage: firstMessage,
 		}, nil
 	}
 	if err != nil && !errors.Is(err, botflota.ErrNotFound) {
@@ -415,7 +413,7 @@ func (e *Engine) load(
 	}
 	return loaded{
 		chat: chat, contact: contact, session: e.start(chat.ID, now),
-		newSession: true, firstMessage: firstMessage,
+		newSession: true,
 	}, nil
 }
 

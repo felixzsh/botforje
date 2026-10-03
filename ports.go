@@ -147,10 +147,12 @@ type ChatStore interface {
 // ContactStore records the identity of each person a scope knows.
 // EnsureContact creates an identity without a first inbound message, so the
 // address book and an API send never consume the first-contact hook.
-// RecordInbound records a live inbound: it sets first_seen only once and
-// reports that first message as the hook (ADR 0029). SetDisplayName records a
-// name from channel contact
-// data without touching first or last seen (ADR 0035). List is the
+// RecordInbound records a live inbound: it claims first_seen conditionally —
+// a row actually updated is the answer, so inbounds that share one timestamp
+// still report first only once — and commits the claim with the activity and
+// the name, reporting the claim as the hook (ADR 0029). SetDisplayName records
+// a name from channel contact data without touching first or last seen
+// (ADR 0035). List is the
 // scope-level read: identities most recently seen first, filtered by
 // first_seen when since is not zero, with an opaque cursor a caller passes
 // back unchanged (ADR 0044).

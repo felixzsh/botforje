@@ -145,6 +145,31 @@ func TestContactFlagsAreDerived(t *testing.T) {
 	}
 }
 
+// TestContactSameTimestampReportsFirstOnce: the claim is a conditional update,
+// not a comparison of timestamps, so a clock with no resolution cannot report
+// two first messages (ADR 0029).
+func TestContactSameTimestampReportsFirstOnce(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	contact, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana", t0)
+	if err != nil {
+		t.Fatalf("first RecordInbound: %v", err)
+	}
+	if !isFirst {
+		t.Fatal("the first message must report first")
+	}
+	again, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana", t0)
+	if err != nil {
+		t.Fatalf("second RecordInbound: %v", err)
+	}
+	if isFirst {
+		t.Fatalf("a second inbound at the same timestamp %v reported first again", t0)
+	}
+	if again.ID != contact.ID || !again.FirstSeen.Equal(t0) {
+		t.Fatalf("contact = %#v, want the first identity and first_seen %v", again, t0)
+	}
+}
+
 // TestContactListPagesAnIdentityThatNeverWrote covers the cursor for an
 // address-book-only identity: its last_seen is empty, and the cursor the list
 // hands back must round-trip instead of failing the next page.

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/engine"
 )
 
 // hookNotifier records the first-contact events an engine reports.
@@ -80,5 +82,89 @@ func TestFirstContactFailureDoesNotFailTheTurn(t *testing.T) {
 	}
 	if events := hook.recorded(); len(events) != 1 {
 		t.Fatalf("events = %#v, want the hook to have been called", events)
+	}
+}
+
+// flakyStore breaks the chat or the session load after the contact was
+// recorded, which is where the hook must not depend on either of them.
+type flakyStore struct {
+	*memStore
+	breakChat    bool
+	breakSession bool
+}
+
+func (f *flakyStore) Ensure(
+	ctx context.Context, scope, bot string, contactID int64, at time.Time,
+) (*botflota.Chat, error) {
+	if f.breakChat {
+		return nil, errors.New("chat store down")
+	}
+	return f.memStore.Ensure(ctx, scope, bot, contactID, at)
+}
+
+func (f *flakyStore) Latest(
+	ctx context.Context, chatID int64,
+) (*botflota.Session, error) {
+	if f.breakSession {
+		return nil, errors.New("session store down")
+	}
+	return f.memStore.Latest(ctx, chatID)
+}
+
+// TestFirstContactFiresBeforeTheChatAndSessionLoad: the hook is the claim of
+// first_seen, not the success of the load that follows it, so a failure to
+// read the chat or the session costs the turn but never the event, and the
+// claim stays taken (ADR 0045).
+func TestFirstContactFiresBeforeTheChatAndSessionLoad(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		breakChat    bool
+		breakSession bool
+	}{
+		{"chat load fails", true, false},
+		{"session load fails", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			hook := &hookNotifier{}
+			contacts := newMemStore()
+			store := &flakyStore{
+				memStore: contacts, breakChat: tc.breakChat,
+				breakSession: tc.breakSession,
+			}
+			scope := loadScope(t)
+			eng := newTestEngine(t, engine.Options{
+				Bot:            "support-bot",
+				Scope:          "support",
+				Graph:          scope.Graphs["faq"],
+				Actions:        scope.Actions,
+				Store:          store,
+				Chats:          store,
+				Contacts:       contacts,
+				Messages:       contacts,
+				Turn:           contacts,
+				Notify:         hook,
+				DefaultTimeout: 300 * time.Second,
+			})
+			phone := "5215500000004"
+			_, err := eng.Handle(ctx, botflota.IncomingMessage{
+				Bot: "support-bot", FromPhone: phone, At: t0,
+				Content: botflota.TextContent{Body: "hola"},
+			})
+			if err == nil {
+				t.Fatal("Handle must fail when the load fails")
+			}
+			if events := hook.recorded(); len(events) != 1 ||
+				events[0].Contact.Phone != phone {
+				t.Fatalf("events = %#v, want the hook fired before the load", events)
+			}
+			// The claim stayed taken by the failed turn: the next message never
+			// reports a second first contact.
+			if _, isFirst, err := contacts.RecordInbound(ctx, "support",
+				phone, "", t0.Add(time.Minute)); err != nil || isFirst {
+				t.Fatalf("later inbound = (first %v, err %v), want (false, nil)",
+					isFirst, err)
+			}
+		})
 	}
 }

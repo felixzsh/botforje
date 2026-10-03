@@ -29,6 +29,10 @@ import adapters (ADR 0034), so the hook crosses a port in the core.
   (ADR 0040), while a later message would not report `created` again, so
   waiting for the commit could lose the event forever. Emission is synchronous
   and only records the event; the HTTP call is the worker's.
+- **It is emitted at the claim, before the chat and session loads.** The engine
+  calls the hook as soon as `RecordInbound` reports the claim, so a failure to
+  ensure the chat or read its session costs the turn but not the event. The
+  claim stays taken: the retry does not report a second first contact.
 - **A core port carries the fact**: `FirstContactNotifier` with a
   `FirstContact` record (`Scope`, `Bot`, `Contact`, `At`). The engine calls it
   and knows nothing else; `webhook` (ADR 0034) implements it as the sink.

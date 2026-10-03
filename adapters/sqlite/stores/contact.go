@@ -18,10 +18,8 @@ type ContactStore struct{ db dbtx }
 
 func NewContactStore(db *sql.DB) *ContactStore { return &ContactStore{db: db} }
 
-// contactColumns are the stored identity columns; contactReadColumns adds the
-// two derived flags a reader sees, so they always describe the same row.
-const contactColumns = `id, scope, phone, display_name, name_updated_at, first_seen, last_seen`
-
+// contactReadColumns are the stored identity columns plus the two derived
+// flags a reader sees, so they always describe the same row.
 const contactReadColumns = `c.id, c.scope, c.phone, c.display_name, c.name_updated_at,
 	c.first_seen, c.last_seen,
 	EXISTS (SELECT 1 FROM bot_contacts b
@@ -42,44 +40,79 @@ func (s *ContactStore) EnsureContact(
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure contact: %w", err)
 	}
-	return s.Get(ctx, scope, phone)
+	return s.get(ctx, s.db, scope, phone)
 }
 
 // RecordInbound records a live inbound message on an identity, creating it
 // when missing, and reports whether this was the person's first inbound in the
-// scope: the first-contact hook (ADR 0029, ADR 0045). One statement both
-// claims first_seen and moves the rest, so a failure cannot leave the claim
-// without the caller learning it: first_seen is set only once, a later message
-// — or one that arrived after an import — never reports first again, while
-// last_seen always moves. A claim and a message that share the same timestamp
-// report first twice, which one phone cannot realistically produce.
+// scope: the first-contact hook (ADR 0029, ADR 0045). The claim of first_seen
+// is a conditional update whose affected rows are the answer, so two messages
+// that share a timestamp still report first only once. The claim, the
+// activity, and the name land in one transaction — its own when this store
+// holds a connection, the caller's turn when it was composed into one — so a
+// failure rolls the claim back and the next message reports first again.
 func (s *ContactStore) RecordInbound(
 	ctx context.Context, scope, phone, name string, at time.Time,
 ) (*botflota.Contact, bool, error) {
+	if db, ok := s.db.(*sql.DB); ok {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, false, fmt.Errorf("sqlite: begin contact message: %w", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		contact, first, err := s.recordInbound(ctx, tx, scope, phone, name, at)
+		if err != nil {
+			return nil, false, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, false, fmt.Errorf("sqlite: commit contact message: %w", err)
+		}
+		return contact, first, nil
+	}
+	return s.recordInbound(ctx, s.db, scope, phone, name, at)
+}
+
+func (s *ContactStore) recordInbound(
+	ctx context.Context, q dbtx, scope, phone, name string, at time.Time,
+) (*botflota.Contact, bool, error) {
+	if _, err := q.ExecContext(ctx,
+		`INSERT INTO contacts (scope, phone) VALUES (?, ?)
+		 ON CONFLICT (scope, phone) DO NOTHING`,
+		scope, phone); err != nil {
+		return nil, false, fmt.Errorf("sqlite: ensure contact for inbound: %w", err)
+	}
+	// The claim is the answer: a row updated here was the first empty
+	// first_seen this phone had, whatever its timestamp.
+	result, err := q.ExecContext(ctx,
+		`UPDATE contacts SET first_seen = ?
+		 WHERE scope = ? AND phone = ? AND first_seen = ''`,
+		formatTime(at), scope, phone)
+	if err != nil {
+		return nil, false, fmt.Errorf("sqlite: claim first contact: %w", err)
+	}
+	claimed, err := result.RowsAffected()
+	if err != nil {
+		return nil, false, fmt.Errorf("sqlite: claim first contact: %w", err)
+	}
 	nameAt := ""
 	if name != "" {
 		nameAt = formatTime(at)
 	}
-	row := s.db.QueryRowContext(ctx,
-		`INSERT INTO contacts (scope, phone, display_name, name_updated_at,
-		 first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?)
-		 ON CONFLICT (scope, phone) DO UPDATE SET
-		   first_seen = CASE WHEN contacts.first_seen = ''
-		     THEN excluded.first_seen ELSE contacts.first_seen END,
-		   last_seen = excluded.last_seen,
-		   display_name = CASE WHEN excluded.display_name <> ''
-		     THEN excluded.display_name ELSE contacts.display_name END,
+	if _, err := q.ExecContext(ctx,
+		`UPDATE contacts SET
+		   last_seen = ?,
+		   display_name = CASE WHEN ? <> '' THEN ? ELSE display_name END,
 		   name_updated_at = CASE
-		     WHEN excluded.display_name <> ''
-		       AND excluded.display_name <> contacts.display_name
-		     THEN excluded.name_updated_at ELSE contacts.name_updated_at END
-		 RETURNING `+contactColumns,
-		scope, phone, name, nameAt, formatTime(at), formatTime(at))
-	contact, err := scanContact(row)
-	if err != nil {
-		return nil, false, fmt.Errorf("sqlite: record contact message: %w", err)
+		     WHEN ? <> '' AND ? <> display_name THEN ? ELSE name_updated_at END
+		 WHERE scope = ? AND phone = ?`,
+		formatTime(at), name, name, name, name, nameAt, scope, phone); err != nil {
+		return nil, false, fmt.Errorf("sqlite: update contact message: %w", err)
 	}
-	return contact, contact.FirstSeen.Equal(at.UTC()), nil
+	contact, err := s.get(ctx, q, scope, phone)
+	if err != nil {
+		return nil, false, err
+	}
+	return contact, claimed == 1, nil
 }
 
 func (s *ContactStore) SetDisplayName(
@@ -101,7 +134,13 @@ func (s *ContactStore) SetDisplayName(
 func (s *ContactStore) Get(
 	ctx context.Context, scope, phone string,
 ) (*botflota.Contact, error) {
-	row := s.db.QueryRowContext(ctx,
+	return s.get(ctx, s.db, scope, phone)
+}
+
+func (s *ContactStore) get(
+	ctx context.Context, q dbtx, scope, phone string,
+) (*botflota.Contact, error) {
+	row := q.QueryRowContext(ctx,
 		"SELECT "+contactReadColumns+" FROM contacts c WHERE c.scope = ? AND c.phone = ?",
 		scope, phone)
 	contact, err := scanContactRead(row)
@@ -165,21 +204,6 @@ func (s *ContactStore) List(
 		page.NextCursor = encodeContactCursor(last.LastSeen, last.ID)
 	}
 	return page, nil
-}
-
-func scanContact(row interface{ Scan(...any) error }) (*botflota.Contact, error) {
-	var (
-		contact                     botflota.Contact
-		nameAt, firstSeen, lastSeen string
-	)
-	if err := row.Scan(&contact.ID, &contact.Scope, &contact.Phone,
-		&contact.DisplayName, &nameAt, &firstSeen, &lastSeen); err != nil {
-		return nil, err
-	}
-	contact.NameUpdatedAt = parseTime(nameAt)
-	contact.FirstSeen = parseTime(firstSeen)
-	contact.LastSeen = parseTime(lastSeen)
-	return &contact, nil
 }
 
 func scanContactRead(row interface{ Scan(...any) error }) (*botflota.Contact, error) {
