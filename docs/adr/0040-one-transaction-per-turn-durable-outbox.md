@@ -16,8 +16,10 @@ that nobody reads.
 
 - One unit per turn: the engine hands a `botflota.TurnRecord` to a
   `TurnStore`. The SQLite adapter runs the session save, the inbound message,
-  every reply, the chat activity, the guard state, and the queued replies in
-  one transaction. Either the whole turn lands or none of it does.
+  every reply, each reply recipient's contact identity, the chat activity, the
+  guard state, and the queued replies in one transaction. A reply recipient
+  gets an identity only: no chat or inbound interaction is implied. Either the
+  whole turn lands or none of it does.
 - Deduplicate first: before loading or routing, the engine drops a message
   whose provider id the chat already stores, reading the contact and chat
   without writing them, so a redelivery never repeats an action or an HTTP
@@ -48,10 +50,13 @@ that nobody reads.
 ## Consequences
 
 - A failed turn leaves no partial state among what it commits, so history
-  and sessions can be trusted without reconciliation. The contact profile and
-  the chat are prepared before that transaction, outside it: a failed turn
-  can leave a contact and an empty chat, never a half-written session,
-  message, guard, or queued reply.
+  and sessions can be trusted without reconciliation. The inbound contact and
+  current chat are prepared outside it; a failed turn can leave them behind.
+  Alternate reply-recipient identities are prepared inside the transaction,
+  so they do not survive a failed turn.
+- A reply to an alternate recipient also registers that number as a contact,
+  in the same transaction as the reply. A failed turn leaves no orphan
+  recipient identity, and the identity alone does not count as interaction.
 - Replies survive restarts, `fleet status` reports the queue's real depth,
   and a permanently failing reply becomes a visible `failed` row instead of
   a log line that scrolls away.

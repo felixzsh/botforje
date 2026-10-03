@@ -138,9 +138,10 @@ func countHistory(
 			(SELECT COUNT(*) FROM sessions WHERE chat_id IN
 				(SELECT id FROM chats WHERE scope = ? AND bot = ?)),
 			(SELECT COUNT(*) FROM messages WHERE chat_id IN
-				(SELECT id FROM chats WHERE scope = ? AND bot = ?))`,
-		scope, bot, scope, bot, scope, bot,
-	).Scan(&counts.Chats, &counts.Sessions, &counts.Messages)
+				(SELECT id FROM chats WHERE scope = ? AND bot = ?)),
+			(SELECT COUNT(*) FROM bot_contacts WHERE scope = ? AND bot = ?)`,
+		scope, bot, scope, bot, scope, bot, scope, bot,
+	).Scan(&counts.Chats, &counts.Sessions, &counts.Messages, &counts.AddressBook)
 	if err != nil {
 		return botflota.HistoryCounts{}, fmt.Errorf("sqlite: count history: %w", err)
 	}

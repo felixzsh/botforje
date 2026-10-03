@@ -118,7 +118,8 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MoveBot: %v", err)
 	}
-	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 {
+	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 ||
+		counts.AddressBook != 1 {
 		t.Fatalf("counts = %+v, want the source's history", counts)
 	}
 
@@ -166,6 +167,36 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 	}
 	if again != (botflota.HistoryCounts{}) {
 		t.Fatalf("second counts = %+v, want zeros", again)
+	}
+}
+
+// TestMoveBotMovesAddressBookWithoutChats covers a source that holds only
+// imported address-book entries; it is not an empty migration.
+func TestMoveBotMovesAddressBookWithoutChats(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	for _, entry := range []*botflota.AddressBookEntry{
+		{Scope: "support", Bot: "lost-bot", Phone: "5215500000001", Name: "Ana", UpdatedAt: t0},
+		{Scope: "support", Bot: "new-bot", Phone: "5215500000002", Name: "Beto", UpdatedAt: t1},
+	} {
+		if err := db.AddressBook().Put(ctx, entry); err != nil {
+			t.Fatalf("Put %s: %v", entry.Bot, err)
+		}
+	}
+	counts, err := db.History().MoveBot(ctx, "support", "lost-bot", "new-bot", t2)
+	if err != nil {
+		t.Fatalf("MoveBot: %v", err)
+	}
+	if counts != (botflota.HistoryCounts{AddressBook: 1}) {
+		t.Fatalf("counts = %+v, want one moved address-book entry", counts)
+	}
+	entries, err := db.AddressBook().List(ctx, "support", "new-bot", 0)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("destination entries = %+v, err %v; want both", entries, err)
+	}
+	source, err := db.AddressBook().List(ctx, "support", "lost-bot", 0)
+	if err != nil || len(source) != 0 {
+		t.Fatalf("source entries = %+v, err %v; want empty", source, err)
 	}
 }
 

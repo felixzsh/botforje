@@ -33,6 +33,7 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 	sessions := SessionStore{db: tx}
 	messages := MessageStore{db: tx}
 	chats := ChatStore{db: tx}
+	contacts := ContactStore{db: tx}
 	if err := sessions.Save(ctx, turn.Session); err != nil {
 		return err
 	}
@@ -50,6 +51,10 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 		}
 		if outbound.Recipient == "" {
 			return errors.New("sqlite: reply has no recipient")
+		}
+		if _, err := contacts.EnsureContact(ctx, turn.Scope,
+			outbound.Recipient, turn.At); err != nil {
+			return fmt.Errorf("sqlite: ensure reply recipient: %w", err)
 		}
 		outbound.Message.SessionID = turn.Session.ID
 		if err := messages.Append(ctx, outbound.Message); err != nil {

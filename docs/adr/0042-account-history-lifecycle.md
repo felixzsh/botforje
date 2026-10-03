@@ -119,6 +119,10 @@ both sides.
   migration finds nothing left to move. This is why neither route takes an
   idempotency key where owner provisioning does.
 
+- **Address-book-only sources still have history to move.** Migration counts
+  address-book entries independently of chats, so a bot with no conversations
+  but an imported book is not mistaken for an already-empty source.
+
 ## Consequences
 
 - History is either deleted or moved, never copied or merged. No operation

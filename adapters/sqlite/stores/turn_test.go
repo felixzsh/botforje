@@ -2,6 +2,7 @@ package stores_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -31,7 +32,7 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 		Session: session, ChatID: chat.ID, At: t1,
 		Inbound: inbound,
 		Outbound: []botflota.OutboundRecord{{
-			Message: outbound, Recipient: "5215500000000",
+			Message: outbound, Recipient: "5215599999999",
 		}},
 		Guards: guards,
 	})
@@ -60,6 +61,13 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 	}
 	if depth != 1 {
 		t.Fatalf("outbox depth = %d, want the queued reply", depth)
+	}
+	recipient, err := db.Contacts().Get(ctx, "support", "5215599999999")
+	if err != nil {
+		t.Fatalf("reply recipient identity: %v", err)
+	}
+	if !recipient.FirstSeen.IsZero() || !recipient.LastSeen.IsZero() || recipient.HasChat {
+		t.Fatalf("reply recipient = %#v, want identity only without interaction or chat", recipient)
 	}
 	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
 	if err != nil {
@@ -123,7 +131,7 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 					Content: botflota.TextContent{Body: "kept?"}, At: t2,
 					Ingest: botflota.IngestLive,
 				},
-				Recipient: "5215500000000",
+				Recipient: "5215599999998",
 			},
 			{Recipient: "5215500000000"},
 		},
@@ -166,5 +174,9 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 	}
 	if depth != 0 {
 		t.Fatalf("outbox depth = %d, want the queued reply rolled back", depth)
+	}
+	_, err = db.Contacts().Get(ctx, "support", "5215599999998")
+	if !errors.Is(err, botflota.ErrNotFound) {
+		t.Fatalf("failed turn left its reply recipient: %v", err)
 	}
 }

@@ -312,11 +312,11 @@ type SendStore interface {
 }
 
 // TurnRecord is one message turn's writes: the session it advanced, the
-// inbound message, the replies it produced, the chat activity, and the guard
-// state it changed (ADR 0026, ADR 0027). Scope, Bot, Session, and Inbound are
-// required; CommitTurn links the messages to the session it saved, reports
-// their stored ids back through them, and queues every reply for delivery in
-// the same unit, so a crash never leaves a stored reply nobody sends.
+// inbound message, the replies and their recipient identities, chat activity,
+// and the guard state it changed (ADR 0026, ADR 0027). Scope, Bot, Session,
+// and Inbound are required; CommitTurn links the messages to the session it
+// saved, reports their stored ids back through them, and queues every reply for
+// delivery in the same unit, so a crash never leaves a stored reply nobody sends.
 type TurnRecord struct {
 	Scope    string
 	Bot      string
@@ -338,10 +338,10 @@ type OutboundRecord struct {
 }
 
 // TurnStore commits one message turn as one unit: either the whole turn
-// lands — session, messages, chat activity, guards, and queued replies — or
-// none of it does. A partial turn would leave a session advanced with lost
-// replies, which is why the engine never writes those shapes directly (ADR
-// 0026, ADR 0027, ADR 0011).
+// lands — session, messages, reply-recipient identities, chat activity,
+// guards, and queued replies — or none of it does. A partial turn would leave
+// a session advanced with lost replies, which is why the engine never writes
+// those shapes directly (ADR 0026, ADR 0027, ADR 0011).
 type TurnStore interface {
 	CommitTurn(ctx context.Context, turn TurnRecord) error
 	// Record stores one message that is not part of a routable turn and queues
