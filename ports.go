@@ -150,9 +150,9 @@ type ChatStore interface {
 // RecordInbound records a live inbound: it claims first_seen conditionally —
 // a row actually updated is the answer, so inbounds that share one timestamp
 // still report first only once — and commits the claim with the activity and
-// the name, reporting the claim as the hook (ADR 0029). SetDisplayName records
-// a name from channel contact data without touching first or last seen
-// (ADR 0035). List is the
+// the name, reporting the claim as the hook (ADR 0029). SetDisplayName fills
+// an unknown name from channel contact data without touching first or last
+// seen (ADR 0035). List is the
 // scope-level read: identities most recently seen first, filtered by
 // first_seen when since is not zero, with an opaque cursor a caller passes
 // back unchanged (ADR 0044).
@@ -243,12 +243,13 @@ type HistorySink interface {
 }
 
 // AddressBookStore records the address-book entries of each bot's linked
-// account when contact import is on (ADR 0037). Put merges the non-empty name
-// fields and never clears one; List returns the most recently updated entries
-// first, and a zero limit means every one. It is optional for a channel with no
-// address book (ADR 0029).
+// account when contact import is on (ADR 0037). Put creates a proven address
+// book entry and merges non-empty names; Merge updates an existing entry
+// without creating membership based on a message. List returns the most
+// recently updated entries first; zero limit means all entries.
 type AddressBookStore interface {
 	Put(ctx context.Context, entry *AddressBookEntry) error
+	Merge(ctx context.Context, entry *AddressBookEntry) error
 	List(ctx context.Context, scope, bot string, limit int) ([]AddressBookEntry, error)
 }
 

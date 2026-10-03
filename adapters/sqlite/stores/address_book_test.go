@@ -36,6 +36,26 @@ func TestAddressBookStoreMergesNames(t *testing.T) {
 	if entries[1].Name != "Ana" || entries[1].PushName != "anita" {
 		t.Fatalf("merged entry = %+v, want the book name kept", entries[1])
 	}
+	if err := db.AddressBook().Merge(ctx, &botflota.AddressBookEntry{
+		Scope: "s", Bot: "b", Phone: "52177", PushName: "Unknown",
+		UpdatedAt: t2,
+	}); err != nil {
+		t.Fatalf("Merge unknown: %v", err)
+	}
+	entries, err = db.AddressBook().List(ctx, "s", "b", 0)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("Merge created membership: entries %+v, err %v", entries, err)
+	}
+	if err := db.AddressBook().Merge(ctx, &botflota.AddressBookEntry{
+		Scope: "s", Bot: "b", Phone: "52155", PushName: "new push",
+		UpdatedAt: t2,
+	}); err != nil {
+		t.Fatalf("Merge existing: %v", err)
+	}
+	entries, err = db.AddressBook().List(ctx, "s", "b", 0)
+	if err != nil || entries[0].PushName != "new push" {
+		t.Fatalf("Merge did not update existing membership: %+v, err %v", entries, err)
+	}
 	if got, err := db.AddressBook().List(ctx, "s", "b", 1); err != nil || len(got) != 1 {
 		t.Fatalf("List with a limit = %+v, %v", got, err)
 	}

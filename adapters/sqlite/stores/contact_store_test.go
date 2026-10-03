@@ -97,9 +97,8 @@ func TestContactFirstMessageAfterAnImport(t *testing.T) {
 	}
 }
 
-// TestContactFlagsAreDerived covers the two relations a reader sees: a book
-// entry turns InAddressBook on, and a chat turns HasChat on, without storing
-// either on the identity row.
+// TestContactFlagsAreDerived covers the address-book, chat, and sync-history
+// relations without storing those flags on the identity row.
 func TestContactFlagsAreDerived(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
@@ -111,7 +110,7 @@ func TestContactFlagsAreDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.InAddressBook || got.HasChat {
+	if got.AddressBookImported || got.HasChat || got.HasHistory {
 		t.Fatalf("flags = %#v, want both off before any relation", got)
 	}
 	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
@@ -127,8 +126,23 @@ func TestContactFlagsAreDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after relations: %v", err)
 	}
-	if !got.InAddressBook || !got.HasChat {
-		t.Fatalf("flags = %#v, want booked and with a chat", got)
+	if !got.AddressBookImported || !got.HasChat || got.HasHistory {
+		t.Fatalf("flags = %#v, want imported with a chat and no history", got)
+	}
+	chat, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
+	if err != nil {
+		t.Fatalf("ForContact: %v", err)
+	}
+	if err := db.Messages().Append(ctx, &botflota.Message{
+		ChatID: chat.ID, Direction: botflota.Inbound,
+		Content: botflota.TextContent{Body: "before pairing"}, At: t0,
+		Ingest: botflota.IngestSync,
+	}); err != nil {
+		t.Fatalf("Append history: %v", err)
+	}
+	got, err = db.Contacts().Get(ctx, "support", "52155")
+	if err != nil || !got.HasHistory || !got.FirstSeen.IsZero() {
+		t.Fatalf("history contact = %#v, err %v; want history, no live inbound", got, err)
 	}
 	// A book entry for another scope must not mark this identity.
 	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
@@ -222,6 +236,13 @@ func TestContactSetDisplayName(t *testing.T) {
 	}
 	if err := db.Contacts().SetDisplayName(ctx, "support", "nobody", "X", t2); err != nil {
 		t.Fatalf("SetDisplayName on a missing identity: %v", err)
+	}
+	if err := db.Contacts().SetDisplayName(ctx, "support", "52155", "Stale", t2); err != nil {
+		t.Fatalf("SetDisplayName over known name: %v", err)
+	}
+	got, err = db.Contacts().Get(ctx, "support", "52155")
+	if err != nil || got.DisplayName != "Ana" || !got.NameUpdatedAt.Equal(t2) {
+		t.Fatalf("existing display name changed: contact %#v, err %v", got, err)
 	}
 }
 

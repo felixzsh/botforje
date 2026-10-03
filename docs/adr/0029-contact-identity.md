@@ -33,6 +33,8 @@ chats    (id, scope, bot, contact_id -> contacts, started_at, updated_at,
   changes freely, and is never an identifier: the phone number is the key. A
   non-empty name is adopted, and `name_updated_at` is stamped only when the
   name actually changes, so a later empty name never erases a known one.
+  History and address-book imports only fill an unknown display name; a live
+  inbound push name may refresh it.
 - `first_seen` is the first live inbound message in the scope and is claimed
   only once; `last_seen` moves with every live inbound. Neither is set when the
   address book (ADR 0037) or an API send (ADR 0044) creates the identity, so

@@ -30,16 +30,21 @@ Let a bot opt in, and keep the book a relation over the scope's directory:
   bot, not per scope, because the address book belongs to the linked account:
   two bots of one scope may link accounts with different books.
 - An imported entry is its own record, keyed by `(scope, bot, phone)` in
-  `bot_contacts`, and is never a chat or a message. The address-book name, the
-  push name, and the verified business name live in separate fields and never
-  clear each other; a reader shows the address-book name first, then the
-  business name, then the push name.
+  `bot_contacts`, and is never a chat or a message. A contact-list event (or a
+  cached entry with a first/full name) creates membership. Push-name and
+  business-name events only update an existing member; names learned from a
+  message do not claim that the phone is in the address book. A cached contact
+  without a first/full name cannot prove membership and is not marked imported.
+- The address-book name, push name, and verified business name stay in separate
+  fields and never clear each other; a reader shows the address-book name
+  first, then the business name, then the push name. A known push name fills
+  the shared contact display name only when it is otherwise empty.
 - Importing registers each entry's phone as a scope contact through
   `ContactStore.EnsureContact`, so the directory holds the people the account
   knows. The identity carries no first message: `first_seen` stays empty until
   the person actually writes (ADR 0029). Membership in a bot's book is derived
   from `bot_contacts` by phone, and the contact read exposes it as
-  `in_address_book` beside `has_chat` (ADR 0044).
+  `address_book_imported`, beside `has_chat` and `has_history` (ADR 0044).
 - The import reads the channel's contact data. A full address-book sync is
   applied silently by the library unless events are requested, so the channel
   asks for those events while the import is on, and also copies the cached book
@@ -58,6 +63,9 @@ Let a bot opt in, and keep the book a relation over the scope's directory:
 - Importing the book never claims a contact's `first_seen`; only a live inbound
   message does, so a number known only from the book still fires the
   first-contact hook when it first writes (ADR 0029, ADR 0045).
+- `address_book_imported` records that an address-book import supplied the
+  identity; it is not a promise that the linked account still has the phone
+  saved. WhatsApp removals are not currently applied to the imported table.
 
 ## Consequences
 

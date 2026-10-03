@@ -233,6 +233,10 @@ type fakeAddressBook struct{ entries []botflota.AddressBookEntry }
 
 func (f fakeAddressBook) Put(context.Context, *botflota.AddressBookEntry) error { return nil }
 
+func (f fakeAddressBook) Merge(context.Context, *botflota.AddressBookEntry) error {
+	return nil
+}
+
 func (f fakeAddressBook) List(
 	_ context.Context, scope, bot string, limit int,
 ) ([]botflota.AddressBookEntry, error) {

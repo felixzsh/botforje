@@ -16,7 +16,8 @@ func TestContactsListPages(t *testing.T) {
 		Contacts: []botflota.Contact{{
 			ID: 7, Scope: "support", Phone: "5215500000000",
 			DisplayName: "Ana", FirstSeen: testTime,
-			LastSeen: testTime.Add(time.Minute),
+			LastSeen: testTime.Add(time.Minute), AddressBookImported: true,
+			HasChat: true, HasHistory: true,
 		}},
 		NextCursor: "next-page",
 	}}
@@ -41,7 +42,9 @@ func TestContactsListPages(t *testing.T) {
 		t.Fatalf("body = %s", recorder.Body)
 	}
 	if len(body.Contacts) != 1 || body.Contacts[0].Phone != "5215500000000" ||
-		body.Contacts[0].DisplayName != "Ana" {
+		body.Contacts[0].DisplayName != "Ana" ||
+		!body.Contacts[0].AddressBookImported || !body.Contacts[0].HasChat ||
+		!body.Contacts[0].HasHistory {
 		t.Fatalf("contacts = %#v", body.Contacts)
 	}
 	if !contacts.lastSince.Equal(time.UnixMilli(since)) {

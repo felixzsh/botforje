@@ -47,8 +47,19 @@ func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get contact: %v", err)
 	}
-	if !contact.InAddressBook || contact.HasChat || !contact.FirstSeen.IsZero() {
+	if !contact.AddressBookImported || contact.HasChat || !contact.FirstSeen.IsZero() {
 		t.Fatalf("contact = %#v, want booked, no chat, never messaged", contact)
+	}
+	if contact.DisplayName != "anita" {
+		t.Fatalf("directory display name = %q, want imported push name", contact.DisplayName)
+	}
+	importer.Handle(ctx, &events.PushName{
+		JID:         types.NewJID("5215500000000", types.DefaultUserServer),
+		NewPushName: "newer name",
+	})
+	contact, err = db.Contacts().Get(ctx, "dev", "5215500000000")
+	if err != nil || contact.DisplayName != "anita" {
+		t.Fatalf("new push name replaced known directory name: %#v, %v", contact, err)
 	}
 }
 
@@ -70,7 +81,11 @@ func TestContactImporterResolvesALID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(contacts) != 1 || contacts[0].Phone != "5215500000000" {
-		t.Fatalf("contacts = %+v, want the phone number", contacts)
+	if len(contacts) != 0 {
+		t.Fatalf("push name created address-book membership: %+v", contacts)
+	}
+	contact, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	if err != nil || contact.AddressBookImported || contact.DisplayName != "Ana" {
+		t.Fatalf("contact = %#v, err %v; want name but no book membership", contact, err)
 	}
 }

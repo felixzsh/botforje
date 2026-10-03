@@ -52,15 +52,15 @@ func (h *AddressBookImporter) Handle(ctx context.Context, raw any) {
 		if event.Action == nil {
 			return
 		}
-		h.put(ctx, event.JID, event.Action.GetPnJID(),
+		h.put(ctx, event.JID, event.Action.GetPnJID(), true,
 			contactAt(event.Timestamp, h.now), botflota.AddressBookEntry{
 				Name: contactName(event.Action.GetFullName(), event.Action.GetFirstName()),
 			})
 	case *events.PushName:
-		h.put(ctx, event.JID, "", contactAt(time.Time{}, h.now),
+		h.put(ctx, event.JID, "", false, contactAt(time.Time{}, h.now),
 			botflota.AddressBookEntry{PushName: event.NewPushName})
 	case *events.BusinessName:
-		h.put(ctx, event.JID, "", contactAt(time.Time{}, h.now),
+		h.put(ctx, event.JID, "", false, contactAt(time.Time{}, h.now),
 			botflota.AddressBookEntry{BusinessName: event.NewBusinessName})
 	}
 }
@@ -89,24 +89,26 @@ func (h *AddressBookImporter) ImportAll(
 		if !info.Found {
 			continue
 		}
-		if h.put(ctx, jid, "", h.now().UTC(), botflota.AddressBookEntry{
+		entry := botflota.AddressBookEntry{
 			Name:         contactName(info.FullName, info.FirstName),
 			PushName:     info.PushName,
 			BusinessName: info.BusinessName,
-		}) {
+		}
+		member := entry.Name != ""
+		if h.put(ctx, jid, "", member, h.now().UTC(), entry) && member {
 			stored++
 		}
 	}
 	return stored
 }
 
-// put stores one entry and reports whether it did; a group, broadcast, or
-// unresolved hidden-user contact is skipped.
+// put stores names, creating address-book membership only with contact-list
+// evidence; a group, broadcast, or unresolved hidden-user contact is skipped.
 func (h *AddressBookImporter) put(
-	ctx context.Context, jid types.JID, pnJID string, at time.Time,
+	ctx context.Context, jid types.JID, pnJID string, member bool, at time.Time,
 	entry botflota.AddressBookEntry,
 ) bool {
-	if entry.Name == "" && entry.PushName == "" && entry.BusinessName == "" {
+	if !member && entry.Name == "" && entry.PushName == "" && entry.BusinessName == "" {
 		return false
 	}
 	phone, ok := contactPhone(jid, pnJID, h.lookup)
@@ -120,15 +122,26 @@ func (h *AddressBookImporter) put(
 	// The book links to the scope's directory by phone: registering the
 	// identity here is what makes an address-book-only number appear as a
 	// contact, while the entry's names stay per bot.
-	if _, err := h.contacts.EnsureContact(ctx, h.scope, phone, at); err != nil {
+	contact, err := h.contacts.EnsureContact(ctx, h.scope, phone, at)
+	if err != nil {
 		h.log.Warn("register contact for address-book entry", "phone", phone, "error", err)
 		return false
 	}
-	if err := h.book.Put(ctx, &entry); err != nil {
+	if entry.PushName != "" && contact.DisplayName == "" {
+		if err := h.contacts.SetDisplayName(ctx, h.scope, phone, entry.PushName, at); err != nil {
+			h.log.Warn("set contact push name", "phone", phone, "error", err)
+		}
+	}
+	if member {
+		err = h.book.Put(ctx, &entry)
+	} else {
+		err = h.book.Merge(ctx, &entry)
+	}
+	if err != nil {
 		h.log.Warn("import address-book entry", "phone", phone, "error", err)
 		return false
 	}
-	return true
+	return member
 }
 
 // contactPhone prefers the phone JID the action carries over the entry's own.

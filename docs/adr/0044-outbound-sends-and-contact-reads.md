@@ -52,6 +52,11 @@ keyset cursor, and `next_cursor` absent on the last page; `GET
 the API's first cursor-paginated read; ROADMAP Phase 10 generalizes the
 convention rather than replacing it.
 
+The contact read also derives `address_book_imported`, `has_chat`, and
+`has_history`. `first_seen` is the live-inbound interaction signal; API sends
+and imported history do not set it. `has_history` means at least one stored
+message has `ingest=sync`, not merely that an outbound API send created a chat.
+
 ## Consequences
 
 - A host can notify a number that never wrote: the contact and the chat are

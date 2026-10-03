@@ -18,14 +18,16 @@ type ContactStore struct{ db dbtx }
 
 func NewContactStore(db *sql.DB) *ContactStore { return &ContactStore{db: db} }
 
-// contactReadColumns are the stored identity columns plus the two derived
-// flags a reader sees, so they always describe the same row.
+// contactReadColumns are the stored identity columns plus derived reader flags.
 const contactReadColumns = `c.id, c.scope, c.phone, c.display_name, c.name_updated_at,
 	c.first_seen, c.last_seen,
 	EXISTS (SELECT 1 FROM bot_contacts b
 		WHERE b.scope = c.scope AND b.phone = c.phone),
 	EXISTS (SELECT 1 FROM chats ch
-		WHERE ch.scope = c.scope AND ch.contact_id = c.id)`
+		WHERE ch.scope = c.scope AND ch.contact_id = c.id),
+	EXISTS (SELECT 1 FROM chats ch JOIN messages m ON m.chat_id = ch.id
+		WHERE ch.scope = c.scope AND ch.contact_id = c.id
+		AND m.ingest_kind = 'sync')`
 
 // EnsureContact creates an identity without a first inbound message, so the
 // address book, an imported history row, and an API-origin send never consume
@@ -123,8 +125,8 @@ func (s *ContactStore) SetDisplayName(
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE contacts SET display_name = ?, name_updated_at = ?
-		 WHERE scope = ? AND phone = ? AND display_name <> ?`,
-		name, formatTime(at), scope, phone, name)
+		 WHERE scope = ? AND phone = ? AND display_name = ''`,
+		name, formatTime(at), scope, phone)
 	if err != nil {
 		return fmt.Errorf("sqlite: set contact display name: %w", err)
 	}
@@ -213,7 +215,7 @@ func scanContactRead(row interface{ Scan(...any) error }) (*botflota.Contact, er
 	)
 	if err := row.Scan(&contact.ID, &contact.Scope, &contact.Phone,
 		&contact.DisplayName, &nameAt, &firstSeen, &lastSeen,
-		&contact.InAddressBook, &contact.HasChat); err != nil {
+		&contact.AddressBookImported, &contact.HasChat, &contact.HasHistory); err != nil {
 		return nil, err
 	}
 	contact.NameUpdatedAt = parseTime(nameAt)

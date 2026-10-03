@@ -209,9 +209,12 @@ correlation keeps it from starting a pause (ADR 0043).
 newest activity first; `since` (unix milliseconds) keeps identities whose
 `first_seen` is at or after it, and an opaque `cursor` pages the list, with
 `next_cursor` absent on the last page (ADR 0044). Each entry is `{phone,
-display_name, first_seen, last_seen, in_address_book, has_chat}`; the last two
-are derived — a booked entry from any bot's address-book import, and a thread
-the identity has with any bot. `GET .../contacts/{phone}` answers one
+display_name, first_seen, last_seen, address_book_imported, has_chat,
+has_history}`. `first_seen` means the contact sent a live inbound message;
+outbound API messages do not count. The booleans are derived: an
+address-book import supplied the identity, any bot has a chat, and any bot has
+an imported sync message. `address_book_imported` does not assert current
+membership in WhatsApp's address book. `GET .../contacts/{phone}` answers one
 identity or 404. Contacts belong to the scope, not to a bot (ADR 0029), so the
 route names no bot; `GET .../bots/{bot}` reads one bot's view or 404, and
 `GET .../bots/{bot}/contacts` reads that bot's imported address book (ADR 0037).

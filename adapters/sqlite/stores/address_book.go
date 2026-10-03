@@ -43,6 +43,28 @@ func (s *AddressBookStore) Put(
 	return nil
 }
 
+// Merge updates names for an existing book member without creating membership.
+func (s *AddressBookStore) Merge(
+	ctx context.Context, entry *botflota.AddressBookEntry,
+) error {
+	if entry == nil || entry.Scope == "" || entry.Bot == "" || entry.Phone == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE bot_contacts SET
+		name = CASE WHEN ? <> '' THEN ? ELSE name END,
+		push_name = CASE WHEN ? <> '' THEN ? ELSE push_name END,
+		business_name = CASE WHEN ? <> '' THEN ? ELSE business_name END,
+		updated_at = ?
+		WHERE scope = ? AND bot = ? AND phone = ?`,
+		entry.Name, entry.Name, entry.PushName, entry.PushName,
+		entry.BusinessName, entry.BusinessName, formatTime(entry.UpdatedAt),
+		entry.Scope, entry.Bot, entry.Phone)
+	if err != nil {
+		return fmt.Errorf("sqlite: merge address-book entry: %w", err)
+	}
+	return nil
+}
+
 func (s *AddressBookStore) List(
 	ctx context.Context, scope, bot string, limit int,
 ) ([]botflota.AddressBookEntry, error) {

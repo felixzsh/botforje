@@ -30,16 +30,16 @@ type contactView struct {
 
 // contactProfileView is the scope-level identity read (ADR 0044). DisplayName
 // is the best-effort push name, always present, possibly empty. FirstSeen and
-// LastSeen are zero for an identity only known through the address book.
-// InAddressBook and HasChat are the derived properties that tell a booked
-// entry from a contact with a thread.
+// LastSeen are zero without a live inbound. The other fields derive whether
+// the contact came from an address-book import and whether chat/history exists.
 type contactProfileView struct {
-	Phone         string    `json:"phone"`
-	DisplayName   string    `json:"display_name"`
-	FirstSeen     time.Time `json:"first_seen"`
-	LastSeen      time.Time `json:"last_seen"`
-	InAddressBook bool      `json:"in_address_book"`
-	HasChat       bool      `json:"has_chat"`
+	Phone               string    `json:"phone"`
+	DisplayName         string    `json:"display_name"`
+	FirstSeen           time.Time `json:"first_seen"`
+	LastSeen            time.Time `json:"last_seen"`
+	AddressBookImported bool      `json:"address_book_imported"`
+	HasChat             bool      `json:"has_chat"`
+	HasHistory          bool      `json:"has_history"`
 }
 
 type chatView struct {
