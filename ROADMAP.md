@@ -240,7 +240,8 @@ Deliverables:
 
 Gate: an independent client proves that flow without a dashboard or issuer.
 New scope creation adds a gate only after its separate contract is accepted.
-Untrusted authors sharing a process wait for the threat-model decision.
+Authors a host does not fully trust need a scope file root (ADR 0047) and the
+host rules in `docs/integration.md`.
 
 ### Phase 15 — Authoring integration primitives
 
