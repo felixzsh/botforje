@@ -65,22 +65,63 @@ application, external identity provider, or resource-policy catalog. Today the
 configuration uses explicit scopes; `default` is an ordinary chosen scope name.
 Optional implicit-scope syntax is TBD, not an accepted configuration format.
 
-## Shared-process trust boundary — TBD
+## Shared-process capabilities
 
-Scope authorization does not contain the capabilities of a definition. Current
-actions can make HTTP requests, and WhatsApp multimedia can read local paths.
-Review the complete execution path before accepting definitions from callers
-who should not have those permissions.
+A scope bounds authorization, not what a definition can do. The two lists are
+different:
 
-TBD: trusted-author deployment only, restricted definition capabilities, or
-separate process/instance isolation. The decision must cover filesystem access,
-network destinations and redirects, secrets, and bounded resource use. Do not
-claim that tokens and scope-addressed routes alone provide a sandbox.
+| Bounded by Botflota | Left to the host and the deployment |
+| --- | --- |
+| Local file reads under a scope's file root (ADR 0047) | Network destinations, redirects, and DNS |
+| A per-action media size cap and request timeout | Environment secret references |
+| Scope authorization on every API route | CPU, memory, and fairness between scopes |
+
+Without a file root a scope reads any file the process can; a definition that
+references an environment variable sends that variable wherever its request
+points. Publish-time validation cannot close these by itself: a templated path
+or URL is resolved later, and a redirect can change the destination.
+
+Recommended host rules when callers are not fully trusted:
+
+- Provision one directory per scope, assign it as the scope's file root through
+  owner configuration, and let callers upload into it. Never let the client, or
+  the definition it publishes, choose a server path.
+- Author a media step against an uploaded file, by a name the host manages,
+  never a free filesystem path.
+- Do not let a caller author `${ENV_VAR}` references. Hold integration
+  credentials in the host backend and inject them from the instance's own
+  configuration.
+- Allow outbound HTTP to external services only. Botflota does not filter
+  destinations today; enforce egress at the network or proxy layer when a scope
+  must not reach private addresses.
+- Bound sizes and timeouts with the existing settings, and treat fairness
+  between scopes as a deployment concern.
+
+The host's backend validates every document before publishing it, because the
+API accepts a complete scope and a scoped token can publish directly. That
+validation is the host's, and it is more than a UI restriction.
+
+## Scope assets and media steps
+
+The recommended shape for a host that lets clients attach files:
+
+```text
+client upload -> host backend stores it under the scope's private directory
+              -> host publishes a media step that names the file
+              -> runtime reads it inside the scope's file root (ADR 0047)
+```
+
+The host owns creation, naming, cleanup, and quotas of that directory. The
+client never sees or writes a filesystem path; it chooses among files it already
+uploaded, and the definition the host publishes uses a path relative to the
+scope's root.
 
 ## Integration validation
 
 A first integration should prove one scoped publish, pairing, a conversation
 read, and a signed webhook, without waiting for a dashboard or delegated login.
 Use a fake channel for deterministic authorization and publication tests; real
-account onboarding is a separate operational check. Shared-process onboarding
-of untrusted authors waits for the trust decision above.
+account onboarding is a separate operational check. Onboarding authors who are
+not fully trusted waits for a scope file root and the host rules above; until
+then, share an instance only with authors you would let read the server's
+files.

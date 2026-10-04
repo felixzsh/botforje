@@ -61,8 +61,10 @@ their owning phase starts; proposed policy is not a release commitment.
   scoped credentials, and webhooks, and the host's account system lives outside
   this repository.
 - How a host maps external identities to scopes and instances is its convention,
-  not a rule Botflota enforces. Logical scope isolation is not a sandbox;
-  untrusted-definition execution safety is TBD (`docs/integration.md`).
+  not a rule Botflota enforces. Logical scope isolation is not a sandbox: local
+  reads are bounded by a scope file root when the owner sets one (ADR 0047),
+  while network, secret, and resource bounds remain the host's
+  (`docs/integration.md`).
 - A future operator dashboard is optional and embedded in the release binary.
   It is not a host application's required UI and does not gate integration.
 - Behavior stays in YAML, including when the dashboard edits it: the API
@@ -346,8 +348,11 @@ beyond an HTTP request. A script capability still needs its own safety decision.
 ### Isolation
 
 - Scope is the logical namespace and authorization boundary. Scope-owned queries
-  and events carry it; owner authority covers the instance. This does not isolate
-  filesystem access, network access, or resource use by untrusted definitions.
+  and events carry it; owner authority covers the instance. Local file reads are
+  bounded by an owner-set scope file root (ADR 0047); network access, secret
+  references, and resource use by untrusted definitions stay process-level.
+- A scope with no file root reads any file the process can; a host that shares
+  an instance must set one per scope (ADR 0046, ADR 0047).
 - Nothing leaks by inference: out-of-scope targets answer 404, lists never
   include foreign names or counts, and errors and logs never name another
   scope.
@@ -399,8 +404,9 @@ beyond an HTTP request. A script capability still needs its own safety decision.
 - 11 is optional tooling; it does not gate 12, 13, or 14's server-side work.
 - Existing scoped tokens and publication already permit integration work;
   remaining authority and provisioning operations require their own gates.
-- Shared-process onboarding of untrusted authors requires the threat-model
-  decision, regardless of which interface they use.
+- Onboarding authors who are not fully trusted requires a scope file root
+  (ADR 0047) and the host rules in `docs/integration.md`, whatever interface
+  they use.
 - 15 and 16 supply only accepted runtime primitives, not a host application.
 - 17 carries no implementation commitment.
 - 18 can proceed when the required runtime contracts are stable; the Cloud API
@@ -424,8 +430,9 @@ beyond an HTTP request. A script capability still needs its own safety decision.
   mapping belongs to the host (ADR 0046).
 - TBD — aggregate policy ownership, exact enforcement, periods, durable usage,
   and owner-policy recovery (Phase 7; `docs/access-policy.md`).
-- TBD — untrusted-definition isolation and optional implicit-scope syntax
-  (`docs/integration.md`; `PLAN.md`).
+- TBD — network, secret, and resource isolation for definitions from other
+  authors (`docs/integration.md`); local file reads are settled by ADR 0047.
+- TBD — optional implicit-scope syntax (`PLAN.md`).
 
 ## Outside the boundary
 

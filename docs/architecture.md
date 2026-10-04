@@ -93,7 +93,9 @@ A host owns its application and can retain integration credentials server-side;
 its backend calls the same API as other clients. Visual authoring and assisted
 onboarding are outside this runtime's commitments (ADR 0046;
 `integration.md`). Scope authorization is logical isolation, not a sandbox for
-untrusted definitions; shared-process execution safety remains TBD.
+untrusted definitions; local file reads are bounded by a scope file root when
+the owner sets one (ADR 0047), and network, secret, and resource bounds are the
+host's (`integration.md`).
 
 `fleet run` is the composition root: it loads config, opens stores and channel
 devices, builds the fleet, and gives those live dependencies to `api`. API
@@ -189,7 +191,9 @@ message.
 An action sends `message` (text), `location`, `media` (image, video, audio,
 document, sticker from a templated `url` or a local `path`), `contact`, or
 `poll`. The channel reads media bytes, so a large file or a secret stays out of
-the runtime context.
+the runtime context. A local `path` is read inside the scope's file root when
+the owner set one (ADR 0047); without a root, the process's own file
+permissions apply.
 
 A stored message keeps its kind and visible text as derived columns and its
 structured payload as `content` JSON, so a poll's options or a pin's

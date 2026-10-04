@@ -6,6 +6,10 @@
 - Scope — the top-level config namespace that isolates entities, references,
   and sessions; its YAML key is its stable identifier, never derived from
   folders.
+- File root — an optional, owner-managed directory in the main config file that
+  bounds the local files one scope's steps may read; a scope without one uses
+  the process's own file permissions (ADR 0047). It bounds local reads only and
+  is not a sandbox.
 - Display name — optional `display_name` presentation label on a scope or
   entity. Interfaces fall back to its YAML key; it never changes identity.
 - Graph — conversation state machine owned by one bot; may override the

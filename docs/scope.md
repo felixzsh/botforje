@@ -7,8 +7,9 @@ Botflota owns execution and a generic control plane, not a host application.
 without an external account system; YAML publication is a runtime capability.
 An optional future dashboard serves operators, not a required host experience.
 Visual authoring and assisted onboarding belong to independent applications.
-Resource policy and untrusted-definition isolation remain TBD, not guarantees
-of the current scope model.
+Resource policy and network, secret, and resource isolation from other authors
+remain TBD; local file reads are bounded by an owner-set scope file root
+(ADR 0047), not a general sandbox.
 
 A config-driven fleet runner with these capabilities, without a dashboard or a
 hosting platform:
