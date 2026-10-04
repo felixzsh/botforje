@@ -38,8 +38,8 @@ that bounds the local files that scope's definitions may read.
 - Load rejects a root that is not an existing directory and rejects roots that
   overlap, so one scope's root can never contain another's.
 - The root bounds local file reads only. It is not a sandbox: it says nothing
-  about network destinations, environment references, or resource use, and it
-  does not stop a scope from consuming shared process resources.
+  about network destinations, secret names, or resource use, each of which has
+  its own owner control (ADRs 0048 and 0049) or none.
 - The operator provisions the directory and its permissions. Botflota does not
   create it, and the guidance is to keep credentials and unrelated data outside
   every root.

@@ -67,33 +67,32 @@ Optional implicit-scope syntax is TBD, not an accepted configuration format.
 
 ## Shared-process capabilities
 
-A scope bounds authorization, not what a definition can do. The two lists are
-different:
+A scope bounds authorization, not what a definition can do. Three controls are
+the owner's to set; the rest stays with the deployment:
 
-| Bounded by Botflota | Left to the host and the deployment |
+| Bounded by Botflota, when the owner sets it | Left to the host and the deployment |
 | --- | --- |
-| Local file reads under a scope's file root (ADR 0047) | Network destinations, redirects, and DNS |
-| A per-action media size cap and request timeout | Environment secret references |
-| Scope authorization on every API route | CPU, memory, and fairness between scopes |
+| Local file reads, under a file root (ADR 0047) | CPU, memory, and fairness |
+| Outbound HTTP, under an egress policy (ADR 0048) | Fetch bounds beyond the media cap |
+| `${NAME}` resolution, under a secret catalog (ADR 0049) | Network hardening beyond the policy |
 
-Without a file root a scope reads any file the process can; a definition that
-references an environment variable sends that variable wherever its request
-points. Publish-time validation cannot close these by itself: a templated path
-or URL is resolved later, and a redirect can change the destination.
+With no file root, no `egress` line, and no secret catalog, a definition reads
+any file the process can, reaches any host the server can, and resolves any
+process variable. Publish-time validation cannot close those by itself: a
+templated path or URL resolves later, and a redirect can change the destination.
+The runtime checks are the bound; the document is not.
 
 Recommended host rules when callers are not fully trusted:
 
-- Provision one directory per scope, assign it as the scope's file root through
-  owner configuration, and let callers upload into it. Never let the client, or
-  the definition it publishes, choose a server path.
-- Author a media step against an uploaded file, by a name the host manages,
-  never a free filesystem path.
-- Do not let a caller author `${ENV_VAR}` references. Hold integration
-  credentials in the host backend and inject them from the instance's own
-  configuration.
-- Allow outbound HTTP to external services only. Botflota does not filter
-  destinations today; enforce egress at the network or proxy layer when a scope
-  must not reach private addresses.
+- Give each scope a private directory as its file root and let callers upload
+  into it. Never let the client, or the definition it publishes, choose a server
+  path.
+- Run the instance with `egress: public_only`, and reach an internal service
+  through a public address. Add no allowlist until a real caller needs one and
+  its decision is recorded.
+- Give each scope a secret catalog outside its file root, and let the host
+  backend choose what goes in it. A client never authors `${NAME}`, and the
+  catalog holds only what that client may send to an endpoint it controls.
 - Bound sizes and timeouts with the existing settings, and treat fairness
   between scopes as a deployment concern.
 
@@ -116,12 +115,32 @@ client never sees or writes a filesystem path; it chooses among files it already
 uploaded, and the definition the host publishes uses a path relative to the
 scope's root.
 
+Keep each scope's secret catalog outside that directory (ADR 0049): a file
+inside the root could be sent as a document, which would leak the whole catalog.
+
+## Secrets
+
+A scope with a secret catalog resolves `${NAME}` only from it, with no fallback
+to the process environment (ADR 0049). The host writes the file and keeps it
+outside every file root.
+
+- The client never authors a `${NAME}`; the host backend decides which name a
+  published header uses, or publishes a fixed credential.
+- The catalog holds only credentials that scope may use with the reach the host
+  allows. A credential whose destination must stay fixed belongs to the host
+  backend, not to a scope.
+- Names are per scope: the same name in two catalogs is two different values.
+
+With no catalog, a scope falls back to the process environment, which on a
+shared instance is the operator's and every other scope's names as well.
+
 ## Integration validation
 
 A first integration should prove one scoped publish, pairing, a conversation
 read, and a signed webhook, without waiting for a dashboard or delegated login.
 Use a fake channel for deterministic authorization and publication tests; real
 account onboarding is a separate operational check. Onboarding authors who are
-not fully trusted waits for a scope file root and the host rules above; until
-then, share an instance only with authors you would let read the server's
-files.
+not fully trusted uses the owner controls above: a file root, `egress:
+public_only`, and a secret catalog per scope (ADRs 0047–0049); until they exist,
+share an instance only with authors you would let read the server's files and
+environment.

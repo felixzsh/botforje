@@ -61,9 +61,9 @@ their owning phase starts; proposed policy is not a release commitment.
   scoped credentials, and webhooks, and the host's account system lives outside
   this repository.
 - How a host maps external identities to scopes and instances is its convention,
-  not a rule Botflota enforces. Logical scope isolation is not a sandbox: local
-  reads are bounded by a scope file root when the owner sets one (ADR 0047),
-  while network, secret, and resource bounds remain the host's
+  not a rule Botflota enforces. Logical scope isolation is not a sandbox: the
+  owner can bound files, HTTP egress, and a scope's secret names (ADRs
+  0047–0049), while shared resource use remains the host's
   (`docs/integration.md`).
 - A future operator dashboard is optional and embedded in the release binary.
   It is not a host application's required UI and does not gate integration.
@@ -240,8 +240,8 @@ Deliverables:
 
 Gate: an independent client proves that flow without a dashboard or issuer.
 New scope creation adds a gate only after its separate contract is accepted.
-Authors a host does not fully trust need a scope file root (ADR 0047) and the
-host rules in `docs/integration.md`.
+Authors a host does not fully trust need the owner controls in ADRs 0047–0049
+and the host rules in `docs/integration.md`.
 
 ### Phase 15 — Authoring integration primitives
 
@@ -349,11 +349,13 @@ beyond an HTTP request. A script capability still needs its own safety decision.
 ### Isolation
 
 - Scope is the logical namespace and authorization boundary. Scope-owned queries
-  and events carry it; owner authority covers the instance. Local file reads are
-  bounded by an owner-set scope file root (ADR 0047); network access, secret
-  references, and resource use by untrusted definitions stay process-level.
-- A scope with no file root reads any file the process can; a host that shares
-  an instance must set one per scope (ADR 0046, ADR 0047).
+  and events carry it; owner authority covers the instance. An owner can bound
+  what a definition reaches: local files with a file root (ADR 0047), outbound
+  HTTP with an egress policy (ADR 0048), and a scope's secret names with a
+  secret catalog (ADR 0049). Shared CPU, memory, and fairness stay the host's.
+- With none of those set, a scope reads any file the process can, reaches any
+  host the server can, and resolves any process variable; a host that shares an
+  instance sets them per scope (ADR 0046).
 - Nothing leaks by inference: out-of-scope targets answer 404, lists never
   include foreign names or counts, and errors and logs never name another
   scope.
@@ -431,8 +433,9 @@ beyond an HTTP request. A script capability still needs its own safety decision.
   mapping belongs to the host (ADR 0046).
 - TBD — aggregate policy ownership, exact enforcement, periods, durable usage,
   and owner-policy recovery (Phase 7; `docs/access-policy.md`).
-- TBD — network, secret, and resource isolation for definitions from other
-  authors (`docs/integration.md`); local file reads are settled by ADR 0047.
+- TBD — shared resource use between scopes: CPU, memory, and fairness
+  (`docs/integration.md`). Files, HTTP egress, and secret names are settled by
+  ADRs 0047–0049.
 - TBD — optional implicit-scope syntax (`PLAN.md`).
 
 ## Outside the boundary

@@ -29,10 +29,10 @@ Publication and account history remain independent capabilities
   timeouts, and backpressure must be justified by execution safety, not by an
   external offering. Proposed new configuration fields are not available yet.
 
-Local file access is settled separately: an owner-set scope file root bounds it
-(ADR 0047). Network, secret, and resource isolation, and optional implicit-scope
-syntax, remain TBD in `integration.md` and `PLAN.md`. No new implementation
-starts until the relevant decision is accepted in an ADR.
+Local files (ADR 0047), outbound HTTP egress (ADR 0048), and a scope's secret
+names (ADR 0049) are settled separately. Shared resource use and optional
+implicit-scope syntax remain TBD in `integration.md` and `PLAN.md`. No new
+implementation starts until the relevant decision is accepted in an ADR.
 
 ## Candidate design for evaluation only
 

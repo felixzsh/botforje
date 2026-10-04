@@ -93,9 +93,10 @@ A host owns its application and can retain integration credentials server-side;
 its backend calls the same API as other clients. Visual authoring and assisted
 onboarding are outside this runtime's commitments (ADR 0046;
 `integration.md`). Scope authorization is logical isolation, not a sandbox for
-untrusted definitions; local file reads are bounded by a scope file root when
-the owner sets one (ADR 0047), and network, secret, and resource bounds are the
-host's (`integration.md`).
+untrusted definitions; the owner can bound local file reads with a scope file
+root (ADR 0047), outbound HTTP with an egress policy (ADR 0048), and a scope's
+secret names with a secret catalog (ADR 0049). Shared CPU, memory, and fairness
+stay the host's (`integration.md`).
 
 `fleet run` is the composition root: it loads config, opens stores and channel
 devices, builds the fleet, and gives those live dependencies to `api`. API
@@ -288,9 +289,11 @@ literal `{{` is written `\{{` (ADR 0018). The language lives in the core
 (`template.go`), the runtime context in `engine` (`context.go`), and the
 reference checks in `config` (`config/template_validation.go`) (ADR 0034).
 
-The language resolves only runtime conversation values. `${ENV_VAR}` is a
-separate secret mechanism, allowed only in model keys and request header
-values, and it never combines with `{{...}}` (ADR 0014).
+The language resolves only runtime conversation values. `${NAME}` is a separate
+secret mechanism, allowed only in model keys and request header values, and it
+never combines with `{{...}}` (ADR 0014). A scope the owner gave a secret
+catalog resolves `${NAME}` from that file alone (ADR 0049), and an outbound call
+obeys the instance egress policy (ADR 0048).
 
 ## Reply strategies
 

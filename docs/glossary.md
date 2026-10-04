@@ -10,6 +10,13 @@
   bounds the local files one scope's steps may read; a scope without one uses
   the process's own file permissions (ADR 0047). It bounds local reads only and
   is not a sandbox.
+- Egress policy — an optional, owner-managed instance setting for outbound HTTP.
+  `public_only` lets a call reach only a public destination, checked on the
+  connection it actually makes; the default `open` filters nothing (ADR 0048).
+- Secret catalog — an optional, owner-managed file per scope, declared in the
+  main config file and kept outside every file root. A scope with one resolves
+  its `${NAME}` references only from that file, with no fallback to the process
+  environment (ADR 0049).
 - Display name — optional `display_name` presentation label on a scope or
   entity. Interfaces fall back to its YAML key; it never changes identity.
 - Graph — conversation state machine owned by one bot; may override the
@@ -90,9 +97,10 @@
 - Outbox — per-bot FIFO queue that paces outbound messages.
 - Webhook — an instance-level signed HTTP delivery of an outbound event to an
   external system; the first event is `contact.first_seen` (ADR 0045).
-- Secret reference — a `${ENV_VAR}` placeholder, allowed only in fields enabled
-  for secrets (model `api_key`, request header values), resolved from the
-  process environment at load; the whole string is sensitive.
+- Secret reference — a `${NAME}` placeholder, allowed only in fields enabled for
+  secrets (model `api_key`, request header values), resolved from the process
+  environment at load or from the scope's secret catalog when it has one; the
+  whole string is sensitive (ADR 0014, ADR 0049).
 - Template — a string with `{{path.to.value}}` references resolved against the
   runtime context; a missing path is an error.
 - Runtime context — the values a template reads: graph and node variables,

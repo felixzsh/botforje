@@ -60,8 +60,9 @@ Aggregate resource policy, catalogs, periods, and combined provisioning are
 TBD, not API contracts (`access-policy.md`). Scopes and tokens express isolation
 and authority; the host owns external identity mappings and application policy
 (ADR 0046; `integration.md`). Logical scope isolation is not a sandbox for
-untrusted definitions. Current publication and history operations require no
-limit sets.
+untrusted definitions; the owner can bound files, HTTP egress, and a scope's
+secret names (ADRs 0047–0049). Current publication and history operations
+require no limit sets.
 
 ## Configuration and scope operations
 

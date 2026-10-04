@@ -310,10 +310,16 @@ Deliverables:
   publication cannot set it; the component that reads the bytes enforces
   confinement after templates resolve; load rejects an absolute path under a
   root and overlapping roots.
-- [ ] TBD — network, secret, and resource isolation for definitions from other
-  authors: destinations and redirects, environment references, and fairness
-  between scopes (`docs/integration.md`). ADR 0047 settles local files only;
-  the rest stays process-level and is the host's to bound.
+- [ ] Egress policy (ADR 0048, not implemented): an owner-managed `egress`
+  instance setting. `public_only` refuses a non-public destination on the
+  connection the call actually makes and re-checks or refuses each redirect; it
+  covers `request` steps and media fetched by `url`.
+- [ ] Scope secret catalog (ADR 0049, not implemented): an owner-managed
+  `secret_files` map. A scope with one resolves `${NAME}` only from that file,
+  which must sit outside its file root, with no fallback to the process
+  environment.
+- [ ] TBD — shared resource use between scopes: CPU, memory, fairness, and fetch
+  bounds beyond the media cap (`docs/integration.md`).
 - [ ] TBD — owner scope provisioning and grant lifecycle: decide minimal
   independent operations, naming, idempotency, and recovery before coding.
   Scope creation must not require an aggregate policy catalog.
@@ -453,9 +459,10 @@ any phone, read the scope's contacts, and receive a signed first-contact
 webhook.
 
 Provisioning and resource policy remain TBD in `docs/access-policy.md` and do
-not gate the outcome above. A definition's local file reads are bounded by an
-owner-set scope file root (ADR 0047); network, secret, and resource isolation
-stay TBD (`docs/integration.md`). Scope authorization alone is not a sandbox.
+not gate the outcome above. An owner can bound a definition's local files (ADR
+0047), outbound HTTP (ADR 0048), and a scope's secret names (ADR 0049); shared
+resource use stays TBD (`docs/integration.md`). Scope authorization alone is not
+a sandbox.
 
 ### Phase 8 — System One routing, replies, and tools
 
@@ -581,11 +588,10 @@ and application-level evolution are outside its commitments (ADR 0046).
 - Which LLM providers ship first for realization (close in Phase 8).
 - TBD — resource policy, usage durability, periods, storage exhaustion, and
   provisioning contracts (Phase 7; `docs/access-policy.md`).
-- TBD — network, secret, and resource isolation for definitions from other
-  authors: destinations and redirects, environment references, and fairness
-  between scopes (`docs/integration.md`). Local file reads are settled by ADR
-  0047.
-- Scope file root implementation (ADR 0047; `PLAN.md`, Phase 7).
+- TBD — shared resource use between scopes: CPU, memory, and fairness
+  (`docs/integration.md`).
+- Implementation: scope file root (ADR 0047), egress policy (ADR 0048), and
+  scope secret catalog (ADR 0049) — `PLAN.md`, Phase 7.
 - TBD — implicit scope for simple YAML: whether to add root-level entities,
   ambiguity rules with explicit scopes/includes, and stable persisted identity.
   ADR 0016 still requires explicit scopes; `default` is an ordinary name.

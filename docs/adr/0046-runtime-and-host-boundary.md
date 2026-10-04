@@ -33,12 +33,12 @@ runtime responsibility.
 - Technical protections may belong to Botflota when justified independently by
   execution safety. Aggregate host policy, periods, and provisioning combined
   with policy are TBD in `docs/access-policy.md`, not settled runtime contracts.
-- Logical scope isolation is not a sandbox for untrusted definitions. Local file
-  access is bounded by an optional owner-set file root per scope (ADR 0047);
-  network destinations, environment references, and shared resource use stay
-  process-level and are not bounded by Botflota. A host that onboards untrusted
-  authors restricts the definitions it publishes at its own backend, sets a file
-  root per scope, and separates deployments when it needs stronger guarantees
+- Logical scope isolation is not a sandbox for untrusted definitions. The owner
+  can bound what a definition reaches: local files with a file root (ADR 0047),
+  outbound HTTP with an egress policy (ADR 0048), and a scope's secret names
+  with a secret catalog (ADR 0049). Shared CPU, memory, and fairness stay
+  process-level; a host that onboards untrusted authors sets these controls and
+  separates deployments when it needs stronger guarantees
   (`docs/integration.md`).
 - The simple local path must not require issuer setup, policy groups, or host
   provisioning. Optional implicit-scope syntax remains TBD; ADR 0016 still

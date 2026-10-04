@@ -43,6 +43,9 @@ an include path, or any other ordinary string is a validation error.
   container secret, or a secret manager injecting env), never from the
   database. They are separate from runtime credentials the engine generates
   and stores (the whatsmeow device store, ADR 0006).
+- A scope the owner gives a secret catalog resolves `${NAME}` only from that
+  catalog, with no fallback to the process environment; the field and masking
+  rules here do not change (ADR 0049).
 
 ## Consequences
 
@@ -53,4 +56,5 @@ an include path, or any other ordinary string is a validation error.
 - Redaction is a property of the field and the string, not a convention:
   `request` headers and model keys need a sensitive string type that keeps the
   placeholder and reveals on demand, and ordinary strings reject `${...}`.
-- Per-scope config secrets in the database are deferred to a later phase.
+- Per-scope secrets arrive as an owner-set file, never in the database
+  (ADR 0049).
