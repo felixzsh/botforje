@@ -453,13 +453,58 @@ Deliverables:
 Channel-neutral preparation (`docs/channel-plan.md`; decisions in ADR
 0051–0054). Every slice keeps WhatsApp runnable:
 
+**Owner decision — clean pre-release persistence (2026-10-08).** There is no
+real deployment data to preserve. Prefer the smallest coherent channel-neutral
+schema over compatibility with the development database. Renaming or replacing
+tables, columns, keys, indexes, and constraints is allowed within P1–P6 when it
+removes channel assumptions or redundant storage. Do not add features, unused
+fields, speculative tables, or a generic provider-payload escape hatch.
+
+- No migration, WhatsApp backfill, old numeric-ID preservation, or legacy-schema
+  upgrade gate is required for this preparation. Recreate an incompatible
+  development database explicitly through `make dev-reset`; startup must not
+  silently drop data or reset a database.
+- This changes database compatibility, not the requirement to keep WhatsApp
+  operational through its adapted implementation at each phase boundary.
+  Existing YAML/API/CLI compatibility remains in scope. Fresh-schema persistence,
+  reopen/restart, atomic turns, deduplication, isolation, and durable delivery
+  remain mandatory; removing upgrade tests must not remove those runtime gates.
+- Align the old-database requirements in `docs/channel-plan.md` and ADR 0051
+  with this decision in the implementation work. ADR 0006 already permits
+  explicit development resets; versioned migrations still begin at first release.
+
+Recommended minimal schema direction, within ADR 0026 and ADR 0051–0053:
+
+- Contacts store scoped provider/namespace/subject identity once; a phone is
+  optional metadata, never the primary identity or a container for other IDs.
+- Chats represent conversations, keyed under scope and bot by provider,
+  namespace, kind, thread, and topic. A participant reference is optional;
+  a group must not masquerade as a person's contact.
+- Sessions and messages reference the chat through foreign keys. Keep bounded
+  execution state separate from durable history and sender identity separate
+  from conversation identity. Provider message IDs are opaque and deduplicated
+  in their actual destination/binding namespace, never globally or by phone.
+- Address-book rows store per-bot names and import data; prefer a contact
+  reference over copying its identity fields when the relation suffices.
+- Account persistence stores neutral safe binding metadata and generation,
+  not a mandatory JID or QR/pairing model. Protocol credentials and SDK-owned
+  tables remain adapter-owned; no universal credential table is required.
+- Outbox rows retain the exact destination and accepted binding generation,
+  including alternate recipients; a source message's chat is not necessarily
+  its delivery target. Keep intentional delivery snapshots, not legacy aliases.
+- Enforce identity uniqueness, scope-safe relationships, and required values
+  with SQL constraints where practical. Index existing lookup and queue paths;
+  avoid duplicate columns, redundant indexes, and normalization for its own sake.
+
 - [x] P0 — decisions and contract fixtures: identity, conversations, setup,
   capabilities, and compatibility frozen; the WhatsApp, Telegram-token,
   user-login, and local-profile cases described without a fake phone, a
   universal QR, a leaked credential, or a global address.
 - [ ] P1 — identity and target propagation (ADR 0051): neutral keys through
-  messages, records, store ports, SQLite, engine, filters, and holds, with the
-  additive WhatsApp backfill tested against a pre-change database.
+  messages, records, store ports, SQLite, engine, filters, and holds, with a
+  clean schema tested from fresh creation through reopen and restart. Align
+  the detailed plan and ADR 0051 with the approved pre-release reset policy;
+  no legacy backfill or pre-change database compatibility is required.
 - [ ] P2 — declared capabilities and channel configuration (ADR 0052, ADR
   0054): the injected catalog, typed selector, pure support checks, reload
   comparison, and composition; old YAML works and a fake text-only channel
