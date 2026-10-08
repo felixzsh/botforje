@@ -388,12 +388,12 @@ beyond an HTTP request. A script capability still needs its own safety decision.
 
 ### Licensing and branding
 
-- MIT, decided. Anyone may host Botflota commercially; that is the cost of
-  adoption, and the value of a hosted service is operation, not the source.
+- AGPL-3.0-or-later, decided (ADR 0050). Commercial hosting is allowed subject
+  to the license; `LICENSE` contains the terms and `README.md` the project notice.
 - Keep a hosted product brand-independent: no endorsement implied, and no
   Botflota name in the host's product.
-- Contributions need no CLA, so relicensing later would require every
-  copyright holder; decide that now, not after the first outside contribution.
+- Contributions need no CLA. Future license changes require the necessary rights
+  from copyright holders; dependency licenses remain independent (ADR 0050).
 
 ### Topology
 

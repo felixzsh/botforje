@@ -58,3 +58,16 @@ opt-in LLM realization — all of them Phase 8 in `PLAN.md`.
 - `docs/README.md` — documentation map.
 - `CONTRIBUTING.md` — design principles.
 - `AGENTS.md` — rules for agent-assisted development.
+
+## License
+
+Copyright (C) 2026 Botflota contributors.
+
+Botflota is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version
+(`AGPL-3.0-or-later`).
+
+Botflota is distributed without any warranty, including the implied warranties
+of merchantability or fitness for a particular purpose. See [LICENSE](LICENSE)
+for the full terms. Third-party dependencies retain their own licenses and notices.
