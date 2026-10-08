@@ -19,8 +19,10 @@ API does not serve.
 
 **An outbound send is an API operation, not a turn.** `POST
 /api/v1/scopes/{scope}/messages` accepts `{bot, to, body, kind, client_id}` and
-answers `202 {id, status}`: only `text` today; `to` is a phone number in plain
-digits (ADR 0020), and `bot` must exist in the scope's configuration. A repeat
+answers `202 {id, status}`: only `text` today; `to` identifies the target in
+the bot's channel and account, validated by the adapter after rendering
+(ADR 0051), which for WhatsApp is the phone number in plain digits (ADR 0020),
+and `bot` must exist in the scope's configuration. A repeat
 of an accepted `client_id` answers `409 duplicate` with the accepted message's
 `id` beside the error, so a caller that lost the response can reconcile.
 
@@ -48,7 +50,8 @@ of an accepted `client_id` answers `409 duplicate` with the accepted message's
 /api/v1/scopes/{scope}/contacts` lists the scope's identities newest activity
 first, with `since` (unix milliseconds) filtering on `first_seen`, an opaque
 keyset cursor, and `next_cursor` absent on the last page; `GET
-.../contacts/{phone}` answers one identity or 404. This is
+.../contacts/{id}` answers one identity or 404, accepting a WhatsApp phone
+number as the legacy selector. This is
 the API's first cursor-paginated read; ROADMAP Phase 10 generalizes the
 convention rather than replacing it.
 

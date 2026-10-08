@@ -29,7 +29,9 @@ the braces is ignored. The first segment selects a root:
 Rules:
 
 - A missing path is an error that names the path; rendering never silently
-  drops text.
+  drops text. An optional field the channel cannot supply renders as its
+  defined empty value — `contact.phone` is empty when the channel has no
+  phone (ADR 0051) — while a path that does not exist stays an error.
 - A whole map or slice has no text form and is an error; slice elements are
   addressed with a numeric segment.
 - A literal `{{` is written `\{{`; `\\` renders one backslash.

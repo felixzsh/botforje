@@ -10,12 +10,13 @@ alone (ADR 0021, ADR 0040). Two further operations were sketched but not
 settled: an explicit deletion of one bot's history, and a migration that hands
 it to another bot (`docs/current-plan.md`).
 
-The stored shapes are what make them delicate. A chat is keyed
-`(scope, bot, contact_id)`; sessions and messages cascade from their chat;
+The stored shapes are what make them delicate. A chat is keyed by its
+conversation (ADR 0051); sessions and messages cascade from their chat;
 messages deduplicate on `(chat_id, provider_message_id)`; address-book entries
-are keyed `(scope, bot, phone)`; and a queued reply hangs off its message.
-Contact identities are keyed `(scope, phone)` and shared by the scope's bots
-(ADR 0029), so they belong to no single bot and must survive both operations.
+are keyed by the bot and the contact's subject (ADR 0037); and a queued reply
+hangs off its message. Contact identities are keyed by the scope's subject
+and shared by the scope's bots (ADR 0029), so they belong to no single bot and
+must survive both operations.
 
 Migration cannot be a plain re-key either: the destination is often a peer bot
 that has already talked to the same people, so the same contact can exist on
@@ -65,6 +66,12 @@ both sides.
   cross scopes (ADR 0016); a destination outside the scope, or the source
   itself, is refused. Contact identities need no transfer: the scope already
   shares them.
+
+- **Only a compatible binding can receive the history.** The provider and the
+  identity namespace must match: a chat referencing a local target (a SimpleX
+  profile, for example) can never become a valid target of a bot with another
+  binding, and history does not migrate across providers or namespaces
+  (ADR 0051).
 
 - **The destination must be empty.** Migration exists for a bot that replaces
   a lost account, so the destination is a bot with no chat history; if it holds

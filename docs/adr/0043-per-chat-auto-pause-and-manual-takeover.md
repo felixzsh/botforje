@@ -19,8 +19,9 @@ right now, not to stored history.
 
 ## Decision
 
-- **A chat, not a bot.** Control state is per chat `(scope, bot, contact
-  phone)`. Pausing one chat never pauses another and never stops the bot.
+- **A chat, not a bot.** Control state is per chat `(scope, bot,
+  conversation)` (ADR 0051). Pausing one chat never pauses another and never
+  stops the bot.
 
 - **Two ways in.** A live message that leaves the linked account without
   Botflota sending it hands the chat to the operator and starts a pause; an

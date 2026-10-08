@@ -29,8 +29,9 @@ Let a bot opt in, and keep the book a relation over the scope's directory:
 - `settings.import_contacts` is a per-bot switch, off by default. It is per
   bot, not per scope, because the address book belongs to the linked account:
   two bots of one scope may link accounts with different books.
-- An imported entry is its own record, keyed by `(scope, bot, phone)` in
-  `bot_contacts`, and is never a chat or a message. A contact-list event (or a
+- An imported entry is its own record, keyed by the bot and the contact's
+  subject in `bot_contacts` (ADR 0051; for WhatsApp the subject is the phone),
+  and is never a chat or a message. A contact-list event (or a
   cached entry with a first/full name) creates membership. Push-name and
   business-name events only update an existing member; names learned from a
   message do not claim that the phone is in the address book. A cached contact
@@ -39,19 +40,19 @@ Let a bot opt in, and keep the book a relation over the scope's directory:
   fields and never clear each other; a reader shows the address-book name
   first, then the business name, then the push name. A known push name fills
   the shared contact display name only when it is otherwise empty.
-- Importing registers each entry's phone as a scope contact through
+- Importing registers each entry's subject as a scope contact through
   `ContactStore.EnsureContact`, so the directory holds the people the account
   knows. The identity carries no first message: `first_seen` stays empty until
   the person actually writes (ADR 0029). Membership in a bot's book is derived
-  from `bot_contacts` by phone, and the contact read exposes it as
+  from `bot_contacts` by subject, and the contact read exposes it as
   `address_book_imported`, beside `has_chat` and `has_history` (ADR 0044).
 - The import reads the channel's contact data. A full address-book sync is
   applied silently by the library unless events are requested, so the channel
   asks for those events while the import is on, and also copies the cached book
   once per connection, which covers a snapshot that was already applied and a
   switch flipped after pairing.
-- The import stores the phone number. A group, broadcast, or unresolved hidden
-  user is skipped, like the history import (ADR 0020).
+- The import stores WhatsApp's subject, the phone number. A group, broadcast,
+  or unresolved hidden user is skipped, like the history import (ADR 0020).
 - `bot pair` and `fleet run` both import, like the history sync: whichever
   connection is alive sees the events (ADR 0035).
 - A conversation whose entries are all control traffic registers nothing: no

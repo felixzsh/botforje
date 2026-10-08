@@ -17,20 +17,23 @@ now holds one vocabulary, and the person is a **contact**.
 
 ## Decision
 
-A contact is a first-class identity, keyed by `(scope, phone)`:
+A contact is a first-class identity, keyed by the channel-neutral subject of
+ADR 0051; for WhatsApp the subject is the phone number:
 
 ```sql
-contacts (id, scope, phone, display_name, name_updated_at, first_seen, last_seen)
-         unique (scope, phone)
-chats    (id, scope, bot, contact_id -> contacts, started_at, updated_at,
-         message_count, guards)
-         unique (scope, bot, contact_id)
+contacts (id, scope, provider, namespace, subject, phone, display_name,
+         name_updated_at, first_seen, last_seen)
+         unique (scope, provider, namespace, subject)
+chats    (id, scope, bot, provider, namespace, kind, thread, topic, contact_id,
+         started_at, updated_at, message_count, guards)
+         unique (scope, bot, provider, namespace, kind, thread, topic)
 ```
 
-- One identity per person per scope, shared by every bot of that scope. The
-  bot-person relationship is the chat, one per `(scope, bot, contact)`.
+- One identity per person per scope and identity namespace, shared by the bots
+  that reach it (ADR 0051). The bot-person relationship is the chat, one per
+  `(scope, bot, conversation)`.
 - `display_name` is the WhatsApp push name. It is best effort, may be empty,
-  changes freely, and is never an identifier: the phone number is the key. A
+  changes freely, and is never an identifier: the subject is the key. A
   non-empty name is adopted, and `name_updated_at` is stamped only when the
   name actually changes, so a later empty name never erases a known one.
   History and address-book imports only fill an unknown display name; a live
@@ -69,8 +72,10 @@ chats    (id, scope, bot, contact_id -> contacts, started_at, updated_at,
 - An API-origin send to a number that never wrote first creates the identity
   and its chat (ADR 0044), because the send needs them; it never claims
   `first_seen`, which belongs to an inbound message.
-- With `ignore_groups` false, a group participant is recorded like any contact;
-  telling the two apart is an open decision.
+- A shared conversation is refused until participant, session, and guard
+  semantics exist (ADR 0051); with `ignore_groups` false a group participant
+  is currently recorded like any contact, and telling the two apart is an
+  open decision.
 - Push names are third-party personal data; retention, export, and purge follow
   the per-scope rules of a later phase.
 - `message_count` is a denormalized counter. When message history is recorded,

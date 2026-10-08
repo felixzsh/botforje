@@ -44,8 +44,10 @@ material, and never asks for a challenge to be signed on its behalf.
   handoff (`PairPasskeyRequest`, `PairPasskeyConfirmation`,
   `SendPasskeyResponse`, `SendPasskeyConfirmation`).
 - When the server asks the companion for the assertion instead, the pending step
-  is reported as a state, never a silent loop. That case needs a browser context
-  the account owner controls, and this decision does not cover it.
+  is reported as a state (the setup session's `awaiting_input` or
+  `awaiting_approval`, ADR 0053), never a silent loop. That case needs a
+  browser context the account owner controls, and this decision does not cover
+  it.
 - A connection rejected with 428 or 463 stops the bot and reports, instead of
   retrying in a way that cannot succeed.
 - The official Cloud API is the documented escape for accounts the unofficial
@@ -58,7 +60,7 @@ material, and never asks for a challenge to be signed on its behalf.
 - An account that requires a passkey per connection cannot be automated. It is a
   coverage gap to detect and communicate, not a bug to fix.
 - 428 and 463 join logout and ban as states that stop the bot (ADR 0011).
-- The pairing code becomes a first-class method beside the QR, which widens the
-  CLI and the future pairing session in the API.
+- The pairing code becomes a first-class method beside the QR, which widens
+  the CLI and the setup session in the API (ADR 0053).
 - Cloud API becomes a product path, not a detail: it exposes no history sync, so
   onboarding cannot bootstrap from history there.

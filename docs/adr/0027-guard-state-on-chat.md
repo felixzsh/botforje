@@ -17,8 +17,8 @@ deserve it.
 Guard state lives on the **chat**, keyed by **action key**, in one JSON blob
 (`chats.guards`):
 
-- The chat already pins `(scope, bot, contact)`, so state is per bot and per
-  person, isolated across bots and scopes.
+- The chat already pins `(scope, bot)` and its conversation (ADR 0051), so
+  state is per bot and per conversation, isolated across bots and scopes.
 - The action is the right key: a guard belongs to an action, and when two nodes
   invoke the same action they share its limit for that person.
 - The session keeps only graph state; guards survive session expiry and

@@ -28,6 +28,11 @@ that nobody reads.
   the same transaction that stores its message row. Delivery is
   at-least-once: a crash between sending and marking resends on restart, and
   the provider id dedup absorbs the echo.
+- Queue entries persist the exact conversation target and the account binding
+  generation they were accepted under (ADR 0051). A send rechecks the
+  generation, so a replacement account never sends the previous binding's
+  pending entries, and a permanent rejection fails immediately instead of
+  consuming the retry budget (ADR 0052).
 - A per-bot worker drains the queue: it keeps the pacing of ADR 0011
   (`queue_delay`, `jitter`, `max_messages_per_minute`), wakes on each
   committed turn, retries a rejected send with exponential backoff capped at

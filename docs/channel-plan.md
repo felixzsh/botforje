@@ -1,13 +1,13 @@
 # Messaging channel preparation plan
 
-Status: proposal, not an accepted contract or an implementation checklist already in progress.
+Status: accepted; the P0 decision gate closed on 2026-10. The decisions live in ADR 0051–0054 and
+P1–P6 are tracked in `../PLAN.md` Phase 7; the names below are frozen by those ADRs.
 Baseline: repository commit `90eab2194676795167ba31f26d9013b2c65717d7`, inspected on 2026-10-07.
 
 Prepare the existing runtime for different messaging providers and account modes without
-implementing Telegram or SimpleX Chat yet. Every new type, method, route, and setting below is
-proposed, not available today. Names are working names until the decision gate closes.
-`../PLAN.md` still owns current work; `../ROADMAP.md` owns additional channels. This proposal
-does not reorder their phases or mark deliverables complete.
+implementing Telegram or SimpleX Chat yet. Every new type, method, route, and setting below is the
+accepted target, not available today.
+`../PLAN.md` owns current work; `../ROADMAP.md` owns additional channels.
 
 ## 1. Outcome and boundaries
 
@@ -411,23 +411,34 @@ its first actual consumer and decision, not a method returning unsupported in ev
 
 ## 10. Decision gates and delivery slices
 
-Before any runtime change, approve the following together and update the canonical ADRs where
-necessary; this proposal does not override them:
+The gate is closed (2026-10). The frozen decisions live in ADR 0051–0054, amending the
+canonical ADRs where needed:
 
-1. Neutral identity/conversation keys and compatibility: ADRs 0020, 0026, 0027, 0029, 0037, 0042.
-2. Account-mode ownership, local/remote detachment, credential custody, and setup API: ADRs 0021,
-   0022, 0025, 0028, 0039, and 0046; a new account-setup ADR for decisions not covered there.
-3. Capability validation, explicit fallback, accepted-versus-delivered semantics, failure classes,
-   and interaction input boundaries: ADRs 0004, 0011, 0036, 0040, and 0044.
-4. Config shape, data/API compatibility, restart rules, and trusted auxiliary endpoints: ADRs 0001,
-   0006, 0007, 0009, and 0014. Reordering additional-channel work needs an explicit plan decision.
+1. Neutral identity and conversations: ADR 0051 (ADR 0020, 0026, 0027, 0029, 0037, 0042, 0043,
+   0044). Data transition: additive columns with a WhatsApp backfill, preserving numeric ids,
+   sessions, dedup keys, and queued sends, tested against a pre-change database.
+2. Account setup and custody: ADR 0053 (ADR 0004, 0021, 0022, 0025, 0028, 0039, 0046). Credentials
+   follow the device store's trust model; an explicit encryption and key-custody decision is
+   required before the first non-WhatsApp credential type.
+3. Capabilities and delivery: ADR 0052 (ADR 0011, 0036, 0040, 0044). A permanent rejection fails
+   without consuming retries, transient errors retry, losing the same binding's authorization
+   stops the bot with its queue pending, and a binding replacement fails the old entries.
+4. Configuration and compatibility: ADR 0054 (ADR 0001, 0006, 0007, 0009, 0014). A missing
+   selector means WhatsApp native during the transition; transport changes stay restart-required
+   and never reconnect another scope.
+
+P0 is complete: the reference cases in §3 and §7 map to the frozen contracts — a WhatsApp account
+with QR setup and PN subjects, a Telegram bot token as a write-only setup input, a Telegram user
+login with QR or input steps and no universal QR, and a SimpleX managed profile with a local
+namespace — none needing a fake phone, a universal login QR, a leaked credential, or a global
+address. P1–P6 are tracked in `../PLAN.md` Phase 7.
 
 Deliver one coherent slice at a time; every implementation slice must keep WhatsApp runnable:
 
-- **P0 — Decisions and contract fixtures.** Freeze concrete value shapes, method/error states,
-  compatibility strategy, and mandatory/optional matrix. Build no providers. Gate: representative
-  WhatsApp, Telegram-token, user-login, and local-profile cases can be described without a fake
-  phone, universal QR, leaked credential, or assumption that an address is global.
+- **P0 — Decisions and contract fixtures (done, 2026-10).** The frozen shapes, states,
+  compatibility strategy, and mandatory/optional matrix live in ADR 0051–0054; the
+  representative WhatsApp, Telegram-token, user-login, and local-profile cases are described in
+  §3 and §7 without a fake phone, universal QR, leaked credential, or global-address assumption.
 - **P1 — Identity and target propagation.** Change `message.go`, `records.go`, store ports, SQLite
   schema/stores, engine, fleet filters/holds, and WhatsApp event/send/import mapping as one topic;
   adapt existing API/CLI consumers or retain explicit compatibility translations so all compile.

@@ -57,7 +57,8 @@ Vocabulary:
   `link` and `unlink` are rejected because `unpair` removes only Botflota's
   local record and does not unlink the companion in WhatsApp.
 - `auth` is reserved for authentication (owner token, access tokens, sessions)
-  and never names channel pairing.
+  and never names channel pairing. Remote account setup lives under the bot's
+  account resource (ADR 0053); `bot pair` stays the WhatsApp-facing command.
 
 Output guidance:
 

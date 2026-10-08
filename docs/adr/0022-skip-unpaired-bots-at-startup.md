@@ -12,12 +12,13 @@ fail even when other configured bots are ready.
 
 Botflota checks each configured bot's local pairing before building the fleet:
 
-- `not paired` and `unpaired` are recoverable states. Botflota logs a warning,
-  does not build that bot's channel, engine, or outbox, and continues with the
-  paired bots.
+- `not paired` and `unpaired` are recoverable account states, as are the
+  not-ready readiness states ADR 0053 describes. Botflota logs a warning, does
+  not build that bot's channel, engine, or outbox, and continues with the
+  ready bots.
 - Invalid configuration, duplicate ownership, database failures, and malformed
   stored pairings remain fatal startup errors.
-- If no bot is paired, the fleet stays idle until it receives a shutdown signal.
+- If no bot is ready, the fleet stays idle until it receives a shutdown signal.
 
 ## Consequences
 

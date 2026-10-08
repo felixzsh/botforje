@@ -450,13 +450,44 @@ Deliverables:
 - [ ] The `chat sync --all` summary: report answered, timed-out, and skipped
   counts, and skip a chat with no anchor instead of failing the batch.
 
+Channel-neutral preparation (`docs/channel-plan.md`; decisions in ADR
+0051–0054). Every slice keeps WhatsApp runnable:
+
+- [x] P0 — decisions and contract fixtures: identity, conversations, setup,
+  capabilities, and compatibility frozen; the WhatsApp, Telegram-token,
+  user-login, and local-profile cases described without a fake phone, a
+  universal QR, a leaked credential, or a global address.
+- [ ] P1 — identity and target propagation (ADR 0051): neutral keys through
+  messages, records, store ports, SQLite, engine, filters, and holds, with the
+  additive WhatsApp backfill tested against a pre-change database.
+- [ ] P2 — declared capabilities and channel configuration (ADR 0052, ADR
+  0054): the injected catalog, typed selector, pure support checks, reload
+  comparison, and composition; old YAML works and a fake text-only channel
+  needs no WhatsApp device store.
+- [ ] P3 — account setup runtime (ADR 0053): neutral account metadata, the
+  lifecycle and setup-session ports, and the WhatsApp translation, with QR,
+  write-only credential, multi-step approval, and profile binding modeled by
+  fakes.
+- [ ] P4 — remote API and CLI integration (ADR 0053): generalized account and
+  setup routes, discovery, and legacy `/pairing` translations; a scoped HTTP
+  client completes setup and reauthorization without filesystem access.
+- [ ] P5 — delivery and optional-operation semantics (ADR 0052): outbox
+  failure classes, binding-generation checks, and normalized
+  history/external-reply contracts; a replacement account cannot send the
+  previous account's pending entries.
+- [ ] P6 — regression gate and documentation: glossary, architecture, API,
+  config examples/schema, and guides match the code; `make check`,
+  `make test-race` where concurrency changed, and the WhatsApp manual
+  checklist pass.
+
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several
 authorized scopes is atomic and leaves every other scope untouched. An owner
 can delete one bot's history and migrate it to another bot of the same scope
 without touching contacts or a peer bot. An integration can send a message to
 any phone, read the scope's contacts, and receive a signed first-contact
-webhook.
+webhook. The channel-neutral slices (ADR 0051–0054) keep WhatsApp runnable
+and close with their own gates (`docs/channel-plan.md`).
 
 Provisioning and resource policy remain TBD in `docs/access-policy.md` and do
 not gate the outcome above. An owner can bound a definition's local files (ADR
@@ -597,6 +628,8 @@ and application-level evolution are outside its commitments (ADR 0046).
   ADR 0016 still requires explicit scopes; `default` is an ordinary name.
 - TBD — technical protection defaults: nodes per graph, edges per node, steps
   and inputs per action, and bounded history imports (`docs/access-policy.md`).
+- Trusted boundary for a managed local channel endpoint (for example a SimpleX
+  websocket) before one is added (Phase 7; ADR 0054).
 
 Resolved: Go structs are the schema source and runtime validation happens in
 Go (ADR 0007); the Go version and CLI approach are in ADR 0012, and test
@@ -609,6 +642,8 @@ ADR 0025).
 The runtime/host boundary is settled in ADR 0046. Resource policy and
 provisioning remain TBD in `docs/access-policy.md`; its candidate design is not
 an accepted contract. History lifecycle is separately settled in ADR 0042.
+Channel-neutral identity, capabilities, remote account setup, and channel
+configuration are settled in ADR 0051–0054 (Phase 7).
 Trigger matching and its threshold are in ADR 0019. AI routing is
 decision-only via System One (ADR 0030), model catalogs are scoped with a
 shared host catalog (ADR 0031), prescribed replies are the default (ADR

@@ -11,9 +11,10 @@ and could send duplicate or conflicting replies.
 
 ## Decision
 
-One normalized WhatsApp phone number may belong to only one `(scope, bot)` in a
-Botflota instance. The `bot pair` command rejects a number already owned by
-another bot, and fleet startup rejects duplicate legacy records. A bot may
+One provider identity may belong to only one `(scope, bot)` in a Botflota
+instance — ADR 0051's account binding. For WhatsApp the identity is the
+normalized phone number: the `bot pair` command rejects a number already owned
+by another bot, and fleet startup rejects duplicate legacy records. A bot may
 replace its own pairing with `bot pair --force`.
 
 `unpair` and `bot pair --force` run the same removal: the linked-account row,

@@ -12,12 +12,15 @@ model vendor at once.
 
 ## Decision
 
-Three small ports, defined once in the core package so adapters implement them
-without importing the engine (ADR 0034):
+Ports, defined once in the core package so adapters implement them without
+importing the engine (ADR 0034):
 
 - `MessageChannel`: connect, disconnect, send, and a stream of inbound
   messages. WhatsApp is reached through whatsmeow today, and can be reached
   through the official Cloud API later.
+- `AccountLifecycle`: readiness, supported setup methods, and local detachment
+  of a bot's channel account. Interactive setup is a separate session runner,
+  so the transport never pretends to implement every login method (ADR 0053).
 - `SystemOneProvider`: typed decisions with calibrated confidence for routing,
   tool selection, and value mapping (ADR 0030). It never generates text.
 - `LLMProvider`: reply realization and free-text extraction for the tool

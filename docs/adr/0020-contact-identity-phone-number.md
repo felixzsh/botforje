@@ -16,9 +16,10 @@ filters, templates, and the session table.
 
 ## Decision
 
-The domain only ever sees the phone number in plain digits (for example
-`5215500000000`) as a contact identity. It keys sessions, matches the bot's
-filter, appears in logs, and is what templates read as `contact.phone`.
+The domain keys a contact by the provider-scoped subject of ADR 0051; for
+WhatsApp the subject is the phone number in plain digits (for example
+`5215500000000`). It keys sessions, matches the bot's filter, appears in
+logs, and is what templates read as `contact.phone`.
 
 The JID and the LID live only inside the whatsapp adapter:
 
@@ -38,9 +39,9 @@ the group.
 
 ## Consequences
 
-- Logs and stored data are phone-based; no LID leaks. The `@s.whatsapp.net`
-  suffix is not logged either; it is added only when building a transport
-  address.
+- Logs and stored data carry the subject; for WhatsApp that is the phone
+  number, so no LID leaks. The `@s.whatsapp.net` suffix is not logged either;
+  it is added only when building a transport address.
 - A message whose phone number is unknown is dropped (rare, and the LID store
   fills the mapping in from history sync). Losing it is preferred over keying
   anything on a LID.
