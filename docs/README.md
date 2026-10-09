@@ -27,6 +27,18 @@ For contributors and agents working on this repository:
 - `architecture.md` — components, boundaries, message lifecycle.
 - `adr/` — why each decision was made.
 
+### Future channel adapter findings
+
+Research notes recorded on 2026-10-09, not implemented behavior or completed plan gates.
+`channel-plan.md` and the canonical ADRs still own shared architecture and accepted contracts.
+
+- [Telegram](channel-adapter-findings/telegram.md) — Bot API versus native MTProto integration.
+- [Signal](channel-adapter-findings/signal.md) — the owner's signalmeow choice and pending research.
+- [SimpleX Chat](channel-adapter-findings/simplex.md) — shared profiles, WebSocket limits,
+  and capacity.
+- [WhatsApp Cloud API](channel-adapter-findings/whatsappcloud.md) — roadmap context;
+  research pending.
+
 ## User guide
 
 For people running bots. It lives in `guide/`.
