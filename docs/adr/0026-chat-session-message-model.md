@@ -38,8 +38,13 @@ Schema (`adapters/sqlite`):
 - `messages (id, chat_id -> chats, session_id -> sessions NULL, sender_id ->
   contacts NULL, direction, kind, body, sent_at, provider_message_id,
   ingest_kind, origin, routing)`.
-  `provider_message_id` is the channel's own id, unique per chat when present,
-  and the dedup key of a history import. `ingest_kind` says how the row entered
+  `provider_message_id` is the channel's opaque message id, interpreted in
+  its actual destination and provider message space (ADR 0051), not a receive
+  update ID or cursor. WhatsApp's import uses per-chat deduplication (ADR 0035);
+  account-local IDs and retained history require explicit provenance before a
+  channel-neutral durable key is settled in `docs/channel-plan.md`, section 7.
+  This schema sketch does not fix that key or add a speculative namespace
+  column. `ingest_kind` says how the row entered
   Botflota (`live`, `sync`, `api`, `unknown`); `origin` who produced an
   outbound body (`preset`, `llm`, `operator`, `api`, `unknown`, empty for
   inbound; `api` is an API-origin send, ADR 0044);

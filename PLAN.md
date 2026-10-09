@@ -486,6 +486,13 @@ The four providers are contrast cases, never a closed domain taxonomy. Use Botfl
 vocabulary and inward dependencies (ADR 0004, ADR 0034): new providers fitting existing capabilities
 adapt through ports and registration, without changing common records or adding provider branches.
 
+**Owner-approved contract review (2026-10-09).** `docs/channel-plan.md`, section 2.1, refines
+logical binding views versus physical resources, adapter/auxiliary credential ownership,
+stable binding identity versus temporary context selection, message provenance, and receive
+completion. P2–P6 add shared-backend and replay-source fakes; the P5 completion signature and
+durable dedup key still need their canonical decisions. Service deployment, grouping, shared
+overload policy, and capacity remain TBD, not a production adapter or resource-policy requirement.
+
 Recommended minimal schema direction, subject to that canonical ADR alignment:
 
 - Registered identities store scoped provider/subject once, with no common phone

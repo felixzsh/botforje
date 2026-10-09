@@ -42,6 +42,22 @@ reconnects and a renewal of the same identity; replacing the identity advances
 the generation. Chats do not carry a generation — history survives a relink
 (ADR 0042) — but queued sends do (ADR 0040).
 
+Physical endpoints and an auxiliary service's current profile are not binding
+identity. Temporary execution-context selection changes neither the verified
+identity nor its generation. Observations belong to the binding that produced
+them; retiring/replacing a binding must not reassign its pending observations
+to the replacement. A logical channel may share a backend without sharing its
+bot's identity (ADR 0004).
+
+Provider message IDs are scoped by their actual destination and message space,
+including account context where the provider requires it. Source update IDs
+and receive cursors are separate adapter values, not message IDs. Retained or
+migrated history must not suppress a new binding's unrelated message with the
+same ID. Reconnect and reauthorization of the same identity preserve its space;
+binding generation is not automatically that space. The normalized provenance
+and durable dedup key remain to be settled with ADR 0026 before P5 closes;
+this decision does not select a universal new namespace field or SQL index.
+
 WhatsApp keeps its current meaning: provider `whatsapp` and subject = the plain
 PN resolved inside the adapter (ADR 0020), which is already provider-wide, so
 nothing is composed into it. For a direct chat the participant is the chat's

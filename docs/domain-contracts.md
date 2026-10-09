@@ -3,6 +3,17 @@
 Target vocabulary; implementation pending.
 Rationale and open decisions: [channel-plan.md](channel-plan.md).
 
+The owner-approved 2026-10-09 behavior review lives in that plan's section 2.1
+and the canonical ADRs. This file remains a naming catalog, not final method
+signatures or a declaration that the renamed contracts are already sufficient.
+
+`MessageChannel` keeps its name and denotes a logical per-binding view, not
+exclusive ownership of a socket/process. `Binding` identifies the fixed verified
+association, not the backend's currently selected profile. Neither resource
+sharing nor context selection adds a common pool or profile-switch contract.
+Exact receive-completion signatures and durable message-provenance fields are
+pending decisions; no names or speculative fields are assigned to them here.
+
 ## Identity and directory
 
 | Current | Target |

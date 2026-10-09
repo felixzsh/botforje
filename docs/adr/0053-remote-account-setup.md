@@ -80,10 +80,16 @@ sessions stay in memory for the first implementation: a restart requires a
 fresh session, and persisted account success is discovered through
 `GET B/account`. No OTP or password is persisted for resumability.
 
-Credentials are server-side, adapter-owned runtime state in SQLite — never
-graph context, draft YAML, or an API read. Reusable provider credentials
-cannot be stored as hashes alone, because the channel must use them to
-authenticate. Protection at rest follows the device store's existing model
+Credentials are server-side, adapter-owned runtime state — never graph context,
+draft YAML, or an API read. The native WhatsApp adapter uses the shared SQLite
+device store; a managed auxiliary service may own its protocol keys and
+sessions in its own store. Common binding persistence records the neutral
+association, not a copy of every SDK's credential schema. This does not change
+Botflota's SQLite persistence decision (ADR 0006) or authorize arbitrary
+external stores/endpoints; trusted auxiliary deployment still needs ADR 0054's
+decision. Reusable provider credentials cannot be stored as hashes alone,
+because the channel must use them to authenticate. Protection at rest follows
+the device store's existing model
 (instance lock, file permissions, no exposure); an explicit encryption and
 key-custody decision is required before the first non-WhatsApp credential
 type ships. Session databases, private keys, tokens, passwords, and OTPs never
@@ -112,6 +118,12 @@ identity preserves its namespace; switching identities is an explicit
 replacement. Replacement is serialized with sends, verifies the returned
 identity, settles the old pending messages before the generation advances,
 and reports the actual remaining binding on failure; other bots continue.
+
+Temporary selection of a backend's execution profile is neither setup nor
+replacement and does not advance binding generation. Detaching a logical view
+must not stop peer views or destroy another profile in a shared service.
+Retire the old binding's observations before activating a replacement, rather
+than treating buffered events as traffic from the new account (ADR 0051).
 
 ## Consequences
 

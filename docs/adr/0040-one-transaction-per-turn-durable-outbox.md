@@ -21,9 +21,9 @@ that nobody reads.
   gets an identity only: no chat or inbound interaction is implied. Either the
   whole turn lands or none of it does.
 - Deduplicate first: before loading or routing, the engine drops a message
-  whose provider id the chat already stores, reading the contact and chat
-  without writing them, so a redelivery never repeats an action or an HTTP
-  side effect and never moves `last_seen`.
+  already recorded in its actual provider message space and destination,
+  reading the contact and chat without writing them, so a redelivery never
+  repeats an action or an HTTP side effect and never moves `last_seen`.
 - Queue with the turn: every reply is inserted into the `outbox` table in
   the same transaction that stores its message row. Delivery is
   at-least-once: a crash between sending and marking resends on restart, and
@@ -48,6 +48,16 @@ that nobody reads.
 - Inbound applies backpressure: a full channel queue blocks the whatsmeow
   event handler until the bot actor takes the message; it never discards
   (ADR 0011 promised bounded queues, not drops).
+  A shared-source adapter keeps buffers bounded too, but may couple consumers'
+  progress. It must expose the actual replay/backpressure boundary rather than
+  silently drop traffic or promise isolation that the source cannot provide
+  (ADR 0052). Additional durable buffering is not approved by this rule.
+- Receive confirmation follows an agreed processing outcome, not queue handoff.
+  Before P5 closes, settle the narrow contract for committed processing,
+  already-recorded duplicates, deliberate discards, and failures with ADR 0004.
+  A failed persistence operation is not successful confirmation; exact discard,
+  failure, and retry rules remain TBD in `docs/channel-plan.md`, section 7.
+  Provider update IDs/cursors do not become persisted message identities.
 - Stored timestamps are fixed-width RFC 3339 UTC, so ordering the stored
   text is chronological: the retry schedule, chat activity, and session
   expiry all compare as text.

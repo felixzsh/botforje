@@ -12,7 +12,9 @@ it to another bot (`docs/current-plan.md`).
 
 The stored shapes are what make them delicate. A chat is keyed by its
 conversation (ADR 0051); sessions and messages cascade from their chat;
-messages deduplicate on `(chat_id, provider_message_id)`; address-book entries
+messages deduplicate in their actual destination and provider message space
+(ADR 0051/0026); migration preserves that provenance instead of assigning old
+IDs to the destination binding's message space. Address-book entries
 are keyed by the bot and the contact's subject (ADR 0037); and a queued reply
 hangs off its message. Contact identities are keyed by the scope's subject
 and shared by the scope's bots (ADR 0029), so they belong to no single bot and

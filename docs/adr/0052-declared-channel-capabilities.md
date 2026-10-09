@@ -69,6 +69,20 @@ of the same binding stops the bot with its queue pending; replacing the binding
 fails the old entries (ADR 0040). A stopped instance is not reused unless its
 contract says so, and a partially started instance is cleaned up.
 
+Transport health and authorization remain separate (ADR 0053). Losing a shared
+backend connection can affect several logical views without revoking any of
+their bindings. Physical event readers and resource coordination belong to
+the adapter; disconnecting one bot releases its view, not its peers' views.
+No common profile-switch, service pool, or subprocess-management port follows.
+
+Bounded buffering and logical isolation do not imply independent progress
+under overload: a full consumer queue can stall a shared source. Preserve the
+no-silent-drop contract and state the actual replay/backpressure boundary.
+Deployment-specific grouping, fairness, and any justified durable buffering
+remain TBD under ADR 0046/0054, not advertised guarantees or new mandatory
+capabilities. Preparation tests exercise shared-view teardown and bounded
+backpressure without claiming a production capacity.
+
 **Optional operations stay optional ports.** Media subtypes, location, contact
 cards, polls, response buttons, formatting, groups, topics, typing, marking
 inbound read, delivery receipts, history import, address-book import, editing,

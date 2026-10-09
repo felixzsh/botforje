@@ -7,6 +7,8 @@ reference cases are not executable fixtures, and an accepted ADR is not a passin
 `../PLAN.md` Phase 7 owns overall progress; this document defines the P1–P6 code outcomes and gates.
 `../ROADMAP.md` owns the later implementation of actual additional channels.
 Contract and vocabulary renames live only in [domain-contracts.md](domain-contracts.md).
+The owner-approved contract review of 2026-10-09 is reflected in section 2.1 and the phase gates.
+Provider-specific evidence lives in `channel-adapter-findings/`; it is not a capacity guarantee.
 
 ## 1. Outcome: adding a channel is adapter work
 
@@ -58,6 +60,42 @@ a dashboard, cross-provider peer merging, shared-account dispatch, or infrastruc
 provisioning.
 No dependency is approved here. Group graph policy and new interactive DSL features remain separate
 work; unsupported shared conversations must be refused, not treated as direct messages (ADR 0051).
+
+### 2.1 Logical channels and adapter-owned resources
+
+**Owner-approved direction (2026-10-09).** Keep the neutral identity, chat, binding, and graph-run
+model. Clarify its behavior against direct clients, HTTP update sources, and shared auxiliary
+services without making those implementation choices common domain objects.
+
+- A channel is one bot's logical view of its committed binding, not ownership of one physical
+  socket or process. Connect/disconnect start and stop that view; HTTP polling or webhooks need
+  no persistent client connection. Releasing a view must not stop another binding's operations.
+- Registered adapter assembly may own instance-lifetime shared resources and produce per-bot
+  views. Coordination, physical event readers, and context selection stay adapter-owned and
+  synchronized, never package-global state or common pool/process-management ports.
+- A binding's verified identity and generation are independent of the auxiliary service's
+  currently selected profile. Temporary context selection is not bind/unbind or replacement.
+  Reject observations from a retired binding rather than assigning them to its replacement.
+- Common persistence records the neutral association and delivery provenance. Protocol secrets
+  and sessions remain adapter-owned, including a managed auxiliary store where appropriate;
+  they need not be copied into Botflota's SQLite file. ADR 0053 still gates credential protection,
+  and ADR 0054 still gates trusted endpoints and deployment ownership.
+- Message IDs, source update IDs, and receive cursors are distinct. Deduplication uses the
+  provider's actual message space and destination, including account context where required.
+  Retained history must not suppress a different binding's new message merely because its ID
+  repeats. Reauthorization/reconnect must not invent a new space to evade normal deduplication.
+- An inbound handoff is not durable processing. P5 must settle the narrow completion boundary
+  for committed processing, already-recorded duplicates, deliberate discards, and failures before
+  claiming support for a source that confirms by cursor advancement or an HTTP response.
+  The signature and failure/discard semantics remain TBD; no universal durable inbox is approved.
+- Logical data isolation does not guarantee independent throughput or failure domains. A shared
+  source can stall when one destination queue fills. Keep buffers bounded and do not silently
+  drop accepted messages; explicitly settle replay, coupled backpressure, or justified buffering
+  before deploying a shared source. No fairness guarantee, service grouping, or sharding policy
+  follows from one actor per bot (ADR 0046).
+
+P2–P6 prove these boundaries with small fakes. They do not implement a production SimpleX service
+coordinator, choose a service supervisor, or promise a particular number of concurrent accounts.
 
 ## 3. Execution rules
 
@@ -170,6 +208,8 @@ Decision owner: ADR 0052 and 0054, with ADR 0007, 0009, 0018, 0034, and 0036.
 - [ ] Replace WhatsApp-only fleet construction with registered builders. Move settings translation
   and channel-specific dependency assembly into the adapter's integration boundary; initialize
   device stores or auxiliary resources only when the selected adapter/bind method needs them.
+  Permit adapter-owned shared dependencies behind independent per-binding channel views;
+  config-only operations still perform no channel I/O.
 - [ ] Compare selectors, account modes, options, and binding-relevant references on reload.
   Preserve restart-required transport changes, saved/active differences, and isolation of peers.
   Config publication must not replace runtime credentials or silently migrate account identity.
@@ -181,6 +221,8 @@ Gate:
 - [ ] A preconfigured text-only fake joins a mixed fleet through registration and runs without
   WhatsApp devices, QR setup, or adapter-specific settings. Common construction has no provider
   switch, and config-only operations perform no channel I/O.
+- [ ] A registered fake builds two logical channels over one shared resource without new common
+  pool or process-management contracts. Starting/stopping one view leaves the other usable.
 - [ ] Unsupported referenced actions/settings fail for the consuming bot; invalid publication
   preserves files and active channels, and a restart-required edit does not reconnect a peer scope.
 
@@ -196,6 +238,8 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
   inspection, bind, and unbind operations; select by the bot's definition, never inspect every bot
   through the WhatsApp device store. Remove telephone-bearing results and phone-specific errors;
   keep legacy pairing results at the compatibility boundary (section 5).
+  Separate common binding persistence from adapter/auxiliary credential stores; do not impose
+  a shared SQLite credential schema on every implementation.
 - [ ] Separate credential presence, provider authorization, transport health, and import progress.
   Readiness exposes safe actionable conditions; stored credentials or connection startup
   return do not prove authorization/connection. Missing transport reporting means unknown.
@@ -214,6 +258,8 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
 - [ ] Support same-identity reauthorization and explicit identity replacement through the same
   contracts. Preserve stable identity spaces, verify ownership, serialize with sends, and keep
   history. Detachment forgets the local binding; it does not destroy an account or managed profile.
+  Retire the old binding's observations before a replacement starts; temporary backend context
+  selection changes neither binding identity nor generation.
 
 Gate:
 
@@ -224,6 +270,9 @@ Gate:
   No stale/cancelled worker activates later, and successful setup never activates twice.
 - [ ] An unconfigured or revoked bot remains inspectable/setup-capable without stopping peers;
   detachment keeps its chats, directory, history, and the actual outcome of any completed setup.
+- [ ] Two fixed bindings share a fake backend: selecting one context leaves both identities and
+  generations unchanged; detach/replacement cannot reassign stale events or destroy the peer's
+  profile. Credential ownership can remain outside common binding storage.
 
 ### P4 — Common API and CLI, not provider-specific control planes
 
@@ -295,6 +344,8 @@ Decision owner: ADR 0052, with ADR 0004, 0011, 0035, 0036, 0040, and 0044.
 - [ ] Make channel lifetime work independently of SDK assumptions: one inbound reader, concurrent
   serialized outbox sending, adapter-owned stream closure, bounded buffering, cancellation,
   partial-start cleanup, and bounded disconnect. Do not reuse stopped instances accidentally.
+  This is a logical per-binding lifetime. A shared physical reader stays adapter-owned; releasing
+  one view must not close peer views. Shared transport failure is not authorization revocation.
 - [ ] Normalize history/backfill and external-reply observations to the same conversation/binding
   values. Keep wire anchors opaque; no phone requirement or unconditional optional-feature calls.
   Preserve inert imports, peer-first-seen rules, own-send echo correlation, and held inbound.
@@ -302,6 +353,16 @@ Decision owner: ADR 0052, with ADR 0004, 0011, 0035, 0036, 0040, and 0044.
   and suppression. Inbound handoff is not proof of durable commit; settle any required
   processing acknowledgement before advancing irreversible cursors. Do not add a universal
   durable inbox without its decision, or claim replay guarantees a channel cannot supply.
+  Close the completion contract in ADR 0004/0040 before the P5 gate: distinguish confirmed
+  processing, persisted duplicates, deliberate discards, and failures. Keep source update IDs
+  and receive cursors out of message identity; do not advance confirmation on handoff alone.
+- [ ] Verify message-ID space across binding replacement and retained/migrated history. Preserve
+  destination and any required account provenance independently of the triggering history chat.
+  Settle the durable key in ADR 0051/0026 before choosing SQL constraints; binding generation
+  alone is not proof of the provider's message-ID namespace.
+- [ ] Exercise bounded routing from a shared source to a slow or stopped logical consumer.
+  Document the coupled backpressure/replay boundary rather than promising independent progress
+  or adding unapproved durable buffering. Deployment policy remains TBD in section 7.
 - [ ] Preserve typed content and stored codecs. Keep selections, message IDs, callback/event IDs,
   and control traffic conceptually distinct; unsupported interactions must not masquerade as text
   turns. Test the extension boundary without shipping unused button/editing/receipt machinery.
@@ -318,6 +379,9 @@ Gate:
 - [ ] Slow/cancelled producers and partially started adapters exit without leaks or dropped
   messages from full queues. Tests establish the actual acknowledgement/replay boundary, not an
   inferred exactly-once guarantee or recipient-delivery claim.
+- [ ] A replay-capable fake confirms only after the agreed processing outcome; failed persistence
+  remains replayable, and recorded duplicates and deliberate discards follow their explicit rules.
+  Shared-source tests cover view teardown, context-selection races, and bounded backpressure.
 
 ### P6 — Prove extension locality and close regression coverage
 
@@ -327,6 +391,8 @@ and generated reference that must describe the implemented runtime rather than t
 - [ ] Run the same fixture graph through WhatsApp's test mapping and contrasting registered fakes:
   an opaque-ID text-only channel and a profile-local channel. Both traverse actual
   engine, stores, fleet/outbox, and API paths, not bespoke test-only execution pipelines.
+  Include two bindings sharing one fake backend and an HTTP-style update source with processing
+  confirmation. These are behavioral contrast cases, not new provider branches or SDK dependencies.
 - [ ] Add an independent test adapter using only its adapter files and one registry entry. Prove
   setup with existing steps, strict option validation/schema, discovery, conversation reads,
   filters/holds, durable sends, restart, and detach work without editing shared production code.
@@ -337,9 +403,9 @@ and generated reference that must describe the implemented runtime rather than t
   registration boundaries. Apply section 5's stricter field/parameter/context audit: optional
   phone fields also fail the clean-domain gate. Keep transport, setup, support, and storage
   separate.
-- [ ] Complete automated data-upgrade, scope-isolation, publication/reload, setup-race, retry,
-  cancellation, and redaction coverage from the earlier gates. Fakes declare unsupported features
-  honestly and require no new SDK, network service, or production credential.
+- [ ] Complete automated fresh-schema/reopen, scope-isolation, publication/reload, setup-race,
+  retry, cancellation, and redaction coverage from the earlier gates. Fakes declare unsupported
+  features honestly and require no new SDK, network service, or production credential.
 - [ ] Update `glossary.md`, `architecture.md`, `api.md`, `integration.md`, relevant guides/help,
   and config examples to match the code. Regenerate the schema from implemented Go types.
   Do not repeat the completed ADR-writing phase; amend an ADR only for a real unresolved decision.
@@ -462,7 +528,10 @@ can both contain contact `7`; normalize them as different opaque subjects, for e
 Preserve the store marker across reconnect/restart and verify the bound profile before sending;
 an unrelated store at the same path is not the old identity. Invitation addresses are neither
 global person IDs nor login credentials. A fixed-profile reply bot does not require automatic
-profile switching, a multi-profile dispatcher, or pretending to link an existing mobile account.
+profile switching in the common runtime or pretending to link an existing mobile account.
+If several fixed bindings share a service, its adapter may need serialized context selection and
+event demultiplexing. Section 2.1 defines the logical boundaries; concrete service coordination,
+deployment, and capacity stay future work in `channel-adapter-findings/simplex.md`.
 
 These cases need no provider enum, provider-specific field, universal credential table, or SDK
 dependency in the domain. Fakes represent their differing identity semantics; real adapters remain
@@ -641,6 +710,9 @@ resolved with the user and recorded in their owners before incompatible behavior
   destination-dedup/restart gates remain unchecked. P3 implements committed
   binding metadata/generation; P5 checks the generation on delivery and closes
   ADR 0044's unbound-send decision below. These are not completed P1 requirements.
+  Determine the message-ID space separately: account-local IDs must not collide with retained
+  history after replacement. The normalized provenance and durable key are still to be settled
+  in ADR 0051/0026, not assumed from a chat ID or binding generation.
 - **P2, selection:** ADR 0054's provider/mode selector must resolve the adapter kind unambiguously.
   Decide how indistinguishable installed implementations are rejected or selected before supporting
   them; do not invent precedence or turn adapter kind into an account mode.
@@ -669,8 +741,15 @@ resolved with the user and recorded in their owners before incompatible behavior
   be tied to the account authorized at acceptance. Decide whether no-binding admission is rejected
   or has another explicit safe contract; it cannot automatically attach to a later identity.
 - **P5, receive commit boundary:** if a replay/cursor channel needs a durable-processing signal,
-  settle the narrow acknowledgement contract in ADR 0004/0040 before claiming that support.
+  settle the narrow acknowledgement contract in ADR 0004/0040 before closing P5.
   Do not silently promote a channel handoff into a durable inbox or a committed turn.
+  Exact signatures, deliberate-discard rules, and failed-processing behavior remain TBD;
+  distinguish a provider update ID/cursor from a persisted message ID.
+- **Future shared adapters, deployment/backpressure:** decide trusted service ownership, grouping,
+  shutdown, exclusive command coordination, and the supported overload/replay boundary before
+  deploying a shared source. A logical view does not imply an independent physical failure domain.
+  No supervisor, per-profile durable spool, fairness promise, or 1000-account capacity is approved
+  (ADR 0046/0054). The preparation uses fakes, not a production service manager.
 
 Credential encryption/key custody before storing a new real credential type (ADR 0053), and trusted
 auxiliary endpoint/profile deployment (ADR 0054), remain gates for the corresponding future adapter.

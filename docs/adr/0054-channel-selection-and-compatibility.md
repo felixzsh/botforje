@@ -45,6 +45,12 @@ writes are preserved. `config.schema.json` is regenerated from Go types only
 when the types are implemented; hand-editing generated artifacts stays
 forbidden.
 
+Registered adapter assembly can own synchronized, instance-lifetime resources
+and build per-bot logical views over them (ADR 0004). That ownership is outside
+pure definitions/validation and needs no common backend, pool, or profile-switch
+object. Do not use package-global mutable state or initialize live resources
+for config-only operations. Resource sharing is not shared account identity.
+
 **Remote credentials are not config.** Account setup (ADR 0053) owns channel
 credentials; publication never overwrites a runtime credential with a masked
 `***`. A local, reference-based credential method is not part of this
@@ -55,6 +61,10 @@ adapter options, and binding-relevant references. Transport changes stay
 restart-required initially, and a provider or profile change is an identity
 change, not a label edit or a silent history migration; it never reconnects
 another scope.
+
+A temporary context selection inside an adapter-owned backend is not a config
+change or binding replacement. Compare the fixed binding/profile reference,
+not whichever profile the service happens to have selected (ADR 0051/0053).
 
 **Additive API and CLI compatibility.** Neutral contact, account, and
 conversation references are added, and legacy phone selectors remain for
@@ -70,6 +80,13 @@ channel endpoint (for example a SimpleX websocket) is not an action URL; it
 needs its own trusted-connection boundary before one is added. ADRs 0047–0049
 are accepted but not implemented, so no confinement or egress protection is
 assumed.
+
+This pending decision includes service/store ownership, grouping of bindings,
+exclusive command coordination, shutdown, and overload/replay behavior for a
+shared source. A scoped caller cannot select unmanaged endpoints or another
+profile through an unchecked identifier. Logical scope isolation is not an
+independent physical failure or resource boundary (ADR 0046). No process
+supervisor, automatic sharding, or per-service account capacity is approved.
 
 ## Consequences
 
