@@ -97,6 +97,44 @@ services without making those implementation choices common domain objects.
 P2–P6 prove these boundaries with small fakes. They do not implement a production SimpleX service
 coordinator, choose a service supervisor, or promise a particular number of concurrent accounts.
 
+### 2.2 Capability-aware behavior from authoring to delivery
+
+[ADR 0052](adr/0052-declared-channel-capabilities.md) already requires one capability vocabulary
+across configuration, execution, discovery, and delivery. The following makes its acceptance
+criteria explicit; it does not introduce a new capability framework or approve new message kinds.
+
+The domain stays channel-neutral, but a bot's usable behavior is bounded by its selected installed
+adapter and account mode, not by a provider-wide feature list. Two bots on the same provider may
+support different content, variants, operations, or limits. Declaring support is not proof of
+account authorization or present conversation eligibility.
+
+1. **Configuration:** validate every consuming bot's referenced graph and action steps, including
+   entry/exit actions, tools, and guard fallbacks, against that bot's declaration. A shared action
+   can be valid for one bot and invalid for another; guards or conditional paths do not excuse a
+   statically unsupported step. Check known payload variants, options, and limits, not just the
+   top-level message kind. CLI validation, startup, reload, and API publication use the same checks
+   without opening a channel. A structurally valid editor schema is not proof of this compatibility.
+2. **Execution and API admission:** validate resolved content and the actual target bot before
+   accepting a send into the durable queue. Templates and runtime/API values can violate a limit
+   that static configuration cannot determine. Reject at the earliest boundary with the required
+   information; select any already-supported explicit fallback before dependent side effects.
+   This is not a promise to predict future network state or undo earlier external HTTP effects.
+3. **Discovery and delivery:** expose sanitized declared support per bot, separately from account
+   authorization and conversation eligibility. Recheck dynamic eligibility immediately before
+   delivery; an open reply window, recipient permission, or live account right cannot be certified
+   by offline configuration validation. Unsupported/permanently invalid sends fail cleanly, without
+   silent conversion, dropping, or exhausting retries for a feature that cannot be delivered.
+
+Diagnostics identify the scoped bot, selected channel/mode, and unsupported capability or violated
+limit. For definitions, include file/entity and graph/node/action/step context where applicable;
+API errors remain scoped, actionable, and free of credentials or raw provider error details.
+
+The [outbound research](channel-adapter-findings/outbound-messages.md) supplies contrast cases,
+not the runtime's capability catalog. An unmodeled payload/interaction remains invalid under strict
+decoding; platform support does not grant implicit adapter support. Each future typed capability
+must join declaration, validation, execution/API admission, discovery, codecs/schema where relevant,
+and conformance tests in its owning slice. Do not prebuild every researched feature now.
+
 ## 3. Execution rules
 
 Deliver P1–P6 in order, preserving WhatsApp operation at every phase boundary. Each phase includes
@@ -225,6 +263,10 @@ Gate:
   pool or process-management contracts. Starting/stopping one view leaves the other usable.
 - [ ] Unsupported referenced actions/settings fail for the consuming bot; invalid publication
   preserves files and active channels, and a restart-required edit does not reconnect a peer scope.
+- [ ] One shared action/graph is checked independently for a capable fake and a text-only fake;
+  the incompatible bot fails with file/entity/action/step context even behind a guard or tool path.
+  Cover a supported kind with an unsupported variant or known limit violation, and two definitions
+  for the same provider with different account modes. Use existing modeled content, not a new DSL.
 
 ### P3 — Provider-neutral binding lifecycle and bind runtime
 
@@ -320,6 +362,9 @@ Gate:
   fallback; existing WhatsApp pairing, query, and send callers remain compatible.
 - [ ] Cross-scope reads/inputs/cancellation, stale IDs, unsupported methods, and lost-response
   retries obey the accepted errors. Submitted tokens/passwords/codes are never echoed or exported.
+- [ ] Per-bot discovery and API admission agree with config validation on declared capabilities.
+  Unsupported submitted content/operations are refused before queueing or invoking the absent
+  operation. A disconnected bot retains its declaration without invented dynamic permission.
 
 ### P5 — Delivery, replay, and optional operations without protocol leakage
 
@@ -382,6 +427,10 @@ Gate:
 - [ ] A replay-capable fake confirms only after the agreed processing outcome; failed persistence
   remains replayable, and recorded duplicates and deliberate discards follow their explicit rules.
   Shared-source tests cover view teardown, context-selection races, and bounded backpressure.
+- [ ] A statically valid template whose resolved payload violates the consuming bot's declared
+  limits fails before queue admission, as does equivalent API input. Delivery rechecks a dynamic
+  eligibility change separately from declared support; unsupported queued content fails without
+  silent downgrade or useless retries. No test assumes earlier external effects can be rolled back.
 
 ### P6 — Prove extension locality and close regression coverage
 
@@ -398,6 +447,8 @@ and generated reference that must describe the implemented runtime rather than t
   filters/holds, durable sends, restart, and detach work without editing shared production code.
   A required port/config/API/store change fails the extension-locality gate; fix the abstraction
   instead of adding another exception. Publish this reusable conformance test path for adapters.
+  Include the capability-consistency gates from section 2.2 and P2/P4/P5 so future content/operation
+  extensions cannot bypass config checks, runtime/API admission, or per-bot discovery.
 - [ ] Review shared dependencies and hot paths: no SDK/wire identities, phone-only routing, QR-only
   readiness, unconditional WhatsApp stores, or provider switches outside named compatibility and
   registration boundaries. Apply section 5's stricter field/parameter/context audit: optional
