@@ -450,7 +450,7 @@ Deliverables:
 - [ ] The `chat sync --all` summary: report answered, timed-out, and skipped
   counts, and skip a chat with no anchor instead of failing the batch.
 
-Channel-neutral preparation (`docs/channel-plan.md`; decisions in ADR
+Channel-neutral preparation (`docs/channel-adapter-findings/channel-plan.md`; decisions in ADR
 0051–0054). Every slice keeps WhatsApp runnable:
 
 **Owner decision — clean pre-release persistence (2026-10-08).** There is no
@@ -469,24 +469,27 @@ fields, speculative tables, or a generic provider-payload escape hatch.
   Existing YAML/API/CLI compatibility remains in scope. Fresh-schema persistence,
   reopen/restart, atomic turns, deduplication, isolation, and durable delivery
   remain mandatory; removing upgrade tests must not remove those runtime gates.
-- Align the old-database requirements in `docs/channel-plan.md` and ADR 0051
+- Align the old-database requirements in
+  `docs/channel-adapter-findings/channel-plan.md` and ADR 0051
   with this decision in the implementation work. ADR 0006 already permits
   explicit development resets; versioned migrations still begin at first release.
 
 **Owner direction — clean messaging domain (2026-10-08).** No messaging-provider-specific concept
 belongs in shared binding/peer/chat contracts, even as an optional field. Do not replace
 device locators with generic identity labels plus phone metadata or unchecked provider data.
-`docs/channel-plan.md`, section 5, owns the four-provider analysis,
+`docs/channel-adapter-findings/channel-plan.md`, section 5, owns the four-provider analysis,
 removal inventory, compatibility decisions, phase allocation, and acceptance criteria. Align the
 canonical ADRs named there before implementing the changed contracts. P1 is reopened; neutral key
 propagation alone did not close account identity, phone cleanup, or all persistence/restart gates.
-Exact contract, field, helper, and command renames live only in `docs/domain-contracts.md`.
+Exact contract, field, helper, and command renames live only in
+`docs/channel-adapter-findings/domain-contracts.md`.
 The channel plan owns reasons, phases, compatibility, and decisions still requiring approval.
 The four providers are contrast cases, never a closed domain taxonomy. Use Botflota's own neutral
 vocabulary and inward dependencies (ADR 0004, ADR 0034): new providers fitting existing capabilities
 adapt through ports and registration, without changing common records or adding provider branches.
 
-**Owner-approved contract review (2026-10-09).** `docs/channel-plan.md`, section 2.1, refines
+**Owner-approved contract review (2026-10-09).**
+`docs/channel-adapter-findings/channel-plan.md`, section 2.1, refines
 logical binding views versus physical resources, adapter/auxiliary credential ownership,
 stable binding identity versus temporary context selection, message provenance, and receive
 completion. P2–P6 add shared-backend and replay-source fakes; the P5 completion signature and
@@ -524,7 +527,8 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   universal QR, a leaked credential, or a global address.
 - [ ] P1 — identity and target propagation (ADR 0051): neutral keys are partly
   propagated, but complete the identity/directory phone/JID cleanup and explicit
-  participant mapping in `docs/channel-plan.md`, section 5. Prove clean-schema
+  participant mapping in
+  `docs/channel-adapter-findings/channel-plan.md`, section 5. Prove clean-schema
   persistence, destination deduplication, and real close/reopen/restart without
   a sender cache. No legacy backfill or pre-change database gate is required.
 - [ ] P2 — declared capabilities and channel configuration (ADR 0052, ADR
@@ -561,7 +565,7 @@ can delete one bot's history and migrate it to another bot of the same scope
 without touching contacts or a peer bot. An integration can send a message to
 an eligible channel target, read the scope's contacts, and receive a signed first-contact
 webhook. The channel-neutral slices (ADR 0051–0054) keep WhatsApp runnable
-and close with their own gates (`docs/channel-plan.md`).
+and close with their own gates (`docs/channel-adapter-findings/channel-plan.md`).
 
 Provisioning and resource policy remain TBD in `docs/access-policy.md` and do
 not gate the outcome above. An owner can bound a definition's local files (ADR

@@ -3,7 +3,7 @@
 Recorded: 2026-10-09. Implementation and library selection are pending.
 These notes preserve the investigation, not an approved dependency or a performance guarantee.
 [Channel plan](../channel-plan.md), sections 5 and 8, owns the architectural reference cases;
-[ROADMAP](../../ROADMAP.md), Phase 18, owns future adapter implementation.
+[ROADMAP](../../../ROADMAP.md), Phase 18, owns future adapter implementation.
 
 ## Owner preference
 
@@ -55,7 +55,8 @@ or require every bot to support both modes. Protocol-specific behavior stays in 
 ## Outbound send contract
 
 Reviewed on 2026-10-09 against Bot API 10.3 and candidate gotd/td v0.162.0. See the
-[cross-channel matrix](outbound-messages.md) for support qualifications. No SDK was adopted and
+[cross-channel matrix](../provider-differences/outbound-messages.md) for support qualifications.
+No SDK was adopted and
 no live sends were tested. Required payload fields and design-relevant options follow; the
 linked API is the complete reference, including specialized business/guest/paid-send settings.
 

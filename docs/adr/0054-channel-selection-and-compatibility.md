@@ -96,4 +96,4 @@ supervisor, automatic sharding, or per-service account capacity is approved.
   not a switch in `cmd/`.
 - The reload path can tell a channel change from an ordinary setting change
   and defer it correctly (ADR 0009).
-- Implementation is P2, P5, and P6 of `docs/channel-plan.md`.
+- Implementation is P2, P5, and P6 of `docs/channel-adapter-findings/channel-plan.md`.

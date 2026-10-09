@@ -108,7 +108,8 @@ under ADR 0054 before implementing them. No process supervisor or automatic shar
 ## Outbound send contract
 
 Reviewed on 2026-10-09 against the same pinned 7.0.4 source above. See the
-[outbound matrix](outbound-messages.md). JSON commands use the CLI WebSocket protocol, not a
+[outbound matrix](../provider-differences/outbound-messages.md). JSON commands use the CLI
+WebSocket protocol, not a
 new Go SDK dependency. No live sends or recipient-rendering tests were performed.
 
 ### Common command and content envelope

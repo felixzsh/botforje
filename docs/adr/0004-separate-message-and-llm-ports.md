@@ -38,7 +38,7 @@ updates through a cursor or HTTP response needs a narrow processing-completion
 boundary before the preparation's P5 gate closes. Distinguish committed work,
 already-recorded duplicates, deliberate discards, and failed processing from
 provider transport acknowledgements and message identity. Exact signatures and
-discard/failure semantics remain TBD in `docs/channel-plan.md`, section 7;
+discard/failure semantics remain TBD in `docs/channel-adapter-findings/channel-plan.md`, section 7;
 the four transport operations are not an assertion that no completion contract
 will be needed. No generic durable inbox or provider command port is approved.
 

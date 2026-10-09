@@ -160,11 +160,11 @@ fields and restrictions for its supported features. Names below are **upstream w
 not proposed Botflota fields. These are design-oriented inventories, not copies of every API
 parameter; links resolve the complete upstream definitions.
 
-- [WhatsApp native / whatsmeow](whatsmeow.md#outbound-send-contract).
-- [WhatsApp Cloud API](whatsappcloud.md#outbound-send-contract).
-- [Telegram Bot API and personal MTProto](telegram.md#outbound-send-contract).
-- [Signal / signalmeow](signal.md#outbound-send-contract).
-- [SimpleX Chat WebSocket](simplex.md#outbound-send-contract).
+- [WhatsApp native / whatsmeow](../provider-findings/whatsmeow.md#outbound-send-contract).
+- [WhatsApp Cloud API](../provider-findings/whatsappcloud.md#outbound-send-contract).
+- [Telegram Bot API and personal MTProto](../provider-findings/telegram.md#outbound-send-contract).
+- [Signal / signalmeow](../provider-findings/signal.md#outbound-send-contract).
+- [SimpleX Chat WebSocket](../provider-findings/simplex.md#outbound-send-contract).
 
 ## Questions this evidence raises for the later abstraction
 
@@ -190,5 +190,5 @@ The clean domain/card work remains owned by [the channel plan](../channel-plan.m
 canonical ADRs. This research neither replaces those decisions nor authorizes a raw-provider
 payload escape hatch or silent text fallback.
 
-[kinds]: ../adr/0036-message-kinds-and-steps.md
-[capabilities]: ../adr/0052-declared-channel-capabilities.md
+[kinds]: ../../adr/0036-message-kinds-and-steps.md
+[capabilities]: ../../adr/0052-declared-channel-capabilities.md

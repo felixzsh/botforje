@@ -37,7 +37,8 @@ phone registration makes telephone numbers universal peer or binding identities.
 ## Outbound send contract
 
 Reviewed on 2026-10-09 against **mautrix/signal v0.2609.0**, commit `2541762364a9`, module
-`go.mau.fi/mautrix-signal`, package `pkg/signalmeow`. See the [matrix](outbound-messages.md).
+`go.mau.fi/mautrix-signal`, package `pkg/signalmeow`. See the
+[matrix](../provider-differences/outbound-messages.md).
 This is signalmeow, not signal-cli or a REST wrapper. No live sends were tested.
 
 ### Common send path

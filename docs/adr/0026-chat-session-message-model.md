@@ -42,7 +42,8 @@ Schema (`adapters/sqlite`):
   its actual destination and provider message space (ADR 0051), not a receive
   update ID or cursor. WhatsApp's import uses per-chat deduplication (ADR 0035);
   account-local IDs and retained history require explicit provenance before a
-  channel-neutral durable key is settled in `docs/channel-plan.md`, section 7.
+  channel-neutral durable key is settled in
+  `docs/channel-adapter-findings/channel-plan.md`, section 7.
   This schema sketch does not fix that key or add a speculative namespace
   column. `ingest_kind` says how the row entered
   Botflota (`live`, `sync`, `api`, `unknown`); `origin` who produced an

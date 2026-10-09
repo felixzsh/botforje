@@ -4,11 +4,12 @@ Status: P0 decisions accepted; P1 partial and reopened for identity cleanup; P2�
 Code baseline: `3544357`, inspected on 2026-10-08. ADR 0051–0054 own the accepted decisions.
 The completed documentation-only P0 is not part of the execution checklist below. Described
 reference cases are not executable fixtures, and an accepted ADR is not a passing runtime gate.
-`../PLAN.md` Phase 7 owns overall progress; this document defines the P1–P6 code outcomes and gates.
-`../ROADMAP.md` owns the later implementation of actual additional channels.
+`../../PLAN.md` Phase 7 owns overall progress; this document defines the P1–P6 code outcomes
+and gates.
+`../../ROADMAP.md` owns the later implementation of actual additional channels.
 Contract and vocabulary renames live only in [domain-contracts.md](domain-contracts.md).
 The owner-approved contract review of 2026-10-09 is reflected in section 2.1 and the phase gates.
-Provider-specific evidence lives in `channel-adapter-findings/`; it is not a capacity guarantee.
+Provider-specific evidence lives in `provider-findings/`; it is not a capacity guarantee.
 
 ## 1. Outcome: adding a channel is adapter work
 
@@ -99,7 +100,8 @@ coordinator, choose a service supervisor, or promise a particular number of conc
 
 ### 2.2 Capability-aware behavior from authoring to delivery
 
-[ADR 0052](adr/0052-declared-channel-capabilities.md) already requires one capability vocabulary
+[ADR 0052](../adr/0052-declared-channel-capabilities.md) already requires one capability
+vocabulary
 across configuration, execution, discovery, and delivery. The following makes its acceptance
 criteria explicit; it does not introduce a new capability framework or approve new message kinds.
 
@@ -129,7 +131,7 @@ Diagnostics identify the scoped bot, selected channel/mode, and unsupported capa
 limit. For definitions, include file/entity and graph/node/action/step context where applicable;
 API errors remain scoped, actionable, and free of credentials or raw provider error details.
 
-The [outbound research](channel-adapter-findings/outbound-messages.md) supplies contrast cases,
+The [outbound research](provider-differences/outbound-messages.md) supplies contrast cases,
 not the runtime's capability catalog. An unmodeled payload/interaction remains invalid under strict
 decoding; platform support does not grant implicit adapter support. Each future typed capability
 must join declaration, validation, execution/API admission, discovery, codecs/schema where relevant,
@@ -142,7 +144,7 @@ the affected consumers, executable tests, and compatibility translations needed 
 working; do not leave public ports changed while their callers remain on the previous model.
 
 - Check a task only when its code and tests exist; check a phase only when its gate passes.
-- Update the corresponding `../PLAN.md` deliverable in the commit that completes the phase.
+- Update the corresponding `../../PLAN.md` deliverable in the commit that completes the phase.
 - Transitional WhatsApp translations belong at named compatibility boundaries, not throughout the
   engine, fleet, or stores. They must not become a second independent account/setup implementation.
 - The owner requires a provider-neutral domain, not merely optional provider-specific fields.
@@ -181,7 +183,7 @@ Decision owner: ADR 0051, with ADR 0006, 0018, 0020, 0021, 0026, 0027, 0029, 003
   Keep sender identity distinct from thread identity; a group is not one person's identity.
 - [ ] Replace the obsolete phone-only/identity-only uniqueness constraints and every dependent
   lookup with the neutral ones. The schema is edited in place under the pre-release reset policy
-  (`../PLAN.md`), so the WhatsApp backfill and the pre-change database gate are gone; the runtime
+  (`../../PLAN.md`), so the WhatsApp backfill and the pre-change database gate are gone; the runtime
   gates below still hold from a fresh creation.
 - [ ] Resolve identities by subject and execution state, holds, and guards by chat. Make replies
   default to the inbound conversation, not the sender or the last conversation cached for that
@@ -467,8 +469,9 @@ Gate:
 
 - [ ] The extension-locality demonstration and every automated gate pass; WhatsApp pairing,
   reconnect, live messages, queued replies, history import/backfill, and unpair remain operational.
-- [ ] P1–P6 code outcomes are complete and tracked in `../PLAN.md`. Adding an adapter for existing
-  capabilities now means adapter work plus registration, not another runtime architecture project.
+- [ ] P1–P6 code outcomes are complete and tracked in `../../PLAN.md`. Adding an adapter for
+  existing capabilities now means adapter work plus registration, not another runtime
+  architecture project.
 
 ## 5. Clean domain: removing JID and phone, not renaming them
 
@@ -582,11 +585,11 @@ global person IDs nor login credentials. A fixed-profile reply bot does not requ
 profile switching in the common runtime or pretending to link an existing mobile account.
 If several fixed bindings share a service, its adapter may need serialized context selection and
 event demultiplexing. Section 2.1 defines the logical boundaries; concrete service coordination,
-deployment, and capacity stay future work in `channel-adapter-findings/simplex.md`.
+deployment, and capacity stay future work in `provider-findings/simplex.md`.
 
 These cases need no provider enum, provider-specific field, universal credential table, or SDK
 dependency in the domain. Fakes represent their differing identity semantics; real adapters remain
-future work in `../ROADMAP.md`.
+future work in `../../ROADMAP.md`.
 
 ### 5.3 Concrete removal work and phase ownership
 

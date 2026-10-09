@@ -56,7 +56,7 @@ that nobody reads.
   Before P5 closes, settle the narrow contract for committed processing,
   already-recorded duplicates, deliberate discards, and failures with ADR 0004.
   A failed persistence operation is not successful confirmation; exact discard,
-  failure, and retry rules remain TBD in `docs/channel-plan.md`, section 7.
+  failure, and retry rules remain TBD in `docs/channel-adapter-findings/channel-plan.md`, section 7.
   Provider update IDs/cursors do not become persisted message identities.
 - Stored timestamps are fixed-width RFC 3339 UTC, so ordering the stored
   text is chronological: the retry schedule, chat activity, and session

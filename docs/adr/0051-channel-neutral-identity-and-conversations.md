@@ -11,7 +11,7 @@ Telegram identifies a user with its own id, and SimpleX ids are only meaningful
 inside one local profile. Treating a phone column as an undocumented container
 for those ids would make the second channel a schema lie.
 
-The preparation plan (`docs/channel-plan.md`) needs two values validated at
+The preparation plan (`docs/channel-adapter-findings/channel-plan.md`) needs two values validated at
 the adapter boundary: who a message is from, and which conversation it belongs
 to. They are not the same. A group has participants and a thread, and the same
 person can write in a direct chat and in several groups of one account without
@@ -104,4 +104,4 @@ API and runtime:
   documents and composes its own space into the subject and thread rather than
   asking the core for a second identity field.
 - ADR 0020, 0026, 0027, 0029, 0037, 0040, 0042, 0043, and 0044 are updated in
-  place to this vocabulary. Implementation is P1 of `docs/channel-plan.md`.
+  place to this vocabulary. Implementation is P1 of `docs/channel-adapter-findings/channel-plan.md`.

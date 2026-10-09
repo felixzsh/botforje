@@ -2,7 +2,8 @@
 
 Reviewed: 2026-10-09 against the repository's whatsmeow dependency
 `v0.0.0-20260909164725-b25a56d63729`. This is the native baseline for the
-[outbound matrix](outbound-messages.md), not approval to expose every protobuf field in Botflota.
+[outbound matrix](../provider-differences/outbound-messages.md), not approval to expose every
+protobuf field in Botflota.
 
 ## Outbound send contract
 
@@ -123,7 +124,7 @@ support. Its local media-fetch cap is 16 MiB, not a claim about WhatsApp's platf
 - [Discussion 534][buttons] and [discussion 711][lists]: older unsupported-button/list reports.
 - [Issue 1144][flows]: conflicting 2026 native-flow rendering report.
 
-[local-content]: ../../adapters/whatsapp/channel/content.go
+[local-content]: ../../../adapters/whatsapp/channel/content.go
 [send]: https://github.com/tulir/whatsmeow/blob/b25a56d63729/send.go
 [upload]: https://github.com/tulir/whatsmeow/blob/b25a56d63729/upload.go
 [polls]: https://github.com/tulir/whatsmeow/blob/b25a56d63729/msgsecret.go

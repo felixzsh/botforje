@@ -1,7 +1,7 @@
 # WhatsApp Cloud API adapter findings
 
 Recorded: 2026-10-09. Outbound API research follows; setup and implementation are pending.
-[ROADMAP](../../ROADMAP.md), Phase 18, lists `adapters/whatsappcloud` as a future channel.
+[ROADMAP](../../../ROADMAP.md), Phase 18, lists `adapters/whatsappcloud` as a future channel.
 This entry preserves its existing context and an outbound capability inventory. No concrete SDK,
 setup flow, deployment, or resource benchmark was selected.
 
@@ -29,7 +29,8 @@ by this conversation.
 ## Outbound send contract
 
 Reviewed on 2026-10-09 against current official documentation, whose service-send examples use
-Graph API v25.0. See the [outbound matrix](outbound-messages.md). Direct HTTPS from Go is
+Graph API v25.0. See the [outbound matrix](../provider-differences/outbound-messages.md).
+Direct HTTPS from Go is
 sufficient; this research does not select a wrapper, implement a channel or certify live delivery.
 
 ### Common envelope and eligibility

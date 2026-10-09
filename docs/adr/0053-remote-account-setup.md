@@ -134,4 +134,4 @@ than treating buffered events as traffic from the new account (ADR 0051).
 - The `auth` CLI namespace stays reserved for Botflota credentials (ADR 0025);
   account setup stays under the bot's account resource.
 - ADR 0004, 0021, 0022, 0025, and 0028 are updated in place to this contract.
-  Implementation is P3 and P4 of `docs/channel-plan.md`.
+  Implementation is P3 and P4 of `docs/channel-adapter-findings/channel-plan.md`.
