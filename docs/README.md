@@ -9,8 +9,10 @@ Map of the documentation.
 - `api.md` — API authority, scope coverage, and current versus target behavior.
 - `current-plan.md` — current Phase 7 plan for API publication and account
   history.
-- `channel-plan.md` — accepted channel-neutral contracts and remote account setup
-  (ADR 0051–0054); P0 closed, P1–P6 tracked in `../PLAN.md` Phase 7.
+- `channel-plan.md` — provider-neutral architecture, rationale, pending decisions, and P1–P6 gates
+  (ADR 0051–0054); overall progress is tracked in `../PLAN.md` Phase 7.
+- `domain-contracts.md` — compact current-to-target contract, field, helper, and command renames;
+  architectural reasons and pending behavior decisions belong to `channel-plan.md`.
 - `integration.md` — runtime versus host responsibilities, application flow,
   and the shared-process trust boundary (ADR 0046).
 - `access-policy.md` — TBD resource-policy and provisioning decisions; not an

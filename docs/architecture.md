@@ -131,16 +131,20 @@ dashboard and integrations are API-only and never see local files.
   by references and persisted state. Optional `display_name` is presentation
   metadata only; interfaces fall back to the key when it is absent. Changing
   a key is an identity change, not a display rename (ADR 0016).
-- Contact — the durable identity of one person a scope knows: phone, push
-  name, and first/last inbound, keyed by (scope, phone). The bot-person thread
-  is the chat; a person may write to several bots of the same scope
-  (ADR 0029).
+- Contact — the durable identity of one person a scope knows: their provider
+  identity (provider and an opaque subject), an optional phone that is metadata
+  for a channel that has one, a push name, and first/last inbound. One per
+  (scope, provider, subject), shared by the scope's bots (ADR 0029, ADR 0051).
+- Conversation target — the conversation a message belongs to: the provider, a
+  kind (direct or group), an opaque thread id, and an optional topic. A sender
+  and a thread are different values, so one person in a direct chat and in a
+  group has both (ADR 0051).
 - Address-book entry — an entry of one bot's linked account, keyed by
-  (scope, bot, phone) and copied only when the bot sets `import_contacts`. It
-  is never a chat; importing it also registers the phone as a scope contact,
-  so the directory holds the people the account knows. The derived
+  (scope, bot, contact) and copied only when the bot sets `import_contacts`.
+  It is never a chat; importing it also registers the contact as a scope
+  identity, so the directory holds the people the account knows. The derived
   `address_book_imported` means an import supplied the identity, not that the
-  account still has it saved (ADR 0037).
+  account still has it saved (ADR 0037, ADR 0051).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0030), and a map of nodes.
 - Node — goal, policy, entry/exit actions, tools, and optional node-local
@@ -205,16 +209,17 @@ coordinates survive the store and the read API can serve them.
 Inbound:
 
 1. Channel receives an event, classifies it into a kind, maps it to an
-   `IncomingMessage`, and resolves the contact to a phone number; a message
-   with no known phone number, or an unclassifiable live payload, is dropped
-   (ADR 0020, ADR 0036).
-2. The fleet routes the event to the bot; the bot's filter drops it (groups,
-   allow/ignore lists) or passes it to the engine, which records the inbound
-   on the contact identity before routing (ADR 0029). The write that claims
-   `first_seen` is the first-contact hook: the engine hands it to the
+   `IncomingMessage` carrying its own contact key and conversation target,
+   and resolves what the wire needs; a message with no known contact or
+   conversation, or an unclassifiable live payload, is dropped (ADR 0020,
+   ADR 0036, ADR 0051).
+2. The fleet routes the event to the bot; the bot's filter drops it (shared
+   threads, allow/ignore lists) or passes it to the engine, which records the
+   inbound on the contact identity before routing (ADR 0029). The write that
+   claims `first_seen` is the first-contact hook: the engine hands it to the
    configured notifier, whose webhook sink queues signed deliveries
-   (ADR 0045). The dedup check in step 5 reads that contact and chat first, so
-   only a message about to run writes them.
+   (ADR 0045). The dedup check in step 5 reads that conversation first, so
+   only a message about to run writes it.
 3. Graph engine loads the session, or creates one at the graph root. On
    creation the incoming message is evaluated before the root's entry
    actions: if it transitions, the root message is skipped; if not, the
@@ -251,16 +256,17 @@ Inbound:
     that transaction, so a failed turn can leave those two rows and nothing
     else. The outbox worker then delivers the replies with the pacing below.
 
-A chat may be handed to a human instead (ADR 0043). A live message that leaves
-the linked account without Botflota sending it — an operator reply from the
-phone, told apart from the bot's own echo by the channel — starts a pause for
-that chat; the API may also hold a chat until it is released. While a chat is
-held, the fleet stores each inbound message for history and deduplication but
-runs no transition and queues no reply, and the session does not change. Taking
-the hold fails the chat's still-pending replies first, and the outbox worker
-rechecks a reply just before sending it, so nothing automatic overtakes the
-human. The pause length is the bot's `settings.external_reply_pause`; the state
-is in memory, so a restart returns every chat to automatic.
+A conversation may be handed to a human instead (ADR 0043). A live message
+that leaves the linked account without Botflota sending it — an operator reply
+from another client, told apart from the bot's own echo by the channel — starts
+a pause for that conversation; the API may also hold one until it is released.
+While it is held, the fleet stores each inbound message for history and
+deduplication but runs no transition and queues no reply, and the session does
+not change. Taking the hold fails the conversation's still-pending replies
+first, and the outbox worker rechecks a reply just before sending it, so
+nothing automatic overtakes the human. The pause length is the bot's
+`settings.external_reply_pause`; the state is in memory, so a restart returns
+every conversation to automatic.
 
 Outbound:
 
@@ -275,12 +281,16 @@ Outbound:
 ## Templates
 
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
-`{{contact.phone}}` and `{{contact.name}}`, `{{message.*}}`, `{{bot.*}}`, tool
-arguments as `{{input.<name>}}`, and request results as
+`{{contact.id}}`, `{{contact.phone}}` and `{{contact.name}}`, `{{message.*}}`,
+`{{bot.*}}`, tool arguments as `{{input.<name>}}`, and request results as
 `{{node.<request-name>.resp.body.*}}`,
 `{{node.<request-name>.resp.headers.*}}`, `{{node.<request-name>.status}}`,
 and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 (Phase 4).
+
+`contact.id` is the contact's opaque handle within the scope, stable for the
+life of the identity; `contact.phone` is optional metadata a channel with a
+phone number fills and that is empty otherwise (ADR 0051, ADR 0018).
 
 `graph` and `node` are read-write; `contact`, `message`, `bot`, and `input` are
 read-only, and `node` resets on every node entry. A missing path, an unknown

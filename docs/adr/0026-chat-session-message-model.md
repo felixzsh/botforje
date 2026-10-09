@@ -16,8 +16,8 @@ messages had no link to the session run that handled them.
 Three concepts, three tables:
 
 - **Chat** — the durable thread between one bot and one conversation
-  (ADR 0051), unique per its scope, bot, provider, namespace, kind, thread,
-  and topic. It never ends and owns the history.
+  (ADR 0051), unique per its scope, bot, provider, kind, thread, and topic. It
+  never ends and owns the history.
 - **Session** — one bounded run of the graph for a chat. It starts at the root
   and ends on the graph timeout (or `default_timeout`). A chat has many over
   time.
@@ -27,9 +27,9 @@ Three concepts, three tables:
 
 Schema (`adapters/sqlite`):
 
-- `chats (id, scope, bot, provider, namespace, kind, thread, topic, contact_id
+- `chats (id, scope, bot, provider, kind, thread, topic, contact_id
   -> contacts, started_at, updated_at, message_count, guards)`, unique
-  `(scope, bot, provider, namespace, kind, thread, topic)`; `guards` is the
+  `(scope, bot, provider, kind, thread, topic)`; `guards` is the
   per-action guard state (ADR 0027); `contact_id` and the `contacts` table come
   from ADR 0029, and it is set when the conversation has one participant.
 - `sessions (id, chat_id -> chats, node, visited_nodes, graph_context,

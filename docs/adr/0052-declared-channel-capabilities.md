@@ -62,12 +62,12 @@ read it. Delivery stays at-least-once, and a timeout has an uncertain outcome
 that is never presented as a proven rejection (ADR 0040).
 
 **Failure classes are explicit.** Permanent failures — an unsupported kind, an
-invalid target, an unknown namespace, a stale binding generation — fail the
-entry immediately. Transient failures retry with bounded backoff, honoring
-provider retry hints when supplied. Losing the authorization of the same
-binding stops the bot with its queue pending; replacing the binding fails the
-old entries (ADR 0040). A stopped instance is not reused unless its contract
-says so, and a partially started instance is cleaned up.
+invalid target, an identity the binding does not cover, a stale binding
+generation — fail the entry immediately. Transient failures retry with bounded
+backoff, honoring provider retry hints when supplied. Losing the authorization
+of the same binding stops the bot with its queue pending; replacing the binding
+fails the old entries (ADR 0040). A stopped instance is not reused unless its
+contract says so, and a partially started instance is cleaned up.
 
 **Optional operations stay optional ports.** Media subtypes, location, contact
 cards, polls, response buttons, formatting, groups, topics, typing, marking

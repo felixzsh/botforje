@@ -52,24 +52,30 @@
   video, audio, document, sticker, location, contact, poll, event, interactive,
   commerce, call, or unknown. A channel implements the subset it can produce
   and send (ADR 0036).
-- Chat — durable thread between one bot and one contact, keyed by
-  (scope, bot, contact); it never ends and gathers every message.
+- Chat — durable conversation thread between one bot and one conversation,
+  keyed by (scope, bot, provider, kind, thread, topic) and never ends. A direct
+  thread may name a participant; a shared one does not (ADR 0051).
 - Session — one bounded run of a bot's graph for a chat, stored in the
   database; it starts at the root and ends on the graph timeout.
-- PN (phone number) — WhatsApp's phone-number address; Botflota keys sessions
-  on the plain number (`5215500000000`), without the JID suffix.
+- PN (phone number) — WhatsApp's phone-number address; for WhatsApp it is the
+  contact's subject and the direct conversation's thread
+  (`5215500000000`), without the JID suffix.
 - LID (hidden user) — WhatsApp's `user@lid` address; kept internal to
   WhatsApp handling for resolution and delivery.
-- Contact identity — the resolved phone number in plain digits, resolved by
-  the WhatsApp channel.
-- Contact — the durable identity of one person a scope knows: their phone,
-  push name, and first/last inbound. One per (scope, phone), shared by the
-  scope's bots; the bot-person thread is the chat. `first_seen` is set by the
-  first live inbound message, never by an import or an API send (ADR 0029).
+- Contact identity — the contact key a messaging channel maps its own
+  addresses to: the provider and an opaque subject. When a provider's ids are
+  only meaningful inside one store or profile, the adapter composes that
+  space's stable identifier into the subject (ADR 0051).
+- Contact — the durable identity of one person a scope knows: their provider
+  identity, optional phone, push name, and first/last inbound. One per
+  (scope, provider, subject), shared by the scope's bots; the bot-person
+  thread is the chat. `first_seen` is set by the first live inbound message,
+  never by an import or an API send (ADR 0029, ADR 0051).
 - Address-book entry — an entry of one bot's linked account, keyed by
-  (scope, bot, phone), copied only when the bot sets `import_contacts`. It is
-  never a chat; importing it also registers the phone as a contact, so the
-  directory holds the people the account knows (ADR 0037).
+  (scope, bot, contact), copied only when the bot sets `import_contacts`. It
+  is never a chat; importing it also registers the contact as a scope
+  identity, so the directory holds the people the account knows (ADR 0037,
+  ADR 0051).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp

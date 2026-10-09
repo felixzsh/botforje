@@ -473,22 +473,37 @@ fields, speculative tables, or a generic provider-payload escape hatch.
   with this decision in the implementation work. ADR 0006 already permits
   explicit development resets; versioned migrations still begin at first release.
 
-Recommended minimal schema direction, within ADR 0026 and ADR 0051–0053:
+**Owner direction — clean messaging domain (2026-10-08).** No messaging-provider-specific concept
+belongs in shared binding/peer/chat contracts, even as an optional field. Do not replace
+device locators with generic identity labels plus phone metadata or unchecked provider data.
+`docs/channel-plan.md`, section 5, owns the four-provider analysis,
+removal inventory, compatibility decisions, phase allocation, and acceptance criteria. Align the
+canonical ADRs named there before implementing the changed contracts. P1 is reopened; neutral key
+propagation alone did not close account identity, phone cleanup, or all persistence/restart gates.
+Exact contract, field, helper, and command renames live only in `docs/domain-contracts.md`.
+The channel plan owns reasons, phases, compatibility, and decisions still requiring approval.
+The four providers are contrast cases, never a closed domain taxonomy. Use Botflota's own neutral
+vocabulary and inward dependencies (ADR 0004, ADR 0034): new providers fitting existing capabilities
+adapt through ports and registration, without changing common records or adding provider branches.
 
-- Contacts store scoped provider/namespace/subject identity once; a phone is
-  optional metadata, never the primary identity or a container for other IDs.
-- Chats represent conversations, keyed under scope and bot by provider,
-  namespace, kind, thread, and topic. A participant reference is optional;
-  a group must not masquerade as a person's contact.
+Recommended minimal schema direction, subject to that canonical ADR alignment:
+
+- Registered identities store scoped provider/subject once, with no common phone
+  column or getter. A store-local provider composes its stable space into the
+  opaque subject and thread it produces; the core never parses their parts.
+- Chats represent conversations, keyed under scope and bot by provider, kind,
+  thread, and topic. A single-peer reference is optional; a group must not
+  masquerade as one peer identity.
 - Sessions and messages reference the chat through foreign keys. Keep bounded
   execution state separate from durable history and sender identity separate
   from conversation identity. Provider message IDs are opaque and deduplicated
-  in their actual destination/binding namespace, never globally or by phone.
-- Address-book rows store per-bot names and import data; prefer a contact
-  reference over copying its identity fields when the relation suffices.
-- Account persistence stores neutral safe binding metadata and generation,
-  not a mandatory JID or QR/pairing model. Protocol credentials and SDK-owned
-  tables remain adapter-owned; no universal credential table is required.
+  in their actual destination space, never globally or by phone.
+- Directory rows reference registered identities and record contextual membership/presentation;
+  settle their binding provenance and retained-history behavior in the channel plan before coding.
+- Account persistence stores a neutral account subject and, in P3, committed
+  binding metadata/generation; no JID, optional phone, or QR-only account model.
+  Protocol/device lookups, credentials, and SDK-owned tables remain adapter-owned.
+  Safe presentation and legacy formats do not become domain identity fields.
 - Outbox rows retain the exact destination and accepted binding generation,
   including alternate recipients; a source message's chat is not necessarily
   its delivery target. Keep intentional delivery snapshots, not legacy aliases.
@@ -496,41 +511,48 @@ Recommended minimal schema direction, within ADR 0026 and ADR 0051–0053:
   with SQL constraints where practical. Index existing lookup and queue paths;
   avoid duplicate columns, redundant indexes, and normalization for its own sake.
 
-- [x] P0 — decisions and contract fixtures: identity, conversations, setup,
-  capabilities, and compatibility frozen; the WhatsApp, Telegram-token,
+- [x] P0 — initial decisions and documented reference cases: identity,
+  conversations, setup, capabilities, and compatibility accepted; WhatsApp, Telegram-token,
   user-login, and local-profile cases described without a fake phone, a
   universal QR, a leaked credential, or a global address.
-- [ ] P1 — identity and target propagation (ADR 0051): neutral keys through
-  messages, records, store ports, SQLite, engine, filters, and holds, with a
-  clean schema tested from fresh creation through reopen and restart. Align
-  the detailed plan and ADR 0051 with the approved pre-release reset policy;
-  no legacy backfill or pre-change database compatibility is required.
+- [ ] P1 — identity and target propagation (ADR 0051): neutral keys are partly
+  propagated, but complete the identity/directory phone/JID cleanup and explicit
+  participant mapping in `docs/channel-plan.md`, section 5. Prove clean-schema
+  persistence, destination deduplication, and real close/reopen/restart without
+  a sender cache. No legacy backfill or pre-change database gate is required.
 - [ ] P2 — declared capabilities and channel configuration (ADR 0052, ADR
   0054): the injected catalog, typed selector, pure support checks, reload
   comparison, and composition; old YAML works and a fake text-only channel
-  needs no WhatsApp device store.
-- [ ] P3 — account setup runtime (ADR 0053): neutral account metadata, the
-  lifecycle and setup-session ports, and the WhatsApp translation, with QR,
+  needs no WhatsApp device store. Legacy phone templates and peer-card YAML
+  are definition-owned translations, not common `spec` fields or defaults. Land
+  the neutral peer-card declaration/content, codec, and WhatsApp mappings together.
+- [ ] P3 — binding runtime (ADR 0053): neutral association metadata, the
+  inspection/bind/unbind operations, and the WhatsApp translation, with QR,
   write-only credential, multi-step approval, and profile binding modeled by
-  fakes.
-- [ ] P4 — remote API and CLI integration (ADR 0053): generalized account and
-  setup routes, discovery, and legacy `/pairing` translations; a scoped HTTP
-  client completes setup and reauthorization without filesystem access.
+  fakes. Persist binding generation and compatibility context; remove common
+  phone-bearing pairing results and phone-specific ownership/error semantics.
+- [ ] P4 — remote API and CLI integration (ADR 0053): binding operations,
+  discovery and approved legacy translations; a scoped HTTP client completes
+  binding and reauthorization without filesystem access. Neutral
+  views, webhooks, and exports do not require universal phone fields; retained
+  legacy outputs come from named adapter-owned projections.
 - [ ] P5 — delivery and optional-operation semantics (ADR 0052): outbox
   failure classes, binding-generation checks, and normalized
   history/external-reply contracts; a replacement account cannot send the
-  previous account's pending entries.
+  previous account's pending entries. Enforce declared support and dynamic
+  eligibility for P2's card payload, with no phone rules in shared delivery.
 - [ ] P6 — regression gate and documentation: glossary, architecture, API,
   config examples/schema, and guides match the code; `make check`,
   `make test-race` where concurrency changed, and the WhatsApp manual
-  checklist pass.
+  checklist pass. The full four-provider boundary audit in channel-plan section
+  5 passes, including optional fields, template context, and read/event models.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several
 authorized scopes is atomic and leaves every other scope untouched. An owner
 can delete one bot's history and migrate it to another bot of the same scope
 without touching contacts or a peer bot. An integration can send a message to
-any phone, read the scope's contacts, and receive a signed first-contact
+an eligible channel target, read the scope's contacts, and receive a signed first-contact
 webhook. The channel-neutral slices (ADR 0051–0054) keep WhatsApp runnable
 and close with their own gates (`docs/channel-plan.md`).
 

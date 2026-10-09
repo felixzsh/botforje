@@ -62,7 +62,7 @@ WhatsApp (ADR 0051, ADR 0044). Numeric or opaque chat ids resolve under their
 scope and bot, never by id alone. First-contact webhooks and CSV exports gain
 neutral identity and provenance without leaking keys, keeping existing fields
 where possible; an incompatible payload or archive change needs its own
-decision. History migration refuses incompatible providers or local namespaces
+decision. History migration refuses incompatible providers or local identity spaces
 until an explicit mapping exists (ADR 0042).
 
 **Trusted auxiliary endpoints wait for their decision.** A managed local

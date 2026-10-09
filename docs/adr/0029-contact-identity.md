@@ -21,17 +21,17 @@ A contact is a first-class identity, keyed by the channel-neutral subject of
 ADR 0051; for WhatsApp the subject is the phone number:
 
 ```sql
-contacts (id, scope, provider, namespace, subject, phone, display_name,
+contacts (id, scope, provider, subject, phone, display_name,
          name_updated_at, first_seen, last_seen)
-         unique (scope, provider, namespace, subject)
-chats    (id, scope, bot, provider, namespace, kind, thread, topic, contact_id,
+         unique (scope, provider, subject)
+chats    (id, scope, bot, provider, kind, thread, topic, contact_id,
          started_at, updated_at, message_count, guards)
-         unique (scope, bot, provider, namespace, kind, thread, topic)
+         unique (scope, bot, provider, kind, thread, topic)
 ```
 
-- One identity per person per scope and identity namespace, shared by the bots
-  that reach it (ADR 0051). The bot-person relationship is the chat, one per
-  `(scope, bot, conversation)`.
+- One identity per person per scope and provider-local space, shared by the
+  bots that reach it (ADR 0051). The bot-person relationship is the chat, one
+  per `(scope, bot, conversation)`.
 - `display_name` is the WhatsApp push name. It is best effort, may be empty,
   changes freely, and is never an identifier: the subject is the key. A
   non-empty name is adopted, and `name_updated_at` is stamped only when the

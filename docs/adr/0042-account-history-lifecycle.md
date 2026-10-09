@@ -68,10 +68,10 @@ both sides.
   shares them.
 
 - **Only a compatible binding can receive the history.** The provider and the
-  identity namespace must match: a chat referencing a local target (a SimpleX
-  profile, for example) can never become a valid target of a bot with another
-  binding, and history does not migrate across providers or namespaces
-  (ADR 0051).
+  identity space of the two bots' account bindings must match: a chat
+  referencing a store-local target (a SimpleX profile, for example) can never
+  become a valid target of a bot with another binding, and history does not
+  migrate across providers or local spaces (ADR 0051).
 
 - **The destination must be empty.** Migration exists for a bot that replaces
   a lost account, so the destination is a bot with no chat history; if it holds
