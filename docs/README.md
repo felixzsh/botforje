@@ -32,12 +32,18 @@ For contributors and agents working on this repository:
 Research notes recorded on 2026-10-09, not implemented behavior or completed plan gates.
 `channel-plan.md` and the canonical ADRs still own shared architecture and accepted contracts.
 
-- [Telegram](channel-adapter-findings/telegram.md) — Bot API versus native MTProto integration.
-- [Signal](channel-adapter-findings/signal.md) — the owner's signalmeow choice and pending research.
+- [Outbound matrix](channel-adapter-findings/outbound-messages.md) — send types, feature variants,
+  restrictions and links to required/optional parameters for each channel and account mode.
+- [WhatsApp native](channel-adapter-findings/whatsmeow.md) — whatsmeow baseline and uncertain
+  protobuf-only/interactive send features.
+- [Telegram](channel-adapter-findings/telegram.md) — Bot API versus personal MTProto,
+  and send fields.
+- [Signal](channel-adapter-findings/signal.md) — signalmeow outbound types;
+  setup research pending.
 - [SimpleX Chat](channel-adapter-findings/simplex.md) — shared profiles, WebSocket limits,
   and capacity.
-- [WhatsApp Cloud API](channel-adapter-findings/whatsappcloud.md) — roadmap context;
-  research pending.
+- [WhatsApp Cloud API](channel-adapter-findings/whatsappcloud.md) — official send fields,
+  interactive/template variants and eligibility restrictions; setup research pending.
 
 ## User guide
 
