@@ -6,3 +6,4 @@
 # Local development configuration and data.
 /config/*.local.yml
 /.dev-data/
+.opencode/
