@@ -537,6 +537,9 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   needs no WhatsApp device store. Legacy phone templates and peer-card YAML
   are definition-owned translations, not common `spec` fields or defaults. Land
   the neutral peer-card declaration/content, codec, and WhatsApp mappings together.
+  A future `invite` step (label plus opaque link or `self` plus kind `peer`|`group`)
+  is decided but gated on a first real consumer; P5 admission/delivery checks apply
+  once it lands.
 - [ ] P3 — binding runtime (ADR 0053): neutral association metadata, the
   inspection/bind/unbind operations, and the WhatsApp translation, with QR,
   write-only credential, multi-step approval, and profile binding modeled by
