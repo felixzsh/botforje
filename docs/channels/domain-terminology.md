@@ -1,9 +1,12 @@
 # Domain contract renames
 
 Target vocabulary; implementation pending.
-Rationale and open decisions: [channel-plan.md](channel-plan.md).
+Status: provisional — entries can change as findings land in
+`provider-findings/` and `provider-differences/`, and open questions
+live in [open-decisions.md](open-decisions.md).
+Rationale: [plan.md](plan.md).
 
-The owner-approved 2026-10-09 behavior review lives in that plan's section 2.1
+The behavior notes live in that plan's section 2
 and the canonical ADRs. This file remains a naming catalog, not final method
 signatures or a declaration that the renamed contracts are already sufficient.
 

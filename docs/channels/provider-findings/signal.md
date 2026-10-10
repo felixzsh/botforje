@@ -1,7 +1,9 @@
 # Signal adapter findings
 
 Recorded: 2026-10-09. Implementation and setup-flow investigation are pending.
-[Channel plan](../channel-plan.md), sections 5 and 8, owns the provider-neutral reference case.
+[Channel plan](../plan.md) owns the goal; [domain cleanup](../domain-cleanup.md)
+owns the candidate direction and [open decisions](../open-decisions.md) the
+unresolved questions.
 This note records the owner's library direction and outbound research, not an implemented adapter.
 
 ## Owner-selected direction
@@ -16,7 +18,8 @@ adapter work; no dependency, pinned version, code, or canonical ADR was changed 
 ## What was and was not established
 
 - The channel plan considered Signal's identity semantics, not a particular library or transport.
-  Its privacy, username, and service-identifier analysis remains in section 5.2.
+  Its privacy, username, and service-identifier analysis is contrast
+  material for [domain cleanup](../domain-cleanup.md).
 - Outbound research below identifies the upstream module/source. Supported setup flows, build
   requirements, native dependencies, and license compatibility remain implementation research.
 - No benchmark was run. Similarity to whatsmeow does not establish equal RAM, CPU, or capacity.

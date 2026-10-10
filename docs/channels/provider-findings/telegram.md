@@ -2,7 +2,9 @@
 
 Recorded: 2026-10-09. Implementation and library selection are pending.
 These notes preserve the investigation, not an approved dependency or a performance guarantee.
-[Channel plan](../channel-plan.md), sections 5 and 8, owns the architectural reference cases;
+[Channel plan](../plan.md) owns the goal; [domain cleanup](../domain-cleanup.md)
+owns the candidate direction and [open decisions](../open-decisions.md) the
+unresolved questions; [ROADMAP](../../../ROADMAP.md), Phase 18, owns future adapter implementation.
 [ROADMAP](../../../ROADMAP.md), Phase 18, owns future adapter implementation.
 
 ## Owner preference

@@ -48,10 +48,10 @@ which document owns what, read `README.md`.
 - Tests are table-driven with `t.Run`; fixtures live in `testdata/`; prefer
   hand-written fakes over a mocking library.
 - Keep code, comments, logs, and documentation in English.
-- Keep a file readable in one sitting (about 350 lines — an estimate, never a
-  target to split for its own sake). When one grows well past that, split it
-  by type, port, or responsibility; never cut code in half. Test files split
-  the same way, mirroring their source files.
+- Keep a file readable in one sitting (at most 500 lines — an estimate,
+  never a target to split for its own sake). When one grows well past
+  that, split it by type, port, or responsibility; never cut code in
+  half. Test files split the same way, mirroring their source files.
 
 ## Comments
 

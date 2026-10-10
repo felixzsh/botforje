@@ -1,0 +1,469 @@
+# Channel preparation phases
+
+Status: draft, not approved for implementation. These checklists
+are the execution half of [plan.md](plan.md); they inherit its
+provisional status. Anything here may change as new entries land in
+`provider-findings/` and `provider-differences/`. Claims that looked
+closed but depend on that evidence were moved to
+[open-decisions.md](open-decisions.md). Cleanup rationale lives in
+[domain-cleanup.md](domain-cleanup.md); vocabulary lives in
+[domain-terminology.md](domain-terminology.md).
+
+`../../PLAN.md` Phase 7 owns overall progress; ADR 0051–0054 own the
+accepted decisions. A described reference case is not an executable
+fixture, and an accepted ADR is not a passing runtime gate.
+
+## P1 — Neutral identity, conversations, and durable targets
+
+Change: `message.go`, `records.go`, `ports.go`;
+`adapters/sqlite/sqlite.go` and its stores; `engine/engine.go`,
+`engine/steps.go`, `engine/context.go`; `fleet/filter.go`,
+`fleet/fleet.go`, `fleet/outbox.go`; WhatsApp account, channel, and
+ingest mapping. Adapt API/CLI/webhook consumers as needed.
+[domain-cleanup.md](domain-cleanup.md) separates this identity cleanup
+from later setup and payload work.
+Decision owner: ADR 0051, with ADR 0006, 0018, 0020, 0021, 0026, 0027,
+0029, 0037, 0040, and 0043.
+
+- [ ] Replace mandatory phone addressing with an identity key and a
+  separate conversation target across inbound, outbound,
+  external-reply observations, records, and store calls. Do not rename
+  a phone column and use it as an undocumented container for unrelated
+  provider IDs.
+- [ ] Carry provider, subject, and conversation kind/thread/topic
+  explicitly. A provider whose ids are local to one store or profile
+  composes that stable space into its own subject and thread, so the
+  core needs no second identity field. This closes key propagation
+  only, not account metadata, binding generation, or delivery
+  authorization.
+- [ ] Remove JID and phone fields, parsing, and parameters from common
+  messaging identities, inbound envelopes, store ports, and shared
+  identity columns ([domain-cleanup.md](domain-cleanup.md)). Persist a
+  neutral account subject and keep the device/session locator in
+  adapter-owned storage. Do not hide a device locator under a generic
+  identity name, add telephone metadata, or use an unchecked attributes
+  map.
+- [ ] Key registered identities by scoped provider identity and chats
+  by target, not sender alone. Update identity/chat/directory SQL,
+  indexes, constraints, and store signatures together. Keep sender
+  identity distinct from thread identity; a group is not one person's
+  identity.
+- [ ] Replace the obsolete phone-only/identity-only uniqueness
+  constraints and every dependent lookup with the neutral ones. The
+  schema is edited in place under the pre-release reset policy
+  (`../../PLAN.md`), so the WhatsApp backfill and the pre-change
+  database gate are gone; the runtime gates below still hold from a
+  fresh creation.
+- [ ] Resolve identities by subject and execution state, holds, and
+  guards by chat. Make replies default to the inbound conversation, not
+  the sender or the last conversation cached for that sender.
+- [ ] Remove universal target-to-identity and identity-to-target
+  derivation. Carry known participant identity explicitly; a valid
+  target must not fabricate its unknown participant
+  ([domain-cleanup.md](domain-cleanup.md)).
+- [ ] Propagate only neutral common template values, including the
+  internal identity ID. Remove telephone seeding and validation;
+  preserve missing-path errors. Legacy WhatsApp references require a
+  named compatibility translation, not an empty phone field for every
+  channel.
+- [ ] Persist the exact conversation target on outbound records and
+  queued deliveries. Retain the triggering-chat history convention for
+  alternate `to` while carrying the actual destination. This does not
+  close binding snapshots or destination-provenance deduplication.
+- [ ] Persist and test actual delivery provenance independently of the
+  triggering history chat. Alternate-recipient provider IDs must
+  deduplicate in their destination, not the source chat. Binding
+  metadata/generation is implemented in P3 and enforced on queued
+  delivery in P5; do not claim that those later requirements are
+  already implemented here.
+- [ ] Finish WhatsApp live events, outbound send, history,
+  address-book import, and echo mapping to neutral values. Its
+  direct-chat PN behavior remains compatible; shared conversations are
+  explicitly filtered/refused until their runtime policy is settled.
+  Include the neutral account subject/device lookup and removal of
+  common phone metadata; partial mappings do not close it.
+
+Gate:
+
+- [ ] Prove opaque own/remote identity subjects and threads need no JID
+  or phone field. Recheck provider/store/scope isolation and
+  independent sessions, holds, and guards for one sender in two
+  supported conversations, including direct conversations whose thread
+  differs from the sender.
+- [ ] Close the database before reopening it, create a fresh
+  channel/fleet with no sender cache, and send to the persisted
+  conversation. Cover alternate-recipient IDs overlapping source-chat
+  IDs. P3/P5 separately prove committed binding identity/generation
+  and replacement safety.
+
+## P2 — Extensible definitions, configuration, and selective assembly
+
+Change: `spec/bot.go`, `spec/action.go`; config loader/validation/
+schema/writer/reload and template validation; `cmd/botflota/main.go`,
+`fleet_cmd.go`, `config_cmd.go`, and reload assembly; fleet
+construction; the WhatsApp definition and its option translation. For
+the card slice: `message_content.go`, its codecs, `engine/steps.go`,
+and WhatsApp card mappings.
+Decision owner: ADR 0052 and 0054, with ADR 0007, 0009, 0018, 0034,
+and 0036.
+
+- [ ] Introduce the immutable injected catalog of installed
+  definitions. Distinguish provider, adapter kind, and account mode;
+  select one unambiguous installed implementation. New definitions must
+  not require adding provider enums or conditionals throughout shared
+  packages.
+- [ ] Add the accepted channel selector to bot declarations, preserving
+  missing-selector WhatsApp compatibility. Reject explicit
+  unknown/unavailable selections, never silently fall back.
+- [ ] Make adapter-owned option types and their strict
+  validation/schema declarations extensible through registration. Do not
+  add a field or a provider-specific union arm to bot declarations for
+  every adapter; do not replace typed runtime values with unchecked
+  option maps.
+- [ ] Separate common pacing/filter settings from adapter-specific
+  capabilities and defaults. Preserve old WhatsApp YAML through its
+  compatibility translation, without enabling WhatsApp's
+  presence/history defaults on other channels or ignoring explicitly
+  unsupported settings.
+- [ ] Make template declarations and legacy selector/peer-card decoding
+  follow the consuming bot's definition
+  ([domain-cleanup.md](domain-cleanup.md)). Common `spec` types and
+  generated schema must not gain universal phone fields; a shared action
+  using a WhatsApp-only legacy alias cannot validate for another bot.
+- [ ] Implement the agreed neutral peer-card declaration/content shape,
+  stored codec, and existing WhatsApp send/ingest mapping in the same
+  slice. Do not change declarations in P2 while leaving engine/content
+  consumers broken until P5; preserve supported cards and declare
+  limits.
+- [ ] Inject the same pure declarations into CLI validation, startup,
+  watcher loads, schema generation, and publication. Preserve origins,
+  secret policy, round-tripping, logical versions, and atomic writes.
+  Validation must not open SDK stores, start transports, or perform
+  login.
+- [ ] Validate each consuming bot's graph, entry/exit actions, tools,
+  and guard `on_blocked` steps against its installed adapter. Declare
+  implemented content/features and provider-correct limits, not a
+  platform-wide promise; default to rejection instead of silent
+  downgrade.
+- [ ] Replace WhatsApp-only fleet construction with registered builders.
+  Move settings translation and channel-specific dependency assembly
+  into the adapter's integration boundary; initialize device stores or
+  auxiliary resources only when the selected adapter/bind method needs
+  them. Permit adapter-owned shared dependencies behind independent
+  per-binding channel views; config-only operations still perform no
+  channel I/O.
+- [ ] Compare selectors, account modes, options, and binding-relevant
+  references on reload. Preserve restart-required transport changes,
+  saved/active differences, and isolation of peers. Config publication
+  must not replace runtime credentials or silently migrate account
+  identity.
+
+Gate:
+
+- [ ] Old YAML works; explicit unavailable selections and unknown option
+  fields fail with context. The generated editor schema and runtime
+  validator agree on installed option shapes.
+- [ ] A preconfigured text-only fake joins a mixed fleet through
+  registration and runs without WhatsApp devices, QR setup, or
+  adapter-specific settings. Common construction has no provider
+  switch, and config-only operations perform no channel I/O.
+- [ ] A registered fake builds two logical channels over one shared
+  resource without new common pool or process-management contracts.
+  Starting/stopping one view leaves the other usable.
+- [ ] Unsupported referenced actions/settings fail for the consuming
+  bot; invalid publication preserves files and active channels, and a
+  restart-required edit does not reconnect a peer scope.
+- [ ] One shared action/graph is checked independently for a capable
+  fake and a text-only fake; the incompatible bot fails with
+  file/entity/action/step context even behind a guard or tool path.
+  Cover a supported kind with an unsupported variant or known limit
+  violation, and two definitions for the same provider with different
+  account modes. Use existing modeled content, not a new DSL.
+
+## P3 — Provider-neutral binding lifecycle and bind runtime
+
+Change: `records.go`, `pairing.go`, lifecycle ports in `ports.go`;
+binding persistence; `adapters/whatsapp/pair.go`, `pairing.go`, and
+account ownership; fleet/startup readiness and assembly.
+Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
+
+- [ ] Complete P1's neutral account record with committed binding
+  metadata, stable identity-space context where needed, and generation,
+  separately from adapter credentials. Implement inspection, bind, and
+  unbind operations; select by the bot's definition, never inspect every
+  bot through the WhatsApp device store. Remove telephone-bearing
+  results and phone-specific errors; keep legacy pairing results at the
+  compatibility boundary ([domain-cleanup.md](domain-cleanup.md)).
+  Separate common binding persistence from adapter/auxiliary credential
+  stores; do not impose a shared SQLite credential schema on every
+  implementation.
+- [ ] Separate credential presence, provider authorization, transport
+  health, and import progress. Readiness exposes safe actionable
+  conditions; stored credentials or connection startup return do not
+  prove authorization/connection. Missing transport reporting means
+  unknown.
+- [ ] Implement the accepted session/step model: scoped bot, session ID,
+  revision, times, safe errors, display challenges, typed write-only
+  inputs, external approval, and managed-profile selection. Distinguish
+  login QR challenges from public invitations.
+- [ ] Reuse per-bot mutation serialization and completion waits for
+  begin/input/cancel/detach. Workers belong to the instance, not HTTP
+  request lifetimes; expiry, retained sessions, retries, and shutdown
+  are bounded. Active setup sessions remain in memory, not resumable
+  secret storage.
+- [ ] Stage setup until provider confirmation and local binding commit.
+  Preserve the actual outcome across cancellation/expiry, report
+  activation failures separately, and handle provider success followed
+  by local persistence failure with cleanup or an explicit recovery
+  condition.
+- [ ] Adapt WhatsApp QR pairing and legacy results to the same
+  lifecycle/session machinery, preserving its credential store,
+  confidentiality, and successful-pairing/history-wait protection.
+  Import completion must not define generic account success.
+- [ ] Support same-identity reauthorization and explicit identity
+  replacement through the same contracts. Preserve stable identity
+  spaces, verify ownership, serialize with sends, and keep history.
+  Detachment forgets the local binding; it does not destroy an account
+  or managed profile. Retire the old binding's observations before a
+  replacement starts; temporary backend context selection changes
+  neither binding identity nor generation.
+
+Gate:
+
+- [ ] Executable fakes complete QR, credential-only, multi-step
+  approval, and local-profile setup without phone fields or a universal
+  QR. Reconnect/restart preserves committed identity spaces.
+- [ ] Test stale input/session IDs, QR rotation versus session expiry,
+  duplicate request keys, cancellation versus commit, detach during
+  import, commit then activation failure, and shutdown. No
+  stale/cancelled worker activates later, and successful setup never
+  activates twice.
+- [ ] An unconfigured or revoked bot remains inspectable/setup-capable
+  without stopping peers; detachment keeps its chats, directory,
+  history, and the actual outcome of any completed setup.
+- [ ] Two fixed bindings share a fake backend: selecting one context
+  leaves both identities and generations unchanged; detach/replacement
+  cannot reassign stale events or destroy the peer's profile. Credential
+  ownership can remain outside common binding storage.
+
+## P4 — Common API and CLI, not provider-specific control planes
+
+Change: `api/api.go`, account/pairing handlers, `views.go`, `params.go`,
+`send.go`, chat control/sync, history operations/export;
+`cmd/botflota/bot_cmd.go`, `chat_cmd.go`, `message_cmd.go`,
+`address_book_cmd.go`, client views, and help; peer-first-seen webhook
+serialization.
+Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
+
+- [ ] Wire neutral lifecycle/bind/capability dependencies into the API.
+  Remove constructor requirements for WhatsApp pairing and unsupported
+  live features; distinguish reading already stored history/address
+  books from invoking a currently available channel operation.
+- [ ] Implement scoped channel/binding/method discovery and bind
+  begin/read/input/cancel operations. Align public routes and legacy
+  translations in ADR 0053 before changing endpoints; scope and bot
+  remain part of every operation's ownership
+  ([open-decisions.md](open-decisions.md)).
+- [ ] Expose declared support, account authorization, and conversation
+  eligibility as separate facts. Unknown never implies permission; a
+  disconnected bot keeps support without invented rights. Translate
+  absent optional operations to explicit unsupported outcomes, not
+  internal errors.
+- [ ] Use neutral peer/chat/binding references for reads, controls,
+  sync, and sends. Resolve chat IDs under scope and bot, never by ID
+  alone. Retain approved WhatsApp selectors and old routes as explicit
+  compatibility translations over the same operations, not alternate
+  implementations. Legacy phone outputs come from a typed adapter-owned
+  projection, never from a universal domain field or by inspecting the
+  shape of a neutral subject. Neutral IDs and legacy selectors must be
+  unambiguous ([domain-cleanup.md](domain-cleanup.md)).
+- [ ] Replace API-wide digit validation with the selected adapter's
+  target rules and common admission checks. Preserve atomic API sends,
+  `client_id` reconciliation, chat-control semantics, and the default
+  reply path without assuming arbitrary-address outreach is permitted.
+- [ ] Make operational CLI commands consume neutral API views/selectors
+  and common bind steps. Keep the locked offline operator path and
+  existing WhatsApp commands compatible; adding a new adapter with
+  existing step kinds must not require another CLI handler or provider
+  form.
+- [ ] Carry neutral identity/provenance through webhooks and CSV export,
+  preserving existing compatible fields only at named legacy boundaries.
+  Approve any incompatible envelope/archive change before coding; do not
+  put a universal phone field back into the event or store contract.
+  Enforce provider and identity-space compatibility between the two
+  bots' bindings before history migration; never present unreadable
+  local targets as valid for a replacement bot.
+- [ ] Authorize before reading binding/session data; keep out-of-scope
+  targets opaque (404). Enforce stale-session/step conflicts,
+  request-key retry safety, bounded input bodies and budgets,
+  authenticated non-cacheable challenges, and redaction across JSON,
+  logs, errors, and exports.
+
+Gate:
+
+- [ ] A scoped HTTP client completes each fake setup mode and
+  reauthorization without filesystem access, then reads a conversation,
+  holds/releases it, and queues a text send through the same API.
+- [ ] Personal CLI operation uses those operations while the instance
+  runs, with no database fallback; existing WhatsApp pairing, query,
+  and send callers remain compatible.
+- [ ] Cross-scope reads/inputs/cancellation, stale IDs, unsupported
+  methods, and lost-response retries obey the accepted errors. Submitted
+  tokens/passwords/codes are never echoed or exported.
+- [ ] Per-bot discovery and API admission agree with config validation
+  on declared capabilities. Unsupported submitted content/operations are
+  refused before queueing or invoking the absent operation. A
+  disconnected bot retains its declaration without invented dynamic
+  permission.
+
+## P5 — Delivery, replay, and optional operations without protocol leakage
+
+Change: transport/error contracts in `ports.go` and `message.go`;
+`fleet/outbox.go` and actor lifecycle/control;
+turn/send/message/outbox/history stores; WhatsApp
+send/events/history/ingest.
+Decision owner: ADR 0052, with ADR 0004, 0011, 0035, 0036, 0040,
+and 0044.
+
+- [ ] Enforce classified send outcomes: permanent invalid/unsupported
+  input fails immediately; transient failures retry within bounds and
+  honor retry hints. Losing binding authorization stops that bot with
+  its queue pending; replacing the binding fails its previous entries.
+  Do not classify outcomes by parsing provider error text in shared code.
+- [ ] Validate rendered content/targets before queue admission and
+  recheck dynamic eligibility at delivery. Never silently split one
+  durable message into multiple wire sends or downgrade content. Apply
+  an already-supported explicit fallback before dependent side effects;
+  this plan does not create a new fallback DSL.
+- [ ] Check the stored binding generation at admission and immediately
+  before sending. Serialize detach/replacement with in-flight delivery;
+  old pending entries cannot inherit a new identity. Close the
+  unbound-send decision in [open-decisions.md](open-decisions.md) rather
+  than guessing a future binding for queued messages.
+- [ ] Make send success mean downstream acceptance, not recipient
+  delivery/read confirmation. Preserve the existing status contract
+  through documented translation, optional provider IDs, and
+  at-least-once crash behavior; report uncertain timeout outcomes
+  honestly.
+- [ ] Make channel lifetime work independently of SDK assumptions: one
+  inbound reader, concurrent serialized outbox sending, adapter-owned
+  stream closure, bounded buffering, cancellation, partial-start
+  cleanup, and bounded disconnect. Do not reuse stopped instances
+  accidentally. This is a logical per-binding lifetime. A shared
+  physical reader stays adapter-owned; releasing one view must not close
+  peer views. Shared transport failure is not authorization revocation.
+- [ ] Normalize history/backfill and external-reply observations to the
+  same conversation/binding values. Keep wire anchors opaque; no phone
+  requirement or unconditional optional-feature calls. Preserve inert
+  imports, peer-first-seen rules, own-send echo correlation, and held
+  inbound.
+- [ ] Exercise upstream replay/cursor behavior against processing
+  success, failure, filtering, and suppression. Inbound handoff is not
+  proof of durable commit; settle any required processing
+  acknowledgement before advancing irreversible cursors. Do not add a
+  universal durable inbox without its decision, or claim replay
+  guarantees a channel cannot supply. Close the completion contract in
+  ADR 0004/0040 before the P5 gate (see
+  [open-decisions.md](open-decisions.md)): distinguish confirmed
+  processing, persisted duplicates, deliberate discards, and failures.
+  Keep source update IDs and receive cursors out of message identity; do
+  not advance confirmation on handoff alone.
+- [ ] Verify message-ID space across binding replacement and
+  retained/migrated history. Preserve destination and any required
+  account provenance independently of the triggering history chat.
+  Settle the durable key in ADR 0051/0026 before choosing SQL
+  constraints (see [open-decisions.md](open-decisions.md)); binding
+  generation alone is not proof of the provider's message-ID namespace.
+- [ ] Exercise bounded routing from a shared source to a slow or stopped
+  logical consumer. Document the coupled backpressure/replay boundary
+  rather than promising independent progress or adding unapproved
+  durable buffering. Deployment policy remains TBD in
+  [open-decisions.md](open-decisions.md).
+- [ ] Preserve typed content and stored codecs. Keep selections, message
+  IDs, callback/event IDs, and control traffic conceptually distinct;
+  unsupported interactions must not masquerade as text turns. Test the
+  extension boundary without shipping unused button/editing/receipt
+  machinery.
+- [ ] Apply admission/delivery capability checks to P2's neutral
+  peer-card payload. No common telephone parser or provider-specific
+  payload map; preserve supported WhatsApp cards and reject unsupported
+  card variants before queue admission.
+
+Gate:
+
+- [ ] Permanent failure does not block FIFO through useless retries;
+  transient sends retry, account authorization loss is visible, and a
+  replacement account sends none of the old queue.
+- [ ] Test restart around send/recording, reused message IDs in separate
+  destinations, own-send echoes versus human replies, held inbound
+  recording, and channels without optional operations.
+- [ ] Slow/cancelled producers and partially started adapters exit
+  without leaks or dropped messages from full queues. Tests establish
+  the actual acknowledgement/replay boundary, not an inferred
+  exactly-once guarantee or recipient-delivery claim.
+- [ ] A replay-capable fake confirms only after the agreed processing
+  outcome; failed persistence remains replayable, and recorded
+  duplicates and deliberate discards follow their explicit rules.
+  Shared-source tests cover view teardown, context-selection races, and
+  bounded backpressure.
+- [ ] A statically valid template whose resolved payload violates the
+  consuming bot's declared limits fails before queue admission, as does
+  equivalent API input. Delivery rechecks a dynamic eligibility change
+  separately from declared support; unsupported queued content fails
+  without silent downgrade or useless retries. No test assumes earlier
+  external effects can be rolled back.
+
+## P6 — Prove extension locality and close regression coverage
+
+Change: cross-package contract/regression tests and fixtures, plus the
+remaining documentation and generated reference that must describe the
+implemented runtime rather than the accepted target.
+
+- [ ] Run the same fixture graph through WhatsApp's test mapping and
+  contrasting registered fakes: an opaque-ID text-only channel and a
+  profile-local channel. Both traverse actual engine, stores,
+  fleet/outbox, and API paths, not bespoke test-only execution
+  pipelines. Include two bindings sharing one fake backend and an
+  HTTP-style update source with processing confirmation. These are
+  behavioral contrast cases, not new provider branches or SDK
+  dependencies.
+- [ ] Add an independent test adapter using only its adapter files and
+  one registry entry. Prove setup with existing steps, strict option
+  validation/schema, discovery, conversation reads, filters/holds,
+  durable sends, restart, and detach work without editing shared
+  production code. A required port/config/API/store change fails the
+  extension-locality gate; fix the abstraction instead of adding another
+  exception. Publish this reusable conformance test path for adapters.
+  Include the capability-consistency gates from plan.md §2 and P2/P4/P5
+  so future content/operation extensions cannot bypass config checks,
+  runtime/API admission, or per-bot discovery.
+- [ ] Review shared dependencies and hot paths: no SDK/wire identities,
+  phone-only routing, QR-only readiness, unconditional WhatsApp stores,
+  or provider switches outside named compatibility and registration
+  boundaries. Apply
+  [domain-cleanup.md](domain-cleanup.md)'s stricter
+  field/parameter/context audit: optional phone fields also fail the
+  clean-domain gate. Keep transport, setup, support, and storage
+  separate.
+- [ ] Complete automated fresh-schema/reopen, scope-isolation,
+  publication/reload, setup-race, retry, cancellation, and redaction
+  coverage from the earlier gates. Fakes declare unsupported features
+  honestly and require no new SDK, network service, or production
+  credential.
+- [ ] Update `glossary.md`, `architecture.md`, `api.md`,
+  `integration.md`, relevant guides/help, and config examples to match
+  the code. Regenerate the schema from implemented Go types. Do not
+  repeat the completed ADR-writing phase; amend an ADR only for a real
+  unresolved decision.
+- [ ] Run `make check` and `make test-race` in the main repository with
+  required permission, and complete the WhatsApp manual checklist.
+  Report manual checks as pending until actually exercised.
+
+Gate:
+
+- [ ] The extension-locality demonstration and every automated gate
+  pass; WhatsApp pairing, reconnect, live messages, queued replies,
+  history import/backfill, and unpair remain operational.
+- [ ] P1–P6 code outcomes are complete and tracked in `../../PLAN.md`.
+  Adding an adapter for existing capabilities now means adapter work
+  plus registration, not another runtime architecture project.

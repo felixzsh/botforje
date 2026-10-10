@@ -186,7 +186,9 @@ These are observations to evaluate, not decisions or implementation tasks:
 7. Keep account assets and policy outside ordinary payloads: approved templates, Flow assets,
    catalog access, business connections, Premium and a 24-hour reply window are not message kinds.
 
-The clean domain/card work remains owned by [the channel plan](../channel-plan.md) and the
+The clean domain/card work remains owned by [the channel plan](../plan.md),
+[domain cleanup](../domain-cleanup.md), [open decisions](../open-decisions.md),
+and the
 canonical ADRs. This research neither replaces those decisions nor authorizes a raw-provider
 payload escape hatch or silent text fallback.
 

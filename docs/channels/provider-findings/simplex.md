@@ -1,11 +1,13 @@
 # SimpleX Chat adapter findings
 
 Recorded: 2026-10-09. Adapter implementation, deployment, and capacity remain pending.
-[Channel plan](../channel-plan.md), sections 5 and 8, owns the fixed-profile reference case;
+[Channel plan](../plan.md) owns the goal; [domain cleanup](../domain-cleanup.md)
+owns the candidate direction and [open decisions](../open-decisions.md) the
+unresolved questions;
 ADR 0054 owns the unresolved trusted auxiliary-endpoint boundary.
 The concrete shared-service design below remains a candidate for this future adapter, not an
 approved deployment. The owner-approved common contract constraints and fake gates now live in
-the channel plan's section 2.1; they do not implement this production coordinator.
+the channel plan's section 2; they do not implement this production coordinator.
 
 ## Browser-free integration path
 
