@@ -172,7 +172,11 @@ func templateSites(a spec.Action) []templateSite {
 			}
 			if step.Contact != nil {
 				add(where+" contact name", step.Contact.Name)
-				add(where+" contact phone", step.Contact.Phone)
+				add(where+" contact note", step.Contact.Note)
+				for j, entry := range step.Contact.Entries {
+					add(fmt.Sprintf("%s contact entry %d value", where, j), entry.Value)
+					add(fmt.Sprintf("%s contact entry %d label", where, j), entry.Label)
+				}
 				add(where+" contact to", step.Contact.To)
 			}
 			if step.Poll != nil {

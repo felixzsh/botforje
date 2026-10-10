@@ -189,7 +189,13 @@
         "name": {
           "type": "string"
         },
-        "phone": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/ContactEntry"
+          },
+          "type": "array"
+        },
+        "note": {
           "type": "string"
         },
         "to": {
@@ -200,9 +206,29 @@
       "type": "object",
       "required": [
         "name",
-        "phone"
+        "entries"
       ],
-      "description": "Contact shares one contact card."
+      "description": "Contact shares one contact card: a display name plus reachability entries."
+    },
+    "ContactEntry": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind",
+        "value"
+      ],
+      "description": "ContactEntry is one reachability entry on a shared card."
     },
     "Cooldown": {
       "properties": {

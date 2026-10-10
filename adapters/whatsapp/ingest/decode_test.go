@@ -78,6 +78,28 @@ func TestContentType(t *testing.T) {
 	}
 }
 
+func TestContentTypeParsesContactCard(t *testing.T) {
+	content, ok := Decode(&waE2E.Message{ContactMessage: &waE2E.ContactMessage{
+		DisplayName: proto.String("Ana"),
+		Vcard: proto.String("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ana\r\n" +
+			"TEL;type=CELL;type=VOICE;waid=5215500000000:+5215500000000\r\n" +
+			"EMAIL:ana@example.com\r\nNOTE:Friend\r\nEND:VCARD"),
+	}})
+	if !ok {
+		t.Fatal("a contact was not classified")
+	}
+	card, ok := content.(botflota.ContactContent)
+	if !ok || card.Name != "Ana" || card.Note != "Friend" || len(card.Entries) != 2 {
+		t.Fatalf("contact = %#v", content)
+	}
+	if card.Entries[0].Kind != "phone" || card.Entries[0].Value != "+5215500000000" {
+		t.Fatalf("contact phone entry = %#v", card.Entries[0])
+	}
+	if card.Entries[1].Kind != "email" || card.Entries[1].Value != "ana@example.com" {
+		t.Fatalf("contact email entry = %#v", card.Entries[1])
+	}
+}
+
 func TestContentTypeExtractsStructure(t *testing.T) {
 	poll, ok := Decode(&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{
 		Name: proto.String("Lunch?"),

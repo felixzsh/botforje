@@ -281,12 +281,19 @@ scopes:
               name: "brochure.pdf"
               caption: "Our brochure"
 
-      # Contact card
+      # Contact card: a name plus reachability entries. Entry values
+      # are opaque payload strings; each channel projects them onto its
+      # own card object and rejects the variants it cannot compose.
       share-contact:
         steps:
           - contact:
               name: "Support"
-              phone: "5215500000000"
+              entries:
+                - kind: "phone"
+                  value: "5215500000000"
+                - kind: "email"
+                  value: "support@example.com"
+              note: "Mon-Fri 9-18"
 
       # Poll; selectable is how many options a voter may pick (default 1)
       quick-poll:

@@ -17,7 +17,10 @@ func TestContentRoundTrip(t *testing.T) {
 		MediaContent{Type: MediaDocument, Path: "/tmp/a.pdf", Name: "a.pdf"},
 		MediaContent{Type: MediaSticker, MIME: "image/webp"},
 		LocationContent{Latitude: 19.43, Longitude: -99.13, Name: "Office"},
-		ContactContent{Name: "Ana", Phone: "5215500000000"},
+		ContactContent{Name: "Ana", Entries: []ContactEntry{
+			{Kind: "phone", Value: "5215500000000", Label: "work"},
+			{Kind: "email", Value: "ana@example.com"},
+		}, Note: "Friend"},
 		PollContent{Question: "Lunch?", Options: []string{"yes", "no"}, Selectable: 1},
 		EventContent{Name: "meeting"},
 		InteractiveContent{Text: "Yes"},

@@ -21,7 +21,12 @@ scopes:
               name: "report.pdf"
           - contact:
               name: "Support"
-              phone: "5215500000000"
+              entries:
+                - kind: "phone"
+                  value: "5215500000000"
+                - kind: "email"
+                  value: "support@example.com"
+              note: "Mon-Fri 9-18"
           - poll:
               question: "How are we doing?"
               options: ["Great", "Fine"]

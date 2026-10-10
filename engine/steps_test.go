@@ -211,7 +211,12 @@ func TestMediaContactPollSteps(t *testing.T) {
 			Kind: "image", URL: "https://cdn.example.com/a.png", Caption: "Look",
 		}}}},
 		"card": {Steps: []spec.Step{{Contact: &spec.Contact{
-			Name: "Ana", Phone: "5215500000000",
+			Name: "Ana",
+			Entries: []spec.ContactEntry{
+				{Kind: "phone", Value: "5215500000000", Label: "work"},
+				{Kind: "email", Value: "ana@example.com"},
+			},
+			Note: "Friend",
 		}}}},
 		"vote": {Steps: []spec.Step{{Poll: &spec.Poll{
 			Question: "Lunch?", Options: []string{"yes", "no"},
@@ -241,8 +246,15 @@ func TestMediaContactPollSteps(t *testing.T) {
 		t.Fatalf("image = %#v", messages[0].Content)
 	}
 	contact, ok := messages[1].Content.(botflota.ContactContent)
-	if !ok || contact.Phone != "5215500000000" {
+	if !ok || contact.Name != "Ana" || contact.Note != "Friend" || len(contact.Entries) != 2 {
 		t.Fatalf("contact = %#v", messages[1].Content)
+	}
+	if contact.Entries[0].Kind != "phone" || contact.Entries[0].Value != "5215500000000" ||
+		contact.Entries[0].Label != "work" {
+		t.Fatalf("contact phone entry = %#v", contact.Entries[0])
+	}
+	if contact.Entries[1].Kind != "email" || contact.Entries[1].Value != "ana@example.com" {
+		t.Fatalf("contact email entry = %#v", contact.Entries[1])
 	}
 	poll, ok := messages[2].Content.(botflota.PollContent)
 	if !ok || len(poll.Options) != 2 {

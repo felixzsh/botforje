@@ -120,7 +120,9 @@ func TestMediaRejectsSecret(t *testing.T) {
 
 func TestContactRejectsSecret(t *testing.T) {
 	r := testRun()
-	err := r.contact(spec.Contact{Name: "Ana", Phone: "${API_TOKEN}"})
+	err := r.contact(spec.Contact{Name: "Ana", Entries: []spec.ContactEntry{
+		{Kind: "phone", Value: "${API_TOKEN}"},
+	}})
 	if !errors.Is(err, errSecretInMessage) {
 		t.Fatalf("contact error = %v, want errSecretInMessage", err)
 	}

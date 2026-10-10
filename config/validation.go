@@ -293,8 +293,18 @@ func validateContact(file, entity, prefix string, i int, c spec.Contact, add add
 	if c.Name == "" {
 		add(file, entity, "%sstep %d: contact needs a name", prefix, i)
 	}
-	if c.Phone == "" {
-		add(file, entity, "%sstep %d: contact needs a phone", prefix, i)
+	if len(c.Entries) == 0 {
+		add(file, entity, "%sstep %d: contact needs at least one entry", prefix, i)
+	}
+	for j, e := range c.Entries {
+		if !spec.ContactEntryKind(e.Kind).Valid() {
+			add(file, entity,
+				"%sstep %d: contact entry %d kind %q must be phone, email, address, or url",
+				prefix, i, j, e.Kind)
+		}
+		if e.Value == "" {
+			add(file, entity, "%sstep %d: contact entry %d needs a value", prefix, i, j)
+		}
 	}
 }
 

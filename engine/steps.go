@@ -188,7 +188,7 @@ func (r *run) contact(c spec.Contact) error {
 	if err != nil {
 		return err
 	}
-	phone, err := botflota.RenderTemplate(c.Phone, r.tctx.Get)
+	note, err := botflota.RenderTemplate(c.Note, r.tctx.Get)
 	if err != nil {
 		return err
 	}
@@ -196,10 +196,30 @@ func (r *run) contact(c spec.Contact) error {
 	if err != nil {
 		return err
 	}
-	if name == "" || phone == "" {
-		return errors.New("contact step needs a name and a phone")
+	if name == "" || len(c.Entries) == 0 {
+		return errors.New("contact step needs a name and at least one entry")
 	}
-	for _, field := range []string{name, phone} {
+	entries := make([]botflota.ContactEntry, 0, len(c.Entries))
+	fields := []string{name, note}
+	for _, e := range c.Entries {
+		if !spec.ContactEntryKind(e.Kind).Valid() {
+			return fmt.Errorf("contact entry kind %q must be phone, email, address, or url", e.Kind)
+		}
+		value, err := botflota.RenderTemplate(e.Value, r.tctx.Get)
+		if err != nil {
+			return err
+		}
+		label, err := botflota.RenderTemplate(e.Label, r.tctx.Get)
+		if err != nil {
+			return err
+		}
+		if value == "" {
+			return errors.New("contact entry needs a value")
+		}
+		entries = append(entries, botflota.ContactEntry{Kind: e.Kind, Value: value, Label: label})
+		fields = append(fields, value, label)
+	}
+	for _, field := range fields {
 		if err := checkNoSecret(field); err != nil {
 			return err
 		}
@@ -207,7 +227,7 @@ func (r *run) contact(c spec.Contact) error {
 	r.out = append(r.out, botflota.OutgoingMessage{
 		Bot:            r.engine.bot,
 		RecipientPhone: recipient,
-		Content:        botflota.ContactContent{Name: name, Phone: phone},
+		Content:        botflota.ContactContent{Name: name, Entries: entries, Note: note},
 		Origin:         botflota.OriginPreset,
 		Routing:        r.routing,
 	})

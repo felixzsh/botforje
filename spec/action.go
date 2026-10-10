@@ -95,12 +95,45 @@ type Media struct {
 	To      string `yaml:"to" json:"to,omitempty"`
 }
 
-// Contact shares one contact card. Name and Phone are required and may be
+// Contact shares one contact card: a display name plus reachability
+// entries. Entry values are opaque payload strings the author writes;
+// shared code never parses or validates their format. Each adapter
+// projects the entries onto its own card object and rejects the
+// variants it cannot compose. Name, values, and labels may be
 // templates.
 type Contact struct {
-	Name  string `yaml:"name" json:"name"`
-	Phone string `yaml:"phone" json:"phone"`
-	To    string `yaml:"to" json:"to,omitempty"`
+	Name    string         `yaml:"name" json:"name"`
+	Entries []ContactEntry `yaml:"entries" json:"entries"`
+	Note    string         `yaml:"note,omitempty" json:"note,omitempty"`
+	To      string         `yaml:"to,omitempty" json:"to,omitempty"`
+}
+
+// ContactEntryKind names the payload class of one card entry. It is a
+// label only; it grants no identity, routing, or send permission.
+type ContactEntryKind string
+
+const (
+	ContactPhone   ContactEntryKind = "phone"
+	ContactEmail   ContactEntryKind = "email"
+	ContactAddress ContactEntryKind = "address"
+	ContactURL     ContactEntryKind = "url"
+)
+
+// Valid reports whether k is a declared entry kind.
+func (k ContactEntryKind) Valid() bool {
+	switch k {
+	case ContactPhone, ContactEmail, ContactAddress, ContactURL:
+		return true
+	default:
+		return false
+	}
+}
+
+// ContactEntry is one reachability entry on a shared card.
+type ContactEntry struct {
+	Kind  string `yaml:"kind" json:"kind"`
+	Value string `yaml:"value" json:"value"`
+	Label string `yaml:"label,omitempty" json:"label,omitempty"`
 }
 
 // Poll creates a poll. Question and at least two distinct Options are

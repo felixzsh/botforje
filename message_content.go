@@ -133,9 +133,18 @@ func (c LocationContent) VisibleText() string {
 func (LocationContent) messageContent()  {}
 func (LocationContent) sendableContent() {}
 
+// ContactEntry is one reachability entry on a shared card. Values are
+// opaque payload strings; shared code never parses or validates them.
+type ContactEntry struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+	Label string `json:"label,omitempty"`
+}
+
 type ContactContent struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone,omitempty"`
+	Name    string         `json:"name"`
+	Entries []ContactEntry `json:"entries,omitempty"`
+	Note    string         `json:"note,omitempty"`
 }
 
 func (ContactContent) MessageKind() MessageKind { return KindContact }

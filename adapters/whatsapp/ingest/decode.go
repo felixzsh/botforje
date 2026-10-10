@@ -4,6 +4,8 @@
 package ingest
 
 import (
+	"strings"
+
 	"go.mau.fi/whatsmeow/proto/waE2E"
 
 	"github.com/felixzsh/botflota"
@@ -74,13 +76,15 @@ func Decode(m *waE2E.Message) (botflota.MessageContent, bool) {
 			Description: location.GetCaption(),
 		}, true
 	case m.GetContactMessage() != nil:
-		return botflota.ContactContent{
-			Name: m.GetContactMessage().GetDisplayName(),
-		}, true
+		card := m.GetContactMessage()
+		return contactContent(card.GetDisplayName(), card.GetVcard()), true
 	case m.GetContactsArrayMessage() != nil:
-		return botflota.ContactContent{
-			Name: m.GetContactsArrayMessage().GetDisplayName(),
-		}, true
+		array := m.GetContactsArrayMessage()
+		raw := ""
+		if len(array.GetContacts()) > 0 {
+			raw = array.GetContacts()[0].GetVcard()
+		}
+		return contactContent(array.GetDisplayName(), raw), true
 	case m.GetPollCreationMessage() != nil:
 		return pollContent(m.GetPollCreationMessage()), true
 	case m.GetPollCreationMessageV2() != nil:
@@ -256,4 +260,75 @@ func callLogLabel(web *waE2E.Message) (string, bool) {
 	default:
 		return "Call", true
 	}
+}
+
+// contactContent parses a vCard into neutral entries. Only the standard
+// TEL, EMAIL, ADR, URL, and NOTE properties are read; anything else stays
+// out rather than leaking wire details into the domain. Values stay
+// opaque: the parser unescapes the field separators but never interprets
+// the content.
+func contactContent(name, raw string) botflota.ContactContent {
+	content := botflota.ContactContent{Name: name}
+	for _, line := range vcardLines(raw) {
+		prop, value := vcardProperty(line)
+		switch prop {
+		case "TEL":
+			content.Entries = append(content.Entries,
+				botflota.ContactEntry{Kind: "phone", Value: value})
+		case "EMAIL":
+			content.Entries = append(content.Entries,
+				botflota.ContactEntry{Kind: "email", Value: value})
+		case "ADR":
+			content.Entries = append(content.Entries,
+				botflota.ContactEntry{Kind: "address", Value: value})
+		case "URL":
+			content.Entries = append(content.Entries,
+				botflota.ContactEntry{Kind: "url", Value: value})
+		case "NOTE":
+			if content.Note == "" {
+				content.Note = value
+			} else {
+				content.Note += "\n" + value
+			}
+		case "FN":
+			if content.Name == "" {
+				content.Name = value
+			}
+		}
+	}
+	return content
+}
+
+// vcardLines splits vCard text into unfolded logical lines.
+func vcardLines(raw string) []string {
+	var lines []string
+	for _, line := range strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n") {
+		if (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) && len(lines) > 0 {
+			lines[len(lines)-1] += strings.TrimPrefix(strings.TrimPrefix(line, " "), "\t")
+			continue
+		}
+		if line = strings.TrimRight(line, "\r"); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// vcardProperty splits one line into its uppercase property name and its
+// unescaped value.
+func vcardProperty(line string) (string, string) {
+	name := line
+	if i := strings.IndexAny(line, ";:"); i >= 0 {
+		name = line[:i]
+	}
+	value := ""
+	if i := strings.Index(line, ":"); i >= 0 {
+		value = vcardUnescape(line[i+1:])
+	}
+	return strings.ToUpper(name), value
+}
+
+// vcardUnescape reverses the vCard 3.0 field separator escapes.
+func vcardUnescape(value string) string {
+	return strings.NewReplacer(`\n`, "\n", `\N`, "\n", `\;`, ";", `\,`, ",", `\\`, `\`).Replace(value)
 }

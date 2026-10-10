@@ -1,0 +1,9 @@
+scopes:
+  default:
+    actions:
+      a:
+        steps:
+          - contact:
+              name: "Support"
+              entries:
+                - kind: "phone"

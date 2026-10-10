@@ -37,13 +37,22 @@ func TestBuildContent(t *testing.T) {
 	}
 
 	contact, err := buildContent(botflota.ContactContent{
-		Name: "Ana", Phone: "5215500000000",
+		Name: "Ana",
+		Entries: []botflota.ContactEntry{
+			{Kind: "phone", Value: "+5215500000000", Label: "work"},
+			{Kind: "email", Value: "ana@example.com"},
+		},
+		Note: "Friend",
 	})
 	if err != nil {
 		t.Fatalf("contact: %v", err)
 	}
 	card := contact.GetContactMessage()
-	if card.GetDisplayName() != "Ana" || !strings.Contains(card.GetVcard(), "waid=5215500000000") {
+	vc := card.GetVcard()
+	if card.GetDisplayName() != "Ana" ||
+		!strings.Contains(vc, "TEL;type=CELL;type=VOICE;type=WORK;waid=5215500000000:+5215500000000") ||
+		!strings.Contains(vc, "EMAIL:ana@example.com") ||
+		!strings.Contains(vc, "NOTE:Friend") {
 		t.Fatalf("contact = %+v", card)
 	}
 

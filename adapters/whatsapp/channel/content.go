@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -71,14 +72,68 @@ func buildContact(c botflota.ContactContent) *waE2E.Message {
 	}}
 }
 
-// vcard renders one contact as the vCard 3.0 text WhatsApp expects.
+// vcard renders entries as the vCard 3.0 text WhatsApp expects. Values
+// stay opaque: the adapter escapes the field separators but never
+// interprets the content. A phone entry keeps the waid parameter WhatsApp
+// uses for account matching when the value holds digits. Unknown entry
+// kinds ride along as NOTE lines so nothing is dropped silently.
 func vcard(contact botflota.ContactContent) string {
-	return "BEGIN:VCARD\r\n" +
-		"VERSION:3.0\r\n" +
-		"FN:" + contact.Name + "\r\n" +
-		"N:" + contact.Name + ";;;;\r\n" +
-		"TEL;type=CELL;type=VOICE;waid=" + contact.Phone + ":+" + contact.Phone + "\r\n" +
-		"END:VCARD"
+	lines := []string{
+		"BEGIN:VCARD",
+		"VERSION:3.0",
+		"FN:" + vcardEscape(contact.Name),
+		"N:" + vcardEscape(contact.Name) + ";;;;",
+	}
+	for _, e := range contact.Entries {
+		switch e.Kind {
+		case "phone":
+			line := "TEL;type=CELL;type=VOICE" + vcardType(e.Label)
+			if digits := vcardDigits(e.Value); digits != "" {
+				line += ";waid=" + digits
+			}
+			lines = append(lines, line+":"+vcardEscape(e.Value))
+		case "email":
+			lines = append(lines, "EMAIL"+vcardType(e.Label)+":"+vcardEscape(e.Value))
+		case "address":
+			lines = append(lines, "ADR"+vcardType(e.Label)+":;;"+vcardEscape(e.Value)+";;;;")
+		case "url":
+			lines = append(lines, "URL"+vcardType(e.Label)+":"+vcardEscape(e.Value))
+		default:
+			lines = append(lines, "NOTE:"+vcardEscape(e.Kind+": "+e.Value))
+		}
+	}
+	if contact.Note != "" {
+		lines = append(lines, "NOTE:"+vcardEscape(contact.Note))
+	}
+	return strings.Join(lines, "\r\n") + "\r\nEND:VCARD"
+}
+
+// vcardType renders an entry label as a vCard TYPE parameter, or nothing
+// when the author set no label.
+func vcardType(label string) string {
+	if label == "" {
+		return ""
+	}
+	return ";type=" + strings.ToUpper(label)
+}
+
+// vcardDigits keeps the ASCII digits of a phone entry for the waid
+// parameter, or nothing when the value holds no digits.
+func vcardDigits(value string) string {
+	var digits strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] >= '0' && value[i] <= '9' {
+			digits.WriteByte(value[i])
+		}
+	}
+	return digits.String()
+}
+
+// vcardEscape escapes the vCard 3.0 field separators in one value.
+func vcardEscape(value string) string {
+	escaper := strings.NewReplacer(`\`, `\\`, ";", `\;`, ",", `\,`,
+		"\r\n", `\n`, "\n", `\n`, "\r", `\n`)
+	return escaper.Replace(value)
 }
 
 func buildPoll(content botflota.PollContent) (*waE2E.Message, error) {
