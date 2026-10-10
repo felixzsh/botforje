@@ -12,22 +12,44 @@ evidence it is waiting for. New findings in `provider-findings/` or new
 rows in `provider-differences/` should add or reopen entries here, not
 silently harden the plan.
 
+## Closed on 2026-10-10 (owner decision, implemented in code)
+
+- **Phone-number term: eliminated from the domain, kept as a payload
+  label only.** No `Phone` field, parameter, column, helper, digit
+  validation, or template path remains in shared contracts. The single
+  place the word survives is the `phone` entry kind on the contact
+  step/card, which carries no domain semantics: shared code never
+  parses or validates it. Phone-like data may also appear inside opaque
+  subjects (a WhatsApp subject can hold digits) and inside message text,
+  both uninterpreted. Telephone inputs at setup (registration codes)
+  are adapter-owned write-only bind inputs with no core name. Mentions
+  of the physical handset in prose ("typed on the phone") are not
+  domain concepts and stay. Still to amend: ADR 0051 (optional phone
+  metadata), ADR 0018 (`contact.phone` empty-value semantics), ADR 0020
+  (title and identity claim), ADR 0021 (one-bot-per-number wording).
+- **Peer-card declaration shape.** `spec.Contact` is now
+  `name` + `entries[{kind, value, label}]` + `note`, with kinds `phone`,
+  `email`, `address`, `url`; `botflota.ContactContent` mirrors it and
+  the stored codec round-trips it. vCard composition and parsing live
+  entirely in the WhatsApp adapter; the core never imports vCard
+  concepts. Still to align: ADR 0036 (card-format transition), and the
+  P2 per-bot capability validation of card variants.
+- **No separate phone/email steps.** No provider exposes "send a phone
+  number" or "send an email" as a message object; every card object
+  bundles a person's attributes. A bare number or address as text is
+  already a `message` step. Connection/invitation links are a different,
+  future `invite` kind with no consumer today, not a contact variant.
+
 ## Reopened claims waiting on provider evidence
 
-- **Common optional phone metadata: keep or remove.** ADR 0051 keeps
-  phone as optional metadata, never identity; the 2026-10-08 owner
-  steer removes provider-specific concepts from shared contracts even
-  as optional fields. Decide which reading wins before P1 closes.
-  Depends on: `provider-differences/identity-directory-targets.md` and
-  the identity notes in each file under `provider-findings/`. Owner:
-  ADR 0051, ADR 0029.
-- **Peer-card replacement format.** The vCard-subset replacement was a
-  recommendation, not an agreed contract. Telegram's card requires a
-  phone and first name, Signal and Cloud cards have their own shapes,
-  and SimpleX has no telephone card. Agree version/subset, templating,
-  limits, and validation before P2 codes it. Depends on:
-  `provider-differences/outbound-messages.md` and the contact-card
-  sections of each finding. Owner: ADR 0036.
+- **Common optional phone metadata: keep or remove.** Closed on
+  2026-10-10, see the Closed section above: removed, except the
+  `phone` payload label on contact entries. The ADR amendments listed
+  there are still pending.
+- **Peer-card replacement format.** Closed on 2026-10-10, see the
+  Closed section above: neutral entries shape with adapter-owned vCard
+  handling. Remaining: ADR 0036 alignment and per-bot variant
+  validation in P2.
 - **Capability granularity.** Declaring support per channel *and*
   account mode (not per provider) is the working assumption, motivated
   by WhatsApp native versus Cloud and Telegram bot versus user login.

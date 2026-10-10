@@ -144,13 +144,19 @@ contracts they translate to:
   mutating a shared graph for every channel or by textual
   search-and-replace. Unsupported aliases fail validation, not render
   empty silently.
-- A peer card is shared content, not a directory entry or binding
-  identity. The current telephone-shaped declaration/content model is
-  included in the cleanup, not exempted as optional. Its replacement
-  format is undecided; see [open-decisions.md](open-decisions.md).
+- A peer card is shared content, not a directory entry or binding identity.
+  The telephone-shaped declaration/content model is replaced by a neutral
+  card: a display name plus reachability entries (`phone`, `email`,
+  `address`, `url` kinds as payload labels), each an opaque string the
+  shared code never parses. Entry values may be templates; each adapter
+  projects them onto its native card object and rejects the variants it
+  cannot compose. WhatsApp composes and parses vCard 3.0 entirely inside
+  its adapter. A future `invite` kind for connection links stays undecided;
+  see [open-decisions.md](open-decisions.md).
 - If old telephone-based card YAML remains supported, its
   adapter-owned compatibility decoder constructs the neutral card before
-  execution. Update validation, schema generation, publication,
+  execution. The old `name`/`phone` declaration shape is retired; update
+  validation, schema generation, publication,
   round-tripping, and stored content codecs consistently; compatibility
   must not reintroduce a telephone property into common declarations.
 - Public phone paths, templates, signed webhook envelopes, and CSV

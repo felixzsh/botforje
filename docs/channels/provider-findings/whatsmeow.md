@@ -111,9 +111,11 @@ official Cloud API findings for its documented button/list parameter contracts.
 ## Botflota's current subset
 
 The inspected [native content builder][local-content] sends text, static location, one contact,
-plain polls, and image/video/audio/document/sticker. It does not expose the richer variants above.
-In particular, its audio builder does not set `PTT`; ordinary audio support is not voice-note
-support. Its local media-fetch cap is 16 MiB, not a claim about WhatsApp's platform maximum.
+plain polls, and image/video/audio/document/sticker. The contact builder composes the neutral
+card entries into a vCard 3.0 text and parses inbound vCards back into entries; the core
+never sees vCard syntax. In particular, its audio builder does not set `PTT`; ordinary audio
+support is not voice-note support. Its local media-fetch cap is 16 MiB, not a claim about
+WhatsApp's platform maximum.
 
 ## Sources
 
