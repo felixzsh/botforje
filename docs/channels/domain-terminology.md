@@ -19,11 +19,23 @@ pending decisions; no names or speculative fields are assigned to them here.
 
 ## Reading the catalog
 
-A target marked `(redesign)` changes responsibilities, not just spelling. It is
-not a mechanical replacement of the current fields, methods, or state values.
-The boundaries below settle that distinction; final contracts belong to their
+Source baseline: `e6f6de0`. Every table separates the actual code, the selected
+target term, and the nature of the change. Unqualified symbols belong to the core;
+an unqualified target method belongs to its renamed owner. CLI names and template
+paths are identified explicitly. Names from earlier proposals are not current code.
+
+An empty `Current code` cell means there is no directly corresponding declaration
+or field in that baseline. It does not mean the runtime has no related behavior.
+A new neutral type can model an existing role currently represented by strings or
+flags. `New concept` is reserved for something without an existing conceptual
+analogue; missing a named type alone does not justify that classification.
+
+`Rename` preserves the concept. `Rename + redesign` changes the name and also its
+representation or responsibilities; it is not a mechanical symbol replacement.
+`No rename; redesign` keeps the name but changes the contract. `Retire` has no
+replacement name, shown as `—`. The boundaries below settle these distinctions,
+not final layouts, signatures, or state values: those belong to the affected
 phase's decision review and canonical ADR updates before implementation.
-`Retired` means the old contract is not carried forward under a new name.
 
 Internal Go renames do not automatically change YAML/JSON keys, serialized values,
 HTTP routes, event topics, or archive formats. Preserve, translate, or deliberately
@@ -34,16 +46,16 @@ that decision. The selected `KindContactCard` rename keeps the serialized value
 
 ## Identity and directory
 
-| Current | Target |
-| --- | --- |
-| `ContactKey` | `IdentityKey` |
-| Scope-level `Contact` | `Peer` |
-| `ContactStore` | `PeerStore` |
-| `ContactStore.EnsureContact` | `PeerStore.EnsurePeer` |
-| `ContactPage` | `PeerPage` |
-| `ContactPage.Contacts` | `PeerPage.Peers` |
-| `AddressBookEntry` | `DirectoryEntry` |
-| `AddressBookStore` | `DirectoryStore` |
+| Current code | Target term | Change |
+| --- | --- | --- |
+| | `IdentityKey` | New type; existing identity role |
+| `Contact` | `Peer` | Rename + identity redesign |
+| `ContactStore` | `PeerStore` | Rename + identity redesign |
+| `ContactStore.EnsureContact` | `PeerStore.EnsurePeer` | Rename + identity redesign |
+| `ContactPage` | `PeerPage` | Rename; follows peer redesign |
+| `ContactPage.Contacts` | `PeerPage.Peers` | Rename |
+| `AddressBookEntry` | `DirectoryEntry` | Rename + directory redesign |
+| `AddressBookStore` | `DirectoryStore` | Rename + directory redesign |
 
 [The glossary](../glossary.md) distinguishes peer identity, account-directory
 membership, and contact-card payloads; none requires a prior message exchange.
@@ -52,59 +64,72 @@ an optional channel capability with a separate port shape, not decided here.
 
 ## Chat and graph execution
 
-| Current | Target |
-| --- | --- |
-| `Chat`, `ChatStore` | Unchanged |
-| `ConversationTarget` | `ChatTarget` |
-| `ConversationKind` | `ChatKind` |
-| `ConversationDirect` / `ConversationGroup` | `ChatDirect` / `ChatGroup` |
-| `Session` / `SessionStore` | `GraphRun` / `GraphRunStore` |
-| `SessionID` / `TurnRecord.Session` | `GraphRunID` / `TurnRecord.GraphRun` |
-| `HasActiveSessionOutsideNodes` | `HasActiveGraphRunOutsideNodes` |
+| Current code | Target term | Change |
+| --- | --- | --- |
+| `Chat`, `ChatStore` | Unchanged | No rename; addressing redesign |
+| | `ChatTarget` | New type; existing addressing role |
+| | `ChatKind` | New type; generalizes group flag |
+| | `ChatDirect` / `ChatGroup` | New constants; existing distinction |
+| `Session` / `SessionStore` | `GraphRun` / `GraphRunStore` | Rename |
+| `Message.SessionID` | `Message.GraphRunID` | Rename |
+| `TurnRecord.Session` | `TurnRecord.GraphRun` | Rename |
+| `SessionStore.HasActiveSessionOutsideNodes` | `HasActiveGraphRunOutsideNodes` | Rename |
 
 ## Binding
 
-| Current | Target |
-| --- | --- |
-| `LinkedAccount` | `Binding` |
-| `LinkedAccountStore` | `BindingStore` |
-| `PairingRunner` | `BindRunner` |
-| `PairRequest` | `BindRequest` |
-| `PairingSession` | `BindSession` |
-| `PairState` | `BindState` |
-| `PairingResult` | `BindResult` (redesign) |
-| `PairingSession.Code` | `BindSession.NextStep` (`BindStep`) |
-| `DevicePresence` | `BindingInspector` (redesign) |
-| `PairingStatus` | `BindingStatus` (redesign) |
-| `PairingState` | Retired; not renamed to `BindingStatus` |
-| `PairingStore` | Retired |
-| `AccountUnpairer` | `Unbinder` |
-| `UnpairAccount` | `Unbind` |
-| `ErrAccountInUse` | `ErrIdentityInUse` |
-| `bot pair` / `bot unpair` | `bot bind` / `bot unbind` |
+| Current code | Target term | Change |
+| --- | --- | --- |
+| `LinkedAccount` | `Binding` | Rename + binding redesign |
+| `LinkedAccountStore` | `BindingStore` | Rename + binding redesign |
+| `PairingRunner` | `BindRunner` | Rename + setup redesign |
+| `PairRequest` | `BindRequest` | Rename + setup redesign |
+| `PairingSession` | `BindSession` | Rename + setup redesign |
+| `PairState` | `BindState` | Rename + setup-state redesign |
+| `PairingResult` | `BindResult` | Rename + binding-result redesign |
+| `PairingSession.Code` | `BindSession.NextStep` | Redesign; typed setup step |
+| | `BindStep` | New type; generalizes QR challenge |
+| `DevicePresence` | `BindingInspector` | Rename + readiness redesign |
+| `PairingStatus` | `BindingStatus` | Rename + readiness redesign |
+| `PairingState` | — | Retire old pairing enum |
+| `PairingStore` | — | Retire |
+| `AccountUnpairer` | `Unbinder` | Rename + detachment redesign |
+| `AccountUnpairer.UnpairAccount` | `Unbind` | Rename + detachment redesign |
+| `ErrAccountInUse` | `ErrIdentityInUse` | Rename + identity redesign |
+| `bot pair` / `bot unpair` | `bot bind` / `bot unbind` | CLI rename; compatibility pending |
 
 ## Messages, cards, and fields
 
-| Current | Target |
-| --- | --- |
-| `IncomingMessage.Contact` | `IncomingMessage.Sender` (`IdentityKey`) |
-| `IncomingMessage.Conversation` | `IncomingMessage.Target` (`ChatTarget`) |
-| `OutgoingMessage.RecipientPhone` | `OutgoingMessage.Target` (`ChatTarget`) |
-| `OutboundMessage.RecipientPhone` | `ExternalSend.Target` (`ChatTarget`) |
-| `OutboundRecord.Recipient` | `OutboundRecord.Target` (`ChatTarget`) |
-| `OutboxEntry.Recipient` | `OutboxEntry.Target` (`ChatTarget`) |
-| `SendRecord.To` | `SendRecord.Target` (`ChatTarget`) |
-| New field, not a rename | `SendRecord.Recipient` (optional `IdentityKey`) |
-| `Chat.ContactID` | `Chat.PeerID` |
-| `HistoryChat.ContactKey` / `.ContactName` | `HistoryChat.PeerKey` / `.PeerName` |
-| `ContactContent` / `spec.Contact` | `ContactCardContent` / `spec.ContactCard` |
-| `spec.Step.Contact` | `spec.Step.ContactCard` |
-| `ContactEntry` / `spec.ContactEntry` | `ContactCardEntry` / `spec.ContactCardEntry` |
-| `spec.ContactEntryKind` | `spec.ContactCardEntryKind` |
-| `KindContact` | `KindContactCard` (serialized value stays `contact`) |
-| `AllowedContacts` / `IgnoredContacts` | `AllowedPeers` / `IgnoredPeers` |
-| Scope-level `Contact.DisplayName` | `Peer.DisplayName` |
-| `AddressBookEntry` name fields | Normalized `DirectoryEntry.DisplayName` |
+| Current code | Target term | Change |
+| --- | --- | --- |
+| `IncomingMessage.FromPhone` | `IncomingMessage.Sender` (`IdentityKey`) | Rename + redesign |
+| | `IncomingMessage.Target` (`ChatTarget`) | New field; existing addressing role |
+| `IncomingMessage.IsGroup` | Kind on `Target` | Redesign; neutral conversation kind |
+| `OutgoingMessage.RecipientPhone` | `OutgoingMessage.Target` | Rename + addressing redesign |
+| `OutboundMessage.RecipientPhone` | `ExternalSend.Target` | Rename + addressing redesign |
+| `OutboundRecord.Recipient` | `OutboundRecord.Target` | Rename + addressing redesign |
+| `OutboxEntry.Recipient` | `OutboxEntry.Target` | Rename + addressing redesign |
+| `SendRecord.To` | `SendRecord.Target` | Rename + addressing redesign |
+| | `SendRecord.Recipient` (`IdentityKey`) | New field; separates identity from target |
+| `Chat.ContactID` | `Chat.PeerID` | Rename + participant redesign |
+| `HistoryChat.ContactPhone` | `HistoryChat.PeerKey` | Rename + identity redesign |
+| `HistoryChat.ContactName` | `HistoryChat.PeerName` | Rename |
+| `ContactContent` / `spec.Contact` | `ContactCardContent` / `spec.ContactCard` | Rename |
+| `spec.Step.Contact` | `spec.Step.ContactCard` | Rename; serialized key unchanged |
+| `ContactEntry` / `spec.ContactEntry` | `ContactCardEntry` / `spec.ContactCardEntry` | Rename |
+| `spec.ContactEntryKind` | `spec.ContactCardEntryKind` | Rename; labels unchanged |
+| `KindContact` | `KindContactCard` | Rename; value remains `contact` |
+| `spec.BotSettings.AllowedContacts` | `spec.BotSettings.AllowedPeers` | Rename + redesign |
+| `spec.BotSettings.IgnoredContacts` | `spec.BotSettings.IgnoredPeers` | Rename + redesign |
+| `Contact.DisplayName` | `Peer.DisplayName` | Rename |
+| `AddressBookEntry.DisplayName()` | `DirectoryEntry.DisplayName` | Adapter normalization |
+
+`IncomingMessage.FromPhone` currently carries a phone string, not an identity key.
+Its replacement needs adapter normalization to `Sender`, not just a name change.
+The inbound `Target` is new; it needs explicit conversation addressing beyond the
+current `IsGroup` flag. `HistoryChat.ContactPhone` already serves an identity role;
+`PeerKey` generalizes that projection rather than merely renaming a phone value.
+All `Target` entries use `ChatTarget`; known `Sender` and `Recipient` identities use
+`IdentityKey`. Optional-value representation and final layouts remain phase work.
 
 ### Outbound addressing
 
@@ -140,38 +165,47 @@ keys or stored formats without a separate compatibility decision.
 
 ## Retired common fields and helpers
 
-| Current | Target |
-| --- | --- |
-| `LinkedAccount.JID` / `.Account` | Normalized `Binding.Identity` |
-| `LinkedAccount.Phone`, `IncomingMessage.FromPhone`, `Contact.Phone` | Removed |
-| `AddressBookEntry.Phone`, `HistoryChat.ContactPhone`, `ChatSummary.Phone` | Removed |
-| Common `PushName` / `BusinessName` | Removed from domain; adapter-only |
-| `RecordInbound` phone parameter | Removed |
-| `ConversationTarget.Participant()` / `Contact.DirectConversation()` | Removed |
-| Universal `contact.phone` | Removed; legacy alias only |
-| `RootContact` | `RootPeer` |
-| Runtime identity root `contact` | `peer` |
+| Current code | Target term | Change |
+| --- | --- | --- |
+| `LinkedAccount.JID` | `Binding.Identity` | Redesign; verified account identity |
+| `LinkedAccount.Phone()` / `Contact.Phone` | — | Retire universal phone properties |
+| `AddressBookEntry.Phone` | — | Retire universal phone property |
+| `ChatSummary.Phone` | — | Retire phone-only projection |
+| `AddressBookEntry.PushName` / `.BusinessName` | — | Adapter-only; normalize directory name |
+| `ContactStore.RecordInbound` phone parameter | — | Retire phone parameter |
+| `contact.phone` template path | — | Retire; legacy alias only |
+| `RootContact` | `RootPeer` | Rename; template compatibility pending |
+| `contact` runtime root | `peer` | Public rename; compatibility pending |
 
 ## Other renames
 
-| Current | Target |
-| --- | --- |
-| `StateReporter` / `ChannelState` | `TransportReporter` / `TransportState` (redesign) |
-| `OutboundMessage` / `OutboundObserver` | `ExternalSend` / `ExternalSendObserver` |
-| `HistorySyncer` | `HistorySource` (redesign) |
-| `HistoryResult` | `HistoryImportResult` (redesign) |
-| `FirstContact` / `FirstContactNotifier` | `PeerFirstSeen` / `PeerFirstSeenNotifier` |
-| `FirstContact.Contact` | `PeerFirstSeen.Peer` |
-| `EventContactFirstSeen` | `EventPeerFirstSeen` |
-| `HistoryTable` / `HistorySink.BeginTable` | `HistorySection` / `HistorySink.BeginSection` |
-| `TableChats` | `SectionChats` |
-| `TableSessions` | `SectionGraphRuns` |
-| `TableMessages` | `SectionMessages` |
-| `TableAddressBook` | `SectionDirectory` |
-| `HistorySink.Session` / `.AddressBookEntry` | `HistorySink.GraphRun` / `.DirectoryEntry` |
-| `api.Fleet.StopBotForUnpair` | `api.Fleet.StopBotForUnbind` |
-| `StartPair` / `CurrentPair` / `CancelPair` / `EndPair` | `Begin` / `Get` / `Cancel` / `Wait` |
-| `HistoryCounts.Sessions` / `.AddressBook` | `HistoryCounts.GraphRuns` / `.Directory` |
+| Current code | Target term | Change |
+| --- | --- | --- |
+| `StateReporter` | `TransportReporter` | Rename + transport redesign |
+| `StateReporter.ChannelState` | `TransportState` | Rename + transport redesign |
+| `OutboundMessage` | `ExternalSend` | Rename + provenance redesign |
+| `OutboundObserver` | `ExternalSendObserver` | Rename + provenance redesign |
+| `HistorySyncer` | `HistorySource` | Rename + retrieval redesign |
+| `HistoryResult` | `HistoryImportResult` | Rename + import-result redesign |
+| `FirstContact` | `PeerFirstSeen` | Rename |
+| `FirstContactNotifier` | `PeerFirstSeenNotifier` | Rename |
+| `FirstContact.Contact` | `PeerFirstSeen.Peer` | Rename |
+| `EventContactFirstSeen` | `EventPeerFirstSeen` | Rename; event compatibility pending |
+| `HistoryTable` | `HistorySection` | Rename + grouping redesign |
+| `HistorySink.BeginTable` | `HistorySink.BeginSection` | Rename + grouping redesign |
+| `TableChats` | `SectionChats` | Rename; export compatibility separate |
+| `TableSessions` | `SectionGraphRuns` | Rename; export compatibility separate |
+| `TableMessages` | `SectionMessages` | Rename; export compatibility separate |
+| `TableAddressBook` | `SectionDirectory` | Rename; export compatibility separate |
+| `HistorySink.Session` | `HistorySink.GraphRun` | Rename |
+| `HistorySink.AddressBookEntry` | `HistorySink.DirectoryEntry` | Rename; directory redesign |
+| `api.Fleet.StopBotForUnpair` | `StopBotForUnbind` | Rename; binding lifecycle applies |
+| `PairingRunner.StartPair` | `Begin` | Rename + setup redesign |
+| `PairingRunner.CurrentPair` | `Get` | Rename + setup redesign |
+| `PairingRunner.CancelPair` | `Cancel` | Rename + setup redesign |
+| `PairingRunner.EndPair` | `Wait` | Rename + setup redesign |
+| `HistoryCounts.Sessions` | `HistoryCounts.GraphRuns` | Rename |
+| `HistoryCounts.AddressBook` | `HistoryCounts.Directory` | Rename |
 
 History section names describe domain groupings, not SQL table names or archive
 filenames. Renaming constants does not authorize a serialized export-format change.
