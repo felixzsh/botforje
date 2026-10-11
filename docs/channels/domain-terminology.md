@@ -17,6 +17,21 @@ sharing nor context selection adds a common pool or profile-switch contract.
 Exact receive-completion signatures and durable message-provenance fields are
 pending decisions; no names or speculative fields are assigned to them here.
 
+## Reading the catalog
+
+A target marked `(redesign)` changes responsibilities, not just spelling. It is
+not a mechanical replacement of the current fields, methods, or state values.
+The boundaries below settle that distinction; final contracts belong to their
+phase's decision review and canonical ADR updates before implementation.
+`Retired` means the old contract is not carried forward under a new name.
+
+Internal Go renames do not automatically change YAML/JSON keys, serialized values,
+HTTP routes, event topics, or archive formats. Preserve, translate, or deliberately
+change each public representation through an explicit compatibility decision;
+retaining every old format is not required. No global text replacement constitutes
+that decision. The selected `KindContactCard` rename keeps the serialized value
+`contact`; other public changes are not approved by this catalog.
+
 ## Identity and directory
 
 | Current | Target |
@@ -57,10 +72,11 @@ an optional channel capability with a separate port shape, not decided here.
 | `PairRequest` | `BindRequest` |
 | `PairingSession` | `BindSession` |
 | `PairState` | `BindState` |
-| `PairingResult` | `BindResult` |
+| `PairingResult` | `BindResult` (redesign) |
 | `PairingSession.Code` | `BindSession.NextStep` (`BindStep`) |
-| `DevicePresence` | `BindingInspector` |
-| `PairingStatus` / `PairingState` | `BindingStatus` (redesigned) |
+| `DevicePresence` | `BindingInspector` (redesign) |
+| `PairingStatus` | `BindingStatus` (redesign) |
+| `PairingState` | Retired; not renamed to `BindingStatus` |
 | `PairingStore` | Retired |
 | `AccountUnpairer` | `Unbinder` |
 | `UnpairAccount` | `Unbind` |
@@ -140,9 +156,10 @@ keys or stored formats without a separate compatibility decision.
 
 | Current | Target |
 | --- | --- |
-| `StateReporter` / `ChannelState` | `TransportReporter` / `TransportState` |
+| `StateReporter` / `ChannelState` | `TransportReporter` / `TransportState` (redesign) |
 | `OutboundMessage` / `OutboundObserver` | `ExternalSend` / `ExternalSendObserver` |
-| `HistorySyncer` / `HistoryResult` | `HistorySource` / `HistoryImportResult` |
+| `HistorySyncer` | `HistorySource` (redesign) |
+| `HistoryResult` | `HistoryImportResult` (redesign) |
 | `FirstContact` / `FirstContactNotifier` | `PeerFirstSeen` / `PeerFirstSeenNotifier` |
 | `FirstContact.Contact` | `PeerFirstSeen.Peer` |
 | `EventContactFirstSeen` | `EventPeerFirstSeen` |
@@ -158,3 +175,32 @@ keys or stored formats without a separate compatibility decision.
 
 History section names describe domain groupings, not SQL table names or archive
 filenames. Renaming constants does not authorize a serialized export-format change.
+
+## Redesign boundaries
+
+- **`BindingInspector` (P3):** local credential presence is one fact, not proof
+  of current provider authorization or transport availability. The redesigned
+  inspection distinguishes those facts and their unknown or stale observations;
+  it does not relabel the current `HasCredentials` boolean as general readiness.
+- **`TransportReporter` (P3/P5):** reported states describe transport health.
+  Authorization and binding status remain separate. Existing lifecycle states
+  cannot be copied unchanged if they mix these meanings.
+- **`HistorySource` and `HistoryImportResult` (P5):** source retrieval and traversal
+  are distinct from the persisted import outcome. Received entries or source
+  exhaustion do not prove storage success. Imported, duplicate, and skipped counts
+  belong to the import result, not automatically to the upstream source contract.
+- **`BindingStatus` (P3):** describes binding status without treating the old
+  paired/not-paired/unpaired enum as the new readiness model. `PairingStatus`
+  and `PairingState` were a record and an enum, not interchangeable names.
+  The old enum retires; replacement facts and any justified state values are
+  decided in P3. `BindState` separately names an interactive attempt's lifecycle.
+- **`BindResult` (P3):** reports the binding operation's outcome, not a universal
+  phone or completed history import. `PairingResult.Phone` is not carried into
+  the common result; verified identity belongs to the neutral binding contract.
+  History and directory import metrics are separate operation outcomes, and
+  binding commit is distinct from runtime activation. Existing output fields
+  require explicit compatibility treatment, not automatic copying into `BindResult`.
+
+These entries close the rename-versus-redesign classification, not the phase's
+contract signatures or runtime gates. P3/P5 decisions need not all be resolved
+before starting P1.
