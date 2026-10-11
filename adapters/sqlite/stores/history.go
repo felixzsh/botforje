@@ -173,7 +173,7 @@ func readHistoryDirectory(
 	}
 	defer rows.Close()
 	for rows.Next() {
-		entry, err := scanHistoryDirectory(rows)
+		entry, err := scanDirectory(rows)
 		if err != nil {
 			return fmt.Errorf("sqlite: read history directory: %w", err)
 		}
@@ -187,7 +187,7 @@ func readHistoryDirectory(
 	return nil
 }
 
-func scanHistoryDirectory(rows *sql.Rows) (botflota.DirectoryEntry, error) {
+func scanDirectory(rows *sql.Rows) (botflota.DirectoryEntry, error) {
 	var (
 		entry     botflota.DirectoryEntry
 		updatedAt string

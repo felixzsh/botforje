@@ -85,17 +85,10 @@ func (s *DirectoryStore) List(
 	defer rows.Close()
 	entries := make([]botflota.DirectoryEntry, 0)
 	for rows.Next() {
-		var (
-			entry     botflota.DirectoryEntry
-			updatedAt string
-		)
-		if err := rows.Scan(&entry.Scope, &entry.Bot,
-			&entry.PeerKey.Provider, &entry.PeerKey.Subject,
-			&entry.SourceIdentity.Provider, &entry.SourceIdentity.Subject,
-			&entry.DisplayName, &updatedAt); err != nil {
+		entry, err := scanDirectory(rows)
+		if err != nil {
 			return nil, fmt.Errorf("sqlite: scan directory entry: %w", err)
 		}
-		entry.UpdatedAt = parseTime(updatedAt)
 		entries = append(entries, entry)
 	}
 	if err := rows.Err(); err != nil {
