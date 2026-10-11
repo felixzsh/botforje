@@ -4,7 +4,7 @@
   system_one and llm; the deployable unit.
 - Fleet — the set of bots a single Botflota instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
-  and sessions; its YAML key is its stable identifier, never derived from
+  and graph runs; its YAML key is its stable identifier, never derived from
   folders.
 - File root — an optional, owner-managed directory in the main config file that
   bounds the local files one scope's steps may read; a scope without one uses
@@ -35,7 +35,7 @@
 - Input — named, typed argument of a tool; may bind to a node or graph
   variable to read and write it.
 - Node context — node variables; reset when the node is entered again.
-- Graph context — session-wide variables; persist across nodes.
+- Graph context — graph-run-wide variables; persist across nodes.
 - Visited nodes — ordered list of nodes visited in a session, current last;
   used for routing and as LLM context.
 - Tool pipeline — the default tool mode: the LLM extracts candidate
@@ -49,33 +49,53 @@
 - Policy — constraints for LLM decisions, tool selection, and generated text.
   Node policy is ambient; message policy refines it.
 - Message kind — the channel-neutral payload class of a message: text, image,
-  video, audio, document, sticker, location, contact, poll, event, interactive,
-  commerce, call, or unknown. A channel implements the subset it can produce
-  and send (ADR 0036).
+  video, audio, document, sticker, location, contact card (`contact`), poll,
+  event, interactive, commerce, call, or unknown. A channel implements the
+  subset it can produce and send (ADR 0036).
 - Chat — durable conversation thread between one bot and one conversation,
   keyed by (scope, bot, provider, kind, thread, topic) and never ends. A direct
   thread may name a participant; a shared one does not (ADR 0051).
-- Session — one bounded run of a bot's graph for a chat, stored in the
-  database; it starts at the root and ends on the graph timeout.
+- Graph run (`GraphRun`; currently `Session`) — one bounded execution of a
+  bot's graph for a chat, stored in the database; it starts at the root and
+  ends on the graph timeout. Collections use `GraphRuns`, never bare `Runs`;
+  bind attempts and SDK sessions are separate concepts.
 - PN (phone number) — WhatsApp's phone-number address; for WhatsApp it is the
   contact's subject and the direct conversation's thread
   (`5215500000000`), without the JID suffix.
 - LID (hidden user) — WhatsApp's `user@lid` address; kept internal to
   WhatsApp handling for resolution and delivery.
-- Contact identity — the contact key a messaging channel maps its own
+- Peer identity (contact identity) — the key a messaging channel maps its own
   addresses to: the provider and an opaque subject. When a provider's ids are
   only meaningful inside one store or profile, the adapter composes that
   space's stable identifier into the subject (ADR 0051).
-- Contact — the durable identity of one person a scope knows: their provider
-  identity, optional phone, push name, and first/last inbound. One per
-  (scope, provider, subject), shared by the scope's bots; the bot-person
-  thread is the chat. `first_seen` is set by the first live inbound message,
-  never by an import or an API send (ADR 0029, ADR 0051).
-- Address-book entry — an entry of one bot's linked account, keyed by
-  (scope, bot, contact), copied only when the bot sets `import_contacts`. It
-  is never a chat; importing it also registers the contact as a scope
-  identity, so the directory holds the people the account knows (ADR 0037,
-  ADR 0051).
+- Peer (currently the scope-level `Contact`) — a durable messaging identity
+  a scope knows, keyed by (scope, provider, subject) and shared by its bots.
+  Knowing a peer does not require any prior message exchange: a directory
+  import or an API send may register the identity. Neither counts as live
+  inbound activity; `first_seen` belongs to the first allowed live inbound,
+  never to an import or an API send. Identity, directory membership, and the
+  chat's interaction history are distinct (ADR 0029, ADR 0051).
+- Directory entry (currently `AddressBookEntry`) — a recorded contact-list
+  membership of a bot's bound account, as exposed by its channel. It may
+  exist without any prior inbound or outbound message. It is not a peer's
+  interaction history or a chat, and does not guarantee current reachability
+  or permission to send. Importing it may register a scope peer without
+  creating a chat or triggering first-seen (ADR 0037, ADR 0051). Reading or
+  importing the upstream directory is an optional channel capability, separate
+  from its persistence through `DirectoryStore`; access to the complete address
+  book of a physical device is not assumed.
+- Contact card — a message payload that shares someone's contact information,
+  such as a name, phone, email, or both. The selected target names are
+  `ContactCardContent` and `spec.ContactCard`, replacing `ContactContent` and
+  `spec.Contact`. The person described need not be a registered peer or a
+  directory member; sharing the card does not register them, add membership,
+  or create a chat with them. A `ContactCardEntry` (currently `ContactEntry`)
+  is one kind/value/label inside the card, not a `DirectoryEntry`. Its phone
+  or email value is opaque payload data, not a messaging identity or routing
+  instruction. `KindContactCard` is the selected Go name; the serialized kind
+  remains `contact`, and each adapter supports only the variants it can
+  represent. Code renames are pending; see
+  [the terminology catalog](channels/domain-terminology.md).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp

@@ -24,9 +24,16 @@ pending decisions; no names or speculative fields are assigned to them here.
 | `ContactKey` | `IdentityKey` |
 | Scope-level `Contact` | `Peer` |
 | `ContactStore` | `PeerStore` |
+| `ContactStore.EnsureContact` | `PeerStore.EnsurePeer` |
 | `ContactPage` | `PeerPage` |
+| `ContactPage.Contacts` | `PeerPage.Peers` |
 | `AddressBookEntry` | `DirectoryEntry` |
 | `AddressBookStore` | `DirectoryStore` |
+
+[The glossary](../glossary.md) distinguishes peer identity, account-directory
+membership, and contact-card payloads; none requires a prior message exchange.
+`DirectoryStore` names persistence. Reading or importing an upstream directory is
+an optional channel capability with a separate port shape, not decided here.
 
 ## Chat and graph execution
 
@@ -37,7 +44,7 @@ pending decisions; no names or speculative fields are assigned to them here.
 | `ConversationKind` | `ChatKind` |
 | `ConversationDirect` / `ConversationGroup` | `ChatDirect` / `ChatGroup` |
 | `Session` / `SessionStore` | `GraphRun` / `GraphRunStore` |
-| `SessionID` / `TurnRecord.Session` | `GraphRunID` / `TurnRecord.Run` |
+| `SessionID` / `TurnRecord.Session` | `GraphRunID` / `TurnRecord.GraphRun` |
 | `HasActiveSessionOutsideNodes` | `HasActiveGraphRunOutsideNodes` |
 
 ## Binding
@@ -74,8 +81,11 @@ pending decisions; no names or speculative fields are assigned to them here.
 | New field, not a rename | `SendRecord.Recipient` (optional `IdentityKey`) |
 | `Chat.ContactID` | `Chat.PeerID` |
 | `HistoryChat.ContactKey` / `.ContactName` | `HistoryChat.PeerKey` / `.PeerName` |
-| `ContactContent` / `spec.Contact` | `PeerCard` / `spec.PeerCard` |
-| `spec.Step.Contact` | `spec.Step.PeerCard` |
+| `ContactContent` / `spec.Contact` | `ContactCardContent` / `spec.ContactCard` |
+| `spec.Step.Contact` | `spec.Step.ContactCard` |
+| `ContactEntry` / `spec.ContactEntry` | `ContactCardEntry` / `spec.ContactCardEntry` |
+| `spec.ContactEntryKind` | `spec.ContactCardEntryKind` |
+| `KindContact` | `KindContactCard` (serialized value stays `contact`) |
 | `AllowedContacts` / `IgnoredContacts` | `AllowedPeers` / `IgnoredPeers` |
 | Scope-level `Contact.DisplayName` | `Peer.DisplayName` |
 | `AddressBookEntry` name fields | Normalized `DirectoryEntry.DisplayName` |
@@ -99,6 +109,19 @@ It does not require every outbound contract to duplicate recipient metadata or
 change public API/config fields without their compatibility decision. The
 contract review belongs to P1 in [plan.md](plan.md).
 
+### Shared contact cards
+
+`ContactCardContent` replaces the proposed `PeerCard` vocabulary.
+`ContactCardEntry` names a value inside that payload, not a `DirectoryEntry`.
+[The glossary](../glossary.md) owns the distinction between a peer, a directory
+entry, and a card describing someone who need not be registered in Botflota.
+
+`KindContactCard` selects this payload. Its serialized value remains `contact`;
+card entry labels such as `phone` and `email` retain their values. They are payload
+labels, not messaging identities or routing instructions. Each adapter validates
+the card variants it can represent. The Go/spec renames do not change YAML/JSON
+keys or stored formats without a separate compatibility decision.
+
 ## Retired common fields and helpers
 
 | Current | Target |
@@ -121,9 +144,17 @@ contract review belongs to P1 in [plan.md](plan.md).
 | `OutboundMessage` / `OutboundObserver` | `ExternalSend` / `ExternalSendObserver` |
 | `HistorySyncer` / `HistoryResult` | `HistorySource` / `HistoryImportResult` |
 | `FirstContact` / `FirstContactNotifier` | `PeerFirstSeen` / `PeerFirstSeenNotifier` |
+| `FirstContact.Contact` | `PeerFirstSeen.Peer` |
 | `EventContactFirstSeen` | `EventPeerFirstSeen` |
 | `HistoryTable` / `HistorySink.BeginTable` | `HistorySection` / `HistorySink.BeginSection` |
-| `HistorySink.Session` / `.AddressBookEntry` | `HistorySink.Run` / `.DirectoryEntry` |
+| `TableChats` | `SectionChats` |
+| `TableSessions` | `SectionGraphRuns` |
+| `TableMessages` | `SectionMessages` |
+| `TableAddressBook` | `SectionDirectory` |
+| `HistorySink.Session` / `.AddressBookEntry` | `HistorySink.GraphRun` / `.DirectoryEntry` |
 | `api.Fleet.StopBotForUnpair` | `api.Fleet.StopBotForUnbind` |
 | `StartPair` / `CurrentPair` / `CancelPair` / `EndPair` | `Begin` / `Get` / `Cancel` / `Wait` |
-| `HistoryCounts.Sessions` / `.AddressBook` | `HistoryCounts.Runs` / `.Directory` |
+| `HistoryCounts.Sessions` / `.AddressBook` | `HistoryCounts.GraphRuns` / `.Directory` |
+
+History section names describe domain groupings, not SQL table names or archive
+filenames. Renaming constants does not authorize a serialized export-format change.
