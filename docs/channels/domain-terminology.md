@@ -66,7 +66,12 @@ pending decisions; no names or speculative fields are assigned to them here.
 | --- | --- |
 | `IncomingMessage.Contact` | `IncomingMessage.Sender` (`IdentityKey`) |
 | `IncomingMessage.Conversation` | `IncomingMessage.Target` (`ChatTarget`) |
-| `SendRecord.To` | `SendRecord.Recipient` (optional `IdentityKey`) |
+| `OutgoingMessage.RecipientPhone` | `OutgoingMessage.Target` (`ChatTarget`) |
+| `OutboundMessage.RecipientPhone` | `ExternalSend.Target` (`ChatTarget`) |
+| `OutboundRecord.Recipient` | `OutboundRecord.Target` (`ChatTarget`) |
+| `OutboxEntry.Recipient` | `OutboxEntry.Target` (`ChatTarget`) |
+| `SendRecord.To` | `SendRecord.Target` (`ChatTarget`) |
+| New field, not a rename | `SendRecord.Recipient` (optional `IdentityKey`) |
 | `Chat.ContactID` | `Chat.PeerID` |
 | `HistoryChat.ContactKey` / `.ContactName` | `HistoryChat.PeerKey` / `.PeerName` |
 | `ContactContent` / `spec.Contact` | `PeerCard` / `spec.PeerCard` |
@@ -74,6 +79,25 @@ pending decisions; no names or speculative fields are assigned to them here.
 | `AllowedContacts` / `IgnoredContacts` | `AllowedPeers` / `IgnoredPeers` |
 | Scope-level `Contact.DisplayName` | `Peer.DisplayName` |
 | `AddressBookEntry` name fields | Normalized `DirectoryEntry.DisplayName` |
+
+### Outbound addressing
+
+`Target` names the conversation an outbound operation addresses; `Recipient`
+is reserved for a known recipient identity, not another name for that destination.
+Use `Target` consistently across API send records, turn replies, queued deliveries,
+channel sends, and external-send observations. It is the actual destination, which
+may differ from the chat whose history records the operation.
+
+`SendRecord.Target` is required; `SendRecord.Recipient` is optional and separate.
+A valid target need not identify a known peer, and a shared conversation is not
+one person's identity. Do not fabricate a recipient from the thread or derive a
+target from the recipient in common code. Provider-specific resolution and the
+routing context needed by an authorization remain adapter-owned.
+
+This names the roles, not final field layouts or optional-value representation.
+It does not require every outbound contract to duplicate recipient metadata or
+change public API/config fields without their compatibility decision. The
+contract review belongs to P1 in [plan.md](plan.md).
 
 ## Retired common fields and helpers
 
