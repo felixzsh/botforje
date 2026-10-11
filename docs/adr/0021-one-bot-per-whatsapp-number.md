@@ -1,21 +1,32 @@
-# ADR 0021 — One Botflota bot per WhatsApp phone number
+# ADR 0021 — One bot per normalized account identity
 
 Status: Accepted (2026-09)
 
 ## Context
 
-WhatsApp permits several linked companion devices for one phone number. Botflota
-models a bot as one account, graph, session namespace, and channel actor. Two
-independent bots using the same number would both receive the account's traffic
-and could send duplicate or conflicting replies.
+Several transport clients can reach the same external account. Two independent
+bots owning that identity could receive the same traffic and send conflicting
+replies. Physical resource sharing does not establish shared account ownership
+or a graph-routing policy.
 
 ## Decision
 
-One provider identity may belong to only one `(scope, bot)` in a Botflota
-instance — ADR 0051's account binding. For WhatsApp the identity is the
-normalized phone number: the `bot pair` command rejects a number already owned
-by another bot, and fleet startup rejects duplicate legacy records. A bot may
-replace its own pairing with `bot pair --force`.
+One normalized own `IdentityKey` may belong to only one `(scope, bot)` in an
+instance (ADR 0051). Compare the complete provider/subject key, including the
+adapter's durable local-space normalization, not a phone, display name, device
+locator, or active backend profile. Equal-looking local IDs in unrelated spaces
+are not the same identity. An adapter cannot evade ownership by assigning a new
+key to another client of the same external identity.
+
+For WhatsApp the adapter's normalized own subject is PN digits. Its legacy pair
+command rejects an already-owned identity and startup rejects duplicate records;
+replacement under the same bot preserves the explicit force operation. Conflict
+responses must not reveal another scope or bot (ADR 0044). Core code has no phone
+getter or phone-specific ownership error contract.
+
+The following removal behavior describes the existing WhatsApp adapter, not a
+universal instruction to delete a remote profile or revoke its credentials. P3
+owns neutral bind/unbind outcomes, generations, and lifecycle behavior (ADR 0053).
 
 `unpair` and `bot pair --force` run the same removal: the linked-account row,
 the pairing status, and the channel's device row with everything that hangs off

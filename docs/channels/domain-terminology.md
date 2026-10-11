@@ -50,11 +50,14 @@ that decision. The selected `KindContactCard` rename keeps the serialized value
 | --- | --- | --- |
 | | `IdentityKey` | New type; existing identity role |
 | `Contact` | `Peer` | Rename + identity redesign |
+| `Contact.Phone` | `Peer.Key` (`IdentityKey`) | Rename + identity redesign |
 | `ContactStore` | `PeerStore` | Rename + identity redesign |
 | `ContactStore.EnsureContact` | `PeerStore.EnsurePeer` | Rename + identity redesign |
 | `ContactPage` | `PeerPage` | Rename; follows peer redesign |
 | `ContactPage.Contacts` | `PeerPage.Peers` | Rename |
 | `AddressBookEntry` | `DirectoryEntry` | Rename + directory redesign |
+| `AddressBookEntry.Phone` | `DirectoryEntry.PeerKey` | Rename + identity redesign |
+| | `DirectoryEntry.SourceIdentity` | New field; historical account origin |
 | `AddressBookStore` | `DirectoryStore` | Rename + directory redesign |
 
 [The glossary](../glossary.md) distinguishes peer identity, account-directory
@@ -67,6 +70,7 @@ an optional channel capability with a separate port shape, not decided here.
 | Current code | Target term | Change |
 | --- | --- | --- |
 | `Chat`, `ChatStore` | Unchanged | No rename; addressing redesign |
+| `ChatStore.ForContact` | `ChatStore.ForTarget` | Rename + target lookup redesign |
 | | `ChatTarget` | New type; existing addressing role |
 | | `ChatKind` | New type; generalizes group flag |
 | | `ChatDirect` / `ChatGroup` | New constants; existing distinction |
@@ -129,7 +133,9 @@ The inbound `Target` is new; it needs explicit conversation addressing beyond th
 current `IsGroup` flag. `HistoryChat.ContactPhone` already serves an identity role;
 `PeerKey` generalizes that projection rather than merely renaming a phone value.
 All `Target` entries use `ChatTarget`; known `Sender` and `Recipient` identities use
-`IdentityKey`. Optional-value representation and final layouts remain phase work.
+`IdentityKey`. The selected P1 shapes and optional-value conventions now live in
+[ADR 0051](../adr/0051-channel-neutral-identity-and-conversations.md); their
+implementation is still pending.
 
 ### Outbound addressing
 
@@ -145,10 +151,11 @@ one person's identity. Do not fabricate a recipient from the thread or derive a
 target from the recipient in common code. Provider-specific resolution and the
 routing context needed by an authorization remain adapter-owned.
 
-This names the roles, not final field layouts or optional-value representation.
-It does not require every outbound contract to duplicate recipient metadata or
-change public API/config fields without their compatibility decision. The
-contract review belongs to P1 in [plan.md](plan.md).
+[ADR 0051](../adr/0051-channel-neutral-identity-and-conversations.md) fixes the P1
+value types: `SendRecord.Recipient` uses `*IdentityKey`, with nil for unknown;
+`Target` is a required value. Other outbound contracts need not duplicate recipient
+metadata. Public API/config shapes still need their separate compatibility
+decisions; selecting these internal contracts does not implement them.
 
 ### Shared contact cards
 
@@ -168,14 +175,13 @@ keys or stored formats without a separate compatibility decision.
 | Current code | Target term | Change |
 | --- | --- | --- |
 | `LinkedAccount.JID` | `Binding.Identity` | Redesign; verified account identity |
-| `LinkedAccount.Phone()` / `Contact.Phone` | — | Retire universal phone properties |
-| `AddressBookEntry.Phone` | — | Retire universal phone property |
+| `LinkedAccount.Phone()` | — | Retire universal phone getter |
 | `ChatSummary.Phone` | — | Retire phone-only projection |
 | `AddressBookEntry.PushName` / `.BusinessName` | — | Adapter-only; normalize directory name |
 | `ContactStore.RecordInbound` phone parameter | — | Retire phone parameter |
 | `contact.phone` template path | — | Retire; legacy alias only |
-| `RootContact` | `RootPeer` | Rename; template compatibility pending |
-| `contact` runtime root | `peer` | Public rename; compatibility pending |
+| `RootContact` | `RootPeer` | Rename; per-bot compatibility selected |
+| `contact` runtime root | `peer` | Neutral root; WhatsApp aliases selected |
 
 ## Other renames
 

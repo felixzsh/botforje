@@ -21,22 +21,41 @@ the braces is ignored. The first segment selects a root:
 
 - `graph`, `node` — read-write variables (ADR 0033); `node` resets on every
   node entry.
-- `contact`, `message`, `bot`, `input` — read-only for the duration of a
-  message; the engine seeds them.
+- `peer`, `message`, `bot`, `input` — read-only for the duration of a
+  message; the engine seeds them. `peer` denotes the normalized live sender,
+  not the chat target or an alternate outbound recipient (ADR 0029).
 - Request results live under `node.<request>`, addressed as
   `resp.body.*`, `resp.headers.*`, `status`, and `duration` (milliseconds).
 
 Rules:
 
 - A missing path is an error that names the path; rendering never silently
-  drops text. An optional field the channel cannot supply renders as its
-  defined empty value — `contact.phone` is empty when the channel has no
-  phone (ADR 0051) — while a path that does not exist stays an error.
+  drops text. A declared optional value may have its defined empty value,
+  but an undeclared path is not made optional by an adapter's inability to
+  supply it. There is no universal `contact.phone` or `peer.phone` path,
+  including an empty fallback (ADR 0051).
 - A whole map or slice has no text form and is an error; slice elements are
   addressed with a numeric segment.
 - A literal `{{` is written `\{{`; `\\` renders one backslash.
 - An unknown root fails when the reference is parsed; a missing path and a
   non-scalar value fail when it is rendered.
+
+## Approved P1 compatibility
+
+Neutral peer paths are `peer.id`, `peer.provider`, `peer.subject`, and `peer.name`.
+The internal identity ID renders as an opaque string; external subject values
+remain opaque and are not automatically destinations.
+
+For a bot consuming the approved WhatsApp compatibility, `contact.id` and
+`contact.name` translate to `peer.id` and `peer.name`; `contact.phone` translates
+to `peer.subject` only under its PN normalization policy (ADR 0020). Other
+adapters do not inherit these aliases. Apply adapter-declared reference mapping
+to a per-bot effective view without changing the shared graph or performing
+unbounded textual replacement. Validate references after that translation;
+unsupported aliases are errors, never silently empty values.
+
+This selects the template policy, not its implementation. Remaining config,
+selector, output, and archive compatibility belongs to its own phase and owner.
 
 ## Consequences
 

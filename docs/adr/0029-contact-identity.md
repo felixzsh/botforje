@@ -1,82 +1,81 @@
-# ADR 0029 — Contact identity and first contact
+# ADR 0029 — Peer identity and first live inbound
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09); P1 design aligned on 2026-10-11.
+Implementation remains tracked in [the channel phases](../channels/phases.md).
 
 ## Context
 
-A person used to be only a phone number used as a chat's key (ADR 0026), and
-then a `sender` profile. WhatsApp delivers a push name with every inbound
-message, and the dashboard, first-contact automations, CRM integrations, and
-any contact metric need the person to be durable, not a string.
-
-A person may write to several bots of the same scope; that is normal, not an
-exception. The scope remains the isolation boundary: the same phone in two
-scopes is two people that never share data (ADR 0016). The word `sender` named
-a role in one message, so it was easy to confuse with the recipient; the scope
-now holds one vocabulary, and the person is a **contact**.
+The runtime needs a durable scoped identity, not a phone string or the sender role
+of one message. Directory import and API sends can introduce an identity before
+its first live inbound. That must not consume the first-seen event or invent a
+conversation. Identity, directory provenance, and chat activity are separate.
 
 ## Decision
 
-A contact is a first-class identity, keyed by the channel-neutral subject of
-ADR 0051; for WhatsApp the subject is the phone number:
+`Peer` owns an internal ID, scope, `Key` (`IdentityKey`), normalized display name,
+name-update time, and first/last live-inbound times. The durable external key is
+`(scope, provider, subject)` (ADR 0051), not a phone column. No common telephone
+property, getter, or parsing remains in the target contract.
 
-```sql
-contacts (id, scope, provider, subject, phone, display_name,
-         name_updated_at, first_seen, last_seen)
-         unique (scope, provider, subject)
-chats    (id, scope, bot, provider, kind, thread, topic, contact_id,
-         started_at, updated_at, message_count, guards)
-         unique (scope, bot, provider, kind, thread, topic)
-```
+- Bots in one scope may know the same peer. Unrelated providers, local identity
+  spaces, and scopes do not merge merely because IDs or names look alike.
+- `DisplayName` is optional normalized presentation supplied by the adapter, not
+  a push-name or business-name contract. Common code does not select between
+  provider-specific raw name fields.
+- A nonempty live name may refresh a known display name; a later empty name does
+  not erase it. Name-update time changes only when the value changes. Inert
+  history and directory imports only fill an unknown name.
+- `FirstSeen` is the first allowed live inbound in the scope and is claimed once;
+  `LastSeen` advances on allowed live inbound. Both remain unset when import or
+  API activity merely ensures the identity. Root time values use the existing
+  zero/unset convention; adapters encode absence appropriately.
+- Filtering precedes recording. Ignored traffic does not create a peer, claim
+  first-seen, or enter graph execution.
 
-- One identity per person per scope and provider-local space, shared by the
-  bots that reach it (ADR 0051). The bot-person relationship is the chat, one
-  per `(scope, bot, conversation)`.
-- `display_name` is the WhatsApp push name. It is best effort, may be empty,
-  changes freely, and is never an identifier: the subject is the key. A
-  non-empty name is adopted, and `name_updated_at` is stamped only when the
-  name actually changes, so a later empty name never erases a known one.
-  History and address-book imports only fill an unknown display name; a live
-  inbound push name may refresh it.
-- `first_seen` is the first live inbound message in the scope and is claimed
-  only once; `last_seen` moves with every live inbound. Neither is set when the
-  address book (ADR 0037) or an API send (ADR 0044) creates the identity, so
-  the first-contact hook fires on the person's first message even when an
-  import or an operator send knew the number first.
-- `chats.started_at` and `chats.updated_at` give the same values per bot;
-  `chats.message_count` is the inbound count for that bot.
-- The identity is written on every allowed inbound message, before routing.
-  The filter runs first (ADR 0011), so ignored contacts, a contact outside the
-  allow list, and ignored groups are never persisted.
-- The contact store separates the two writes: `EnsureContact` creates an
-  identity without claiming `first_seen`, and `RecordInbound` claims it with a
-  conditional update and reports that claim — the first-contact hook. The
-  affected rows are the answer, so two messages sharing one timestamp still
-  report first only once, and the claim commits with the activity and the
-  name, so a failure rolls all three back together (ADR 0045).
-- The channel maps the push name into `IncomingMessage`; the engine seeds it as
-  `{{contact.name}}` alongside `{{contact.phone}}` (ADR 0018). The stored name
-  fills the reference when a message carries none.
-- The claimed `first_seen` is the first-contact hook. ADR 0045 delivers it as a
-  signed webhook; it changes nothing in this record.
+### Store operations
+
+`PeerStore.EnsurePeer` accepts a scope, valid `IdentityKey`, and observation time.
+It creates or finds the identity without claiming live activity or creating a chat.
+`PeerStore.RecordInbound` accepts the same scoped key, normalized display name,
+and live-inbound time, returning the peer and whether first-seen was claimed.
+
+The claim is a conditional durable update, not a comparison of timestamps. Activity,
+name update, and first-seen claim commit together; rollback leaves no claim behind.
+Two events with the same timestamp still claim first only once (ADR 0045).
+Lookups and mutations validate scope and the complete key, never a bare subject or
+an internal ID from another scope.
+
+Chats belong to targets, not peers. `Chat.PeerID` is an optional explicit
+participant relation; incoming sender identity is independently recorded. Ensuring
+an API destination need not register a recipient when no participant is known.
+When a valid known recipient is supplied, it can be ensured without live activity;
+the actual destination remains separate (ADR 0051).
+
+### Runtime and events
+
+The live sender supplies the read-only `peer` template values: `id`, `provider`,
+`subject`, and `name`. `id` is the stable internal identity ID rendered as an opaque
+string; `subject` remains opaque. The stored name fills an absent live name.
+The peer root does not denote an alternate outbound destination. Approved legacy
+translation is per consuming bot (ADR 0018/0020), not a phone field in the context.
+
+`PeerFirstSeen` names the first-live-inbound notification. Directory membership,
+sharing a contact card, and API sends do not trigger it. Renaming its Go types does
+not change public event topics or signed retry bytes without ADR 0045's explicit
+compatibility decision.
 
 ## Consequences
 
-- `chats` no longer carries the phone text; a read that needs it joins
-  `contacts`. The chat keeps the key it had conceptually, now by identity id.
-- Reads the API and dashboard need are cheap: contacts by last activity, one
-  bot's chats, and per-bot or per-scope counts.
-- Per-bot blocking and allow/ignore stay configuration for now. If it moves
-  into the database later, this key supports both "blocked for this bot"
-  (on the chat) and "blocked for the scope" (on the contact).
-- An API-origin send to a number that never wrote first creates the identity
-  and its chat (ADR 0044), because the send needs them; it never claims
-  `first_seen`, which belongs to an inbound message.
-- A shared conversation is refused until participant, session, and guard
-  semantics exist (ADR 0051); with `ignore_groups` false a group participant
-  is currently recorded like any contact, and telling the two apart is an
-  open decision.
-- Push names are third-party personal data; retention, export, and purge follow
-  the per-scope rules of a later phase.
-- `message_count` is a denormalized counter. When message history is recorded,
-  it either stays the cheap count or is reconciled against `messages`.
+- Contact-card entries describe payload values, not peer registrations or directory
+  memberships. Sharing a card creates neither a chat nor first-seen activity.
+- Directory-derived properties report historical import provenance, not permission
+  or proven current account membership (ADR 0037).
+- Chat activity, holds, guards, and bounded graph execution resolve by full target
+  (ADR 0026), even when one sender participates in several conversations.
+- Shared-conversation execution remains refused until its policy is approved.
+  Recording a participant as if the shared thread were their direct chat is not
+  a neutral implementation.
+- Read projections expose normalized identities/presentation without universal
+  phone, push-name, or business-name properties. Public compatibility and personal
+  data retention remain separate owning decisions, not permission for this design
+  task to rewrite outputs or implement runtime behavior.

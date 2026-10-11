@@ -1,50 +1,66 @@
-# ADR 0020 — Contact identity is the phone number
+# ADR 0020 — WhatsApp identity and address normalization
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09); P1 boundary aligned on 2026-10-11.
+Implementation remains tracked in [the channel phases](../channels/phases.md).
 
 ## Context
 
-WhatsApp is migrating from phone-number JIDs (`user@s.whatsapp.net`, PN) to
-hidden user JIDs (`user@lid`, LID). An inbound message may be addressed by
-either form, and the alternative address is not always present. Sessions and
-business flows need a stable identity, and the phone number keys sessions,
-filters, logs, and templates.
-
-An earlier shape keyed unresolved sessions on the LID and carried the LID (and
-the arrival JID) through the domain. That leaked WhatsApp addressing into logs,
-filters, templates, and the session table.
+WhatsApp can identify an incoming participant with a phone-number JID (PN) or a
+hidden-user JID (LID). The current adapter preserves a PN-based subject. That is
+its normalization policy, not a universal identity or destination rule. An SDK
+address, account-device locator, sender, and conversation are distinct values.
 
 ## Decision
 
-The domain keys a contact by the provider-scoped subject of ADR 0051; for
-WhatsApp the subject is the phone number in plain digits (for example
-`5215500000000`). It keys sessions, matches the bot's filter, appears in
-logs, and is what templates read as `contact.phone`.
+The WhatsApp adapter emits `IdentityKey` with provider `whatsapp` and PN digits as
+its opaque subject (ADR 0051). These subjects are provider-wide and need no local
+space prefix. The core does not validate digits, strip JID suffixes, expose a phone
+getter, or treat opaque subjects as telephone metadata.
 
-The JID and the LID live only inside the whatsapp adapter:
+The JID and LID stay inside the WhatsApp adapter:
 
-- At parse time it resolves the phone number in this order: the JID itself
-  when its server is `s.whatsapp.net`, then the message alternative address
-  (`SenderAlt`), then the LID store (`Store.LIDs.GetPNForLID`), which
-  whatsmeow persists from history sync and mapping events.
-- If no phone number can be resolved, it drops the message and logs a warning;
-  it never opens a session keyed on a LID.
-- For delivery it maps the recipient's phone number back to a transport
-  address: the JID the message arrived from when known, otherwise the
-  phone-number JID. The transport address is never logged or shown to
-  templates.
+- Resolve the PN from a phone-number JID, then the message alternative address,
+  then the persisted LID mapping store.
+- If the existing PN policy cannot normalize a sender, refuse it before graph
+  routing and log the unresolved condition without opening a fabricated peer or
+  graph run. Supporting another canonical subject requires a separate adapter
+  normalization decision, not an undocumented fallback in common code.
+- Map the actual conversation address to `ChatTarget` independently of the sender.
+  In this adapter a direct PN thread can equal its participant's subject because
+  the adapter establishes that mapping. Generic code never derives one from the
+  other. A group thread is not its participant's identity.
+- Delivery resolves the saved target under the current account's adapter-owned
+  state. Cached SDK addresses may help, but restart cannot require a last-sender
+  cache in the engine or fleet. Access references and device locators are not
+  common target fields.
+- Own account identity is normalized separately from the companion-device JID;
+  its private SDK lookup remains adapter-owned (ADR 0051).
 
-Groups are handled separately: the contact is the participant, and the chat is
-the group.
+### Approved legacy template compatibility
+
+For a bot explicitly consuming WhatsApp compatibility, old `contact.id` and
+`contact.name` references translate to `peer.id` and `peer.name`. `contact.phone`
+translates to `peer.subject` only where this adapter's PN policy preserves its
+old meaning. This is an adapter-declared translation, not a phone path available
+on every provider and not a subject-to-phone parser in common code.
+
+Apply reference translation to the consuming bot's effective graph/template view,
+never by mutating a shared declaration or broad text replacement. Unsupported
+aliases fail validation, and missing paths remain errors (ADR 0018). No `phone`
+value is seeded into the common context, including an empty fallback.
+
+Other legacy selectors, outputs, archives, and setup/result formats need their
+own compatibility decisions. Approving template translation does not approve
+changing those public contracts or duplicating account/setup implementations.
 
 ## Consequences
 
-- Logs and stored data carry the subject; for WhatsApp that is the phone
-  number, so no LID leaks. The `@s.whatsapp.net` suffix is not logged either;
-  it is added only when building a transport address.
-- A message whose phone number is unknown is dropped (rare, and the LID store
-  fills the mapping in from history sync). Losing it is preferred over keying
-  anything on a LID.
-- `contact.lid` is not part of the template context and the session does not
-  store a LID.
-- The LID store remains necessary, but only for resolution inside the adapter.
+- Graph runs, holds, and guards use chats, not PN subjects (ADR 0026).
+- PN-shaped opaque values preserve current direct-chat behavior without making
+  other providers fabricate telephone data.
+- The SDK's LID mapping remains necessary and private. Unresolved traffic is not
+  silently assigned a different canonical identity.
+- Groups remain explicitly filtered/refused until common execution semantics are
+  approved; a participant must not stand in for the group conversation.
+- The contact-card `phone` label is unrelated payload data. Its value neither
+  selects a peer nor determines a conversation or permission to send.

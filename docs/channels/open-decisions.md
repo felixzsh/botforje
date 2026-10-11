@@ -12,21 +12,20 @@ evidence it is waiting for. New findings in `provider-findings/` or new
 rows in `provider-differences/` should add or reopen entries here, not
 silently harden the plan.
 
-## Closed on 2026-10-10 (owner decision, implemented in code)
+## Closed on 2026-10-10 (owner decisions; implementation is phase-tracked)
 
-- **Phone-number term: eliminated from the domain, kept as a payload
-  label only.** No `Phone` field, parameter, column, helper, digit
-  validation, or template path remains in shared contracts. The single
-  place the word survives is the `phone` entry kind on the contact
-  step/card, which carries no domain semantics: shared code never
-  parses or validates it. Phone-like data may also appear inside opaque
-  subjects (a WhatsApp subject can hold digits) and inside message text,
-  both uninterpreted. Telephone inputs at setup (registration codes)
-  are adapter-owned write-only bind inputs with no core name. Mentions
-  of the physical handset in prose ("typed on the phone") are not
-  domain concepts and stay. Still to amend: ADR 0051 (optional phone
-  metadata), ADR 0018 (`contact.phone` empty-value semantics), ADR 0020
-  (title and identity claim), ADR 0021 (one-bot-per-number wording).
+- **Phone-number term: eliminate it from the domain, keep it as a payload
+  label only.** This is the selected target, not a claim about the current
+  checkout. Identity/addressing/store/template cleanup takes effect when
+  channels P1 is implemented; remaining setup/result cleanup belongs to P3.
+  The target shared contracts have no universal `Phone` field, parameter,
+  column, helper, digit validation, or template path. The `phone` contact-card
+  entry label carries opaque payload data that shared code never parses.
+  Phone-like values can occur inside opaque subjects or message text without
+  becoming telephone metadata. Setup inputs remain adapter-owned; handset
+  mentions in prose are not domain contracts. ADR 0051, 0018, 0020, 0021,
+  and 0029 now describe the P1 target. Its implementation and gates remain
+  unchecked in [phases.md](phases.md).
 - **Peer-card declaration shape.** `spec.Contact` is now
   `name` + `entries[{kind, value, label}]` + `note`, with kinds `phone`,
   `email`, `address`, `url`; `botflota.ContactContent` mirrors it and
@@ -44,8 +43,8 @@ silently harden the plan.
 
 - **Common optional phone metadata: keep or remove.** Closed on
   2026-10-10, see the Closed section above: removed, except the
-  `phone` payload label on contact entries. The ADR amendments listed
-  there are still pending.
+  `phone` payload label on contact entries. P1-owning ADRs are aligned;
+  implementation and later setup/result work remain phase-tracked.
 - **Peer-card replacement format.** Closed on 2026-10-10, see the
   Closed section above: neutral entries shape with adapter-owned vCard
   handling. Remaining: ADR 0036 alignment and per-bot variant
@@ -77,43 +76,47 @@ silently harden the plan.
   `provider-findings/simplex.md`. Owner: ADR 0046, ADR 0054. No
   supervisor, per-profile spool, fairness promise, or capacity figure is
   approved.
-- **Identity-space composition rule.** Whether adapter-normalized
-  subjects/threads must always fold in their durable identity space,
-  and what compositions are allowed, is a candidate rule awaiting
-  counter-examples from new providers. Depends on:
-  `provider-differences/identity-directory-targets.md`. Owner:
-  ADR 0051.
+- **Identity-space composition rule.** The P1 design in ADR 0051 requires
+  store/profile-local IDs to include their durable space in adapter-normalized
+  subjects and threads, with a documented unambiguous encoding. Provider-wide
+  IDs need no artificial prefix; common code never parses either form.
+  Real adapters must establish how their space survives restart/renewal and
+  changes on unrelated replacement. New counter-examples can reopen the rule;
+  they do not require a speculative second field in every identity key.
 
 ## Operational gaps carried over from the plan
 
-- **P1, addressing and default reply.** Settled: identities use
-  `(scope, provider, subject)`; conversations use
-  `(scope, bot, provider, kind, thread, topic)`; an alternate `to`
-  keeps the triggering chat's history while its queue entry carries the
-  destination's own conversation. Not settled: account/phone cleanup,
-  participant mapping, and destination-dedup/restart gates. Owner:
-  ADR 0051, ADR 0026.
+- **P1, identity and addressing design closed on 2026-10-11.** ADR 0051
+  specifies comparable key/target fields, canonical absent topic, scoped
+  lookups, valid live senders, optional explicit participants, normalized
+  own account identity versus adapter device lookup, and actual outbound
+  targets. ADR 0026/0029 separate graph execution and first-live-inbound.
+  Destination-dedup and close/reopen/restart remain executable P1 gates,
+  not undecided naming questions. No runtime implementation is authorized
+  by this design closure.
 - **P2, selector ambiguity.** ADR 0054's provider/mode selector must
   resolve the adapter kind unambiguously. Decide how indistinguishable
   installed implementations are rejected or selected before supporting
   them; do not invent precedence or turn adapter kind into an account
   mode.
-- **P1/P3/P4, directory provenance.** The scope-wide identity registry
-  and binding-owned directory must not be conflated. Current history
-  migration transfers directory rows to another bot. Decide
-  retention/reimport/mapping after unbind, identity replacement, and
-  history migration before changing ownership. Imported or moved
-  directory data is not evidence of current membership or permission.
-  Owner: ADR 0037, ADR 0042, ADR 0051.
+- **P1 directory provenance closed; P3/P4 work remains.** The owner chose
+  historical snapshots with explicit source account identity (ADR 0037/0042).
+  A compatible migration moves data ownership without rewriting origin or
+  claiming current membership. Full binding generations, freshness after
+  replacement, and public representations remain their phase's decisions;
+  no P1 source identity alone establishes those guarantees.
 - **P3/P5, status and generations.** Decide which confirmed facts are
   durable and which observations are live or stale; do not persist
   yesterday's successful pairing as current readiness. Request revision,
   config reload generation, and binding generation are separate. Specify
   how association provenance survives delete/rebind for directories and
   queued sends. Owner: ADR 0051, ADR 0053, ADR 0040.
-- **P2/P4, public compatibility.** Select neutral HTTP resources and the
-  translation/versioning of old commands, paths, template roots,
-  filter/card keys, result fields, event topics, and archive sections.
+- **P2/P4, public compatibility.** P1 template policy is selected:
+  per-bot WhatsApp translation preserves `contact.id/name/phone` through
+  neutral peer paths without a universal phone value (ADR 0018/0020).
+  Other adapters do not inherit those aliases. Still select neutral HTTP
+  resources and compatibility of other commands, paths, filter/card keys,
+  result fields, event topics, and archive sections.
   The rename catalog owns names, not permission to change serialized
   meaning. A first allowed inbound is not directory insertion; keep its
   durable timing and signed retry bytes intact. Do not add a parallel

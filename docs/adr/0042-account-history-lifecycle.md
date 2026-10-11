@@ -14,10 +14,10 @@ The stored shapes are what make them delicate. A chat is keyed by its
 conversation (ADR 0051); sessions and messages cascade from their chat;
 messages deduplicate in their actual destination and provider message space
 (ADR 0051/0026); migration preserves that provenance instead of assigning old
-IDs to the destination binding's message space. Address-book entries
-are keyed by the bot and the contact's subject (ADR 0037); and a queued reply
-hangs off its message. Contact identities are keyed by the scope's subject
-and shared by the scope's bots (ADR 0029), so they belong to no single bot and
+IDs to the destination binding's message space. Directory snapshots
+are keyed by data owner, source account identity, and peer identity (ADR 0037);
+a queued reply hangs off its message. Peer identities are scoped provider/subject
+keys shared by the scope's bots (ADR 0029), so they belong to no single bot and
 must survive both operations.
 
 Migration cannot be a plain re-key either: the destination is often a peer bot
@@ -69,11 +69,14 @@ both sides.
   itself, is refused. Contact identities need no transfer: the scope already
   shares them.
 
-- **Only a compatible binding can receive the history.** The provider and the
-  identity space of the two bots' account bindings must match: a chat
-  referencing a store-local target (a SimpleX profile, for example) can never
-  become a valid target of a bot with another binding, and history does not
-  migrate across providers or local spaces (ADR 0051).
+- **Only a compatible binding can receive the history.** Provider and durable
+  identity space must be compatible (ADR 0051). Matching provider names or
+  internal IDs alone is not proof; common code does not parse opaque subjects
+  or assume generation identifies the space. The adapters' documented spaces
+  must establish compatibility before any move; unavailable proof is refused.
+  A store-local target cannot become usable under an unrelated profile merely
+  because its history moved. Access references remain adapter-owned and sending
+  still requires the destination account's authorization.
 
 - **The destination must be empty.** Migration exists for a bot that replaces
   a lost account, so the destination is a bot with no chat history; if it holds
@@ -97,12 +100,17 @@ both sides.
   stopped with its queue dropped, and the rows leave in the same transaction as
   the move.
 
-- **Address-book entries keep the destination's own row for a phone it knows.**
-  The address book belongs to the account (ADR 0037), not to history, so an
-  empty destination may still hold entries while holding no chat. A moved entry
-  lands unless the destination already knows that phone, in which case the
-  destination's row wins: its own account is the newer truth about that person.
-  No field is merged and no row is lost — the source is emptied either way.
+- **Directory snapshots move with their historical origin intact.** An empty
+  destination may already hold directory data. The move changes the stored
+  data's owner bot, never its `SourceIdentity`, peer key, or observation time
+  (ADR 0037). Another account's snapshot does not become current membership
+  of the receiving account and conveys no reachability or send permission.
+  Different source identities retain separate rows even for the same peer.
+  Only a collision of the complete owner/source/peer key prefers the existing
+  destination row; it does not merge fields or rewrite origin. The source
+  directory rows leave in the same transaction, preserving move/retry semantics.
+  Full binding-generation provenance remains P3, not a freshness guarantee
+  inferred from this minimal P1 source identity.
 
 - **Each operation stops what it must and puts it back.** The affected bot or
   bots are stopped for the duration — a running actor would keep writing the
@@ -128,9 +136,19 @@ both sides.
   migration finds nothing left to move. This is why neither route takes an
   idempotency key where owner provisioning does.
 
-- **Address-book-only sources still have history to move.** Migration counts
-  address-book entries independently of chats, so a bot with no conversations
-  but an imported book is not mistaken for an already-empty source.
+- **Directory-only sources still have history to move.** Migration counts
+  historical directory snapshots independently of chats, so a bot with no
+  conversations but imported entries is not mistaken for an empty source.
+
+## P1 design scope
+
+The provenance and compatibility rules above are selected design, not implemented
+runtime behavior. Directory persistence and migration must follow them when P1
+is implemented. Complete binding generations/freshness stay P3; retained message
+spaces and replacement dedup remain P5. Physical archive filenames, CSV columns,
+and the existing phone/name compatibility projection are separate public formats;
+this update does not authorize changing them or adding phone fields to the core.
+Domain history sections need not mirror physical table names.
 
 ## Consequences
 

@@ -15,6 +15,33 @@ fixture, and an accepted ADR is not a passing runtime gate.
 
 ## P1 — Neutral identity, conversations, and durable targets
 
+### Selected design, not implementation
+
+The owner authorized the bounded contract/rule design on 2026-10-11, not runtime
+implementation. ADR 0051 defines comparable identity/target types, required values,
+canonical absent topic, explicit optional participants, scoped store operations,
+normalized own account identity, and adapter-owned device lookup. ADR 0026/0029
+separate chat history, graph execution, and first allowed live-inbound activity.
+
+Two policies were explicitly selected:
+
+- Directory snapshots preserve source account identity when compatible history
+  moves; data ownership is not current membership. Different origins remain
+  independent snapshots (ADR 0037/0042).
+- Legacy `contact.id/name/phone` templates use per-bot WhatsApp translation into
+  neutral peer paths, without a universal phone field, shared-graph mutation, or
+  silently empty unsupported aliases (ADR 0018/0020).
+
+Durable local-space normalization follows ADR 0051; a provider match alone does
+not prove migration compatibility. P3 association generations/freshness and P5
+receive/message-space decisions remain outside this design closure. Other public
+formats still require their affected compatibility decisions.
+
+All runtime deliverables and gates below remain unchecked. Documentation and
+approved contracts do not authorize implementation or prove a phase is complete.
+
+### Implementation deliverables and gates
+
 Change: `message.go`, `records.go`, `ports.go`;
 `adapters/sqlite/sqlite.go` and its stores; `engine/engine.go`,
 `engine/steps.go`, `engine/context.go`; `fleet/filter.go`,

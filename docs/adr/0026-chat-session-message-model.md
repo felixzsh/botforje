@@ -1,83 +1,92 @@
-# ADR 0026 — Chat, session, and message model
+# ADR 0026 — Chat, graph run, and message model
 
-Status: Accepted (2026-09)
+Status: Accepted (2026-09); P1 design aligned on 2026-10-11.
+Implementation remains tracked in [the channel phases](../channels/phases.md).
 
 ## Context
 
-Persistence must keep every message exchanged with each person, while the
-engine keeps only a bounded, resumable conversation state. The two are not the
-same thing: the state starts and ends, the record does not. The first schema
-conflated them. It had a `conversations` table with no unique key and no
-lifecycle, the word "conversation" meant both the state and the record, and
-messages had no link to the session run that handled them.
+Durable dialogue history and bounded graph execution have different lifetimes.
+The old implementation used phone-based contact relationships and called bounded
+execution a session. Neither a sender's identity nor an SDK session defines the
+conversation that owns the history.
 
 ## Decision
 
-Three concepts, three tables:
+Three concepts, with the identity and destination values of ADR 0051:
 
-- **Chat** — the durable thread between one bot and one conversation
-  (ADR 0051), unique per its scope, bot, provider, kind, thread, and topic. It
-  never ends and owns the history.
-- **Session** — one bounded run of the graph for a chat. It starts at the root
-  and ends on the graph timeout (or `default_timeout`). A chat has many over
-  time.
-- **Message** — one inbound or outbound message. It belongs to a chat, may
-  reference the session run that handled it, and may carry its sender when
-  the conversation is shared.
+- **Chat** — the durable conversation for one bot, unique by `(scope, bot,
+  provider, kind, thread, topic)`. It never ends and owns history, holds, and
+  guards. Its `Target` is independent of the sender.
+- **GraphRun** — one bounded execution of a graph for a chat, starting at the
+  root and ending on the graph timeout or `default_timeout`. A chat has many
+  `GraphRuns`. Bind attempts and SDK sessions are different concepts.
+- **Message** — one retained inbound or outbound message. It belongs to a history
+  chat, may reference the graph run that handled it, and may carry a known sender
+  independently of the chat's participant.
 
-Schema (`adapters/sqlite`):
+### Relationships and persistence
 
-- `chats (id, scope, bot, provider, kind, thread, topic, contact_id
-  -> contacts, started_at, updated_at, message_count, guards)`, unique
-  `(scope, bot, provider, kind, thread, topic)`; `guards` is the
-  per-action guard state (ADR 0027); `contact_id` and the `contacts` table come
-  from ADR 0029, and it is set when the conversation has one participant.
-- `sessions (id, chat_id -> chats, node, visited_nodes, graph_context,
-  node_context, created_at, updated_at, expires_at)`; the newest row per chat
-  is the active state.
-- `messages (id, chat_id -> chats, session_id -> sessions NULL, sender_id ->
-  contacts NULL, direction, kind, body, sent_at, provider_message_id,
-  ingest_kind, origin, routing)`.
-  `provider_message_id` is the channel's opaque message id, interpreted in
-  its actual destination and provider message space (ADR 0051), not a receive
-  update ID or cursor. WhatsApp's import uses per-chat deduplication (ADR 0035);
-  account-local IDs and retained history require explicit provenance before a
-  channel-neutral durable key is settled in
-  `docs/channel-adapter-findings/channel-plan.md`, section 7.
-  This schema sketch does not fix that key or add a speculative namespace
-  column. `ingest_kind` says how the row entered
-  Botflota (`live`, `sync`, `api`, `unknown`); `origin` who produced an
-  outbound body (`preset`, `llm`, `operator`, `api`, `unknown`, empty for
-  inbound; `api` is an API-origin send, ADR 0044);
-  `routing` how the engine chose the transition (`trigger_exact`,
-  `trigger_sequence`, `trigger_words`, `trigger_fuzzy`, `system_one`,
-  `default`, `fallback`, `root`, `unknown`).
+Physical table names belong to the SQLite adapter, not to the domain vocabulary.
+The logical relationships are:
 
-Foreign keys: deleting a chat cascades to its sessions and messages; deleting a
-session run sets `messages.session_id` to NULL, so history outlives the run.
+- Peers are unique by scoped provider/subject (ADR 0029).
+- Chats store the complete target and an optional peer reference. A direct target
+  without a known participant is valid; an unknown participant is SQL NULL and
+  zero in the Go internal-ID convention. Do not create a peer from a thread.
+- Graph runs reference chats and store node, visited nodes, graph/node context,
+  creation/update times, and expiry. The newest run is the current execution;
+  expiry starts a new run instead of overwriting history.
+- Messages reference their history chat and optionally a graph run and known
+  sender. Deleting a chat cascades to its graph runs and messages; deleting a
+  graph run clears its message references, not the messages themselves.
+- All references resolve under their scope and bot as applicable. A valid foreign
+  key alone does not permit a peer or chat from another scope.
+- Topic absence is stored canonically as an empty value, so SQL uniqueness matches
+  `ChatTarget` equality (ADR 0051).
 
-"Conversation" is retired as a data-model term: the durable entity is a chat,
-the bounded state is a session. The word still describes dialogue in prose.
+An allowed live inbound resolves its sender identity and full target separately.
+Execution, holds, and guards resolve by chat, never by the sender's last chat.
+A peer-only lookup cannot return the unique conversation: one peer may have many
+chats with the same bot. Shared conversations remain filtered/refused until their
+runtime policy is approved (ADR 0051).
+
+### History association versus actual destination
+
+An inbound belongs to the conversation it arrived on. A normal reply targets that
+conversation. An explicit alternate destination keeps the triggering chat's
+history association, but its outbound record and queued delivery also carry the
+exact destination. Never substitute the history chat's target for that destination.
+
+`provider_message_id` is opaque. It is interpreted in its actual destination and
+provider message space, not globally and not in the triggering history chat when
+those differ. Source update IDs and receive cursors are different adapter values.
+P1 tests overlapping source/destination IDs and restart with the persisted target.
+Full account-local/replacement provenance and the final durable dedup key remain
+P5 decisions; this ADR does not invent a namespace column or equate that space
+with binding generation (ADR 0051).
+
+### Recording semantics
+
+`ingest_kind` records how data entered the runtime: live, sync, API, or unknown.
+History import is inert: it creates no live activity or first-seen claim.
+Unknown history senders remain unknown, not invented peers.
+
+Origin records known provenance, not inferred human authorship. Imported outbound
+bodies remain unknown; a body actually produced by the model is LLM-origin, a kept
+anchor is preset, and an API send is API-origin. Stronger external-send attribution
+and pause policy are reviewed in P5 with ADR 0043.
+
+Routing metadata records the engine's actual choice. The `TurnStore` transaction
+commits the inbound, graph-run update, outbound records, and queued deliveries
+(ADR 0040); it is not another table-shaped port.
 
 ## Consequences
 
-- Every message is kept regardless of session expiry or reset, which is the
-  point. Session runs are kept as history and can be pruned later if needed.
-- The same sender in two conversations has independent chats, sessions, holds,
-  and guards; a shared conversation is refused until its semantics exist
-  (ADR 0051).
-- The engine resolves a chat (get-or-create) and then the chat's newest
-  session; an expired session starts a new run instead of overwriting.
-- The store ports map to the model: `ChatStore`, `SessionStore`, and
-  `MessageStore` (root package `botflota`) read and write their own tables,
-  while `TurnStore` mirrors no table — it commits one turn's writes as a
-  single transaction (ADR 0040).
-- Message recording happens in the engine as messages flow: the inbound
-  message and every reply are appended under the chat and the session run that
-  handled them. Listing and tailing a chat arrive with the CLI and API.
-- Provenance is recorded, never inferred: an imported outbound message says
-  `sync` and `unknown`, never that a human wrote it, and only a body the model
-  really produced is `llm`; a failed realization that keeps the anchor stays
-  `preset`.
-- Pre-release, the schema is edited in place (ADR 0006), so an existing
-  development database is recreated with `make dev-reset`.
+- `GraphRunStore`, `GraphRunID`, `TurnRecord.GraphRun`, and `HistoryCounts.GraphRuns`
+  name graph execution explicitly; bare `Run`/`Runs` are not replacements.
+- One sender in two supported targets has independent execution and guard state.
+- The engine records messages through the same scoped stores; an internal rename
+  does not authorize changing JSON keys, routes, event topics, or archive names.
+- The pre-release schema may be rebuilt explicitly under ADR 0006. P1 must prove
+  fresh-schema constraints and a real database close/reopen without sender caches;
+  the design is not evidence that those gates already pass.

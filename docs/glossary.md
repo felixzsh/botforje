@@ -83,7 +83,9 @@
   creating a chat or triggering first-seen (ADR 0037, ADR 0051). Reading or
   importing the upstream directory is an optional channel capability, separate
   from its persistence through `DirectoryStore`; access to the complete address
-  book of a physical device is not assumed.
+  book of a physical device is not assumed. A retained or migrated snapshot keeps
+  its source account identity; its current data owner need not be the account
+  that imported it. Moving it never establishes current membership (ADR 0042).
 - Contact card — a message payload that shares someone's contact information,
   such as a name, phone, email, or both. The selected target names are
   `ContactCardContent` and `spec.ContactCard`, replacing `ContactContent` and
@@ -101,9 +103,12 @@
 - Channel — one implementation that reaches a messaging provider. WhatsApp
   has several: the native client today, other clients or the official Cloud API
   later.
-- Linked account — a bot's identity on its messaging provider: for WhatsApp,
-  the JID that identifies the paired companion device; keyed by (scope, bot).
-  Pairing is the lifecycle around it: paired, not paired, or unpaired.
+- Binding (currently `LinkedAccount`) — the fixed verified association of a
+  scoped bot with its normalized own messaging identity. Its SDK device/session
+  locator is separate and adapter-owned. P1's minimal identity contract uses
+  `IdentityKey`; full adapter/mode/namespace/generation metadata and lifecycle
+  remain P3 (ADR 0051, ADR 0053). A temporary backend-context selection does not
+  change the association.
 - Shared catalog — the instance-level `system_one` and `llms` a host provides, in
   the main config file only; a bot resolves `system_one` and `llm` in its scope first
   and then in `shared`, which is not a scope.
@@ -130,7 +135,10 @@
 - Template — a string with `{{path.to.value}}` references resolved against the
   runtime context; a missing path is an error.
 - Runtime context — the values a template reads: graph and node variables,
-  contact, message, bot, tool inputs, and request results.
+  peer, message, bot, tool inputs, and request results. The selected P1 peer
+  values are `id`, `provider`, `subject`, and `name`; approved legacy contact
+  references translate per consuming WhatsApp bot, not through a universal
+  phone field (ADR 0018, ADR 0020). Implementation is pending.
 - Device store — the WhatsApp device credentials that keep a companion device
   linked: its identity keys, prekeys, and registration. It lives in the
   database, so a bot can run on a server.

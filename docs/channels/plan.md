@@ -131,11 +131,13 @@ wait for unrelated real-adapter research to finish every phase.
   from the context needed to reach a conversation. A stable external
   ID need not be a usable destination under another authorization.
   Protocol resolution and credential-bearing routing state stay
-  adapter-owned. Review local identity-space composition, participant
-  mapping, directory provenance, and migration eligibility; a binding
-  generation is not automatically an identity or message namespace.
-  Align ADR 0051 and the phone/card decisions already recorded in
-  `open-decisions.md` with their owning ADRs before reusing old shapes.
+  adapter-owned. The selected P1 design now lives in ADR 0051 and the
+  design section of `phases.md`, including local spaces, participants,
+  directory origin, and migration eligibility. This closes those contract
+  rules, not their implementation; binding generation is not an identity
+  or message namespace. The owner authorized documentation/ADR work only.
+  Resolve other affected public-format choices before coding their consumers;
+  do not reopen the approved phone removal or copy the old phone-based shapes.
 - **P2 — Declared support:** validate the installed implementation and
   account mode, not a provider-wide feature list. Separate implemented
   support, account authorization, and current conversation eligibility.

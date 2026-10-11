@@ -14,9 +14,10 @@ a universal messaging identity, and the target is a provider-agnostic
 domain with inward dependency boundaries — not a union of today's
 providers and not a renamed WhatsApp model. Future providers may bring
 identities and flows none of the studied channels use; they must not
-inherit assumptions from those examples. Whether that steer also
-removes the *optional* phone metadata ADR 0051 still keeps is
-unresolved; see [open-decisions.md](open-decisions.md).
+inherit assumptions from those examples. Removal of common optional phone
+metadata is an owner decision. The selected P1 contracts and template/directory
+rules are now recorded in their canonical ADRs; their implementation remains
+pending, as distinguished in [open-decisions.md](open-decisions.md).
 
 ## Principles for the common contract
 
@@ -66,12 +67,11 @@ unresolved; see [open-decisions.md](open-decisions.md).
   SDK store; add a persistent bot-to-device relation only if no
   existing link can recover it safely after restart. A renamed device
   locator is still not a verified account identity.
-- Local IDs should include their durable identity space in
-  adapter-normalized subjects and threads, using a documented,
-  unambiguous composition. Candidate rule, pending findings: never
-  derive the prefix from a bot name, port, path, active profile,
-  connection, or reconnect counter. See
-  [open-decisions.md](open-decisions.md).
+- Local IDs include their durable identity space in adapter-normalized
+  subjects and threads, using a documented unambiguous composition (ADR 0051).
+  Never derive that space from a bot name, port, path, active profile,
+  connection, or reconnect counter. Provider-wide IDs need no artificial
+  prefix. New concrete findings may reopen the rule, not silently change it.
 - Sender, participant, conversation, and account are distinct roles. A
   direct thread does not universally identify its participant. Use the
   supplied sender/participant or an adapter mapping; never derive a
@@ -143,7 +143,10 @@ contracts they translate to:
   translation before coding. Apply it per consuming bot, never by
   mutating a shared graph for every channel or by textual
   search-and-replace. Unsupported aliases fail validation, not render
-  empty silently.
+  empty silently. The owner selected per-bot WhatsApp translation of
+  `contact.id/name` to `peer.id/name`, and `contact.phone` to `peer.subject`
+  only under PN semantics (ADR 0018/0020). This is design, not implemented
+  translation or approval of other legacy formats.
 - A peer card is shared content, not a directory entry or binding identity.
   The telephone-shaped declaration/content model is replaced by a neutral
   card: a display name plus reachability entries (`phone`, `email`,
@@ -213,22 +216,23 @@ The owner's cleanup steer is clear; concrete compatibility and
 card-format changes still require their owning decisions. Do not claim
 accepted ADRs already describe this direction:
 
-- ADR 0051 and ADR 0029: neutral account subject versus adapter device
-  lookup; sender/participant separate from thread identity; whether the
-  common optional phone property stays or goes.
+- ADR 0051 and ADR 0029: P1 identity/target types, scoped store operations,
+  neutral own identity versus adapter device lookup, optional explicit
+  participant, and common phone removal are aligned as design.
 - ADR 0020: scope PN/LID normalization and phone presentation to the
   WhatsApp boundary.
-- ADR 0018 and ADR 0054: legacy template/config translation and any
-  deliberate breaking change. Missing-path errors remain intact.
+- ADR 0018: P1 per-bot template compatibility is selected; missing-path
+  errors remain intact. ADR 0054 still owns other config/public choices.
 - ADR 0036: neutral peer-card format and its capability/codec
   transition.
 - ADR 0053, 0021, and 0039: neutral binding/setup/ownership/readiness
   versus the legacy WhatsApp result.
-- ADR 0037, 0042, 0044, and 0045: address-book/read models, migration
-  compatibility, selectors, exports, and peer-first-seen envelopes.
+- ADR 0037/0042: P1 historical directory origin and migration compatibility
+  are selected. ADR 0044/0045 and later phases still own selectors, exports,
+  public read models, and first-seen envelope compatibility.
 - ADR 0004 and 0034: inward dependency direction and consumer-owned
   ports. Preserve them while updating `glossary.md` and
   `architecture.md` for any new neutral domain vocabulary.
 
-Update canonical ADRs in place under repository rules when implementing
-the affected slice.
+Update canonical ADRs in place before implementing each affected slice.
+The P1 design alignment above does not implement or close a runtime gate.
