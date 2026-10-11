@@ -1,7 +1,7 @@
 # ADR 0029 — Peer identity and first live inbound
 
-Status: Accepted (2026-09); P1 design aligned on 2026-10-11.
-Implementation remains tracked in [the channel phases](../channels/phases.md).
+Status: Accepted (2026-09); P1 design aligned and implemented on 2026-10-11.
+Implementation is tracked in [the channel phases](../channels/phases.md).
 
 ## Context
 

@@ -18,16 +18,16 @@ type BotSettings struct {
 	QueueDelay       int      `yaml:"queue_delay" json:"queue_delay,omitempty"`
 	Jitter           int      `yaml:"jitter" json:"jitter,omitempty"`
 	MaxMsgPerMinute  int      `yaml:"max_messages_per_minute" json:"max_messages_per_minute,omitempty"`
-	IgnoreGroups     *bool    `yaml:"ignore_groups" json:"ignore_groups,omitempty"`
-	AllowedContacts  []string `yaml:"allowed_contacts" json:"allowed_contacts,omitempty"`
-	IgnoredContacts  []string `yaml:"ignored_contacts" json:"ignored_contacts,omitempty"`
+	AllowedPeers     []string `yaml:"allowed_peers" json:"allowed_peers,omitempty"`
+	IgnoredPeers     []string `yaml:"ignored_peers" json:"ignored_peers,omitempty"`
 	// HistorySync imports the messages WhatsApp delivers when the account is
 	// linked. It defaults to true; false stores none of that backlog.
 	HistorySync *bool `yaml:"history_sync" json:"history_sync,omitempty"`
 	// ImportContacts copies the linked account's address book into the
-	// instance's own contacts, keyed by (scope, bot, phone). It defaults to
-	// false: the book may hold people this account never wrote to, and it can
-	// overlap with the address book of a personal account on the same phone.
+	// instance's own directory, keyed by (scope, bot, peer identity). It
+	// defaults to false: the book may hold people this account never wrote to,
+	// and it can overlap with the address book of a personal account on the
+	// same phone.
 	ImportContacts *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
 	// ExternalReplyPause is the milliseconds one chat stays handed to a human
 	// after a message leaves the linked account without Botflota sending it.

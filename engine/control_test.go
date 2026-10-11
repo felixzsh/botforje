@@ -15,7 +15,7 @@ func TestRecordSuppressedKeepsHistoryWithoutASession(t *testing.T) {
 	eng := fixtureEngine(t, store)
 	sender := "5215500000000"
 	msg := botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: sender, At: t0,
+		Bot: "support-bot", Sender: waKey(sender), Target: waTarget(sender), At: t0,
 		ProviderMessageID: "M1",
 		Content:           botflota.TextContent{Body: "hola"},
 	}
@@ -48,8 +48,8 @@ func TestRecordSuppressedKeepsHistoryWithoutASession(t *testing.T) {
 func TestRecordOperatorStoresOutboundWithoutQueueing(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
-	err := eng.RecordOperator(context.Background(), botflota.OutboundMessage{
-		Bot: "support-bot", RecipientPhone: "5215500000000",
+	err := eng.RecordOperator(context.Background(), botflota.ExternalSend{
+		Bot: "support-bot", Target: waTarget("5215500000000"),
 		ProviderMessageID: "OP1", At: t0,
 		Content: botflota.TextContent{Body: "te atiendo yo"},
 	})

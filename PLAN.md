@@ -525,12 +525,16 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   conversations, setup, capabilities, and compatibility accepted; WhatsApp, Telegram-token,
   user-login, and local-profile cases described without a fake phone, a
   universal QR, a leaked credential, or a global address.
-- [ ] P1 — identity and target propagation (ADR 0051): neutral keys are partly
-  propagated, but complete the identity/directory phone/JID cleanup and explicit
-  participant mapping in
-  `docs/channel-adapter-findings/channel-plan.md`, section 5. Prove clean-schema
-  persistence, destination deduplication, and real close/reopen/restart without
-  a sender cache. No legacy backfill or pre-change database gate is required.
+- [x] P1 — identity and target propagation (ADR 0051): the identity/directory
+  phone/JID cleanup and explicit participant mapping landed across the core,
+  SQLite stores, engine, fleet, WhatsApp mapping, and the API/CLI/webhook
+  consumers. The schema is destination-keyed and created fresh; a provider id is
+  deduplicated in its actual destination; and the gate closes/reopens the
+  database and reads the persisted conversation with no sender cache. The
+  per-bot WhatsApp translation of legacy `contact.*` template references needs
+  the consuming bot's definition and moves to P2, which retires the old root
+  without a universal phone field. No legacy backfill or pre-change database
+  gate is required.
 - [ ] P2 — declared capabilities and channel configuration (ADR 0052, ADR
   0054): the injected catalog, typed selector, pure support checks, reload
   comparison, and composition; old YAML works and a fake text-only channel

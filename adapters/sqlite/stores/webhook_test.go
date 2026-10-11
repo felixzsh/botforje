@@ -15,7 +15,7 @@ func TestWebhookQueueLifecycle(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	delivery := botflota.WebhookDelivery{
 		EventID: "event-1", DeliveryID: "delivery-1",
-		URL: "https://bardo.example/events", Event: botflota.EventContactFirstSeen,
+		URL: "https://bardo.example/events", Event: botflota.EventPeerFirstSeen,
 		Scope: "bardo", Payload: []byte(`{"id":"event-1"}`),
 	}
 	if err := db.Webhooks().Enqueue(ctx, &delivery); err != nil {
@@ -36,7 +36,7 @@ func TestWebhookQueueLifecycle(t *testing.T) {
 	entry := pending[0]
 	if entry.EventID != "event-1" || entry.DeliveryID != "delivery-1" ||
 		entry.URL != "https://bardo.example/events" ||
-		entry.Event != botflota.EventContactFirstSeen ||
+		entry.Event != botflota.EventPeerFirstSeen ||
 		string(entry.Payload) != `{"id":"event-1"}` || entry.Attempts != 0 {
 		t.Fatalf("entry = %#v", entry)
 	}
@@ -83,11 +83,11 @@ func TestWebhookQueueKeysByEventAndTarget(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	for _, delivery := range []botflota.WebhookDelivery{
 		{EventID: "e1", DeliveryID: "d1", URL: "https://a.test/hook",
-			Event: botflota.EventContactFirstSeen, Scope: "s"},
+			Event: botflota.EventPeerFirstSeen, Scope: "s"},
 		{EventID: "e2", DeliveryID: "d2", URL: "https://a.test/hook",
-			Event: botflota.EventContactFirstSeen, Scope: "s"},
+			Event: botflota.EventPeerFirstSeen, Scope: "s"},
 		{EventID: "e1", DeliveryID: "d3", URL: "https://b.test/hook",
-			Event: botflota.EventContactFirstSeen, Scope: "s"},
+			Event: botflota.EventPeerFirstSeen, Scope: "s"},
 	} {
 		if err := db.Webhooks().Enqueue(ctx, &delivery); err != nil {
 			t.Fatalf("Enqueue: %v", err)

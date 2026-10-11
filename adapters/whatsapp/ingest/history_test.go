@@ -21,7 +21,7 @@ import (
 func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, nil)
 
 	base := uint64(t0.Unix())
@@ -43,23 +43,23 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 		Conversations: []*waHistorySync.Conversation{a, b, group, media},
 	}})
 
-	ana, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	ana, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
 	if err != nil {
 		t.Fatalf("sender Ana: %v", err)
 	}
 	if ana.DisplayName != "Ana" {
 		t.Fatalf("Ana display name = %q", ana.DisplayName)
 	}
-	if _, err := db.Contacts().Get(ctx, "dev", "1203630"); !errors.Is(
+	if _, err := db.Peers().Get(ctx, "dev", PeerKey("1203630")); !errors.Is(
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("group sender = %v, want not found", err)
 	}
-	cora, err := db.Contacts().Get(ctx, "dev", "5215500000002")
+	cora, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000002"))
 	if err != nil {
 		t.Fatalf("media-only sender: %v", err)
 	}
-	coraChat, err := db.Chats().ForContact(ctx, "dev", "bot", cora.ID)
+	coraChat, err := db.Chats().ForTarget(ctx, "dev", "bot", DirectTarget(cora.Key.Subject))
 	if err != nil {
 		t.Fatalf("media-only chat: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 		t.Fatalf("media-only chat started = %v", coraChat.StartedAt)
 	}
 
-	chat, err := db.Chats().ForContact(ctx, "dev", "bot", ana.ID)
+	chat, err := db.Chats().ForTarget(ctx, "dev", "bot", DirectTarget(ana.Key.Subject))
 	if err != nil {
 		t.Fatalf("chat Ana: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestHistoryImporterStoresSyncMessages(t *testing.T) {
 func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, nil)
 	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
 		&waHistorySync.HistorySyncMsg{
@@ -142,7 +142,7 @@ func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 	}
 	// A control-only shell is not a chat: WhatsApp sends one for every number
 	// the account's address book knows, and it must not become a row.
-	if _, err := db.Contacts().Get(ctx, "dev", "5215500000000"); !errors.Is(
+	if _, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000")); !errors.Is(
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("contact = %v, want ErrNotFound", err)
@@ -152,7 +152,7 @@ func TestHistoryImporterSkipsControlEntries(t *testing.T) {
 func TestHistoryImporterDeduplicates(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, nil)
 	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
 		historyText("M1", false, "hello", uint64(t0.Unix()), 1),
@@ -169,11 +169,11 @@ func TestHistoryImporterDeduplicates(t *testing.T) {
 		t.Fatalf("redelivered import = %#v, want 1 duplicate", second)
 	}
 
-	sender, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	sender, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	chat, err := db.Chats().ForContact(ctx, "dev", "bot", sender.ID)
+	chat, err := db.Chats().ForTarget(ctx, "dev", "bot", DirectTarget(sender.Key.Subject))
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestHistoryImporterSummarizesPerTransfer(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	var buffer bytes.Buffer
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, botflota.NewLogger("debug", &buffer))
 
 	chunk := func(progress uint32, conversations ...*waHistorySync.Conversation) {
@@ -232,7 +232,7 @@ func TestHistoryImporterIsSilentUntilATransferEnds(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	var buffer bytes.Buffer
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, botflota.NewLogger("info", &buffer))
 
 	data := &waHistorySync.HistorySync{
@@ -253,7 +253,7 @@ func TestHistoryImporterIsSilentUntilATransferEnds(t *testing.T) {
 func TestHistoryImporterAppliesPushNames(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, nil)
 	// A conversation creates the sender with no name of its own.
 	importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
@@ -262,7 +262,7 @@ func TestHistoryImporterAppliesPushNames(t *testing.T) {
 				historyText("M1", false, "hello", uint64(t0.Unix()), 1)),
 		},
 	}})
-	before, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	before, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestHistoryImporterAppliesPushNames(t *testing.T) {
 	if stats.PushNames != 1 {
 		t.Fatalf("push names = %d, want 1", stats.PushNames)
 	}
-	after, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	after, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}

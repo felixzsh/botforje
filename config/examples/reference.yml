@@ -27,13 +27,13 @@ rate_limit:                        # API budgets per fixed minute
 exclusive_scopes: false
 
 # Outbound webhooks (optional). Each target receives signed POSTs for the
-# events it subscribes to; only `contact.first_seen` exists today. The secret
+# events it subscribes to; only `peer.first_seen` exists today. The secret
 # signs the raw body with HMAC-SHA256 (X-Botflota-Signature) and is resolved
 # from the environment. Changing this list requires a restart.
 webhooks:
   - url: "https://example.com/botflota/events"
     secret: "${BOTFLOTA_WEBHOOK_SECRET}"
-    events: ["contact.first_seen"]
+    events: ["peer.first_seen"]
 
 
 # Multi-file organization: every file uses the `scopes` shape, and
@@ -169,7 +169,7 @@ scopes:
               method: POST
               headers:
                 X-API-Key: "your-crm-key"
-              body: '{"phone": "{{contact.phone}}", "note": "{{message.body}}"}'
+              body: '{"phone": "{{peer.subject}}", "note": "{{message.body}}"}'
               timeout: 5000
               retry: 2
           - message:
@@ -182,7 +182,7 @@ scopes:
         steps:
           - message:
               to: "{{graph.owner_phone}}"
-              body: "New request from {{contact.name}} ({{contact.phone}}): {{message.body}}"
+              body: "New request from {{peer.name}} ({{peer.subject}}): {{message.body}}"
 
       # Guarded action: a contact cannot trigger it twice within the cooldown,
       # nor more than 3 times per hour.
@@ -208,7 +208,7 @@ scopes:
               method: POST
               headers:
                 Authorization: "Bearer ${API_TOKEN}"
-              body: '{"phone": "{{contact.phone}}"}'
+              body: '{"phone": "{{peer.subject}}"}'
               timeout: 10000
               retry: 3
 
@@ -441,9 +441,8 @@ scopes:
           queue_delay: 1500           # Milliseconds between outbound messages
           jitter: 400                 # Extra random 0-400 ms per delay
           max_messages_per_minute: 0  # Outbound ceiling; 0 means no limit
-          ignore_groups: true
-          allowed_contacts: []        # Empty means all contacts allowed
-          ignored_contacts: ["5215500000000"]  # Plain phone numbers, no JID suffix
+          allowed_peers: []        # Empty means all contacts allowed
+          ignored_peers: ["5215500000000"]  # Peer subjects (WhatsApp phone numbers for now)
           history_sync: true          # Import the WhatsApp backlog when linking
           import_contacts: false      # Copy the account's address book too
           external_reply_pause: 900000  # Hand a chat over after a phone reply (ms)
@@ -452,7 +451,6 @@ scopes:
         graph: "faq-support"        # No llm: this bot is deterministic
         settings:
           queue_delay: 1000
-          ignore_groups: false
 
 # Notes
 # - This example exercises every field; field shapes are in

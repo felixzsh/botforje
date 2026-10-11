@@ -112,7 +112,7 @@ func TestPairManagerPairingSucceeds(t *testing.T) {
 		opts.RenderQR("code")
 		opts.OnSaved()
 		return PairResult{
-			JID: "5215500000001@s.whatsapp.net",
+			Identity: waKey("5215500000001"),
 			History: ingest.ImportTotals{
 				Conversations: 3, Imported: 40, Duplicate: 2, Skipped: 1,
 			},
@@ -216,7 +216,7 @@ func TestPairManagerCancelDuringActivationKeepsSuccess(t *testing.T) {
 	})
 	manager.pair = func(_ context.Context, opts PairOptions) (PairResult, error) {
 		opts.OnSaved()
-		return PairResult{JID: "5215500000001@s.whatsapp.net"}, nil
+		return PairResult{Identity: waKey("5215500000001")}, nil
 	}
 	if _, err := manager.StartPair(
 		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {
@@ -307,7 +307,7 @@ func TestPairManagerEndPairKeepsTheStoredLink(t *testing.T) {
 		opts.OnSaved()
 		close(saved)
 		<-ctx.Done()
-		return PairResult{JID: "5215500000001@s.whatsapp.net"}, ctx.Err()
+		return PairResult{Identity: waKey("5215500000001")}, ctx.Err()
 	}
 	if _, err := manager.StartPair(
 		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {

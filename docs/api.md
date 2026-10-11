@@ -176,10 +176,10 @@ process restart must say so explicitly.
 
 ### Outbound sends
 
-An integration can ask a bot to message any phone of its scope, even one that
+An integration can ask a bot to message any peer of its scope, even one that
 never wrote first: `POST /api/v1/scopes/{scope}/messages` with
 `{"bot":"...","to":"5215594251984","body":"...","kind":"text"}` stores and
-queues the message — creating the contact identity and the chat when missing —
+queues the message — creating the peer identity and the chat when missing —
 and answers `202 {"id":123,"status":"queued"}` (ADR 0044). Only `text` is
 accepted today. `client_id` is optional; repeating one already accepted
 answers `409` with code `duplicate` and the accepted message's `id` beside the
@@ -189,34 +189,36 @@ reply. The send does not read or change a chat's control (`auto`, `paused`,
 `human`): it is delivered while a chat is held, and the channel's echo
 correlation keeps it from starting a pause (ADR 0043).
 
-### Contact reads
+### Peer and directory reads
 
-`GET /api/v1/scopes/{scope}/contacts` lists the scope's contact identities
-newest activity first; `since` (unix milliseconds) keeps identities whose
-`first_seen` is at or after it, and an opaque `cursor` pages the list, with
-`next_cursor` absent on the last page (ADR 0044). Each entry is `{phone,
+`GET /api/v1/scopes/{scope}/contacts` lists the scope's peer identities newest
+activity first; `since` (unix milliseconds) keeps identities whose `first_seen`
+is at or after it, and an opaque `cursor` pages the list, with `next_cursor`
+absent on the last page (ADR 0044). Each entry is `{provider, subject, phone,
 display_name, first_seen, last_seen, address_book_imported, has_chat,
-has_history}`. `first_seen` means the contact sent a live inbound message;
-outbound API messages do not count. The booleans are derived: an
-address-book import supplied the identity, any bot has a chat, and any bot has
-an imported sync message. `address_book_imported` does not assert current
-membership in WhatsApp's address book. `GET .../contacts/{phone}` answers one
-identity or 404. Contacts belong to the scope, not to a bot (ADR 0029), so the
-route names no bot; `GET .../bots/{bot}` reads one bot's view or 404, and
-`GET .../bots/{bot}/contacts` reads that bot's imported address book (ADR 0037).
+has_history}`; `phone` is the legacy WhatsApp projection of `subject`
+(ADR 0054). `first_seen` means the peer sent a live inbound message; outbound
+API messages do not count. The booleans are derived: a directory import supplied
+the identity, any bot has a chat, and any bot has an imported sync message.
+`address_book_imported` does not assert current membership in WhatsApp's
+directory. `GET .../contacts/{subject}` answers one identity or 404. Peers
+belong to the scope, not to a bot (ADR 0029), so the route names no bot;
+`GET .../bots/{bot}` reads one bot's view or 404, and
+`GET .../bots/{bot}/contacts` reads that bot's imported directory (ADR 0037).
 
 ### Webhooks
 
 The instance can push events to an external system: `webhooks` in the main
 config file lists `url`, `secret` (an environment reference), and the `events`
-a target subscribes to (ADR 0045). Only `contact.first_seen` exists today; it
-fires once per phone per scope on the first allowed inbound, never on an
-import, an operator reply, or an API send. Delivery is a signed `POST`:
+a target subscribes to (ADR 0045). Only `peer.first_seen` exists today; it
+fires once per peer per scope on the first allowed inbound, never on an import,
+an operator reply, or an API send. Delivery is a signed `POST`:
 
-    { "id": "<uuid>", "event": "contact.first_seen",
+    { "id": "<uuid>", "event": "peer.first_seen",
       "occurred_at": "2026-09-28T20:24:20Z", "scope": "support",
       "data": { "bot": "assistant",
-                "contact": { "phone": "5215599999999", "display_name": "Ana" },
+                "peer": { "provider": "whatsapp", "subject": "5215599999999",
+                          "display_name": "Ana" },
                 "first_seen": "2026-09-28T20:24:20Z" } }
 
 with `X-Botflota-Event`, `X-Botflota-Delivery` (stable across retries), and

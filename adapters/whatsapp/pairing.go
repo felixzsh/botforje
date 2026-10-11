@@ -288,8 +288,8 @@ func (m *PairManager) endLocked(session *pairingSession, state botflota.PairStat
 // linked to another bot — so it reports the reason alone and leaves the names
 // to the instance log (ADR 0021).
 func pairingErrorText(err error) string {
-	if errors.Is(err, botflota.ErrAccountInUse) {
-		return botflota.ErrAccountInUse.Error()
+	if errors.Is(err, botflota.ErrIdentityInUse) {
+		return botflota.ErrIdentityInUse.Error()
 	}
 	return err.Error()
 }
@@ -360,7 +360,7 @@ func (m *PairManager) nowLocked() time.Time { return m.opts.Now().UTC() }
 
 func pairingResult(result PairResult) botflota.PairingResult {
 	return botflota.PairingResult{
-		Phone:       Number(result.JID),
+		Phone:       result.Identity.Subject,
 		Chunks:      result.History.Chunks,
 		Chats:       result.History.Conversations,
 		Messages:    result.History.Imported,

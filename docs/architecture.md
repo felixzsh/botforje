@@ -131,20 +131,21 @@ dashboard and integrations are API-only and never see local files.
   by references and persisted state. Optional `display_name` is presentation
   metadata only; interfaces fall back to the key when it is absent. Changing
   a key is an identity change, not a display rename (ADR 0016).
-- Contact — the durable identity of one person a scope knows: their provider
-  identity (provider and an opaque subject), an optional phone that is metadata
-  for a channel that has one, a push name, and first/last inbound. One per
-  (scope, provider, subject), shared by the scope's bots (ADR 0029, ADR 0051).
+- Peer — the durable identity of one person a scope knows: their provider
+  identity (provider and an opaque subject), a best-effort display name, and
+  first/last live inbound. One per (scope, provider, subject), shared by the
+  scope's bots. There is no universal phone field or getter; a subject that
+  contains phone digits is still opaque (ADR 0029, ADR 0051).
 - Conversation target — the conversation a message belongs to: the provider, a
   kind (direct or group), an opaque thread id, and an optional topic. A sender
   and a thread are different values, so one person in a direct chat and in a
   group has both (ADR 0051).
-- Address-book entry — an entry of one bot's linked account, keyed by
-  (scope, bot, contact) and copied only when the bot sets `import_contacts`.
-  It is never a chat; importing it also registers the contact as a scope
-  identity, so the directory holds the people the account knows. The derived
-  `address_book_imported` means an import supplied the identity, not that the
-  account still has it saved (ADR 0037, ADR 0051).
+- Directory entry — an entry of one bot's linked account, keyed by owner,
+  peer identity, and source identity, and copied only when the bot sets
+  `import_contacts`. It is never a chat; importing it also registers the peer
+  as a scope identity, so the directory holds the people the account knows.
+  The derived `address_book_imported` means an import supplied the identity,
+  not that the account still has it saved (ADR 0037, ADR 0051).
 - Graph — state machine with root, fallback, timeout, a routing override
   (ADR 0030), and a map of nodes.
 - Node — goal, policy, entry/exit actions, tools, and optional node-local
@@ -209,13 +210,13 @@ coordinates survive the store and the read API can serve them.
 Inbound:
 
 1. Channel receives an event, classifies it into a kind, maps it to an
-   `IncomingMessage` carrying its own contact key and conversation target,
-   and resolves what the wire needs; a message with no known contact or
+   `IncomingMessage` carrying its own sender identity and conversation target,
+   and resolves what the wire needs; a message with no known sender or
    conversation, or an unclassifiable live payload, is dropped (ADR 0020,
    ADR 0036, ADR 0051).
 2. The fleet routes the event to the bot; the bot's filter drops it (shared
    threads, allow/ignore lists) or passes it to the engine, which records the
-   inbound on the contact identity before routing (ADR 0029). The write that
+   inbound on the peer identity before routing (ADR 0029). The write that
    claims `first_seen` is the first-contact hook: the engine hands it to the
    configured notifier, whose webhook sink queues signed deliveries
    (ADR 0045). The dedup check in step 5 reads that conversation first, so
@@ -228,8 +229,8 @@ Inbound:
    first) plus the current node last (ADR 0010). Edges with triggers are
    fuzzy matched; the best score wins and ties go to the later candidate.
    The default edge is only taken from the current node.
-5. A redelivery whose provider id the chat already stores stops here, before
-   any action runs and before the contact or chat is written (ADR 0040).
+5. A redelivery whose provider id the destination already stores stops here,
+   before any action runs and before the peer or chat is written (ADR 0040).
    Steps 6–8 are the Phase 8 target: the fleet injects no model yet, so only
    the deterministic path runs today.
 6. When the graph routing mode is `always`, or nothing matched and the mode
@@ -252,7 +253,7 @@ Inbound:
     (anchor plus fallback); a policy check runs before anything is queued.
 11. The session, the stored messages, the chat activity, the guards, and the
     queued replies commit as one transaction; a failure rolls all of it back
-    (ADR 0040). The contact identity and chat created in step 2 sit outside
+    (ADR 0040). The peer identity and chat created in step 2 sit outside
     that transaction, so a failed turn can leave those two rows and nothing
     else. The outbox worker then delivers the replies with the pacing below.
 
@@ -281,18 +282,21 @@ Outbound:
 ## Templates
 
 Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
-`{{contact.id}}`, `{{contact.phone}}` and `{{contact.name}}`, `{{message.*}}`,
+`{{peer.id}}`, `{{peer.provider}}`, `{{peer.subject}}` and `{{peer.name}}`,
+`{{message.*}}`,
 `{{bot.*}}`, tool arguments as `{{input.<name>}}`, and request results as
 `{{node.<request-name>.resp.body.*}}`,
 `{{node.<request-name>.resp.headers.*}}`, `{{node.<request-name>.status}}`,
 and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 (Phase 4).
 
-`contact.id` is the contact's opaque handle within the scope, stable for the
-life of the identity; `contact.phone` is optional metadata a channel with a
-phone number fills and that is empty otherwise (ADR 0051, ADR 0018).
+`peer.id` is the peer's opaque handle within the scope, stable for the life of
+the identity; `peer.provider` and `peer.subject` are its comparable key, and
+`peer.name` is best-effort presentation. The old `contact.*` root is retired;
+its per-bot WhatsApp translation is P2 work, never a universal phone field
+(ADR 0018, ADR 0020).
 
-`graph` and `node` are read-write; `contact`, `message`, `bot`, and `input` are
+`graph` and `node` are read-write; `peer`, `message`, `bot`, and `input` are
 read-only, and `node` resets on every node entry. A missing path, an unknown
 root, and a whole map or slice are errors, never empty or literal text; a
 literal `{{` is written `\{{` (ADR 0018). The language lives in the core
@@ -357,8 +361,8 @@ step (interval, timeout, success condition) is an open decision for Phase 4/8.
 ## Webhooks
 
 The instance can mirror outbound events to an external system through signed
-webhooks (ADR 0045). The engine reports a contact's first inbound through
-the core `FirstContactNotifier` port; the `webhook` package implements it as a
+webhooks (ADR 0045). The engine reports a peer's first inbound through
+the core `PeerFirstSeenNotifier` port; the `webhook` package implements it as a
 sink that freezes one envelope per event and queues one delivery per
 subscribed target in SQLite. A worker polls the queue, signs the raw body with
 HMAC-SHA256, POSTs it, retries network failures, `429`, and `5xx` with
@@ -370,9 +374,11 @@ restart.
 
 ## Chats and sessions
 
-A chat is the durable thread with one contact, keyed by (scope, bot, contact);
-the contact is the resolved phone number in plain digits (ADR 0020) and the
-chat references its identity (ADR 0029). It never ends and gathers every message. A
+A chat is the durable conversation, keyed by (scope, bot, provider, kind,
+thread, topic). Its known participant is an optional peer reference that only
+explicit evidence fills; it is never derived from the thread, and a shared
+conversation is not one person's identity (ADR 0051). It never ends and gathers
+every message. A
 session is one bounded run of the graph for a chat: it starts at the root and
 expires after the graph timeout (or `default_timeout`). An expired session is
 replaced by a new run; the next message starts at root. Chat, session, and
@@ -392,14 +398,15 @@ content message is kept under its kind (ADR 0036), and every row is `sync`
 with `unknown` origin and routing and no session run. The import never runs the
 engine and ignores the bot filter, because it is not a conversation turn;
 `settings.history_sync: false` turns it off. A conversation registers its
-contact and chat only when it stored at least one message or call, so the
-control-only shells WhatsApp sends for the account's address book never become
-chats. The address book itself is a separate, opt-in import
-(`settings.import_contacts`): it fills the `bot_contacts` resource per bot and
-never touches the scope's contacts, chats, or the engine (ADR 0037).
-`provider_message_id` (the channel's own id) is the dedup key, both for a
-redelivered sync chunk and for a live reply the sync echoes afterwards. The
-`PUSH_NAME` chunk names the contacts the import knows, and importing a
+peer and chat only when it stored at least one message or call, so the
+control-only shells WhatsApp sends for the account's directory never become
+chats. The directory itself is a separate, opt-in import
+(`settings.import_contacts`): it fills the `directory_entries` resource per bot
+and never touches the scope's peers, chats, or the engine (ADR 0037).
+`provider_message_id` (the channel's own id) is the dedup key, scoped by the
+destination the message belongs to, both for a redelivered sync chunk and for a
+live reply the sync echoes afterwards. The `PUSH_NAME` chunk names the peers the
+import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`
 pages older messages back from the chat's oldest stored message in sequential
 batches, re-anchoring on the oldest message each page returned, until a page
@@ -437,18 +444,20 @@ composition and mechanics.
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
 scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
-`contacts`, `sessions`, and `messages`, and a bot exposes its imported address
-book at `/bots/{bot}/contacts`. Every addressable object carries its scope, a
+`contacts`, `sessions`, and `messages`, and a bot exposes its imported
+directory at `/bots/{bot}/contacts`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
-pair plus the contact's phone number. `messages` returns the last messages of a
+pair plus the `contact=<subject>` selector, the legacy WhatsApp compatibility
+boundary ADR 0054 keeps while neutral references are added. `messages` returns
+the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
 polls, and each message carries its kind, its visible text, and the structured
-`content`; `chats` lists a bot's chats with their contact identities, which is how
+`content`; `chats` lists a bot's chats with their peer identities, which is how
 `chat list` reads them; `status` and `bots` report each bot's active sessions;
 `POST chats/sync` asks the phone for older messages of one chat over the live
 connection and reports the batch counts. A scope's `messages` route also
 accepts a `POST`: an API-origin send that stores and queues one text message
-to any phone — creating the contact and the chat when missing — so the bot's
+to any peer — creating the peer and the chat when missing — so the bot's
 outbox delivers it like a reply (ADR 0044). Errors use one shape,
 `{"error":{"code","message"}}`.
 

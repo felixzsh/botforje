@@ -4,44 +4,61 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/felixzsh/botflota"
 )
 
 // queuedReplyIDFor finds the queued reply stored under one sender's chat, so a
-// test can check whether that reply is still waiting.
+// test can check whether that reply is still waiting. It waits for the bot to
+// finish the turn: the run loop keeps reading while the channel blocks on the
+// first send, so a second message may still be in flight when this is called.
 func queuedReplyIDFor(
 	t *testing.T, store *memStore, scope, bot, phone string,
 ) int64 {
 	t.Helper()
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	sender, ok := store.contacts[contactKey(scope, phone)]
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if id, ok := store.queuedReplyFor(scope, bot, phone); ok {
+			return id
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no reply queued for %s", phone)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// queuedReplyFor reports the queued reply of one peer's chat, false while the
+// turn that stores it has not landed yet.
+func (s *memStore) queuedReplyFor(scope, bot, phone string) (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sender, ok := s.peers[peerKey(scope, waKey(phone))]
 	if !ok {
-		t.Fatalf("no sender stored for %s", phone)
+		return 0, false
 	}
 	var chatID int64
-	for _, chat := range store.chats {
-		if chat.Scope == scope && chat.Bot == bot && chat.ContactID == sender.ID {
+	for _, chat := range s.chats {
+		if chat.Scope == scope && chat.Bot == bot && chat.PeerID == sender.ID {
 			chatID = chat.ID
 		}
 	}
 	if chatID == 0 {
-		t.Fatalf("no chat stored for %s", phone)
+		return 0, false
 	}
 	stored := map[int64]bool{}
-	for _, message := range store.messages {
+	for _, message := range s.messages {
 		if message.ChatID == chatID {
 			stored[message.ID] = true
 		}
 	}
-	for _, queued := range store.outbox {
+	for _, queued := range s.outbox {
 		if stored[queued.entry.MessageID] {
-			return queued.entry.ID
+			return queued.entry.ID, true
 		}
 	}
-	t.Fatalf("no reply queued for %s", phone)
-	return 0
+	return 0, false
 }
 
 // TestSetChatHumanCancelsOnlyThatChatsQueue covers the hand-over's effect on the
@@ -59,7 +76,7 @@ func TestSetChatHumanCancelsOnlyThatChatsQueue(t *testing.T) {
 
 	for _, sender := range []string{"held", "other"} {
 		alpha.incoming <- botflota.IncomingMessage{
-			Bot: "alpha", FromPhone: sender,
+			Bot: "alpha", Sender: waKey(sender), Target: waTarget(sender),
 			Content: botflota.TextContent{Body: "hi"},
 		}
 	}
@@ -68,7 +85,7 @@ func TestSetChatHumanCancelsOnlyThatChatsQueue(t *testing.T) {
 	heldID := queuedReplyIDFor(t, store, "dev", "alpha", "held")
 	otherID := queuedReplyIDFor(t, store, "dev", "alpha", "other")
 
-	if err := runner.SetChatHuman(ctx, "dev", "alpha", "held", true); err != nil {
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", waTarget("held"), true); err != nil {
 		t.Fatalf("SetChatHuman: %v", err)
 	}
 	if pending, err := store.IsPending(ctx, heldID); err != nil || pending {
@@ -80,14 +97,15 @@ func TestSetChatHumanCancelsOnlyThatChatsQueue(t *testing.T) {
 			pending, err)
 	}
 
-	state, ok := runner.ChatControl("dev", "alpha", "held")
+	state, ok := runner.ChatControl("dev", "alpha", waTarget("held"))
 	if !ok || state.Mode != botflota.ChatHuman {
 		t.Fatalf("control = %+v, %v; want a human hold", state, ok)
 	}
-	if err := runner.SetChatHuman(ctx, "dev", "alpha", "held", false); err != nil {
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", waTarget("held"), false); err != nil {
 		t.Fatalf("release: %v", err)
 	}
-	if state, _ := runner.ChatControl("dev", "alpha", "held"); state.Mode != botflota.ChatAuto {
+	state, ok = runner.ChatControl("dev", "alpha", waTarget("held"))
+	if !ok || state.Mode != botflota.ChatAuto {
 		t.Fatalf("mode after release = %q, want auto", state.Mode)
 	}
 
@@ -100,18 +118,20 @@ func TestSetChatHumanCancelsOnlyThatChatsQueue(t *testing.T) {
 func TestSetChatHumanRefusesABotThatIsNotRunning(t *testing.T) {
 	// Built but never run, so no bot holds an actor.
 	runner, _, _ := buildFleetWithStore(t, "", nil)
-	err := runner.SetChatHuman(context.Background(), "dev", "alpha", "s", true)
+	err := runner.SetChatHuman(context.Background(), "dev", "alpha", waTarget("s"), true)
 	if !errors.Is(err, botflota.ErrBotNotRunning) {
 		t.Fatalf("error = %v, want ErrBotNotRunning", err)
 	}
-	if _, ok := runner.ChatControl("dev", "alpha", "s"); ok {
+	if _, ok := runner.ChatControl("dev", "alpha", waTarget("s")); ok {
 		t.Fatal("a stopped bot reported control state")
 	}
 }
 
 // queueAPISend puts one queued API-origin send directly into the store, the
 // way CommitSend does (ADR 0044), so the worker can be driven in tests.
-func queueAPISend(t *testing.T, store *memStore, scope, bot, phone, body string) int64 {
+func queueAPISend(
+	t *testing.T, store *memStore, scope, bot, subject, body string,
+) int64 {
 	t.Helper()
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -120,7 +140,7 @@ func queueAPISend(t *testing.T, store *memStore, scope, bot, phone, body string)
 	store.outbox = append(store.outbox, queuedReply{
 		scope: scope, bot: bot,
 		entry: botflota.OutboxEntry{
-			ID: id, Recipient: phone, MessageID: 900 + id,
+			ID: id, Target: waTarget(subject), MessageID: 900 + id,
 			Content: botflota.TextContent{Body: body},
 			Origin:  botflota.OriginAPI, Routing: botflota.RoutingUnknown,
 		},
@@ -139,7 +159,7 @@ func TestAnAPISendReachesAHeldChat(t *testing.T) {
 	waitConnected(t, runner)
 	alpha := channels["alpha"]
 
-	if err := runner.SetChatHuman(ctx, "dev", "alpha", "held", true); err != nil {
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", waTarget("held"), true); err != nil {
 		t.Fatalf("SetChatHuman: %v", err)
 	}
 	queueAPISend(t, store, "dev", "alpha", "held", "aviso")
@@ -147,10 +167,10 @@ func TestAnAPISendReachesAHeldChat(t *testing.T) {
 	if body := botflota.ContentText(sent.Content); body != "aviso" {
 		t.Fatalf("sent = %q, want the API send", body)
 	}
-	if sent.Origin != botflota.OriginAPI || sent.RecipientPhone != "held" {
+	if sent.Origin != botflota.OriginAPI || sent.Target != waTarget("held") {
 		t.Fatalf("sent = %#v", sent)
 	}
-	if state, ok := runner.ChatControl("dev", "alpha", "held"); !ok ||
+	if state, ok := runner.ChatControl("dev", "alpha", waTarget("held")); !ok ||
 		state.Mode != botflota.ChatHuman {
 		t.Fatalf("control = %+v, %v; want the hold to stand", state, ok)
 	}
@@ -169,13 +189,13 @@ func TestHandingOverFailsAReplyAlreadyInFlight(t *testing.T) {
 	alpha := channels["alpha"]
 
 	alpha.incoming <- botflota.IncomingMessage{
-		Bot: "alpha", FromPhone: "held",
+		Bot: "alpha", Sender: waKey("held"), Target: waTarget("held"),
 		Content: botflota.TextContent{Body: "hi"},
 	}
 	<-alpha.entered
 	inFlight := queuedReplyIDFor(t, store, "dev", "alpha", "held")
 
-	if err := runner.SetChatHuman(ctx, "dev", "alpha", "held", true); err != nil {
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", waTarget("held"), true); err != nil {
 		t.Fatalf("SetChatHuman: %v", err)
 	}
 	if pending, err := store.IsPending(ctx, inFlight); err != nil || pending {

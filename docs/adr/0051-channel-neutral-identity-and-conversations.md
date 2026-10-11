@@ -1,7 +1,10 @@
 # ADR 0051 — Channel-neutral identity and conversations
 
-Status: Accepted (2026-10); P1 design concretized on 2026-10-11.
-Implementation is tracked in [the channel phases](../channels/phases.md).
+Status: Accepted (2026-10); P1 design concretized and implemented on
+2026-10-11. Implementation is tracked in
+[the channel phases](../channels/phases.md); the per-bot WhatsApp template
+alias moves to P2, and the account-scoped durable dedup key stays a P5
+decision.
 
 ## Context
 

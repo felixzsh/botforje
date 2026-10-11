@@ -8,6 +8,10 @@ provisional: later entries in `provider-findings/` and
 aligned before the affected slice is coded. Items whose answer depends
 on that evidence were moved to [open-decisions.md](open-decisions.md).
 
+P1's identity, target, peer, directory, and outbound-provenance cleanup landed
+on 2026-10-11; the binding, card, history-section, and API/CLI neutral
+reference work remains in their phases.
+
 Owner steer (2026-10-08): binding, peer, chat, and execution contracts
 should not contain messaging-provider-specific concepts. A phone is not
 a universal messaging identity, and the target is a provider-agnostic

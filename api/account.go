@@ -26,7 +26,7 @@ func (s *Server) handleAccountDelete(w http.ResponseWriter, r *http.Request) {
 	unlock := s.lockBot(scope, bot)
 	defer unlock()
 	ctx := r.Context()
-	if _, err := s.accounts.Get(ctx, scope, bot); err != nil {
+	if _, err := s.bindings.Get(ctx, scope, bot); err != nil {
 		if errors.Is(err, botflota.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not_found",
 				"no linked account for that bot")

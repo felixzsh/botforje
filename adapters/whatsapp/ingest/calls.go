@@ -30,24 +30,26 @@ func (h *HistoryImporter) importCallLogs(
 			continue
 		}
 		name := h.pushNames[phone]
-		contact, err := h.contacts.EnsureContact(ctx, h.scope, phone, at)
+		key := PeerKey(phone)
+		target := DirectTarget(phone)
+		peer, err := h.peers.EnsurePeer(ctx, h.scope, key, at)
 		if err != nil {
-			h.log.Warn("import history call contact", "phone", phone, "error", err)
+			h.log.Warn("import history call peer", "peer", phone, "error", err)
 			continue
 		}
 		if name != "" {
-			if err := h.contacts.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
-				h.log.Warn("import history call name", "phone", phone, "error", err)
+			if err := h.peers.SetDisplayName(ctx, h.scope, key, name, at); err != nil {
+				h.log.Warn("import history call name", "peer", phone, "error", err)
 				continue
 			}
 		}
-		chat, err := h.chats.Ensure(ctx, h.scope, h.bot, contact.ID, at)
+		chat, err := h.chats.Ensure(ctx, h.scope, h.bot, target, peer.ID, at)
 		if err != nil {
-			h.log.Warn("import history call chat", "phone", phone, "error", err)
+			h.log.Warn("import history call chat", "peer", phone, "error", err)
 			continue
 		}
 		if err := h.chats.NoteHistory(ctx, chat.ID, at, at); err != nil {
-			h.log.Warn("import history call activity", "phone", phone, "error", err)
+			h.log.Warn("import history call activity", "peer", phone, "error", err)
 			continue
 		}
 		direction := botflota.Inbound
@@ -58,6 +60,7 @@ func (h *HistoryImporter) importCallLogs(
 		}
 		message := botflota.Message{
 			ChatID:            chat.ID,
+			Target:            target,
 			Direction:         direction,
 			Content:           botflota.CallContent{Label: historyCallLogLabel(record)},
 			At:                at,
@@ -71,7 +74,7 @@ func (h *HistoryImporter) importCallLogs(
 			if errors.Is(err, botflota.ErrDuplicate) {
 				stats.Duplicate++
 			} else {
-				h.log.Warn("import history call", "phone", phone, "error", err)
+				h.log.Warn("import history call", "peer", phone, "error", err)
 			}
 			continue
 		}

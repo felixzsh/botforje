@@ -19,7 +19,7 @@ func seedHistory(t *testing.T, db *sqlite.DB, bot string) *botflota.Chat {
 	t.Helper()
 	ctx := context.Background()
 	contact := ensureContact(t, db)
-	chat, err := db.Chats().Ensure(ctx, "support", bot, contact.ID, t0)
+	chat, err := db.Chats().Ensure(ctx, "support", bot, waChatTarget, contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure chat: %v", err)
 	}
@@ -28,8 +28,9 @@ func seedHistory(t *testing.T, db *sqlite.DB, bot string) *botflota.Chat {
 		t.Fatalf("Save session: %v", err)
 	}
 	message := &botflota.Message{
-		ChatID: chat.ID, SessionID: session.ID, Direction: botflota.Outbound,
-		Content: botflota.TextContent{Body: "hello"}, At: t1,
+		ChatID: chat.ID, Target: chat.Target, SessionID: session.ID,
+		Direction: botflota.Outbound,
+		Content:   botflota.TextContent{Body: "hello"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, message); err != nil {
 		t.Fatalf("Append message: %v", err)
@@ -38,15 +39,16 @@ func seedHistory(t *testing.T, db *sqlite.DB, bot string) *botflota.Chat {
 	// row is written directly, because a store test seeds state rather than runs
 	// a turn.
 	if _, err := db.ExecContext(ctx,
-		`INSERT INTO outbox (scope, bot, message_id, recipient, state, created_at,
-			updated_at) VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
-		"support", bot, message.ID, "5215500000000",
+		`INSERT INTO outbox (scope, bot, message_id, target_provider, target_kind,
+			target_thread, target_topic, state, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, '', 'pending', ?, ?)`,
+		"support", bot, message.ID, "whatsapp", "direct", "5215500000000",
 		t0.UTC().Format(time.RFC3339Nano), t0.UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
-	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
-		Scope: "support", Bot: bot, Phone: "5215500000000", Name: "Ana",
-		UpdatedAt: t0,
+	if err := db.Directory().Put(ctx, &botflota.DirectoryEntry{
+		Scope: "support", Bot: bot, PeerKey: waKey("5215500000000"),
+		SourceIdentity: waKey("5215500000000"), DisplayName: "Ana", UpdatedAt: t0,
 	}); err != nil {
 		t.Fatalf("Put address-book entry: %v", err)
 	}
@@ -64,7 +66,7 @@ func TestDeleteBotRemovesItsHistoryAndKeepsTheScope(t *testing.T) {
 		t.Fatalf("DeleteBot: %v", err)
 	}
 	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 ||
-		counts.AddressBook != 1 {
+		counts.Directory != 1 {
 		t.Fatalf("counts = %+v, want one of each", counts)
 	}
 
@@ -84,7 +86,7 @@ func TestDeleteBotRemovesItsHistoryAndKeepsTheScope(t *testing.T) {
 		t.Fatalf("the other bot lost history: %+v", kept)
 	}
 	// The scope's contact identity is shared by its bots and must survive.
-	if _, err := db.Contacts().Get(ctx, "support", "5215500000000"); err != nil {
+	if _, err := db.Peers().Get(ctx, "support", waKey("5215500000000")); err != nil {
 		t.Fatalf("the scope's contact was removed: %v", err)
 	}
 	// The queued reply went with its message.
@@ -107,9 +109,9 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := seedHistory(t, db, "lost-bot")
 	// The destination is a fresh bot of the same scope.
-	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
-		Scope: "support", Bot: "new-bot", Phone: "5215599999999",
-		Name: "Luis", UpdatedAt: t0,
+	if err := db.Directory().Put(ctx, &botflota.DirectoryEntry{
+		Scope: "support", Bot: "new-bot", PeerKey: waKey("5215599999999"),
+		SourceIdentity: waKey("5215599999999"), DisplayName: "Luis", UpdatedAt: t0,
 	}); err != nil {
 		t.Fatalf("Put destination address-book entry: %v", err)
 	}
@@ -119,7 +121,7 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 		t.Fatalf("MoveBot: %v", err)
 	}
 	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 ||
-		counts.AddressBook != 1 {
+		counts.Directory != 1 {
 		t.Fatalf("counts = %+v, want the source's history", counts)
 	}
 
@@ -175,11 +177,13 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 func TestMoveBotMovesAddressBookWithoutChats(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	for _, entry := range []*botflota.AddressBookEntry{
-		{Scope: "support", Bot: "lost-bot", Phone: "5215500000001", Name: "Ana", UpdatedAt: t0},
-		{Scope: "support", Bot: "new-bot", Phone: "5215500000002", Name: "Beto", UpdatedAt: t1},
+	for _, entry := range []*botflota.DirectoryEntry{
+		{Scope: "support", Bot: "lost-bot", PeerKey: waKey("5215500000001"),
+			SourceIdentity: waKey("5215500000001"), DisplayName: "Ana", UpdatedAt: t0},
+		{Scope: "support", Bot: "new-bot", PeerKey: waKey("5215500000002"),
+			SourceIdentity: waKey("5215500000002"), DisplayName: "Beto", UpdatedAt: t1},
 	} {
-		if err := db.AddressBook().Put(ctx, entry); err != nil {
+		if err := db.Directory().Put(ctx, entry); err != nil {
 			t.Fatalf("Put %s: %v", entry.Bot, err)
 		}
 	}
@@ -187,14 +191,14 @@ func TestMoveBotMovesAddressBookWithoutChats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MoveBot: %v", err)
 	}
-	if counts != (botflota.HistoryCounts{AddressBook: 1}) {
+	if counts != (botflota.HistoryCounts{Directory: 1}) {
 		t.Fatalf("counts = %+v, want one moved address-book entry", counts)
 	}
-	entries, err := db.AddressBook().List(ctx, "support", "new-bot", 0)
+	entries, err := db.Directory().List(ctx, "support", "new-bot", 0)
 	if err != nil || len(entries) != 2 {
 		t.Fatalf("destination entries = %+v, err %v; want both", entries, err)
 	}
-	source, err := db.AddressBook().List(ctx, "support", "lost-bot", 0)
+	source, err := db.Directory().List(ctx, "support", "lost-bot", 0)
 	if err != nil || len(source) != 0 {
 		t.Fatalf("source entries = %+v, err %v; want empty", source, err)
 	}

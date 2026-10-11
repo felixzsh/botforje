@@ -13,39 +13,48 @@ import (
 )
 
 // AddressBookImporter copies the linked account's address book into the
-// AddressBookStore and registers each entry's phone as a scope contact, so the
-// directory holds the people the account knows (ADR 0029, ADR 0037).
+// DirectoryStore and registers each entry's peer identity as a scope peer, so
+// the directory holds the people the account knows (ADR 0029, ADR 0037).
 type AddressBookImporter struct {
-	scope    string
-	bot      string
-	contacts botflota.ContactStore
-	book     botflota.AddressBookStore
-	lookup   PNLookup
-	log      *slog.Logger
-	now      func() time.Time
+	scope  string
+	bot    string
+	peers  botflota.PeerStore
+	book   botflota.DirectoryStore
+	lookup PNLookup
+	log    *slog.Logger
+	now    func() time.Time
+	// source is the normalized identity of the account whose book this is, set
+	// once the device is loaded (ADR 0051).
+	source botflota.IdentityKey
 }
 
 // NewAddressBook returns nil when either store is missing, so a caller can
 // treat address-book import as disabled.
 func NewAddressBook(
-	scope, bot string, contacts botflota.ContactStore, book botflota.AddressBookStore,
+	scope, bot string, peers botflota.PeerStore, book botflota.DirectoryStore,
 	lookup PNLookup, log *slog.Logger,
 ) *AddressBookImporter {
-	if contacts == nil || book == nil {
+	if peers == nil || book == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
 	return &AddressBookImporter{
-		scope: scope, bot: bot, contacts: contacts, book: book,
+		scope: scope, bot: bot, peers: peers, book: book,
 		lookup: lookup, log: log, now: time.Now,
 	}
 }
 
-// Handle stores one contact-related event. The address-book name, the push
-// name, and the business name stay in separate fields, so a later push name
-// never erases the name the phone's address book holds.
+// SetSource records the normalized identity of the account that supplied the
+// book, which is known only once the device is loaded.
+func (h *AddressBookImporter) SetSource(identity botflota.IdentityKey) {
+	h.source = identity
+}
+
+// Handle stores one contact-related event. The phone's address-book name wins
+// over a business name, which wins over the push name, so a later push name
+// never erases the name the phone's address book holds (ADR 0051).
 func (h *AddressBookImporter) Handle(ctx context.Context, raw any) {
 	switch event := raw.(type) {
 	case *events.Contact:
@@ -53,15 +62,14 @@ func (h *AddressBookImporter) Handle(ctx context.Context, raw any) {
 			return
 		}
 		h.put(ctx, event.JID, event.Action.GetPnJID(), true,
-			contactAt(event.Timestamp, h.now), botflota.AddressBookEntry{
-				Name: contactName(event.Action.GetFullName(), event.Action.GetFirstName()),
-			})
+			contactAt(event.Timestamp, h.now),
+			contactName(event.Action.GetFullName(), event.Action.GetFirstName()))
 	case *events.PushName:
 		h.put(ctx, event.JID, "", false, contactAt(time.Time{}, h.now),
-			botflota.AddressBookEntry{PushName: event.NewPushName})
+			event.NewPushName)
 	case *events.BusinessName:
 		h.put(ctx, event.JID, "", false, contactAt(time.Time{}, h.now),
-			botflota.AddressBookEntry{BusinessName: event.NewBusinessName})
+			event.NewBusinessName)
 	}
 }
 
@@ -89,47 +97,51 @@ func (h *AddressBookImporter) ImportAll(
 		if !info.Found {
 			continue
 		}
-		entry := botflota.AddressBookEntry{
-			Name:         contactName(info.FullName, info.FirstName),
-			PushName:     info.PushName,
-			BusinessName: info.BusinessName,
-		}
-		member := entry.Name != ""
-		if h.put(ctx, jid, "", member, h.now().UTC(), entry) && member {
+		name := directoryName(contactName(info.FullName, info.FirstName),
+			info.BusinessName, info.PushName)
+		member := name != ""
+		if h.put(ctx, jid, "", member, h.now().UTC(), name) && member {
 			stored++
 		}
 	}
 	return stored
 }
 
-// put stores names, creating address-book membership only with contact-list
-// evidence; a group, broadcast, or unresolved hidden-user contact is skipped.
+// put stores one normalized name, creating directory membership only with
+// contact-list evidence; a group, broadcast, or unresolved hidden-user contact
+// is skipped. An address-book name replaces a stored one, while a push or
+// business name only fills a gap.
 func (h *AddressBookImporter) put(
 	ctx context.Context, jid types.JID, pnJID string, member bool, at time.Time,
-	entry botflota.AddressBookEntry,
+	name string,
 ) bool {
-	if !member && entry.Name == "" && entry.PushName == "" && entry.BusinessName == "" {
+	if !member && name == "" {
 		return false
 	}
 	phone, ok := contactPhone(jid, pnJID, h.lookup)
 	if !ok {
 		return false
 	}
-	entry.Scope = h.scope
-	entry.Bot = h.bot
-	entry.Phone = phone
-	entry.UpdatedAt = at
-	// The book links to the scope's directory by phone: registering the
-	// identity here is what makes an address-book-only number appear as a
-	// contact, while the entry's names stay per bot.
-	contact, err := h.contacts.EnsureContact(ctx, h.scope, phone, at)
+	key := PeerKey(phone)
+	entry := botflota.DirectoryEntry{
+		Scope:          h.scope,
+		Bot:            h.bot,
+		PeerKey:        key,
+		SourceIdentity: h.source,
+		DisplayName:    name,
+		UpdatedAt:      at,
+	}
+	// The book links to the scope's peers by identity: registering the peer
+	// here is what makes an address-book-only number appear as a peer, while
+	// the entry's name stays per bot.
+	peer, err := h.peers.EnsurePeer(ctx, h.scope, key, at)
 	if err != nil {
-		h.log.Warn("register contact for address-book entry", "phone", phone, "error", err)
+		h.log.Warn("register peer for address-book entry", "peer", phone, "error", err)
 		return false
 	}
-	if entry.PushName != "" && contact.DisplayName == "" {
-		if err := h.contacts.SetDisplayName(ctx, h.scope, phone, entry.PushName, at); err != nil {
-			h.log.Warn("set contact push name", "phone", phone, "error", err)
+	if name != "" && peer.DisplayName == "" {
+		if err := h.peers.SetDisplayName(ctx, h.scope, key, name, at); err != nil {
+			h.log.Warn("set peer display name", "peer", phone, "error", err)
 		}
 	}
 	if member {
@@ -138,7 +150,7 @@ func (h *AddressBookImporter) put(
 		err = h.book.Merge(ctx, &entry)
 	}
 	if err != nil {
-		h.log.Warn("import address-book entry", "phone", phone, "error", err)
+		h.log.Warn("import directory entry", "peer", phone, "error", err)
 		return false
 	}
 	return member
@@ -163,6 +175,19 @@ func contactName(full, first string) string {
 		return full
 	}
 	return first
+}
+
+// directoryName applies the adapter's name precedence to one normalized value
+// before the common store sees it (ADR 0051).
+func directoryName(book, business, push string) string {
+	switch {
+	case book != "":
+		return book
+	case business != "":
+		return business
+	default:
+		return push
+	}
 }
 
 // contactAt falls back to now when the event carries no time.

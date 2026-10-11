@@ -19,7 +19,7 @@ func buildFleetWithChannel(
 		t.Fatalf("load config: %v", err)
 	}
 	runner, err := New(cfg, Options{
-		Store: store, Chats: store, Contacts: store, Messages: store,
+		Store: store, Chats: store, Peers: store, Messages: store,
 		Turn: store, Outbox: store,
 		Skip: func(_, bot string) bool { return bot == "beta" },
 		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {

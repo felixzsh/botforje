@@ -16,29 +16,34 @@ import (
 // schema is the whole database, applied on open with IF NOT EXISTS.
 // Pre-release it is edited in place (`make dev-reset` recreates the dev
 // database); versioned migrations start at the first release (ADR 0006).
-// Shapes: ADR 0026, ADR 0027, ADR 0029.
+// Shapes: ADR 0026, ADR 0027, ADR 0029, ADR 0051.
 var schema = []string{
-	`CREATE TABLE IF NOT EXISTS contacts (
+	`CREATE TABLE IF NOT EXISTS peers (
 		id              INTEGER PRIMARY KEY AUTOINCREMENT,
 		scope           TEXT NOT NULL,
-		phone           TEXT NOT NULL,
+		provider        TEXT NOT NULL,
+		subject         TEXT NOT NULL,
 		display_name    TEXT NOT NULL DEFAULT '',
 		name_updated_at TEXT NOT NULL DEFAULT '',
 		first_seen      TEXT NOT NULL DEFAULT '',
 		last_seen       TEXT NOT NULL DEFAULT '',
-		UNIQUE (scope, phone)
+		UNIQUE (scope, provider, subject)
 	)`,
 	`CREATE TABLE IF NOT EXISTS chats (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
 		scope         TEXT NOT NULL,
 		bot           TEXT NOT NULL,
-		contact_id    INTEGER NOT NULL
-			REFERENCES contacts (id),
+		provider      TEXT NOT NULL,
+		kind          TEXT NOT NULL,
+		thread        TEXT NOT NULL,
+		topic         TEXT NOT NULL DEFAULT '',
+		peer_id       INTEGER
+			REFERENCES peers (id),
 		started_at    TEXT NOT NULL,
 		updated_at    TEXT NOT NULL,
 		message_count INTEGER NOT NULL DEFAULT 0,
 		guards        TEXT NOT NULL DEFAULT '{}',
-		UNIQUE (scope, bot, contact_id)
+		UNIQUE (scope, bot, provider, kind, thread, topic)
 	)`,
 	`CREATE TABLE IF NOT EXISTS sessions (
 		id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +64,10 @@ var schema = []string{
 			REFERENCES chats (id) ON DELETE CASCADE,
 		session_id          INTEGER
 			REFERENCES sessions (id) ON DELETE SET NULL,
+		target_provider     TEXT NOT NULL,
+		target_kind         TEXT NOT NULL,
+		target_thread       TEXT NOT NULL,
+		target_topic        TEXT NOT NULL DEFAULT '',
 		direction           TEXT NOT NULL,
 		kind                TEXT NOT NULL,
 		body                TEXT NOT NULL,
@@ -70,25 +79,32 @@ var schema = []string{
 		routing             TEXT NOT NULL DEFAULT 'unknown'
 	)`,
 	`CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id, id)`,
+	// The provider id is scoped by the destination the message actually
+	// belongs to, so an alternate recipient's ids never collide with the chat
+	// that records the send (ADR 0051). P5 owns the final account-scoped key.
 	`CREATE UNIQUE INDEX IF NOT EXISTS messages_provider
-		ON messages (chat_id, provider_message_id)
+		ON messages (target_provider, target_kind, target_thread, target_topic,
+		             provider_message_id)
 		WHERE provider_message_id != ''`,
-	`CREATE TABLE IF NOT EXISTS bot_contacts (
-		scope         TEXT NOT NULL,
-		bot           TEXT NOT NULL,
-		phone         TEXT NOT NULL,
-		name          TEXT NOT NULL DEFAULT '',
-		push_name     TEXT NOT NULL DEFAULT '',
-		business_name TEXT NOT NULL DEFAULT '',
-		updated_at    TEXT NOT NULL,
-		PRIMARY KEY (scope, bot, phone)
+	`CREATE TABLE IF NOT EXISTS directory_entries (
+		scope           TEXT NOT NULL,
+		bot             TEXT NOT NULL,
+		provider        TEXT NOT NULL,
+		subject         TEXT NOT NULL,
+		source_provider TEXT NOT NULL,
+		source_subject  TEXT NOT NULL,
+		display_name    TEXT NOT NULL DEFAULT '',
+		updated_at      TEXT NOT NULL,
+		PRIMARY KEY (scope, bot, provider, subject,
+		             source_provider, source_subject)
 	)`,
-	`CREATE INDEX IF NOT EXISTS bot_contacts_updated
-		ON bot_contacts (scope, bot, updated_at DESC)`,
-	`CREATE TABLE IF NOT EXISTS linked_accounts (
-		scope TEXT NOT NULL,
-		bot   TEXT NOT NULL,
-		jid   TEXT NOT NULL,
+	`CREATE INDEX IF NOT EXISTS directory_entries_updated
+		ON directory_entries (scope, bot, updated_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS bindings (
+		scope    TEXT NOT NULL,
+		bot      TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		subject  TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
 	`CREATE TABLE IF NOT EXISTS pairing_status (
@@ -118,22 +134,27 @@ var schema = []string{
 		PRIMARY KEY (access_token_id, scope)
 	)`,
 	`CREATE TABLE IF NOT EXISTS outbox (
-		id           INTEGER PRIMARY KEY AUTOINCREMENT,
-		scope        TEXT NOT NULL,
-		bot          TEXT NOT NULL,
-		message_id   INTEGER NOT NULL
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		scope           TEXT NOT NULL,
+		bot             TEXT NOT NULL,
+		message_id      INTEGER NOT NULL
 			REFERENCES messages (id) ON DELETE CASCADE,
-		recipient    TEXT NOT NULL,
-		client_id    TEXT NOT NULL DEFAULT '',
-		state        TEXT NOT NULL DEFAULT 'pending',
-		attempts     INTEGER NOT NULL DEFAULT 0,
-		next_attempt TEXT NOT NULL DEFAULT '',
-		error        TEXT NOT NULL DEFAULT '',
-		created_at   TEXT NOT NULL,
-		updated_at   TEXT NOT NULL
+		target_provider TEXT NOT NULL,
+		target_kind     TEXT NOT NULL,
+		target_thread   TEXT NOT NULL,
+		target_topic    TEXT NOT NULL DEFAULT '',
+		client_id       TEXT NOT NULL DEFAULT '',
+		state           TEXT NOT NULL DEFAULT 'pending',
+		attempts        INTEGER NOT NULL DEFAULT 0,
+		next_attempt    TEXT NOT NULL DEFAULT '',
+		error           TEXT NOT NULL DEFAULT '',
+		created_at      TEXT NOT NULL,
+		updated_at      TEXT NOT NULL
 	)`,
 	`CREATE INDEX IF NOT EXISTS outbox_pending
 		ON outbox (scope, bot, state, id)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS outbox_client
+		ON outbox (scope, bot, client_id) WHERE client_id != ''`,
 	`CREATE TABLE IF NOT EXISTS webhook_deliveries (
 		id           INTEGER PRIMARY KEY AUTOINCREMENT,
 		event_id     TEXT NOT NULL,
@@ -152,14 +173,6 @@ var schema = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS webhook_pending
 		ON webhook_deliveries (state, next_attempt, id)`,
-}
-
-// schemaAfterColumns runs after the ALTERs that bring an existing database up
-// to the CREATE TABLE shapes; an index on an added column cannot run before
-// its ALTER.
-var schemaAfterColumns = []string{
-	`CREATE UNIQUE INDEX IF NOT EXISTS outbox_client
-		ON outbox (scope, bot, client_id) WHERE client_id != ''`,
 }
 
 // DB is an open SQLite database with its schema applied.
@@ -195,10 +208,10 @@ func Open(path string) (*DB, error) {
 
 func (d *DB) Chats() *stores.ChatStore { return stores.NewChatStore(d.DB) }
 
-func (d *DB) Contacts() *stores.ContactStore { return stores.NewContactStore(d.DB) }
+func (d *DB) Peers() *stores.PeerStore { return stores.NewPeerStore(d.DB) }
 
-func (d *DB) AddressBook() *stores.AddressBookStore {
-	return stores.NewAddressBookStore(d.DB)
+func (d *DB) Directory() *stores.DirectoryStore {
+	return stores.NewDirectoryStore(d.DB)
 }
 
 func (d *DB) Sessions() *stores.SessionStore { return stores.NewSessionStore(d.DB) }
@@ -220,8 +233,8 @@ func (d *DB) Sends() *stores.SendStore { return stores.NewSendStore(d.DB) }
 // Webhooks is the durable outbound webhook queue (ADR 0045).
 func (d *DB) Webhooks() *stores.WebhookStore { return stores.NewWebhookStore(d.DB) }
 
-func (d *DB) LinkedAccounts() *stores.LinkedAccountStore {
-	return stores.NewLinkedAccountStore(d.DB)
+func (d *DB) Bindings() *stores.BindingStore {
+	return stores.NewBindingStore(d.DB)
 }
 
 func (d *DB) Pairings() *stores.PairingStore { return stores.NewPairingStore(d.DB) }
@@ -239,58 +252,6 @@ func applySchema(db *sql.DB) error {
 		if _, err := db.Exec(statement); err != nil {
 			return fmt.Errorf("sqlite: schema: %w", err)
 		}
-	}
-	// CREATE TABLE IF NOT EXISTS leaves an existing table untouched, so a
-	// column a newer build added needs an explicit ALTER. This keeps a
-	// pre-release database working without the versioned runner of ADR 0006,
-	// which starts at the first release.
-	if err := addColumn(db, "messages", "content", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
-		return err
-	}
-	if err := addColumn(db, "outbox", "client_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	for _, statement := range schemaAfterColumns {
-		if _, err := db.Exec(statement); err != nil {
-			return fmt.Errorf("sqlite: schema: %w", err)
-		}
-	}
-	return nil
-}
-
-func addColumn(db *sql.DB, table, column, definition string) error {
-	rows, err := db.Query("PRAGMA table_info(" + table + ")")
-	if err != nil {
-		return fmt.Errorf("sqlite: inspect %s: %w", table, err)
-	}
-	defer rows.Close()
-	found := false
-	for rows.Next() {
-		var (
-			position   int
-			name       string
-			columnType string
-			notNull    int
-			defaultVal sql.NullString
-			primaryKey int
-		)
-		if err := rows.Scan(&position, &name, &columnType, &notNull, &defaultVal,
-			&primaryKey); err != nil {
-			return fmt.Errorf("sqlite: inspect %s: %w", table, err)
-		}
-		if name == column {
-			found = true
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("sqlite: inspect %s: %w", table, err)
-	}
-	if found {
-		return nil
-	}
-	statement := "ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition
-	if _, err := db.Exec(statement); err != nil {
-		return fmt.Errorf("sqlite: add %s.%s: %w", table, column, err)
 	}
 	return nil
 }

@@ -22,11 +22,14 @@ func (s *SendStore) CommitSend(
 	if send.Scope == "" || send.Bot == "" {
 		return botflota.SendResult{}, errors.New("sqlite: send has no scope or bot")
 	}
-	if send.To == "" {
-		return botflota.SendResult{}, errors.New("sqlite: send has no recipient")
+	if !send.Target.Valid() {
+		return botflota.SendResult{}, errors.New("sqlite: send has no target")
 	}
 	if send.Content == nil {
 		return botflota.SendResult{}, errors.New("sqlite: send has no content")
+	}
+	if send.Recipient != nil && !send.Recipient.Valid() {
+		return botflota.SendResult{}, errors.New("sqlite: send recipient is invalid")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -39,19 +42,24 @@ func (s *SendStore) CommitSend(
 		}
 	}()
 
-	contacts := ContactStore{db: tx}
-	contact, err := contacts.EnsureContact(ctx, send.Scope, send.To, send.At)
-	if err != nil {
-		return botflota.SendResult{}, err
+	var peerID int64
+	if send.Recipient != nil {
+		peers := PeerStore{db: tx}
+		peer, err := peers.EnsurePeer(ctx, send.Scope, *send.Recipient, send.At)
+		if err != nil {
+			return botflota.SendResult{}, err
+		}
+		peerID = peer.ID
 	}
 	chats := ChatStore{db: tx}
-	chat, err := chats.Ensure(ctx, send.Scope, send.Bot, contact.ID, send.At)
+	chat, err := chats.Ensure(ctx, send.Scope, send.Bot, send.Target, peerID, send.At)
 	if err != nil {
 		return botflota.SendResult{}, err
 	}
 	messages := MessageStore{db: tx}
 	message := &botflota.Message{
 		ChatID:    chat.ID,
+		Target:    send.Target,
 		Direction: botflota.Outbound,
 		Content:   send.Content,
 		At:        send.At,
@@ -63,11 +71,13 @@ func (s *SendStore) CommitSend(
 		return botflota.SendResult{}, fmt.Errorf("sqlite: store sent message: %w", err)
 	}
 	result, err := tx.ExecContext(ctx,
-		`INSERT INTO outbox (scope, bot, message_id, recipient, client_id, state,
+		`INSERT INTO outbox (scope, bot, message_id, target_provider, target_kind,
+		 target_thread, target_topic, client_id, state,
 		 attempts, next_attempt, error, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
-		send.Scope, send.Bot, message.ID, send.To, send.ClientID,
-		formatTime(send.At), formatTime(send.At))
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
+		send.Scope, send.Bot, message.ID, send.Target.Provider,
+		string(send.Target.Kind), send.Target.Thread, send.Target.Topic,
+		send.ClientID, formatTime(send.At), formatTime(send.At))
 	if err != nil {
 		_ = tx.Rollback()
 		if send.ClientID != "" {

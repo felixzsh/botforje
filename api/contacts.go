@@ -24,7 +24,7 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	page, err := s.contacts.List(r.Context(), scope, since, limit,
+	page, err := s.peers.List(r.Context(), scope, since, limit,
 		r.URL.Query().Get("cursor"))
 	if errors.Is(err, botflota.ErrInvalidCursor) {
 		writeError(w, http.StatusBadRequest, "invalid_request",
@@ -35,9 +35,9 @@ func (s *Server) handleContacts(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "list contacts", err)
 		return
 	}
-	views := make([]contactProfileView, 0, len(page.Contacts))
-	for _, contact := range page.Contacts {
-		views = append(views, contactProfile(contact))
+	views := make([]contactProfileView, 0, len(page.Peers))
+	for _, peer := range page.Peers {
+		views = append(views, contactProfile(peer))
 	}
 	body := map[string]any{"scope": scope, "contacts": views}
 	if page.NextCursor != "" {
@@ -53,8 +53,8 @@ func (s *Server) handleContact(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	phone := r.PathValue("phone")
-	contact, err := s.contacts.Get(r.Context(), scope, phone)
+	subject := r.PathValue("subject")
+	peer, err := s.peers.Get(r.Context(), scope, legacyWhatsAppPeer(subject))
 	if errors.Is(err, botflota.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "unknown contact")
 		return
@@ -63,17 +63,19 @@ func (s *Server) handleContact(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "read contact", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, contactProfile(*contact))
+	writeJSON(w, http.StatusOK, contactProfile(*peer))
 }
 
-func contactProfile(contact botflota.Contact) contactProfileView {
+func contactProfile(peer botflota.Peer) contactProfileView {
 	return contactProfileView{
-		Phone:               contact.Phone,
-		DisplayName:         contact.DisplayName,
-		FirstSeen:           contact.FirstSeen,
-		LastSeen:            contact.LastSeen,
-		AddressBookImported: contact.AddressBookImported,
-		HasChat:             contact.HasChat,
-		HasHistory:          contact.HasHistory,
+		Provider:            peer.Key.Provider,
+		Subject:             peer.Key.Subject,
+		Phone:               peer.Key.Subject,
+		DisplayName:         peer.DisplayName,
+		FirstSeen:           peer.FirstSeen,
+		LastSeen:            peer.LastSeen,
+		AddressBookImported: peer.AddressBookImported,
+		HasChat:             peer.HasChat,
+		HasHistory:          peer.HasHistory,
 	}
 }

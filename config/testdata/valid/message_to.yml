@@ -5,7 +5,7 @@ scopes:
         steps:
           - message:
               to: "{{graph.owner_phone}}"
-              body: "New message from {{contact.name}}"
+              body: "New message from {{peer.name}}"
       copy:
         steps:
           - message:

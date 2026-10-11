@@ -21,7 +21,11 @@ func seedReply(store *memStore, i int) {
 	store.outbox = append(store.outbox, queuedReply{
 		scope: "dev", bot: "alpha",
 		entry: botflota.OutboxEntry{
-			ID: store.nextOut, Recipient: "521550000000" + strconv.Itoa(i),
+			ID: store.nextOut,
+			Target: botflota.ChatTarget{
+				Provider: "whatsapp", Kind: botflota.ChatDirect,
+				Thread: "521550000000" + strconv.Itoa(i),
+			},
 			MessageID: store.nextOut,
 			Content:   botflota.TextContent{Body: "reply " + strconv.Itoa(i)},
 		},

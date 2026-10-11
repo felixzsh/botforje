@@ -188,6 +188,6 @@ func (s *Server) botRunning(scope, bot string) bool {
 func countsView(counts botflota.HistoryCounts) map[string]int64 {
 	return map[string]int64{
 		"chats": counts.Chats, "sessions": counts.Sessions,
-		"messages": counts.Messages, "contacts": counts.AddressBook,
+		"messages": counts.Messages, "directory": counts.Directory,
 	}
 }

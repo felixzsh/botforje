@@ -1,7 +1,8 @@
 # ADR 0020 — WhatsApp identity and address normalization
 
-Status: Accepted (2026-09); P1 boundary aligned on 2026-10-11.
-Implementation remains tracked in [the channel phases](../channels/phases.md).
+Status: Accepted (2026-09); P1 boundary aligned and implemented on 2026-10-11.
+The per-bot WhatsApp template alias is P2 work; implementation is tracked in
+[the channel phases](../channels/phases.md).
 
 ## Context
 

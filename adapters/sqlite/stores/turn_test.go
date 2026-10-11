@@ -15,13 +15,14 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 	chat := ensureChat(t, db)
 	session := testSession(chat.ID)
 	inbound := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "hola"}, At: t0,
 		ProviderMessageID: "in-1", Ingest: botflota.IngestLive,
 	}
 	outbound := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Outbound,
-		Content: botflota.TextContent{Body: "hola!"}, At: t1,
+		ChatID: chat.ID, Target: waTarget("5215599999999"),
+		Direction: botflota.Outbound,
+		Content:   botflota.TextContent{Body: "hola!"}, At: t1,
 		Ingest: botflota.IngestLive,
 	}
 	guards := map[string]botflota.GuardState{
@@ -32,7 +33,7 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 		Session: session, ChatID: chat.ID, At: t1,
 		Inbound: inbound,
 		Outbound: []botflota.OutboundRecord{{
-			Message: outbound, Recipient: "5215599999999",
+			Message: outbound, Target: waTarget("5215599999999"),
 		}},
 		Guards: guards,
 	})
@@ -62,12 +63,19 @@ func TestCommitTurnLandsEveryWriteTogether(t *testing.T) {
 	if depth != 1 {
 		t.Fatalf("outbox depth = %d, want the queued reply", depth)
 	}
-	recipient, err := db.Contacts().Get(ctx, "support", "5215599999999")
-	if err != nil {
-		t.Fatalf("reply recipient identity: %v", err)
+	// The alternate destination is persisted without fabricating a participant
+	// identity for it (ADR 0051).
+	if _, err := db.Peers().Get(ctx, "support", waKey("5215599999999")); !errors.Is(
+		err, botflota.ErrNotFound,
+	) {
+		t.Fatalf("reply recipient identity = %v, want none", err)
 	}
-	if !recipient.FirstSeen.IsZero() || !recipient.LastSeen.IsZero() || recipient.HasChat {
-		t.Fatalf("reply recipient = %#v, want identity only without interaction or chat", recipient)
+	entries, err := db.Outbox().NextPending(ctx, "support", "support-bot", 1)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("NextPending = %v, %v", entries, err)
+	}
+	if entries[0].Target != waTarget("5215599999999") {
+		t.Fatalf("queued target = %#v, want the alternate destination", entries[0].Target)
 	}
 	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
 	if err != nil {
@@ -102,7 +110,7 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 		Scope: "support", Bot: "support-bot",
 		Session: first, ChatID: chat.ID, At: t0,
 		Inbound: &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound,
+			ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 			Content: botflota.TextContent{Body: "first"}, At: t0,
 			ProviderMessageID: "in-1", Ingest: botflota.IngestLive,
 		},
@@ -120,20 +128,21 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 		Scope: "support", Bot: "support-bot",
 		Session: advanced, ChatID: chat.ID, At: t2,
 		Inbound: &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound,
+			ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 			Content: botflota.TextContent{Body: "again"}, At: t2,
 			ProviderMessageID: "in-2", Ingest: botflota.IngestLive,
 		},
 		Outbound: []botflota.OutboundRecord{
 			{
 				Message: &botflota.Message{
-					ChatID: chat.ID, Direction: botflota.Outbound,
-					Content: botflota.TextContent{Body: "kept?"}, At: t2,
+					ChatID: chat.ID, Target: waTarget("5215599999998"),
+					Direction: botflota.Outbound,
+					Content:   botflota.TextContent{Body: "kept?"}, At: t2,
 					Ingest: botflota.IngestLive,
 				},
-				Recipient: "5215599999998",
+				Target: waTarget("5215599999998"),
 			},
-			{Recipient: "5215500000000"},
+			{Target: waTarget("5215500000000")},
 		},
 		Guards: map[string]botflota.GuardState{
 			"escalate": {Cooldown: &botflota.CooldownState{LastRun: t2}},
@@ -175,8 +184,8 @@ func TestCommitTurnLeavesNothingBehindWhenOneWriteFails(t *testing.T) {
 	if depth != 0 {
 		t.Fatalf("outbox depth = %d, want the queued reply rolled back", depth)
 	}
-	_, err = db.Contacts().Get(ctx, "support", "5215599999998")
+	_, err = db.Peers().Get(ctx, "support", waKey("5215599999998"))
 	if !errors.Is(err, botflota.ErrNotFound) {
-		t.Fatalf("failed turn left its reply recipient: %v", err)
+		t.Fatalf("failed turn left a recipient identity: %v", err)
 	}
 }

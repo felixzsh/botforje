@@ -77,23 +77,22 @@ func printAddressBook(
 	ctx context.Context, w io.Writer, client *apiClient, q addressBookQuery,
 ) error {
 	var body struct {
-		Contacts []struct {
-			Phone        string    `json:"phone"`
-			DisplayName  string    `json:"display_name"`
-			PushName     string    `json:"push_name"`
-			BusinessName string    `json:"business_name"`
-			UpdatedAt    time.Time `json:"updated_at"`
+		Entries []struct {
+			Provider    string    `json:"provider"`
+			Subject     string    `json:"subject"`
+			Phone       string    `json:"phone"`
+			DisplayName string    `json:"display_name"`
+			UpdatedAt   time.Time `json:"updated_at"`
 		} `json:"contacts"`
 	}
 	if err := client.get(ctx, q.path(), &body); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "%-15s %-24s %-20s %-20s %s\n",
-		"PHONE", "NAME", "PUSH NAME", "BUSINESS NAME", "UPDATED")
-	for _, entry := range body.Contacts {
-		fmt.Fprintf(w, "%-15s %-24s %-20s %-20s %s\n",
-			entry.Phone, dash(entry.DisplayName), dash(entry.PushName),
-			dash(entry.BusinessName),
+	fmt.Fprintf(w, "%-12s %-18s %-24s %s\n",
+		"PROVIDER", "SUBJECT", "NAME", "UPDATED")
+	for _, entry := range body.Entries {
+		fmt.Fprintf(w, "%-12s %-18s %-24s %s\n",
+			dash(entry.Provider), entry.Subject, dash(entry.DisplayName),
 			entry.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
 	}
 	return nil

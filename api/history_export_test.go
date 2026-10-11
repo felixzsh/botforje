@@ -22,7 +22,7 @@ type fakeHistory struct {
 	chats       []botflota.HistoryChat
 	sessions    []botflota.Session
 	messages    []botflota.Message
-	addressBook []botflota.AddressBookEntry
+	addressBook []botflota.DirectoryEntry
 	err         error
 	writeErr    error
 	deleted     []string
@@ -38,7 +38,7 @@ func (f *fakeHistory) DeleteBot(
 		return botflota.HistoryCounts{}, f.writeErr
 	}
 	f.deleted = append(f.deleted, scope+"/"+bot)
-	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, AddressBook: 4}, nil
+	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Directory: 4}, nil
 }
 
 func (f *fakeHistory) MoveBot(
@@ -52,7 +52,7 @@ func (f *fakeHistory) MoveBot(
 	}
 	f.moved = append(f.moved, scope+"/"+from+"->"+to)
 	f.at = at
-	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, AddressBook: 4}, nil
+	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Directory: 4}, nil
 }
 
 func (f *fakeHistory) ReadHistory(
@@ -86,11 +86,11 @@ func (f *fakeHistory) ReadHistory(
 			return err
 		}
 	}
-	if err := sink.BeginTable(botflota.TableAddressBook); err != nil {
+	if err := sink.BeginTable(botflota.TableDirectory); err != nil {
 		return err
 	}
 	for _, entry := range f.addressBook {
-		if err := sink.AddressBookEntry(entry); err != nil {
+		if err := sink.DirectoryEntry(entry); err != nil {
 			return err
 		}
 	}
@@ -149,11 +149,12 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	server := newHistoryServer(t, &fakeHistory{
 		chats: []botflota.HistoryChat{{
 			Chat: botflota.Chat{
-				ID: 3, Scope: "support", Bot: "demo", ContactID: 7,
+				ID: 3, Scope: "support", Bot: "demo", PeerID: 7,
+				Target:    waTarget("5215500000000"),
 				StartedAt: testTime, UpdatedAt: testTime, MessageCount: 1,
 				Guards: map[string]botflota.GuardState{"greet": {}},
 			},
-			ContactPhone: "5215500000000", ContactName: "Ana",
+			PeerKey: waKey("5215500000000"), PeerName: "Ana",
 		}},
 		sessions: []botflota.Session{{
 			ID: 9, ChatID: 3, Node: "menu", VisitedNodes: []string{"menu"},
@@ -164,9 +165,10 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 			Content: botflota.TextContent{Body: "hola, mundo"},
 			At:      testTime, Ingest: botflota.IngestLive,
 		}},
-		addressBook: []botflota.AddressBookEntry{{
-			Scope: "support", Bot: "demo", Phone: "5215500000000",
-			Name: "Ana", PushName: "anita", UpdatedAt: testTime,
+		addressBook: []botflota.DirectoryEntry{{
+			Scope: "support", Bot: "demo", PeerKey: waKey("5215500000000"),
+			SourceIdentity: waKey("5215500000000"), DisplayName: "Ana",
+			UpdatedAt: testTime,
 		}},
 	})
 	recorder := exportHistory(t, server, "support", testOwnerToken)
@@ -180,7 +182,8 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	}
 
 	files := readArchive(t, recorder)
-	for _, name := range []string{"chats.csv", "sessions.csv", "messages.csv", "address-book.csv"} {
+	for _, name := range []string{"chats.csv", "sessions.csv", "messages.csv",
+		"directory.csv"} {
 		if _, ok := files[name]; !ok {
 			t.Fatalf("%s is missing: %v", name, files)
 		}
@@ -205,8 +208,8 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	}
 
 	chats := csvRows(t, files["chats.csv"])
-	if chats[1][slices.Index(chats[0], "contact_phone")] != "5215500000000" {
-		t.Fatalf("chats row = %v, want the contact's phone", chats[1])
+	if chats[1][slices.Index(chats[0], "peer_subject")] != "5215500000000" {
+		t.Fatalf("chats row = %v, want the peer's subject", chats[1])
 	}
 	if chats[1][slices.Index(chats[0], "guards")] != `{"greet":{}}` {
 		t.Fatalf("guards = %q, want the stored JSON",
@@ -225,10 +228,10 @@ func TestHistoryExportWritesAHeaderForEveryTable(t *testing.T) {
 	// A table with no rows still gets its file and its header, so a reader can
 	// tell "nothing here" from "not exported".
 	for name, wantHeader := range map[string]string{
-		"chats.csv":        "contact_phone",
-		"sessions.csv":     "graph_context",
-		"messages.csv":     "provider_message_id",
-		"address-book.csv": "business_name",
+		"chats.csv":     "peer_subject",
+		"sessions.csv":  "graph_context",
+		"messages.csv":  "provider_message_id",
+		"directory.csv": "source_subject",
 	} {
 		content, ok := files[name]
 		if !ok {

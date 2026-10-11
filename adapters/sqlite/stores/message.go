@@ -14,12 +14,16 @@ type MessageStore struct{ db dbtx }
 
 func NewMessageStore(db *sql.DB) *MessageStore { return &MessageStore{db: db} }
 
-const messageColumns = `id, chat_id, session_id, direction, kind, body, content,
+const messageColumns = `id, chat_id, session_id, target_provider, target_kind,
+	target_thread, target_topic, direction, kind, body, content,
 	sent_at, provider_message_id, ingest_kind, origin, routing`
 
 func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) error {
 	if message.Content == nil {
 		return errors.New("sqlite: message has no content")
+	}
+	if !message.Target.Valid() {
+		return errors.New("sqlite: message has no destination target")
 	}
 	content, err := botflota.ContentJSON(message.Content)
 	if err != nil {
@@ -30,11 +34,13 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 		sessionID = message.SessionID
 	}
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (chat_id, session_id, direction, kind, body, content,
+		`INSERT INTO messages (chat_id, session_id, target_provider, target_kind,
+		 target_thread, target_topic, direction, kind, body, content,
 		 sent_at, provider_message_id, ingest_kind, origin, routing)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT DO NOTHING`,
-		message.ChatID, sessionID, string(message.Direction),
+		message.ChatID, sessionID, message.Target.Provider, string(message.Target.Kind),
+		message.Target.Thread, message.Target.Topic, string(message.Direction),
 		string(message.Content.MessageKind()), message.Content.VisibleText(),
 		string(content), formatTime(message.At), message.ProviderMessageID,
 		string(message.Ingest), string(message.Origin), string(message.Routing))
@@ -56,10 +62,12 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	return nil
 }
 
-// HasProviderID reports whether the chat already stored a message with this
-// channel id; an empty id never matches.
+// HasProviderID reports whether the destination already stored a message with
+// this channel id; an empty id never matches. The id is scoped by the actual
+// destination, so an alternate recipient's ids never collide with the chat
+// whose history records the send (ADR 0051).
 func (s *MessageStore) HasProviderID(
-	ctx context.Context, chatID int64, providerID string,
+	ctx context.Context, target botflota.ChatTarget, providerID string,
 ) (bool, error) {
 	if providerID == "" {
 		return false, nil
@@ -67,8 +75,10 @@ func (s *MessageStore) HasProviderID(
 	var exists bool
 	err := s.db.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM messages
-		 WHERE chat_id = ? AND provider_message_id = ?)`,
-		chatID, providerID).Scan(&exists)
+		 WHERE target_provider = ? AND target_kind = ? AND target_thread = ?
+		 AND target_topic = ? AND provider_message_id = ?)`,
+		target.Provider, string(target.Kind), target.Thread, target.Topic,
+		providerID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("sqlite: find provider id: %w", err)
 	}
@@ -142,15 +152,18 @@ func scanMessage(rows *sql.Rows) (botflota.Message, error) {
 	var (
 		message                       botflota.Message
 		sessionID                     sql.NullInt64
+		targetKind                    string
 		direction, kind, body, ingest string
 		content, origin, routing      string
 		sentAt                        string
 	)
 	if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
-		&direction, &kind, &body, &content, &sentAt,
+		&message.Target.Provider, &targetKind, &message.Target.Thread,
+		&message.Target.Topic, &direction, &kind, &body, &content, &sentAt,
 		&message.ProviderMessageID, &ingest, &origin, &routing); err != nil {
 		return botflota.Message{}, err
 	}
+	message.Target.Kind = botflota.ChatKind(targetKind)
 	if sessionID.Valid {
 		message.SessionID = sessionID.Int64
 	}

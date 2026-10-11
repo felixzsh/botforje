@@ -33,7 +33,6 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 	sessions := SessionStore{db: tx}
 	messages := MessageStore{db: tx}
 	chats := ChatStore{db: tx}
-	contacts := ContactStore{db: tx}
 	if err := sessions.Save(ctx, turn.Session); err != nil {
 		return err
 	}
@@ -49,24 +48,24 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 		if outbound.Message == nil {
 			return errors.New("sqlite: turn has an empty reply")
 		}
-		if outbound.Recipient == "" {
-			return errors.New("sqlite: reply has no recipient")
-		}
-		if _, err := contacts.EnsureContact(ctx, turn.Scope,
-			outbound.Recipient, turn.At); err != nil {
-			return fmt.Errorf("sqlite: ensure reply recipient: %w", err)
+		if !outbound.Target.Valid() {
+			return errors.New("sqlite: reply has no target")
 		}
 		outbound.Message.SessionID = turn.Session.ID
+		outbound.Message.Target = outbound.Target
 		if err := messages.Append(ctx, outbound.Message); err != nil {
 			return err
 		}
 		// The reply is queued in the same transaction that stored it: a
 		// crash never leaves a message row nobody will send (ADR 0011).
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO outbox (scope, bot, message_id, recipient, state,
+			`INSERT INTO outbox (scope, bot, message_id, target_provider, target_kind,
+			 target_thread, target_topic, state,
 			 attempts, next_attempt, error, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
-			turn.Scope, turn.Bot, outbound.Message.ID, outbound.Recipient,
+			 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
+			turn.Scope, turn.Bot, outbound.Message.ID, outbound.Target.Provider,
+			string(outbound.Target.Kind), outbound.Target.Thread,
+			outbound.Target.Topic,
 			formatTime(turn.At), formatTime(turn.At)); err != nil {
 			return fmt.Errorf("sqlite: queue reply: %w", err)
 		}

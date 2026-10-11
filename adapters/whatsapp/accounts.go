@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"go.mau.fi/whatsmeow/store"
@@ -16,6 +17,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
 // Devices is the whatsmeow device store on Botflota's shared SQLite connection
@@ -45,29 +47,48 @@ func OpenDevices(
 	return devices, nil
 }
 
-// device reports a missing device as a nil result, not an error.
+// device reports a missing device as a nil result, not an error. The device
+// locator stays in the SDK store: it is recovered by matching the normalized
+// own subject, never stored in a shared record (ADR 0051).
 func (d *Devices) Load(
-	ctx context.Context, account *botflota.LinkedAccount,
+	ctx context.Context, account *botflota.Binding,
 ) (*store.Device, error) {
-	jid, err := types.ParseJID(account.JID)
+	subject, err := ownSubject(account)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"whatsapp: bot %q (scope %q) has an invalid stored pairing",
-			account.Bot, account.Scope,
-		)
+		return nil, err
 	}
-	device, err := d.container.GetDevice(ctx, jid)
+	devices, err := d.container.GetAllDevices(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"whatsapp: load device for bot %q (scope %q): %w",
 			account.Bot, account.Scope, err,
 		)
 	}
-	return device, nil
+	for _, device := range devices {
+		if device.ID == nil || device.ID.Server != types.DefaultUserServer {
+			continue
+		}
+		if device.ID.User == subject {
+			return device, nil
+		}
+	}
+	return nil, nil
+}
+
+// ownSubject reads the normalized own identity of a WhatsApp binding.
+func ownSubject(account *botflota.Binding) (string, error) {
+	if account == nil || account.Identity.Provider != ingest.Provider ||
+		account.Identity.Subject == "" {
+		return "", fmt.Errorf(
+			"whatsapp: bot %q (scope %q) has no whatsapp identity",
+			account.Bot, account.Scope,
+		)
+	}
+	return account.Identity.Subject, nil
 }
 
 // delete removes the account's local credentials; a missing device is fine.
-func (d *Devices) delete(ctx context.Context, account *botflota.LinkedAccount) error {
+func (d *Devices) delete(ctx context.Context, account *botflota.Binding) error {
 	device, err := d.Load(ctx, account)
 	if err != nil {
 		return err
@@ -87,7 +108,7 @@ type UnpairOptions struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
-	Accounts botflota.LinkedAccountStore
+	Bindings botflota.BindingStore
 	Pairings botflota.PairingStore
 	// Outbox fails the queued replies the link still owes; unlinking
 	// requires it, so a later pairing never sends the old replies (ADR
@@ -95,22 +116,21 @@ type UnpairOptions struct {
 	Outbox botflota.OutboxStore
 }
 
-// ValidateAccountOwners rejects more than one bot using the same phone number.
-func ValidateAccountOwners(ctx context.Context, accounts botflota.LinkedAccountStore) error {
+// ValidateAccountOwners rejects more than one bot using the same identity.
+func ValidateAccountOwners(ctx context.Context, accounts botflota.BindingStore) error {
 	all, err := accounts.List(ctx)
 	if err != nil {
 		return fmt.Errorf("whatsapp: list account ownership: %w", err)
 	}
-	owners := make(map[string]botflota.LinkedAccount, len(all))
+	owners := make(map[botflota.IdentityKey]botflota.Binding, len(all))
 	for _, account := range all {
-		phone := Number(account.JID)
-		if phone == "" {
+		if account.Identity.Subject == "" {
 			continue
 		}
-		if previous, ok := owners[phone]; ok {
-			return duplicateAccountError(phone, previous, account)
+		if previous, ok := owners[account.Identity]; ok {
+			return duplicateAccountError(account.Identity, previous, account)
 		}
-		owners[phone] = account
+		owners[account.Identity] = account
 	}
 	return nil
 }
@@ -118,7 +138,7 @@ func ValidateAccountOwners(ctx context.Context, accounts botflota.LinkedAccountS
 // Missing local credentials are recoverable and do not abort validation.
 func ValidateAccounts(
 	ctx context.Context, devices *Devices,
-	accounts botflota.LinkedAccountStore, pairings botflota.PairingStore,
+	accounts botflota.BindingStore, pairings botflota.PairingStore,
 ) error {
 	if devices == nil {
 		return errors.New("whatsapp: no device store")
@@ -150,7 +170,7 @@ func ValidateAccounts(
 func CheckPairing(
 	ctx context.Context,
 	devices *Devices,
-	accounts botflota.LinkedAccountStore,
+	accounts botflota.BindingStore,
 	pairings botflota.PairingStore,
 	scope, bot string,
 ) (botflota.PairingState, error) {
@@ -183,7 +203,7 @@ func CheckPairing(
 }
 
 func HasLocalDevice(
-	ctx context.Context, devices *Devices, account *botflota.LinkedAccount,
+	ctx context.Context, devices *Devices, account *botflota.Binding,
 ) (bool, error) {
 	if devices == nil {
 		return false, errors.New("whatsapp: no device store")
@@ -201,19 +221,20 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if opts.Devices == nil {
 		return errors.New("whatsapp: no device store")
 	}
-	account, err := opts.Accounts.Get(ctx, opts.Scope, opts.Bot)
+	account, err := opts.Bindings.Get(ctx, opts.Scope, opts.Bot)
 	if errors.Is(err, botflota.ErrNotFound) {
 		return fmt.Errorf("whatsapp: bot %q is not paired", opts.Bot)
 	}
 	if err != nil {
 		return err
 	}
-	return removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings,
+	return removePairing(ctx, opts.Devices, opts.Bindings, opts.Pairings,
 		opts.Outbox, account, PairingNow(nil))
 }
 
 func ensurePhoneAvailable(
-	ctx context.Context, accounts botflota.LinkedAccountStore, phone, scope, bot string,
+	ctx context.Context, accounts botflota.BindingStore, key botflota.IdentityKey,
+	scope, bot string,
 ) error {
 	all, err := accounts.List(ctx)
 	if err != nil {
@@ -223,11 +244,11 @@ func ensurePhoneAvailable(
 		if account.Scope == scope && account.Bot == bot {
 			continue
 		}
-		if Number(account.JID) == phone {
+		if account.Identity == key {
 			return duplicateAccountError(
-				phone,
+				key,
 				account,
-				botflota.LinkedAccount{Scope: scope, Bot: bot},
+				botflota.Binding{Scope: scope, Bot: bot},
 			)
 		}
 	}
@@ -235,14 +256,14 @@ func ensurePhoneAvailable(
 }
 
 func duplicateAccountError(
-	phone string, first, second botflota.LinkedAccount,
+	key botflota.IdentityKey, first, second botflota.Binding,
 ) error {
 	// The detail is for the instance log; a caller reads only the sentinel
 	// text, because the other owner may sit in a scope it cannot see.
 	return fmt.Errorf(
-		"whatsapp: phone number %s is assigned to bots %q (scope %q) and %q (scope %q): %w",
-		phone, first.Bot, first.Scope, second.Bot, second.Scope,
-		botflota.ErrAccountInUse,
+		"whatsapp: identity %s/%s is assigned to bots %q (scope %q) and %q (scope %q): %w",
+		key.Provider, key.Subject, first.Bot, first.Scope, second.Bot, second.Scope,
+		botflota.ErrIdentityInUse,
 	)
 }
 
@@ -278,16 +299,23 @@ func PairingNow(now func() time.Time) time.Time {
 	return now().UTC()
 }
 
-// Number strips the device suffix and the server from a stored account JID
-// for display: the JID itself stays internal (ADR 0020).
+// Number strips the device suffix and the server from a device locator; the
+// locator itself stays internal to the adapter (ADR 0020).
 func Number(jid string) string {
-	return botflota.LinkedAccount{JID: jid}.Phone()
+	number := jid
+	if at := strings.IndexByte(number, '@'); at >= 0 {
+		number = number[:at]
+	}
+	if colon := strings.IndexByte(number, ':'); colon >= 0 {
+		number = number[:colon]
+	}
+	return number
 }
 
 // HasCredentials implements botflota.DevicePresence for the live device
 // store, so a consumer asks for presence without receiving the store.
 func (d *Devices) HasCredentials(
-	ctx context.Context, account *botflota.LinkedAccount,
+	ctx context.Context, account *botflota.Binding,
 ) (bool, error) {
 	return HasLocalDevice(ctx, d, account)
 }
@@ -297,7 +325,7 @@ func (d *Devices) HasCredentials(
 // composes it once from the stores it already holds.
 type AccountOwner struct {
 	*Devices
-	Accounts botflota.LinkedAccountStore
+	Bindings botflota.BindingStore
 	Pairings botflota.PairingStore
 	Outbox   botflota.OutboxStore
 }
@@ -311,7 +339,7 @@ func (o AccountOwner) UnpairAccount(
 ) error {
 	return Unpair(ctx, UnpairOptions{
 		Scope: scope, Bot: bot, Devices: o.Devices,
-		Accounts: o.Accounts, Pairings: o.Pairings, Outbox: o.Outbox,
+		Bindings: o.Bindings, Pairings: o.Pairings, Outbox: o.Outbox,
 	})
 }
 

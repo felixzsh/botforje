@@ -16,13 +16,13 @@ import (
 // reachable in the test below.
 type chatControlFleet struct {
 	fakeFleet
-	control map[string]botflota.ChatControl
+	control map[botflota.ChatTarget]botflota.ChatControl
 	held    []string
 	err     error
 }
 
 func (f *chatControlFleet) SetChatHuman(
-	_ context.Context, scope, bot, phone string, human bool,
+	_ context.Context, scope, bot string, target botflota.ChatTarget, human bool,
 ) error {
 	if f.err != nil {
 		return f.err
@@ -32,17 +32,17 @@ func (f *chatControlFleet) SetChatHuman(
 		mode = botflota.ChatHuman
 	}
 	if f.control == nil {
-		f.control = map[string]botflota.ChatControl{}
+		f.control = map[botflota.ChatTarget]botflota.ChatControl{}
 	}
-	f.control[scope+"/"+bot+"/"+phone] = botflota.ChatControl{Mode: mode}
-	f.held = append(f.held, scope+"/"+bot+"/"+phone)
+	f.control[target] = botflota.ChatControl{Mode: mode}
+	f.held = append(f.held, scope+"/"+bot+"/"+target.Thread)
 	return nil
 }
 
 func (f *chatControlFleet) ChatControl(
-	scope, bot, phone string,
+	_ string, _ string, target botflota.ChatTarget,
 ) (botflota.ChatControl, bool) {
-	state, ok := f.control[scope+"/"+bot+"/"+phone]
+	state, ok := f.control[target]
 	return state, ok
 }
 
@@ -186,8 +186,8 @@ func TestChatControlWithoutACapableFleetSaysSo(t *testing.T) {
 }
 
 func TestChatListReportsControlOfAHeldChat(t *testing.T) {
-	fleet := &chatControlFleet{control: map[string]botflota.ChatControl{
-		"support/demo/5215500000000": {Mode: botflota.ChatHuman},
+	fleet := &chatControlFleet{control: map[botflota.ChatTarget]botflota.ChatControl{
+		waTarget("5215500000000"): {Mode: botflota.ChatHuman},
 	}}
 	server := newControlServer(t, fleet)
 

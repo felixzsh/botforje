@@ -17,7 +17,7 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// Options configures an Engine. Bot, Graph, Actions, Store, Chats, Contacts,
+// Options configures an Engine. Bot, Graph, Actions, Store, Chats, Peers,
 // Messages, and Turn are required.
 type Options struct {
 	Bot      string
@@ -26,11 +26,11 @@ type Options struct {
 	Actions  map[string]spec.Action
 	Store    botflota.SessionStore
 	Chats    botflota.ChatStore
-	Contacts botflota.ContactStore
+	Peers    botflota.PeerStore
 	Messages botflota.MessageStore
 	Turn     botflota.TurnStore
 	// Notify receives the first-contact hook; nil means no consumer (ADR 0045).
-	Notify         botflota.FirstContactNotifier
+	Notify         botflota.PeerFirstSeenNotifier
 	LLM            botflota.LLMProvider
 	HTTPClient     *http.Client
 	Now            func() time.Time
@@ -48,10 +48,10 @@ type Engine struct {
 	actions        map[string]spec.Action
 	store          botflota.SessionStore
 	chats          botflota.ChatStore
-	contacts       botflota.ContactStore
+	peers          botflota.PeerStore
 	messages       botflota.MessageStore
 	turn           botflota.TurnStore
-	notify         botflota.FirstContactNotifier
+	notify         botflota.PeerFirstSeenNotifier
 	llm            botflota.LLMProvider
 	hasLLM         bool
 	http           *http.Client
@@ -69,7 +69,7 @@ func New(opts Options) *Engine {
 		actions:        opts.Actions,
 		store:          opts.Store,
 		chats:          opts.Chats,
-		contacts:       opts.Contacts,
+		peers:          opts.Peers,
 		messages:       opts.Messages,
 		turn:           opts.Turn,
 		notify:         opts.Notify,
@@ -102,8 +102,11 @@ func New(opts Options) *Engine {
 func (e *Engine) Handle(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) ([]botflota.OutgoingMessage, error) {
-	if msg.FromPhone == "" {
-		return nil, errors.New("engine: incoming message has no contact")
+	if !msg.Sender.Valid() {
+		return nil, errors.New("engine: incoming message has no sender identity")
+	}
+	if !msg.Target.Valid() {
+		return nil, errors.New("engine: incoming message has no conversation target")
 	}
 	if msg.Content == nil {
 		// A channel that predates the kind vocabulary, or a plain text event,
@@ -137,7 +140,7 @@ func (e *Engine) Handle(
 		engine:  e,
 		session: current.session,
 		chat:    current.chat,
-		tctx:    e.contextOf(current.session, msg, current.contact),
+		tctx:    e.contextOf(current.session, msg, current.peer),
 		msg:     msg,
 	}
 
@@ -174,36 +177,21 @@ func (e *Engine) Handle(
 	return r.out, nil
 }
 
-// storedBefore reports a message the chat already stores. It reads the
-// contact and chat without creating or updating them: the engine checks
-// before load, so a redelivery never re-runs an action or an HTTP side
-// effect and never moves last_seen (ADR 0026, ADR 0040). A chat that does
-// not exist yet has no stored message, so the missing rows answer no.
+// storedBefore reports a message the destination already stores. It reads
+// nothing else: the provider id is scoped by the destination the message
+// belongs to, so a redelivery never re-runs an action or an HTTP side effect
+// and never moves last_seen (ADR 0026, ADR 0040, ADR 0051).
 func (e *Engine) storedBefore(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) (bool, error) {
 	if msg.ProviderMessageID == "" {
 		return false, nil
 	}
-	if e.contacts == nil {
+	if e.messages == nil {
 		// Nothing can be stored; load reports the missing store.
 		return false, nil
 	}
-	contact, err := e.contacts.Get(ctx, e.scope, msg.FromPhone)
-	if errors.Is(err, botflota.ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("engine: contact lookup: %w", err)
-	}
-	chat, err := e.chats.ForContact(ctx, e.scope, e.bot, contact.ID)
-	if errors.Is(err, botflota.ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("engine: chat lookup: %w", err)
-	}
-	seen, err := e.messages.HasProviderID(ctx, chat.ID, msg.ProviderMessageID)
+	seen, err := e.messages.HasProviderID(ctx, msg.Target, msg.ProviderMessageID)
 	if err != nil {
 		return false, fmt.Errorf("engine: dedup: %w", err)
 	}
@@ -216,8 +204,11 @@ func (e *Engine) storedBefore(
 func (e *Engine) RecordSuppressed(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) error {
-	if msg.FromPhone == "" {
-		return errors.New("engine: incoming message has no contact")
+	if !msg.Sender.Valid() {
+		return errors.New("engine: incoming message has no sender identity")
+	}
+	if !msg.Target.Valid() {
+		return errors.New("engine: incoming message has no conversation target")
 	}
 	if msg.Content == nil {
 		msg.Content = botflota.TextContent{}
@@ -236,6 +227,7 @@ func (e *Engine) RecordSuppressed(
 	}
 	record := &botflota.Message{
 		ChatID:            current.chat.ID,
+		Target:            msg.Target,
 		Direction:         botflota.Inbound,
 		Content:           msg.Content,
 		At:                msg.At,
@@ -252,49 +244,45 @@ func (e *Engine) RecordSuppressed(
 // notifyFirstContact reports an identity whose first inbound message this
 // turn recorded, so a consumer learns the first contact without polling
 // (ADR 0029, ADR 0045). It runs once the identity is durable and never fails
-// the turn: the contact row itself is already stored, and a lost enqueue is
+// the turn: the peer row itself is already stored, and a lost enqueue is
 // logged.
 func (e *Engine) notifyFirstContact(
-	ctx context.Context, contact *botflota.Contact, at time.Time,
+	ctx context.Context, peer *botflota.Peer, at time.Time,
 ) {
-	if e.notify == nil || contact == nil {
+	if e.notify == nil || peer == nil {
 		return
 	}
-	event := botflota.FirstContact{
-		Scope: e.scope, Bot: e.bot, Contact: *contact, At: at,
+	event := botflota.PeerFirstSeen{
+		Scope: e.scope, Bot: e.bot, Peer: *peer, At: at,
 	}
-	if err := e.notify.FirstContact(ctx, event); err != nil {
-		e.log.Error("first-contact hook failed", "contact", contact.Phone, "error", err)
+	if err := e.notify.PeerFirstSeen(ctx, event); err != nil {
+		e.log.Error("first-contact hook failed",
+			"peer", peer.Key.Subject, "error", err)
 	}
 }
 
 // RecordOperator stores an outbound message the operator sent outside Botflota
-// under its chat, with the operator origin, and queues nothing (ADR 0043). A
-// provider id the chat already stores — a later history sync echoing it — is
-// ignored.
+// under its destination chat, with the operator origin, and queues nothing
+// (ADR 0043). A provider id the destination already stores — a later history
+// sync echoing it — is ignored. The target alone never yields a participant
+// (ADR 0051).
 func (e *Engine) RecordOperator(
-	ctx context.Context, msg botflota.OutboundMessage,
+	ctx context.Context, msg botflota.ExternalSend,
 ) error {
-	if msg.RecipientPhone == "" {
-		return errors.New("engine: outbound message has no recipient")
+	if !msg.Target.Valid() {
+		return errors.New("engine: external send has no conversation target")
 	}
 	if msg.Content == nil {
 		msg.Content = botflota.TextContent{}
 	}
-	if e.contacts == nil {
-		return errors.New("engine: no contact store")
-	}
 	now := e.now()
-	contact, err := e.contacts.EnsureContact(ctx, e.scope, msg.RecipientPhone, now)
-	if err != nil {
-		return fmt.Errorf("engine: contact: %w", err)
-	}
-	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, contact.ID, now)
+	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, msg.Target, 0, now)
 	if err != nil {
 		return fmt.Errorf("engine: chat: %w", err)
 	}
 	record := &botflota.Message{
 		ChatID:            chat.ID,
+		Target:            msg.Target,
 		Direction:         botflota.Outbound,
 		Content:           msg.Content,
 		At:                msg.At,
@@ -335,6 +323,7 @@ func (e *Engine) commitTurn(
 		At:      now,
 		Inbound: &botflota.Message{
 			ChatID:            chat.ID,
+			Target:            msg.Target,
 			Direction:         botflota.Inbound,
 			Content:           msg.Content,
 			At:                msg.At,
@@ -346,9 +335,10 @@ func (e *Engine) commitTurn(
 	}
 	for i := range out {
 		turn.Outbound = append(turn.Outbound, botflota.OutboundRecord{
-			Recipient: out[i].RecipientPhone,
+			Target: out[i].Target,
 			Message: &botflota.Message{
 				ChatID:    chat.ID,
+				Target:    out[i].Target,
 				Direction: botflota.Outbound,
 				Content:   out[i].Content,
 				At:        now,
@@ -377,7 +367,7 @@ func (e *Engine) commitTurn(
 // (ADR 0029, ADR 0045).
 type loaded struct {
 	chat       *botflota.Chat
-	contact    *botflota.Contact
+	peer       *botflota.Peer
 	session    *botflota.Session
 	newSession bool
 }
@@ -385,34 +375,40 @@ type loaded struct {
 func (e *Engine) load(
 	ctx context.Context, msg botflota.IncomingMessage, now time.Time,
 ) (loaded, error) {
-	if e.contacts == nil {
-		return loaded{}, errors.New("engine: no contact store")
+	if e.peers == nil {
+		return loaded{}, errors.New("engine: no peer store")
 	}
-	contact, firstMessage, err := e.contacts.RecordInbound(ctx, e.scope,
-		msg.FromPhone, msg.FromName, now)
+	peer, firstMessage, err := e.peers.RecordInbound(ctx, e.scope,
+		msg.Sender, msg.FromName, now)
 	if err != nil {
-		return loaded{}, fmt.Errorf("engine: contact: %w", err)
+		return loaded{}, fmt.Errorf("engine: peer: %w", err)
 	}
 	// The identity is durable and first_seen is claimed, so the hook reports
 	// before anything else can fail or consume the claim (ADR 0045).
 	if firstMessage {
-		e.notifyFirstContact(ctx, contact, now)
+		e.notifyFirstContact(ctx, peer, now)
 	}
-	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, contact.ID, now)
+	// The writer of a direct inbound is its known participant; a shared
+	// conversation never reaches the engine with a fabricated one (ADR 0051).
+	var peerID int64
+	if msg.Target.Kind == botflota.ChatDirect {
+		peerID = peer.ID
+	}
+	chat, err := e.chats.Ensure(ctx, e.scope, e.bot, msg.Target, peerID, now)
 	if err != nil {
 		return loaded{}, fmt.Errorf("engine: chat: %w", err)
 	}
 	session, err := e.store.Latest(ctx, chat.ID)
 	if err == nil && !session.Expired(now) {
 		return loaded{
-			chat: chat, contact: contact, session: session,
+			chat: chat, peer: peer, session: session,
 		}, nil
 	}
 	if err != nil && !errors.Is(err, botflota.ErrNotFound) {
 		return loaded{}, err
 	}
 	return loaded{
-		chat: chat, contact: contact, session: e.start(chat.ID, now),
+		chat: chat, peer: peer, session: e.start(chat.ID, now),
 		newSession: true,
 	}, nil
 }
@@ -446,15 +442,17 @@ func (e *Engine) expiry(now time.Time) time.Time {
 }
 
 func (e *Engine) contextOf(
-	session *botflota.Session, msg botflota.IncomingMessage, contact *botflota.Contact,
+	session *botflota.Session, msg botflota.IncomingMessage, peer *botflota.Peer,
 ) *templateContext {
 	tctx := newtemplateContext()
 	// The roots seeded here are constants, so Reset cannot reject them.
 	_ = tctx.Reset(botflota.RootGraph, session.GraphContext)
 	_ = tctx.Reset(botflota.RootNode, session.NodeContext)
-	_ = tctx.Reset(botflota.RootContact, map[string]any{
-		"phone": msg.FromPhone,
-		"name":  contact.DisplayName,
+	_ = tctx.Reset(botflota.RootPeer, map[string]any{
+		"id":       peer.ID,
+		"provider": msg.Sender.Provider,
+		"subject":  msg.Sender.Subject,
+		"name":     peer.DisplayName,
 	})
 	_ = tctx.Reset(botflota.RootMessage, map[string]any{
 		"body": msg.Content.VisibleText(),

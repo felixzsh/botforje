@@ -17,7 +17,7 @@ type collector struct {
 	chats       []botflota.HistoryChat
 	sessions    []botflota.Session
 	messages    []botflota.Message
-	addressBook []botflota.AddressBookEntry
+	addressBook []botflota.DirectoryEntry
 }
 
 func (c *collector) BeginTable(table botflota.HistoryTable) error {
@@ -40,7 +40,7 @@ func (c *collector) Message(message botflota.Message) error {
 	return nil
 }
 
-func (c *collector) AddressBookEntry(entry botflota.AddressBookEntry) error {
+func (c *collector) DirectoryEntry(entry botflota.DirectoryEntry) error {
 	c.addressBook = append(c.addressBook, entry)
 	return nil
 }
@@ -56,22 +56,24 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 	}
 	for _, body := range []string{"first", "second"} {
 		message := &botflota.Message{
-			ChatID: chat.ID, SessionID: session.ID, Direction: botflota.Inbound,
-			Content: botflota.TextContent{Body: body}, At: t1,
+			ChatID: chat.ID, Target: chat.Target, SessionID: session.ID,
+			Direction: botflota.Inbound,
+			Content:   botflota.TextContent{Body: body}, At: t1,
 		}
 		if err := db.Messages().Append(ctx, message); err != nil {
 			t.Fatalf("Append %q: %v", body, err)
 		}
 	}
-	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
-		Scope: "support", Bot: "support-bot", Phone: "5215500000000",
-		Name: "Ana", UpdatedAt: t0,
+	if err := db.Directory().Put(ctx, &botflota.DirectoryEntry{
+		Scope: "support", Bot: "support-bot", PeerKey: waKey("5215500000000"),
+		SourceIdentity: waKey("5215500000000"), DisplayName: "Ana", UpdatedAt: t0,
 	}); err != nil {
 		t.Fatalf("Put address-book entry: %v", err)
 	}
 	// Another bot of the same scope must stay out of the export.
-	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
-		Scope: "support", Bot: "other-bot", Phone: "5215500000001", UpdatedAt: t0,
+	if err := db.Directory().Put(ctx, &botflota.DirectoryEntry{
+		Scope: "support", Bot: "other-bot", PeerKey: waKey("5215500000001"),
+		SourceIdentity: waKey("5215500000001"), UpdatedAt: t0,
 	}); err != nil {
 		t.Fatalf("Put other address-book entry: %v", err)
 	}
@@ -85,9 +87,9 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 		t.Fatalf("chats = %+v, want the bot's own", got.chats)
 	}
 	// The contact's identity rides along, so the exported file stands alone.
-	if got.chats[0].ContactPhone != "5215500000000" || got.chats[0].ContactName != "Ana" {
+	if got.chats[0].PeerKey != waKey("5215500000000") || got.chats[0].PeerName != "Ana" {
 		t.Fatalf("chat contact = %q / %q, want the scope's contact",
-			got.chats[0].ContactPhone, got.chats[0].ContactName)
+			got.chats[0].PeerKey, got.chats[0].PeerName)
 	}
 	if len(got.sessions) != 1 || got.sessions[0].Node != "purchase" {
 		t.Fatalf("sessions = %+v", got.sessions)
@@ -105,7 +107,7 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 	// Every table is announced, in the order a sink writes its files, including
 	// the one the bot never filled.
 	want := []botflota.HistoryTable{botflota.TableChats, botflota.TableSessions,
-		botflota.TableMessages, botflota.TableAddressBook}
+		botflota.TableMessages, botflota.TableDirectory}
 	if !slices.Equal(got.tables, want) {
 		t.Fatalf("tables = %v, want %v", got.tables, want)
 	}
@@ -116,7 +118,7 @@ func TestHistoryStopsWhenTheSinkRefuses(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	message := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "hola"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, message); err != nil {
@@ -136,6 +138,6 @@ func (f failOnMessage) BeginTable(botflota.HistoryTable) error { return nil }
 func (f failOnMessage) Chat(botflota.HistoryChat) error        { return nil }
 func (f failOnMessage) Session(botflota.Session) error         { return nil }
 func (f failOnMessage) Message(botflota.Message) error         { return f.err }
-func (f failOnMessage) AddressBookEntry(botflota.AddressBookEntry) error {
+func (f failOnMessage) DirectoryEntry(botflota.DirectoryEntry) error {
 	return nil
 }

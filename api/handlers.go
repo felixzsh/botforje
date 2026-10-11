@@ -113,9 +113,11 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 			ID:    chat.ID,
 			Scope: chat.Scope,
 			Bot:   chat.Bot,
-			Contact: contactView{
-				Phone: chat.Phone,
-				Name:  chat.DisplayName,
+			Contact: peerView{
+				Provider: chat.PeerKey.Provider,
+				Subject:  chat.PeerKey.Subject,
+				Phone:    chat.PeerKey.Subject,
+				Name:     chat.DisplayName,
 			},
 			StartedAt: chat.StartedAt,
 			UpdatedAt: chat.UpdatedAt,
@@ -123,7 +125,7 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 			Sync:      chat.Sync,
 			Live:      chat.Live,
 		}
-		if state, ok := s.chatControl(scope, chat.Bot, chat.Phone); ok {
+		if state, ok := s.chatControl(scope, chat.Bot, chat.Target); ok {
 			view.Control = string(state.Mode)
 			if !state.PausedTill.IsZero() {
 				paused := state.PausedTill
@@ -139,7 +141,7 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 // fleet.Fleet implements it.
 type historySyncer interface {
 	HistorySync(
-		ctx context.Context, scope, bot, phone string,
+		ctx context.Context, scope, bot string, target botflota.ChatTarget,
 		count int, timeout time.Duration,
 	) (botflota.HistoryResult, error)
 }
@@ -166,14 +168,15 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	phone := r.URL.Query().Get("contact")
-	result, err := syncer.HistorySync(r.Context(), scope, bot, phone, count, timeout)
+	result, err := syncer.HistorySync(r.Context(), scope, bot,
+		legacyWhatsAppTarget(phone), count, timeout)
 	if err != nil {
-		// The upstream failure names the phone, the device, or the provider;
+		// The upstream failure names the peer, the device, or the provider;
 		// the caller gets the shape, the log gets the detail.
 		s.log.Error("api request failed", "operation", "history sync",
 			"scope", scope, "bot", bot, "error", err)
 		writeError(w, http.StatusBadGateway, "sync_failed",
-			"the history request to the phone failed")
+			"the history request to the channel failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

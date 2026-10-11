@@ -54,8 +54,10 @@ to a per-bot effective view without changing the shared graph or performing
 unbounded textual replacement. Validate references after that translation;
 unsupported aliases are errors, never silently empty values.
 
-This selects the template policy, not its implementation. Remaining config,
-selector, output, and archive compatibility belongs to its own phase and owner.
+P1 implements the neutral `peer` root and retires `contact`; the per-bot
+WhatsApp translation of the legacy `contact.*` references needs the consuming
+bot's definition and is P2 work. Remaining config, selector, output, and archive
+compatibility belongs to its own phase and owner.
 
 ## Consequences
 

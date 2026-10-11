@@ -24,7 +24,7 @@ func testContext(t *testing.T) *templateContext {
 	}{
 		{botflota.RootGraph, map[string]any{"customer": "Ana", "visits": 3}},
 		{botflota.RootNode, map[string]any{"product": "widget"}},
-		{botflota.RootContact, map[string]any{"phone": "+52155", "name": "Ana"}},
+		{botflota.RootPeer, map[string]any{"subject": "+52155", "name": "Ana"}},
 		{botflota.RootMessage, map[string]any{"body": "hola"}},
 		{botflota.RootBot, map[string]any{"id": "support-bot"}},
 		{botflota.RootInput, map[string]any{"qty": 2}},
@@ -42,7 +42,7 @@ func TestGet(t *testing.T) {
 		"resp":    map[string]any{"body": map[string]any{"id": "42"}},
 		"items":   []any{"a", "b"},
 	})
-	reset(t, ctx, botflota.RootContact, map[string]any{"phone": "+52155"})
+	reset(t, ctx, botflota.RootPeer, map[string]any{"subject": "+52155"})
 	reset(t, ctx, botflota.RootMessage, map[string]any{"body": "hola"})
 	reset(t, ctx, botflota.RootBot, map[string]any{"id": "support-bot"})
 	reset(t, ctx, botflota.RootInput, map[string]any{"qty": 2})
@@ -57,7 +57,7 @@ func TestGet(t *testing.T) {
 		{"node scalar", "node.product", "widget"},
 		{"nested map", "node.resp.body.id", "42"},
 		{"slice index", "node.items.1", "b"},
-		{"contact", "contact.phone", "+52155"},
+		{"peer", "peer.subject", "+52155"},
 		{"message", "message.body", "hola"},
 		{"bot", "bot.id", "support-bot"},
 		{"input", "input.qty", 2},
@@ -140,7 +140,7 @@ func TestSetWritable(t *testing.T) {
 
 func TestSetRejectsReadOnly(t *testing.T) {
 	ctx := newtemplateContext()
-	for _, path := range []string{"contact.phone", "message.body", "bot.id", "input.qty"} {
+	for _, path := range []string{"peer.subject", "message.body", "bot.id", "input.qty"} {
 		t.Run(path, func(t *testing.T) {
 			if err := ctx.Set(path, "x"); !errors.Is(err, ErrReadOnly) {
 				t.Fatalf("Set(%q) error = %v, want ErrReadOnly", path, err)

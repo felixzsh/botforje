@@ -12,9 +12,9 @@ import (
 )
 
 func TestContactsListPages(t *testing.T) {
-	contacts := &fakeContacts{listPage: botflota.ContactPage{
-		Contacts: []botflota.Contact{{
-			ID: 7, Scope: "support", Phone: "5215500000000",
+	contacts := &fakePeers{listPage: botflota.PeerPage{
+		Peers: []botflota.Peer{{
+			ID: 7, Scope: "support", Key: waKey("5215500000000"),
 			DisplayName: "Ana", FirstSeen: testTime,
 			LastSeen: testTime.Add(time.Minute), AddressBookImported: true,
 			HasChat: true, HasHistory: true,
@@ -22,7 +22,7 @@ func TestContactsListPages(t *testing.T) {
 		NextCursor: "next-page",
 	}}
 	server := testServerWithOptions(t, &fakeFleet{},
-		func(opts *Options) { opts.Contacts = contacts }, nil)
+		func(opts *Options) { opts.Peers = contacts }, nil)
 	since := testTime.UnixMilli() + 1234
 	path := fmt.Sprintf(
 		"/api/v1/scopes/support/contacts?since=%d&limit=1&cursor=abc", since)
@@ -56,13 +56,13 @@ func TestContactsListPages(t *testing.T) {
 }
 
 func TestContactsListOmitsTheCursorOnTheLastPage(t *testing.T) {
-	contacts := &fakeContacts{listPage: botflota.ContactPage{
-		Contacts: []botflota.Contact{{
-			ID: 7, Scope: "support", Phone: "5215500000000", FirstSeen: testTime,
+	contacts := &fakePeers{listPage: botflota.PeerPage{
+		Peers: []botflota.Peer{{
+			ID: 7, Scope: "support", Key: waKey("5215500000000"), FirstSeen: testTime,
 		}},
 	}}
 	server := testServerWithOptions(t, &fakeFleet{},
-		func(opts *Options) { opts.Contacts = contacts }, nil)
+		func(opts *Options) { opts.Peers = contacts }, nil)
 	recorder := get(t, server.Handler(), "/api/v1/scopes/support/contacts", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
@@ -76,16 +76,16 @@ func TestContactsListRejectsBadParameters(t *testing.T) {
 	cases := []struct {
 		name  string
 		path  string
-		store *fakeContacts
+		store *fakePeers
 	}{
-		{"bad since", "/api/v1/scopes/support/contacts?since=yesterday", &fakeContacts{}},
+		{"bad since", "/api/v1/scopes/support/contacts?since=yesterday", &fakePeers{}},
 		{"bad cursor", "/api/v1/scopes/support/contacts?cursor=zzz",
-			&fakeContacts{listErr: botflota.ErrInvalidCursor}},
+			&fakePeers{listErr: botflota.ErrInvalidCursor}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := testServerWithOptions(t, &fakeFleet{},
-				func(opts *Options) { opts.Contacts = tc.store }, nil)
+				func(opts *Options) { opts.Peers = tc.store }, nil)
 			recorder := get(t, server.Handler(), tc.path, testOwnerToken)
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400; body = %s",

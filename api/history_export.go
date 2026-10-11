@@ -21,7 +21,8 @@ var historyExportFiles = map[botflota.HistoryTable]struct {
 	header []string
 }{
 	botflota.TableChats: {"chats.csv", []string{
-		"id", "scope", "bot", "contact_id", "contact_phone", "contact_name",
+		"id", "scope", "bot", "target_provider", "target_kind", "target_thread",
+		"target_topic", "peer_id", "peer_provider", "peer_subject", "peer_name",
 		"started_at", "updated_at", "message_count", "guards",
 	}},
 	botflota.TableSessions: {"sessions.csv", []string{
@@ -29,11 +30,13 @@ var historyExportFiles = map[botflota.HistoryTable]struct {
 		"created_at", "updated_at", "expires_at",
 	}},
 	botflota.TableMessages: {"messages.csv", []string{
-		"id", "chat_id", "session_id", "direction", "kind", "body", "content",
+		"id", "chat_id", "session_id", "target_provider", "target_kind",
+		"target_thread", "target_topic", "direction", "kind", "body", "content",
 		"sent_at", "provider_message_id", "ingest_kind", "origin", "routing",
 	}},
-	botflota.TableAddressBook: {"address-book.csv", []string{
-		"scope", "bot", "phone", "name", "push_name", "business_name", "updated_at",
+	botflota.TableDirectory: {"directory.csv", []string{
+		"scope", "bot", "provider", "subject", "source_provider", "source_subject",
+		"display_name", "updated_at",
 	}},
 }
 
@@ -149,8 +152,9 @@ func (e *historyExports) Chat(chat botflota.HistoryChat) error {
 		return err
 	}
 	return e.write([]string{
-		i64(chat.ID), chat.Scope, chat.Bot, i64(chat.ContactID),
-		chat.ContactPhone, chat.ContactName,
+		i64(chat.ID), chat.Scope, chat.Bot, chat.Target.Provider,
+		string(chat.Target.Kind), chat.Target.Thread, chat.Target.Topic,
+		i64(chat.PeerID), chat.PeerKey.Provider, chat.PeerKey.Subject, chat.PeerName,
 		at(chat.StartedAt), at(chat.UpdatedAt), i64(chat.MessageCount), guards,
 	})
 }
@@ -182,6 +186,8 @@ func (e *historyExports) Message(message botflota.Message) error {
 	}
 	return e.write([]string{
 		i64(message.ID), i64(message.ChatID), i64(message.SessionID),
+		message.Target.Provider, string(message.Target.Kind), message.Target.Thread,
+		message.Target.Topic,
 		string(message.Direction), string(botflota.ContentKind(message.Content)),
 		botflota.ContentText(message.Content), content, at(message.At),
 		message.ProviderMessageID, string(message.Ingest),
@@ -189,10 +195,11 @@ func (e *historyExports) Message(message botflota.Message) error {
 	})
 }
 
-func (e *historyExports) AddressBookEntry(entry botflota.AddressBookEntry) error {
+func (e *historyExports) DirectoryEntry(entry botflota.DirectoryEntry) error {
 	return e.write([]string{
-		entry.Scope, entry.Bot, entry.Phone, entry.Name,
-		entry.PushName, entry.BusinessName, at(entry.UpdatedAt),
+		entry.Scope, entry.Bot, entry.PeerKey.Provider, entry.PeerKey.Subject,
+		entry.SourceIdentity.Provider, entry.SourceIdentity.Subject,
+		entry.DisplayName, at(entry.UpdatedAt),
 	})
 }
 

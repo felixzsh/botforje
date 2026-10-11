@@ -133,7 +133,7 @@ func TestHistoryDeleteReportsWhatItRemoved(t *testing.T) {
 	if body.Scope != "support" || body.Bot != "demo" {
 		t.Fatalf("body = %+v, want the target", body)
 	}
-	if body.Removed["chats"] != 2 || body.Removed["contacts"] != 4 {
+	if body.Removed["chats"] != 2 || body.Removed["directory"] != 4 {
 		t.Fatalf("removed = %v, want the counts", body.Removed)
 	}
 	if len(history.deleted) != 1 || history.deleted[0] != "support/demo" {

@@ -87,7 +87,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	}
 	unlock := s.lockBot(scope, bot)
 	defer unlock()
-	if _, err := s.accounts.Get(r.Context(), scope, bot); err == nil {
+	if _, err := s.bindings.Get(r.Context(), scope, bot); err == nil {
 		writeError(w, http.StatusConflict, "already_paired",
 			"bot is already paired; unpair the account before pairing it again")
 		return

@@ -134,10 +134,10 @@ func runPair(args []string) int {
 	defer db.Close()
 	ctx := context.Background()
 	// Pairing is idempotent: an existing link is reported and left alone.
-	if account, err := db.LinkedAccounts().Get(ctx, scopeName, name); err == nil && !*cmd.force {
+	if account, err := db.Bindings().Get(ctx, scopeName, name); err == nil && !*cmd.force {
 		fmt.Printf("bot %q (scope %q) is already paired as %s; "+
 			"use --force to replace the pairing\n",
-			name, scopeName, whatsapp.Number(account.JID))
+			name, scopeName, account.Identity.Subject)
 		return 0
 	}
 	logger := pairLogger(cfg, *cmd.verbose)
@@ -155,14 +155,14 @@ func runPair(args []string) int {
 		Scope:          scopeName,
 		Bot:            name,
 		Devices:        devices,
-		Accounts:       db.LinkedAccounts(),
+		Bindings:       db.Bindings(),
 		Pairings:       db.Pairings(),
-		Contacts:       db.Contacts(),
+		Peers:          db.Peers(),
 		Chats:          db.Chats(),
 		Messages:       db.Messages(),
 		History:        historyEnabled(botSpec.Settings),
 		FullHistory:    *cmd.importHistory,
-		AddressBook:    db.AddressBook(),
+		Directory:      db.Directory(),
 		ImportContacts: contactsEnabled(botSpec.Settings),
 		Outbox:         db.Outbox(),
 		Log:            logger,
@@ -175,7 +175,7 @@ func runPair(args []string) int {
 		return 1
 	}
 	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName,
-		whatsapp.Number(result.JID))
+		result.Identity.Subject)
 	printPairImport(os.Stdout, botSpec.Settings, result)
 	return 0
 }
@@ -402,7 +402,7 @@ func runUnpair(args []string) int {
 	}
 	if err := whatsapp.Unpair(context.Background(), whatsapp.UnpairOptions{
 		Scope: scopeName, Bot: name, Devices: devices,
-		Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+		Bindings: db.Bindings(), Pairings: db.Pairings(),
 		Outbox: db.Outbox(),
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

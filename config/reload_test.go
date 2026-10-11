@@ -9,15 +9,13 @@ import (
 )
 
 func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
-	enabled := true
 	base := func() *Config {
 		return &Config{
 			Port: 3000,
 			Scopes: map[string]spec.Scope{
 				"support": {Bots: map[string]spec.Bot{
 					"demo": {Graph: "menu", Settings: &spec.BotSettings{
-						ReplyDelay:   900,
-						IgnoreGroups: &enabled,
+						ReplyDelay: 900,
 					}},
 				}},
 			},
@@ -51,7 +49,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 		}, nil},
 		{"filter adopts", func(c *Config) {
 			botSettings(c, func(s *spec.BotSettings) {
-				s.IgnoredContacts = []string{"999"}
+				s.IgnoredPeers = []string{"999"}
 			})
 		}, nil},
 		{"channel settings", func(c *Config) {

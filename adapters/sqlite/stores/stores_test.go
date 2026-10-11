@@ -26,21 +26,27 @@ func open(t *testing.T, path string) *sqlite.DB {
 	return db
 }
 
-func ensureContact(t *testing.T, db *sqlite.DB) *botflota.Contact {
+func ensureContact(t *testing.T, db *sqlite.DB) *botflota.Peer {
 	t.Helper()
-	contact, _, err := db.Contacts().RecordInbound(context.Background(), "support",
-		"5215500000000", "Ana", t0)
+	contact, _, err := db.Peers().RecordInbound(context.Background(), "support",
+		waKey("5215500000000"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("RecordMessage contact: %v", err)
 	}
 	return contact
 }
 
+// waChatTarget is the direct conversation the helpers below share: the same
+// WhatsApp subject the seeded peer carries (ADR 0051).
+var waChatTarget = botflota.ChatTarget{
+	Provider: "whatsapp", Kind: botflota.ChatDirect, Thread: "5215500000000",
+}
+
 func ensureChat(t *testing.T, db *sqlite.DB) *botflota.Chat {
 	t.Helper()
 	contact := ensureContact(t, db)
 	chat, err := db.Chats().Ensure(context.Background(), "support", "support-bot",
-		contact.ID, t0)
+		waChatTarget, contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
@@ -67,12 +73,13 @@ func TestForeignKeysEnforced(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 
-	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", 999, t0); err == nil {
-		t.Fatal("Ensure with unknown contact succeeded, want a foreign key error")
+	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", waChatTarget,
+		999, t0); err == nil {
+		t.Fatal("Ensure with unknown peer succeeded, want a foreign key error")
 	}
 
 	orphanChat := &botflota.Message{
-		ChatID: 999, Direction: botflota.Inbound,
+		ChatID: 999, Target: waChatTarget, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "orphan"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, orphanChat); err == nil {
@@ -81,8 +88,9 @@ func TestForeignKeysEnforced(t *testing.T) {
 
 	chat := ensureChat(t, db)
 	orphanSession := &botflota.Message{
-		ChatID: chat.ID, SessionID: 999, Direction: botflota.Inbound,
-		Content: botflota.TextContent{Body: "orphan"}, At: t1,
+		ChatID: chat.ID, Target: chat.Target, SessionID: 999,
+		Direction: botflota.Inbound,
+		Content:   botflota.TextContent{Body: "orphan"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, orphanSession); err == nil {
 		t.Fatal("Append with unknown session succeeded, want a foreign key error")

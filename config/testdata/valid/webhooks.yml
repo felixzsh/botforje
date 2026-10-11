@@ -1,5 +1,5 @@
 webhooks:
   - url: "https://hooks.example.test/botflota"
     secret: "${BOTFLOTA_WEBHOOK_SECRET}"
-    events: ["contact.first_seen"]
+    events: ["peer.first_seen"]
 scopes: {}

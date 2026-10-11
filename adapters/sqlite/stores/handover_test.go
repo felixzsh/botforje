@@ -17,7 +17,7 @@ func TestRecordStoresWithoutASession(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	inbound := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "held"}, At: t1,
 		ProviderMessageID: "held-1", Ingest: botflota.IngestLive,
 	}
@@ -31,7 +31,7 @@ func TestRecordStoresWithoutASession(t *testing.T) {
 		t.Fatal("Record created a session run")
 	}
 	outbound := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Outbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Outbound,
 		Content: botflota.TextContent{Body: "te atiendo"}, At: t2,
 		ProviderMessageID: "op-1", Ingest: botflota.IngestLive,
 		Origin: botflota.OriginOperator,
@@ -94,13 +94,13 @@ func TestFailPendingForChatLeavesOtherChats(t *testing.T) {
 
 func ensureChatFor(t *testing.T, db *sqlite.DB, phone, name string) *botflota.Chat {
 	t.Helper()
-	contact, _, err := db.Contacts().RecordInbound(
-		context.Background(), "support", phone, name, t0)
+	contact, _, err := db.Peers().RecordInbound(
+		context.Background(), "support", waKey(phone), name, t0)
 	if err != nil {
 		t.Fatalf("RecordMessage contact: %v", err)
 	}
 	chat, err := db.Chats().Ensure(context.Background(), "support", "support-bot",
-		contact.ID, t0)
+		waTarget(phone), contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure chat: %v", err)
 	}
@@ -114,17 +114,17 @@ func queueReply(t *testing.T, db *sqlite.DB, chat *botflota.Chat, body string) {
 		Scope: "support", Bot: "support-bot",
 		Session: testSession(chat.ID), ChatID: chat.ID, At: t1,
 		Inbound: &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound,
+			ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 			Content: botflota.TextContent{Body: "in"}, At: t1,
 			Ingest: botflota.IngestLive,
 		},
 		Outbound: []botflota.OutboundRecord{{
+			Target: chat.Target,
 			Message: &botflota.Message{
-				ChatID: chat.ID, Direction: botflota.Outbound,
+				ChatID: chat.ID, Target: chat.Target, Direction: botflota.Outbound,
 				Content: botflota.TextContent{Body: body}, At: t1,
 				Ingest: botflota.IngestLive,
 			},
-			Recipient: "5215500000000",
 		}},
 	})
 	if err != nil {

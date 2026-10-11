@@ -22,17 +22,23 @@ type botView struct {
 	Sessions   int        `json:"sessions"`
 }
 
-// contactView is the contact a chat or message is with.
-type contactView struct {
-	Phone string `json:"phone"`
-	Name  string `json:"name,omitempty"`
+// peerView is the peer a chat or message is with. Phone is the legacy
+// WhatsApp projection of the subject; provider and subject are the neutral
+// reference (ADR 0051, ADR 0054).
+type peerView struct {
+	Provider string `json:"provider,omitempty"`
+	Subject  string `json:"subject,omitempty"`
+	Phone    string `json:"phone"`
+	Name     string `json:"name,omitempty"`
 }
 
 // contactProfileView is the scope-level identity read (ADR 0044). DisplayName
 // is the best-effort push name, always present, possibly empty. FirstSeen and
 // LastSeen are zero without a live inbound. The other fields derive whether
-// the contact came from an address-book import and whether chat/history exists.
+// the peer came from a directory import and whether chat/history exists.
 type contactProfileView struct {
+	Provider            string    `json:"provider,omitempty"`
+	Subject             string    `json:"subject,omitempty"`
 	Phone               string    `json:"phone"`
 	DisplayName         string    `json:"display_name"`
 	FirstSeen           time.Time `json:"first_seen"`
@@ -43,12 +49,12 @@ type contactProfileView struct {
 }
 
 type chatView struct {
-	ID        int64       `json:"id"`
-	Scope     string      `json:"scope"`
-	Bot       string      `json:"bot"`
-	Contact   contactView `json:"contact"`
-	StartedAt time.Time   `json:"started_at"`
-	UpdatedAt time.Time   `json:"updated_at"`
+	ID        int64     `json:"id"`
+	Scope     string    `json:"scope"`
+	Bot       string    `json:"bot"`
+	Contact   peerView  `json:"contact"`
+	StartedAt time.Time `json:"started_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 	// Messages is the stored history total; Sync and Live split it by
 	// ingest kind.
 	Messages int64 `json:"messages"`
@@ -60,17 +66,20 @@ type chatView struct {
 	PausedTill *time.Time `json:"paused_till,omitempty"`
 }
 
-// addressBookView is one imported address-book entry (ADR 0037).
+// addressBookView is one imported directory entry (ADR 0037, ADR 0051).
+// Phone is the legacy WhatsApp projection of the peer subject.
 type addressBookView struct {
 	Scope string `json:"scope"`
 	Bot   string `json:"bot"`
-	Phone string `json:"phone"`
-	// DisplayName resolves Name, BusinessName, and PushName, which stay raw.
-	DisplayName  string    `json:"display_name,omitempty"`
-	Name         string    `json:"name,omitempty"`
-	PushName     string    `json:"push_name,omitempty"`
-	BusinessName string    `json:"business_name,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	// Provider and Subject are the peer the entry describes; SourceProvider and
+	// SourceSubject are the account whose book supplied it.
+	Provider       string    `json:"provider,omitempty"`
+	Subject        string    `json:"subject,omitempty"`
+	SourceProvider string    `json:"source_provider,omitempty"`
+	SourceSubject  string    `json:"source_subject,omitempty"`
+	Phone          string    `json:"phone"`
+	DisplayName    string    `json:"display_name,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // Kind and Body are the derived summary of Content.
@@ -129,7 +138,7 @@ func (s *Server) botView(
 		return botView{}, err
 	}
 	view.Sessions = sessions
-	account, err := s.accounts.Get(ctx, scope, bot)
+	account, err := s.bindings.Get(ctx, scope, bot)
 	switch {
 	case err == nil:
 	case errors.Is(err, botflota.ErrNotFound):
@@ -151,7 +160,7 @@ func (s *Server) botView(
 	}
 	view.Pairing = string(state)
 	if state == botflota.PairingPaired && account != nil {
-		view.Phone = account.Phone()
+		view.Phone = account.Identity.Subject
 	}
 	if stored != nil && stored.State == state && !stored.LastChange.IsZero() {
 		changed := stored.LastChange
@@ -177,7 +186,7 @@ func (s *Server) scopeBotView(ctx context.Context, scope, bot string) (botView, 
 // of a bot is shown only while it is paired, so an unpaired link reports no
 // number (ADR 0011, ADR 0039).
 func (s *Server) pairingState(
-	ctx context.Context, account *botflota.LinkedAccount,
+	ctx context.Context, account *botflota.Binding,
 	stored *botflota.PairingStatus,
 ) (botflota.PairingState, error) {
 	if account == nil {

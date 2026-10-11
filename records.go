@@ -1,9 +1,6 @@
 package botflota
 
-import (
-	"strings"
-	"time"
-)
+import "time"
 
 // Persisted shapes: one struct per table, mirroring the columns the SQLite
 // adapter reads and writes. Keys, constraints, and encoding live with the DDL
@@ -19,80 +16,64 @@ type BotRef struct {
 	Bot   string
 }
 
-// LinkedAccount is a bot's linked channel identity: the WhatsApp device JID
-// (ADR 0006, ADR 0016). Its lifecycle is PairingStatus.
-type LinkedAccount struct {
-	Scope string
-	Bot   string
-	JID   string
+// Binding is a bot's linked channel account: its normalized own
+// identity (ADR 0006, ADR 0016, ADR 0051). The SDK device locator and the
+// credentials stay in adapter-owned storage; its lifecycle is PairingStatus.
+type Binding struct {
+	Scope    string
+	Bot      string
+	Identity IdentityKey
 }
 
-// Phone is the plain phone number the stored identity addresses, without the
-// device or server suffix; the addressing itself never leaves the channel
-// (ADR 0020).
-func (a LinkedAccount) Phone() string {
-	number := a.JID
-	if at := strings.IndexByte(number, '@'); at >= 0 {
-		number = number[:at]
-	}
-	if colon := strings.IndexByte(number, ':'); colon >= 0 {
-		number = number[:colon]
-	}
-	return number
-}
-
-// Contact is one person's durable identity in a scope (ADR 0029). DisplayName
-// is a best-effort push name: possibly empty, never an identifier. FirstSeen
-// and LastSeen are the first and last live inbound message; both stay zero
-// when the identity was first known through the address book or an API send.
-type Contact struct {
+// Peer is one person's durable identity in a scope (ADR 0029). Key is the
+// comparable provider identity; knowing a peer never requires a message
+// exchange. DisplayName is a best-effort push name: possibly empty, never an
+// identifier. FirstSeen and LastSeen are the first and last live inbound
+// message; both stay zero when the identity was first known through the
+// directory or an API send.
+type Peer struct {
 	ID            int64
 	Scope         string
-	Phone         string
+	Key           IdentityKey
 	DisplayName   string
 	NameUpdatedAt time.Time
 	FirstSeen     time.Time
 	LastSeen      time.Time
-	// These properties are derived from the bot-owned address book and chat
+	// These properties are derived from the bot-owned directory and chat
 	// history; they are never stored on the identity row.
 	AddressBookImported bool
 	HasChat             bool
 	HasHistory          bool
 }
 
-// AddressBookEntry is an address-book entry of a bot's linked account
-// (ADR 0037), keyed by (scope, bot, phone) because the book belongs to the
-// account, not the scope. It is an identity the account knows, never a Chat.
-type AddressBookEntry struct {
-	Scope        string
-	Bot          string
-	Phone        string
-	Name         string
-	PushName     string
-	BusinessName string
-	UpdatedAt    time.Time
+// DirectoryEntry is one entry of a bot's imported account directory
+// (ADR 0037, ADR 0051): PeerKey identifies the peer and SourceIdentity the
+// normalized account that supplied the snapshot, both identities of the same
+// provider. (Scope, Bot) identifies the current owner of the stored data, not
+// necessarily the account that originally imported it, and a move preserves
+// SourceIdentity (ADR 0037/0042). DisplayName is already normalized by the
+// adapter; membership proves neither current reachability nor send permission.
+type DirectoryEntry struct {
+	Scope          string
+	Bot            string
+	PeerKey        IdentityKey
+	SourceIdentity IdentityKey
+	DisplayName    string
+	UpdatedAt      time.Time
 }
 
-// DisplayName is the name a reader shows; best effort, never an identifier.
-func (a AddressBookEntry) DisplayName() string {
-	switch {
-	case a.Name != "":
-		return a.Name
-	case a.BusinessName != "":
-		return a.BusinessName
-	default:
-		return a.PushName
-	}
-}
-
-// Chat is the durable thread between one bot and one contact; it never ends
-// (ADR 0026). MessageCount is the live inbound count, not the stored history;
-// Guards is the per-action guard state (ADR 0027).
+// Chat is the durable thread between one bot and one conversation; it never
+// ends (ADR 0026). Target is the complete conversation address, and PeerID is
+// the known participant, zero when the conversation has no known one. A direct
+// thread does not prove its participant, and a group is not one person's
+// identity (ADR 0051). MessageCount is the live inbound count, not the stored
+// history; Guards is the per-action guard state (ADR 0027).
 type Chat struct {
 	ID           int64
 	Scope        string
 	Bot          string
-	ContactID    int64
+	Target       ChatTarget
+	PeerID       int64
 	StartedAt    time.Time
 	UpdatedAt    time.Time
 	MessageCount int64
@@ -150,12 +131,15 @@ const (
 
 // Message is one message kept for history (ADR 0026). The store derives the
 // kind and visible text columns from Content (ADR 0036). SessionID is zero
-// when no session run handled it, and ProviderMessageID is the dedup key of
-// the history import.
+// when no session run handled it. Target is the destination the message
+// actually belongs to, which for an alternate recipient differs from the
+// triggering chat, and ProviderMessageID is the channel's id, scoped by that
+// destination for dedup (ADR 0051).
 type Message struct {
 	ID                int64
 	ChatID            int64
 	SessionID         int64
+	Target            ChatTarget
 	Direction         Direction
 	Content           MessageContent
 	At                time.Time
@@ -166,22 +150,22 @@ type Message struct {
 }
 
 // HistoryCounts is what a history operation removed or moved: one bot's chats
-// and their cascaded sessions, messages, and queued replies, plus its address
-// book. A caller reports them; whether they release any storage ceiling is
-// TBD and not an implemented contract (ADR 0042; docs/access-policy.md).
+// and their cascaded sessions, messages, and queued replies, plus its
+// directory. The counts are a report of the operation; freeing storage is not
+// part of it, and docs/access-policy.md owns the resource policy (ADR 0042).
 type HistoryCounts struct {
-	Chats       int64
-	Sessions    int64
-	Messages    int64
-	AddressBook int64
+	Chats     int64
+	Sessions  int64
+	Messages  int64
+	Directory int64
 }
 
-// HistoryChat is one chat as an export reads it, with its contact's identity
+// HistoryChat is one chat as an export reads it, with its peer's identity
 // beside it so the exported file stands alone (ADR 0042).
 type HistoryChat struct {
 	Chat
-	ContactPhone string
-	ContactName  string
+	PeerKey  IdentityKey
+	PeerName string
 }
 
 // ChatControlMode is the effective automation of one chat (ADR 0043). It is
@@ -201,12 +185,12 @@ type ChatControl struct {
 	PausedTill time.Time
 }
 
-// ChatSummary is a chat joined with its contact identity, for the read API.
+// ChatSummary is a chat joined with its peer identity, for the read API.
 // Messages, Sync, and Live count the stored rows by ingest kind; the embedded
 // MessageCount stays the live inbound count (ADR 0035).
 type ChatSummary struct {
 	Chat
-	Phone       string
+	PeerKey     IdentityKey
 	DisplayName string
 	Messages    int64
 	Sync        int64

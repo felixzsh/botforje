@@ -20,22 +20,23 @@ func (s *Server) handleAddressBook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	entries, err := s.addressBook.List(r.Context(), scope, bot, limit)
+	entries, err := s.directory.List(r.Context(), scope, bot, limit)
 	if err != nil {
-		s.fail(w, "list address book", err)
+		s.fail(w, "list directory", err)
 		return
 	}
 	views := make([]addressBookView, 0, len(entries))
 	for _, entry := range entries {
 		views = append(views, addressBookView{
-			Scope:        entry.Scope,
-			Bot:          entry.Bot,
-			Phone:        entry.Phone,
-			DisplayName:  entry.DisplayName(),
-			Name:         entry.Name,
-			PushName:     entry.PushName,
-			BusinessName: entry.BusinessName,
-			UpdatedAt:    entry.UpdatedAt,
+			Scope:          entry.Scope,
+			Bot:            entry.Bot,
+			Provider:       entry.PeerKey.Provider,
+			Subject:        entry.PeerKey.Subject,
+			SourceProvider: entry.SourceIdentity.Provider,
+			SourceSubject:  entry.SourceIdentity.Subject,
+			Phone:          entry.PeerKey.Subject,
+			DisplayName:    entry.DisplayName,
+			UpdatedAt:      entry.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

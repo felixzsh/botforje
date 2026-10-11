@@ -53,7 +53,7 @@ sign-in is optional future work, not a required step in the flow above.
   pending until activation is safe (ADR 0009).
 - Use API operations for pairing, conversation control, messages, and history.
   Do not operate directly on the running instance's files or database.
-- Deduplicate webhook deliveries by event ID. Only `contact.first_seen` exists
+- Deduplicate webhook deliveries by event ID. Only `peer.first_seen` exists
   today; other lifecycle and usage events are planned, not available contracts.
 - The host owns backups and deployment of the instances it operates, using the
   documented runtime procedures rather than independent writes to live stores.

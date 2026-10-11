@@ -5,7 +5,8 @@ is sufficient to proceed with phase-local design and implementation
 once the affected decisions are approved; another broad investigation
 is not a prerequisite. This does not approve unresolved contracts or
 close runtime gates. P0 (documentation only) is complete and accepted;
-P1 is partial and reopened for identity cleanup; P2–P6 are pending.
+P1's implementation landed on 2026-10-11 (ADR 0051), with its per-bot
+WhatsApp template alias moved to P2; P2–P6 are pending.
 Code baseline: `3544357`, inspected on 2026-10-08; this research review
 is not a new code audit.
 `../../PLAN.md` Phase 7 owns overall progress; this document states the
@@ -133,8 +134,9 @@ wait for unrelated real-adapter research to finish every phase.
   Protocol resolution and credential-bearing routing state stay
   adapter-owned. The selected P1 design now lives in ADR 0051 and the
   design section of `phases.md`, including local spaces, participants,
-  directory origin, and migration eligibility. This closes those contract
-  rules, not their implementation; binding generation is not an identity
+  directory origin, and migration eligibility. Those contract rules are now
+  implemented across the core, stores, engine, fleet, WhatsApp mapping, and
+  the API compatibility boundary; binding generation is not an identity
   or message namespace. The owner authorized documentation/ADR work only.
   Resolve other affected public-format choices before coding their consumers;
   do not reopen the approved phone removal or copy the old phone-based shapes.

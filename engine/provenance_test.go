@@ -60,7 +60,7 @@ func provenanceEngine(
 	return newTestEngine(t, engine.Options{
 		Bot: "support-bot", Scope: "support", Graph: graph,
 		Actions: provenanceActions,
-		Store:   store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store:   store, Chats: store, Peers: store, Messages: store, Turn: store,
 		LLM: llm,
 	})
 }
@@ -167,7 +167,7 @@ func TestGeneratedReplyOrigin(t *testing.T) {
 		store := newMemStore()
 		eng := newTestEngine(t, engine.Options{
 			Bot: "support-bot", Scope: "support", Graph: graph, Actions: actions,
-			Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+			Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 			LLM: llm,
 		})
 		return store, eng
@@ -194,7 +194,8 @@ func TestProviderMessageIDIsRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
 	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: "s", ProviderMessageID: "ABC123", At: t0,
+		Bot: "support-bot", Sender: waKey("s"), Target: waTarget("s"),
+		ProviderMessageID: "ABC123", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	})
 	if err != nil {
@@ -210,7 +211,8 @@ func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
 	replies, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: "s", ProviderMessageID: "ABC123", At: t0,
+		Bot: "support-bot", Sender: waKey("s"), Target: waTarget("s"),
+		ProviderMessageID: "ABC123", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	})
 	if err != nil {

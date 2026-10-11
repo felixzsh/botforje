@@ -32,10 +32,10 @@ func TestJitteredBounds(t *testing.T) {
 func TestConnectReportsMissingDevice(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	account := &botflota.LinkedAccount{
-		Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+	account := &botflota.Binding{
+		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
 	}
-	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
+	if err := db.Bindings().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := whatsapp.OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -43,7 +43,7 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := &Adapter{
-		scope: "dev", bot: "botsito", accounts: db.LinkedAccounts(),
+		scope: "dev", bot: "botsito", bindings: db.Bindings(),
 		pairings: db.Pairings(), devices: devices,
 		log: botflota.DiscardLogger(),
 	}
@@ -59,10 +59,10 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 func TestDisconnectStopsWorkersAfterConnectFails(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	account := &botflota.LinkedAccount{
-		Scope: "dev", Bot: "botsito", JID: "5215500000000:1@s.whatsapp.net",
+	account := &botflota.Binding{
+		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
 	}
-	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
+	if err := db.Bindings().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := whatsapp.OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -71,8 +71,8 @@ func TestDisconnectStopsWorkersAfterConnectFails(t *testing.T) {
 	}
 	adapter, err := New(Options{
 		Scope: account.Scope, Bot: account.Bot,
-		Devices: devices, Accounts: db.LinkedAccounts(),
-		Pairings: db.Pairings(), Contacts: db.Contacts(), Chats: db.Chats(),
+		Devices: devices, Bindings: db.Bindings(),
+		Pairings: db.Pairings(), Peers: db.Peers(), Chats: db.Chats(),
 		Messages: db.Messages(), History: true, Log: botflota.DiscardLogger(),
 	})
 	if err != nil {

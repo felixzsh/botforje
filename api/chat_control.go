@@ -12,8 +12,12 @@ import (
 // *fleet.Fleet satisfies it; a server without one answers 501 on the route and
 // reports no control in the chat list.
 type chatController interface {
-	SetChatHuman(ctx context.Context, scope, bot, phone string, human bool) error
-	ChatControl(scope, bot, phone string) (botflota.ChatControl, bool)
+	SetChatHuman(
+		ctx context.Context, scope, bot string, target botflota.ChatTarget, human bool,
+	) error
+	ChatControl(
+		scope, bot string, target botflota.ChatTarget,
+	) (botflota.ChatControl, bool)
 }
 
 // handleChatControl holds one chat for a human or releases it (ADR 0043). The
@@ -24,6 +28,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	phone := r.URL.Query().Get("contact")
+	target := legacyWhatsAppTarget(phone)
 	var body struct {
 		Mode string `json:"mode"`
 	}
@@ -47,7 +52,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 			"chat control is not available")
 		return
 	}
-	if err := controller.SetChatHuman(r.Context(), scope, bot, phone, human); err != nil {
+	if err := controller.SetChatHuman(r.Context(), scope, bot, target, human); err != nil {
 		// A stopped bot has no live state to hold, which is a state of the
 		// instance the caller can wait out, not a server failure (ADR 0043).
 		if errors.Is(err, botflota.ErrBotNotRunning) {
@@ -58,7 +63,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "set chat control", err)
 		return
 	}
-	state, _ := controller.ChatControl(scope, bot, phone)
+	state, _ := controller.ChatControl(scope, bot, target)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"scope": scope, "bot": bot, "contact": phone, "chat_id": chat.ID,
 		"control": controlView(state),
@@ -75,10 +80,12 @@ func controlView(state botflota.ChatControl) map[string]any {
 }
 
 // chatControl reads one chat's live control when the fleet can report it.
-func (s *Server) chatControl(scope, bot, phone string) (botflota.ChatControl, bool) {
+func (s *Server) chatControl(
+	scope, bot string, target botflota.ChatTarget,
+) (botflota.ChatControl, bool) {
 	controller, ok := s.fleet.(chatController)
 	if !ok {
 		return botflota.ChatControl{}, false
 	}
-	return controller.ChatControl(scope, bot, phone)
+	return controller.ChatControl(scope, bot, target)
 }

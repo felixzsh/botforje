@@ -1,6 +1,8 @@
 # Domain contract renames
 
-Target vocabulary; implementation pending.
+Target vocabulary; the P1 identity, target, peer, directory, and message-field
+names are implemented (2026-10-11). The binding, card, history-section, and
+external-send names remain pending their phases.
 Status: provisional — entries can change as findings land in
 `provider-findings/` and `provider-differences/`, and open questions
 live in [open-decisions.md](open-decisions.md).

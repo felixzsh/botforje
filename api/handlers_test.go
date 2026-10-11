@@ -14,16 +14,18 @@ import (
 
 type fakeSyncFleet struct {
 	fakeFleet
-	scope, bot, phone string
-	count             int
-	timeout           time.Duration
-	err               error
+	scope, bot string
+	target     botflota.ChatTarget
+	count      int
+	timeout    time.Duration
+	err        error
 }
 
 func (f *fakeSyncFleet) HistorySync(
-	_ context.Context, scope, bot, phone string, count int, timeout time.Duration,
+	_ context.Context, scope, bot string, target botflota.ChatTarget,
+	count int, timeout time.Duration,
 ) (botflota.HistoryResult, error) {
-	f.scope, f.bot, f.phone = scope, bot, phone
+	f.scope, f.bot, f.target = scope, bot, target
 	f.count, f.timeout = count, timeout
 	if f.err != nil {
 		return botflota.HistoryResult{}, f.err
@@ -43,8 +45,9 @@ func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
 	}
-	if live.scope != "support" || live.bot != "demo" || live.phone != "5215500000000" {
-		t.Fatalf("addressed %s/%s/%s", live.scope, live.bot, live.phone)
+	if live.scope != "support" || live.bot != "demo" ||
+		live.target != waTarget("5215500000000") {
+		t.Fatalf("addressed %s/%s/%s", live.scope, live.bot, live.target.Thread)
 	}
 	if live.count != 75 || live.timeout != 30*time.Second {
 		t.Fatalf("count = %d, timeout = %s", live.count, live.timeout)

@@ -114,12 +114,12 @@ func TestClearPairing(t *testing.T) {
 	if err := device.Save(ctx); err != nil {
 		t.Fatal(err)
 	}
-	account := &botflota.LinkedAccount{Scope: "dev", Bot: "bot", JID: jid.String()}
-	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
+	account := &botflota.Binding{Scope: "dev", Bot: "bot", Identity: waKey(jid.User)}
+	if err := db.Bindings().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := removePairing(ctx, devices, db.LinkedAccounts(), db.Pairings(),
+	if err := removePairing(ctx, devices, db.Bindings(), db.Pairings(),
 		db.Outbox(), account, t0); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestClearPairing(t *testing.T) {
 	if got != nil {
 		t.Fatal("device still exists after clearing pairing")
 	}
-	_, err = db.LinkedAccounts().Get(ctx, account.Scope, account.Bot)
+	_, err = db.Bindings().Get(ctx, account.Scope, account.Bot)
 	if !errors.Is(err, botflota.ErrNotFound) {
 		t.Fatalf("account error = %v, want not found", err)
 	}

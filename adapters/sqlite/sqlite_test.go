@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,65 +56,73 @@ func TestSchemaIdempotent(t *testing.T) {
 	}
 }
 
-// TestOpenAddsContentColumn covers the pre-release convergence: a database
-// created before the content column existed gains it on open (ADR 0006).
-func TestOpenAddsContentColumn(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.db")
-	legacy, err := sql.Open("sqlite", "file:"+path)
+// TestOpenCreatesNeutralIdentitySchema covers the pre-release reset policy:
+// the database is created with the neutral identity and destination columns,
+// and the provider id is unique per destination rather than per history chat
+// (ADR 0006, ADR 0051).
+func TestOpenCreatesNeutralIdentitySchema(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	for _, column := range []struct{ table, name string }{
+		{"peers", "subject"},
+		{"chats", "thread"},
+		{"chats", "topic"},
+		{"messages", "target_thread"},
+		{"directory_entries", "source_subject"},
+		{"outbox", "target_thread"},
+		{"bindings", "subject"},
+	} {
+		var found int
+		err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`,
+			column.table, column.name).Scan(&found)
+		if err != nil {
+			t.Fatalf("inspect %s: %v", column.table, err)
+		}
+		if found != 1 {
+			t.Fatalf("%s.%s count = %d, want 1", column.table, column.name, found)
+		}
+	}
+	var index string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master
+		WHERE type = 'index' AND name = 'messages_provider'`).Scan(&index)
 	if err != nil {
-		t.Fatalf("open legacy: %v", err)
+		t.Fatalf("inspect provider index: %v", err)
 	}
-	_, err = legacy.Exec(`CREATE TABLE messages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		chat_id INTEGER NOT NULL,
-		session_id INTEGER,
-		direction TEXT NOT NULL,
-		kind TEXT NOT NULL,
-		body TEXT NOT NULL,
-		sent_at TEXT NOT NULL,
-		provider_message_id TEXT NOT NULL DEFAULT '',
-		ingest_kind TEXT NOT NULL DEFAULT 'unknown',
-		origin TEXT NOT NULL DEFAULT '',
-		routing TEXT NOT NULL DEFAULT 'unknown'
-	)`)
+	if !strings.Contains(index, "target_thread") || strings.Contains(index, "chat_id") {
+		t.Fatalf("provider index = %q, want the destination scoping", index)
+	}
+	// The destination key separates two conversations that share one provider
+	// id, which is what the chat-scoped index could not do.
+	peer, _, err := db.Peers().RecordInbound(context.Background(), "support",
+		botflota.IdentityKey{Provider: "whatsapp", Subject: "5215500000000"}, "Ana", t0)
 	if err != nil {
-		t.Fatalf("create legacy messages: %v", err)
+		t.Fatalf("seed peer: %v", err)
 	}
-	if err := legacy.Close(); err != nil {
-		t.Fatalf("close legacy: %v", err)
-	}
-
-	db := open(t, path)
-	var columns int
-	err = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages')
-		WHERE name = 'content'`).Scan(&columns)
-	if err != nil {
-		t.Fatalf("inspect columns: %v", err)
-	}
-	if columns != 1 {
-		t.Fatalf("content column count = %d, want 1", columns)
-	}
-	// A legacy row decodes from its kind and visible text.
-	contact, _, err := db.Contacts().RecordInbound(context.Background(), "support",
-		"5215500000000", "Ana", t0)
-	if err != nil {
-		t.Fatalf("seed contact: %v", err)
+	target := botflota.ChatTarget{
+		Provider: "whatsapp", Kind: botflota.ChatDirect, Thread: "5215500000000",
 	}
 	chat, err := db.Chats().Ensure(context.Background(), "support",
-		"support-bot", contact.ID, t0)
+		"support-bot", target, peer.ID, t0)
 	if err != nil {
 		t.Fatalf("seed chat: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO messages
-		(chat_id, direction, kind, body, sent_at) VALUES (?, 'in', 'text', 'old', ?)`,
-		chat.ID, t1.Format(time.RFC3339Nano)); err != nil {
-		t.Fatalf("insert legacy row: %v", err)
+	for i, thread := range []string{"5215500000000", "5215500000001"} {
+		message := &botflota.Message{
+			ChatID: chat.ID, Direction: botflota.Inbound,
+			Target: botflota.ChatTarget{
+				Provider: "whatsapp", Kind: botflota.ChatDirect, Thread: thread,
+			},
+			Content: botflota.TextContent{Body: "old"}, At: t1,
+			ProviderMessageID: "shared-id",
+		}
+		if err := db.Messages().Append(context.Background(), message); err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
 	}
 	got, err := db.Messages().History(context.Background(), chat.ID, 0, 10)
 	if err != nil {
 		t.Fatalf("History: %v", err)
 	}
-	if len(got) != 1 || botflota.ContentText(got[0].Content) != "old" {
-		t.Fatalf("legacy row = %#v, want the stored text", got)
+	if len(got) != 2 || botflota.ContentText(got[0].Content) != "old" {
+		t.Fatalf("rows = %#v, want both destinations", got)
 	}
 }

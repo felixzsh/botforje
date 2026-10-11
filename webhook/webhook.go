@@ -36,7 +36,7 @@ func Targets(settings []config.WebhookSettings) []Target {
 	return targets
 }
 
-// Sink implements botflota.FirstContactNotifier: it builds the event's
+// Sink implements botflota.PeerFirstSeenNotifier: it builds the event's
 // envelope and queues one delivery per subscribed target. Queueing is one
 // local insert per target; the HTTP call belongs to the worker (ADR 0045).
 type Sink struct {
@@ -49,10 +49,10 @@ func NewSink(store botflota.WebhookStore, targets []Target) *Sink {
 	return &Sink{store: store, targets: targets, now: time.Now}
 }
 
-func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) error {
+func (s *Sink) PeerFirstSeen(ctx context.Context, event botflota.PeerFirstSeen) error {
 	subscribed := make([]Target, 0, len(s.targets))
 	for _, target := range s.targets {
-		if slices.Contains(target.Events, botflota.EventContactFirstSeen) {
+		if slices.Contains(target.Events, botflota.EventPeerFirstSeen) {
 			subscribed = append(subscribed, target)
 		}
 	}
@@ -63,18 +63,19 @@ func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) er
 	if err != nil {
 		return fmt.Errorf("webhook: event id: %w", err)
 	}
-	payload, err := json.Marshal(firstContactEnvelope{
+	payload, err := json.Marshal(firstPeerEnvelope{
 		ID:         eventID,
-		Event:      botflota.EventContactFirstSeen,
+		Event:      botflota.EventPeerFirstSeen,
 		OccurredAt: formatTime(event.At),
 		Scope:      event.Scope,
-		Data: firstContactData{
+		Data: firstPeerData{
 			Bot: event.Bot,
-			Contact: envelopeContact{
-				Phone:       event.Contact.Phone,
-				DisplayName: event.Contact.DisplayName,
+			Peer: envelopePeer{
+				Provider:    event.Peer.Key.Provider,
+				Subject:     event.Peer.Key.Subject,
+				DisplayName: event.Peer.DisplayName,
 			},
-			FirstSeen: formatTime(event.Contact.FirstSeen),
+			FirstSeen: formatTime(event.Peer.FirstSeen),
 		},
 	})
 	if err != nil {
@@ -87,7 +88,7 @@ func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) er
 		}
 		if err := s.store.Enqueue(ctx, &botflota.WebhookDelivery{
 			EventID: eventID, DeliveryID: deliveryID, URL: target.URL,
-			Event: botflota.EventContactFirstSeen, Scope: event.Scope,
+			Event: botflota.EventPeerFirstSeen, Scope: event.Scope,
 			Payload: payload,
 		}); err != nil {
 			return err
@@ -96,24 +97,25 @@ func (s *Sink) FirstContact(ctx context.Context, event botflota.FirstContact) er
 	return nil
 }
 
-// firstContactEnvelope is the wire shape of the contact.first_seen event,
-// signed and sent exactly as it was queued (ADR 0045).
-type firstContactEnvelope struct {
-	ID         string           `json:"id"`
-	Event      string           `json:"event"`
-	OccurredAt string           `json:"occurred_at"`
-	Scope      string           `json:"scope"`
-	Data       firstContactData `json:"data"`
+// firstPeerEnvelope is the wire shape of the peer.first_seen event, signed and
+// sent exactly as it was queued (ADR 0045, ADR 0051).
+type firstPeerEnvelope struct {
+	ID         string        `json:"id"`
+	Event      string        `json:"event"`
+	OccurredAt string        `json:"occurred_at"`
+	Scope      string        `json:"scope"`
+	Data       firstPeerData `json:"data"`
 }
 
-type firstContactData struct {
-	Bot       string          `json:"bot"`
-	Contact   envelopeContact `json:"contact"`
-	FirstSeen string          `json:"first_seen"`
+type firstPeerData struct {
+	Bot       string       `json:"bot"`
+	Peer      envelopePeer `json:"peer"`
+	FirstSeen string       `json:"first_seen"`
 }
 
-type envelopeContact struct {
-	Phone       string `json:"phone"`
+type envelopePeer struct {
+	Provider    string `json:"provider"`
+	Subject     string `json:"subject"`
 	DisplayName string `json:"display_name"`
 }
 

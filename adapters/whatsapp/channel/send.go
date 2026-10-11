@@ -3,30 +3,34 @@ package channel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
-// Send maps the plain recipient phone number to the JID the message arrived
-// from, or to the phone-number JID when that is unknown (ADR 0020).
+// Send addresses the exact conversation target the reply carries, recovering
+// the JID the message arrived from when it is known and falling back to the
+// target's phone-number thread otherwise (ADR 0020, ADR 0051).
 func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (string, error) {
+	thread, err := a.thread(msg.Target)
+	if err != nil {
+		return "", err
+	}
 	a.mu.Lock()
 	client := a.client
-	last := a.last[msg.RecipientPhone]
+	last := a.last[thread]
 	a.mu.Unlock()
 	if client == nil || !client.IsConnected() {
 		return "", errors.New("whatsapp: not connected")
 	}
-	if msg.RecipientPhone == "" {
-		return "", errors.New("whatsapp: message has no recipient")
-	}
 	to := last.chat
 	if to.IsEmpty() {
-		to = types.NewJID(msg.RecipientPhone, types.DefaultUserServer)
+		to = types.NewJID(thread, types.DefaultUserServer)
 	}
 	readDelay := a.jittered(a.settings.ReadReceiptDelay)
 	replyDelay := a.jittered(a.settings.ReplyDelay)
@@ -71,6 +75,23 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (strin
 		return "", err
 	}
 	return string(response.ID), nil
+}
+
+// thread validates an outbound target and returns the phone-number thread this
+// adapter addresses. A shared conversation is refused, never sent as a direct
+// message (ADR 0051).
+func (a *Adapter) thread(target botflota.ChatTarget) (string, error) {
+	if target.Provider != ingest.Provider {
+		return "", fmt.Errorf(
+			"whatsapp: target provider %q is not whatsapp", target.Provider)
+	}
+	if target.Kind != botflota.ChatDirect {
+		return "", fmt.Errorf("%w: shared conversations", botflota.ErrUnsupportedKind)
+	}
+	if target.Thread == "" {
+		return "", errors.New("whatsapp: message has no target thread")
+	}
+	return target.Thread, nil
 }
 
 // jittered adds a random value in [0, jitter] to one delay. Each call draws

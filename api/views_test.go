@@ -84,7 +84,7 @@ func TestBotsEndpoint(t *testing.T) {
 type fakePresence struct{ present map[string]bool }
 
 func (f fakePresence) HasCredentials(
-	_ context.Context, account *botflota.LinkedAccount,
+	_ context.Context, account *botflota.Binding,
 ) (bool, error) {
 	return f.present[account.Scope+"/"+account.Bot], nil
 }

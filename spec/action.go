@@ -50,8 +50,8 @@ type Step struct {
 }
 
 // Message is a reply: a fixed body, an LLM-realized reply, or both. To is an
-// optional recipient override, a phone number or a template; empty means the
-// contact.
+// optional thread override within the inbound conversation's provider, as a
+// literal or a template; empty means that conversation.
 type Message struct {
 	Body   Text   `yaml:"body" json:"body,omitempty"`
 	Intent string `yaml:"intent" json:"intent,omitempty"`

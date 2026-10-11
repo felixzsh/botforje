@@ -15,13 +15,14 @@ fixture, and an accepted ADR is not a passing runtime gate.
 
 ## P1 — Neutral identity, conversations, and durable targets
 
-### Selected design, not implementation
+### Implemented contracts and remaining boundaries
 
-The owner authorized the bounded contract/rule design on 2026-10-11, not runtime
-implementation. ADR 0051 defines comparable identity/target types, required values,
-canonical absent topic, explicit optional participants, scoped store operations,
-normalized own account identity, and adapter-owned device lookup. ADR 0026/0029
-separate chat history, graph execution, and first allowed live-inbound activity.
+The bounded contract/rule design closed on 2026-10-11 and its implementation
+landed on 2026-10-11. ADR 0051 defines comparable identity/target types, required
+values, canonical absent topic, explicit optional participants, scoped store
+operations, normalized own account identity, and adapter-owned device lookup.
+ADR 0026/0029 separate chat history, graph execution, and first allowed
+live-inbound activity.
 
 Two policies were explicitly selected:
 
@@ -34,11 +35,15 @@ Two policies were explicitly selected:
 
 Durable local-space normalization follows ADR 0051; a provider match alone does
 not prove migration compatibility. P3 association generations/freshness and P5
-receive/message-space decisions remain outside this design closure. Other public
-formats still require their affected compatibility decisions.
+receive/message-space decisions remain outside this design closure. The durable
+message-ID/dedup key is destination-scoped in P1 and its account/binding scoping
+stays a P5 decision.
 
-All runtime deliverables and gates below remain unchecked. Documentation and
-approved contracts do not authorize implementation or prove a phase is complete.
+One approved compatibility item moved to P2: the per-bot WhatsApp translation of
+legacy `contact.id/name/phone` template references needs the consuming bot's
+definition, which P2 introduces. P1 retires the `contact` root and propagates the
+neutral `peer` values; a legacy reference now fails as an unknown root instead of
+rendering an empty phone field.
 
 ### Implementation deliverables and gates
 
@@ -52,58 +57,58 @@ from later setup and payload work.
 Decision owner: ADR 0051, with ADR 0006, 0018, 0020, 0021, 0026, 0027,
 0029, 0037, 0040, and 0043.
 
-- [ ] Replace mandatory phone addressing with an identity key and a
+- [x] Replace mandatory phone addressing with an identity key and a
   separate conversation target across inbound, outbound,
   external-reply observations, records, and store calls. Do not rename
   a phone column and use it as an undocumented container for unrelated
   provider IDs.
-- [ ] Carry provider, subject, and conversation kind/thread/topic
+- [x] Carry provider, subject, and conversation kind/thread/topic
   explicitly. A provider whose ids are local to one store or profile
   composes that stable space into its own subject and thread, so the
   core needs no second identity field. This closes key propagation
   only, not account metadata, binding generation, or delivery
   authorization.
-- [ ] Remove JID and phone fields, parsing, and parameters from common
+- [x] Remove JID and phone fields, parsing, and parameters from common
   messaging identities, inbound envelopes, store ports, and shared
   identity columns ([domain-cleanup.md](domain-cleanup.md)). Persist a
   neutral account subject and keep the device/session locator in
   adapter-owned storage. Do not hide a device locator under a generic
   identity name, add telephone metadata, or use an unchecked attributes
   map.
-- [ ] Key registered identities by scoped provider identity and chats
+- [x] Key registered identities by scoped provider identity and chats
   by target, not sender alone. Update identity/chat/directory SQL,
   indexes, constraints, and store signatures together. Keep sender
   identity distinct from thread identity; a group is not one person's
   identity.
-- [ ] Replace the obsolete phone-only/identity-only uniqueness
+- [x] Replace the obsolete phone-only/identity-only uniqueness
   constraints and every dependent lookup with the neutral ones. The
   schema is edited in place under the pre-release reset policy
   (`../../PLAN.md`), so the WhatsApp backfill and the pre-change
   database gate are gone; the runtime gates below still hold from a
   fresh creation.
-- [ ] Resolve identities by subject and execution state, holds, and
+- [x] Resolve identities by subject and execution state, holds, and
   guards by chat. Make replies default to the inbound conversation, not
   the sender or the last conversation cached for that sender.
-- [ ] Remove universal target-to-identity and identity-to-target
+- [x] Remove universal target-to-identity and identity-to-target
   derivation. Carry known participant identity explicitly; a valid
   target must not fabricate its unknown participant
   ([domain-cleanup.md](domain-cleanup.md)).
-- [ ] Propagate only neutral common template values, including the
+- [x] Propagate only neutral common template values, including the
   internal identity ID. Remove telephone seeding and validation;
   preserve missing-path errors. Legacy WhatsApp references require a
   named compatibility translation, not an empty phone field for every
-  channel.
-- [ ] Persist the exact conversation target on outbound records and
+  channel; that per-bot translation is P2 work and is recorded above.
+- [x] Persist the exact conversation target on outbound records and
   queued deliveries. Retain the triggering-chat history convention for
   alternate `to` while carrying the actual destination. This does not
   close binding snapshots or destination-provenance deduplication.
-- [ ] Persist and test actual delivery provenance independently of the
+- [x] Persist and test actual delivery provenance independently of the
   triggering history chat. Alternate-recipient provider IDs must
   deduplicate in their destination, not the source chat. Binding
   metadata/generation is implemented in P3 and enforced on queued
   delivery in P5; do not claim that those later requirements are
   already implemented here.
-- [ ] Finish WhatsApp live events, outbound send, history,
+- [x] Finish WhatsApp live events, outbound send, history,
   address-book import, and echo mapping to neutral values. Its
   direct-chat PN behavior remains compatible; shared conversations are
   explicitly filtered/refused until their runtime policy is settled.
@@ -112,12 +117,12 @@ Decision owner: ADR 0051, with ADR 0006, 0018, 0020, 0021, 0026, 0027,
 
 Gate:
 
-- [ ] Prove opaque own/remote identity subjects and threads need no JID
+- [x] Prove opaque own/remote identity subjects and threads need no JID
   or phone field. Recheck provider/store/scope isolation and
   independent sessions, holds, and guards for one sender in two
   supported conversations, including direct conversations whose thread
   differs from the sender.
-- [ ] Close the database before reopening it, create a fresh
+- [x] Close the database before reopening it, create a fresh
   channel/fleet with no sender cache, and send to the persisted
   conversation. Cover alternate-recipient IDs overlapping source-chat
   IDs. P3/P5 separately prove committed binding identity/generation
@@ -151,7 +156,8 @@ and 0036.
   capabilities and defaults. Preserve old WhatsApp YAML through its
   compatibility translation, without enabling WhatsApp's
   presence/history defaults on other channels or ignoring explicitly
-  unsupported settings.
+  unsupported settings. P1 retired `ignore_groups` (a shared conversation is
+  refused outright); the translation must not resurrect it as a no-op.
 - [ ] Make template declarations and legacy selector/peer-card decoding
   follow the consuming bot's definition
   ([domain-cleanup.md](domain-cleanup.md)). Common `spec` types and

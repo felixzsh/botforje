@@ -318,7 +318,7 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 		return
 	}
 	msg := botflota.OutgoingMessage{
-		Bot: q.cfg.Bot, RecipientPhone: entry.Recipient, Content: entry.Content,
+		Bot: q.cfg.Bot, Target: entry.Target, Content: entry.Content,
 		Origin: entry.Origin, Routing: entry.Routing,
 		StoredMessageID: entry.MessageID,
 	}
@@ -332,7 +332,7 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 			q.cfg.Log.Error("record sent reply", "error", markErr)
 		}
 		q.cfg.Log.Info("sent",
-			"recipient", recipient(msg),
+			"target", target(msg),
 			"kind", string(botflota.ContentKind(msg.Content)),
 			"attempts", attempts)
 		return
@@ -342,7 +342,7 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 	}
 	if attempts >= q.cfg.MaxAttempts {
 		q.cfg.Log.Error("send failed; giving up",
-			"recipient", recipient(msg),
+			"target", target(msg),
 			"kind", string(botflota.ContentKind(msg.Content)),
 			"attempts", attempts, "error", err)
 		if markErr := q.cfg.Store.MarkFailed(context.Background(),
@@ -353,7 +353,7 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 	}
 	next := q.cfg.Now().Add(q.retryDelay(attempts))
 	q.cfg.Log.Warn("send failed; retrying",
-		"recipient", recipient(msg),
+		"target", target(msg),
 		"kind", string(botflota.ContentKind(msg.Content)),
 		"attempts", attempts, "retry_in", next.Sub(q.cfg.Now()), "error", err)
 	if markErr := q.cfg.Store.MarkRetry(context.Background(),
@@ -362,10 +362,10 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 	}
 }
 
-// recipient is the phone number for logs; it never logs a LID.
-func recipient(msg botflota.OutgoingMessage) string {
-	if msg.RecipientPhone != "" {
-		return msg.RecipientPhone
+// target is the conversation for logs; it never logs a device locator.
+func target(msg botflota.OutgoingMessage) string {
+	if msg.Target.Thread != "" {
+		return msg.Target.Thread
 	}
 	return "unresolved"
 }

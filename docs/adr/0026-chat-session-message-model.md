@@ -1,7 +1,8 @@
 # ADR 0026 — Chat, graph run, and message model
 
-Status: Accepted (2026-09); P1 design aligned on 2026-10-11.
-Implementation remains tracked in [the channel phases](../channels/phases.md).
+Status: Accepted (2026-09); P1 design aligned and implemented on 2026-10-11.
+The account-scoped durable dedup key stays a P5 decision; implementation is
+tracked in [the channel phases](../channels/phases.md).
 
 ## Context
 

@@ -20,7 +20,7 @@ func TestChatAndMessages(t *testing.T) {
 	}
 
 	first := &botflota.Message{
-		ChatID: chat.ID, SessionID: session.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, SessionID: session.ID, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "hello"}, At: t1,
 		ProviderMessageID: "MSG-1", Ingest: botflota.IngestLive,
 		Routing: botflota.RoutingTriggerExact,
@@ -28,7 +28,7 @@ func TestChatAndMessages(t *testing.T) {
 	// A synced message is honest about its provenance: unknown origin and
 	// routing, and no session run.
 	second := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "hi there"}, At: t1,
 		ProviderMessageID: "MSG-2", Ingest: botflota.IngestSync,
 		Origin: botflota.OriginUnknown, Routing: botflota.RoutingUnknown,
@@ -87,7 +87,7 @@ func TestMessageWithoutSession(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	message := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "no session"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, message); err != nil {
@@ -109,7 +109,7 @@ func TestMessageContentRoundTrip(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	chat := ensureChat(t, db)
 	message := &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.PollContent{
 			Question: "Lunch?", Options: []string{"yes", "no"}, Selectable: 1,
 		},
@@ -139,7 +139,7 @@ func TestMessageProviderIDIsUnique(t *testing.T) {
 	chat := ensureChat(t, db)
 	message := func(id string) *botflota.Message {
 		return &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound,
+			ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 			Content: botflota.TextContent{Body: "hola"}, At: t1,
 			ProviderMessageID: id, Ingest: botflota.IngestLive,
 		}
@@ -178,7 +178,7 @@ func TestMessageOldest(t *testing.T) {
 		{t0.Add(-time.Hour), "CALL-1", botflota.CallContent{Label: "Missed call"}},
 	} {
 		message := &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound,
+			ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 			Content: spec.content, At: spec.at, ProviderMessageID: spec.id,
 			Ingest: botflota.IngestSync,
 		}

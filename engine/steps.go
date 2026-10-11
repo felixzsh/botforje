@@ -54,7 +54,7 @@ func (r *run) steps(steps []spec.Step, where string) error {
 }
 
 func (r *run) message(m spec.Message) error {
-	recipient, err := r.recipient(m.To)
+	target, err := r.target(m.To)
 	if err != nil {
 		return err
 	}
@@ -91,11 +91,11 @@ func (r *run) message(m spec.Message) error {
 		return err
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:            r.engine.bot,
-		RecipientPhone: recipient,
-		Content:        botflota.TextContent{Body: body},
-		Origin:         origin,
-		Routing:        r.routing,
+		Bot:     r.engine.bot,
+		Target:  target,
+		Content: botflota.TextContent{Body: body},
+		Origin:  origin,
+		Routing: r.routing,
 	})
 	return nil
 }
@@ -111,19 +111,25 @@ func (r *run) pickVariant(body spec.Text) string {
 	}
 }
 
-// A `to` that resolves empty is an error, never a silent reply to the contact.
-func (r *run) recipient(to string) (string, error) {
+// A `to` override is a thread address in the inbound conversation's provider:
+// empty means the conversation itself, and a resolved empty is an error, never
+// a silent reply to the peer (ADR 0051).
+func (r *run) target(to string) (botflota.ChatTarget, error) {
 	if to == "" {
-		return r.msg.FromPhone, nil
+		return r.msg.Target, nil
 	}
-	rendered, err := botflota.RenderTemplate(to, r.tctx.Get)
+	thread, err := botflota.RenderTemplate(to, r.tctx.Get)
 	if err != nil {
-		return "", err
+		return botflota.ChatTarget{}, err
 	}
-	if rendered == "" {
-		return "", fmt.Errorf("message recipient %q resolved empty", to)
+	if thread == "" {
+		return botflota.ChatTarget{}, fmt.Errorf("message target %q resolved empty", to)
 	}
-	return rendered, nil
+	return botflota.ChatTarget{
+		Provider: r.msg.Target.Provider,
+		Kind:     botflota.ChatDirect,
+		Thread:   thread,
+	}, nil
 }
 
 func (r *run) media(m spec.Media) error {
@@ -147,7 +153,7 @@ func (r *run) media(m spec.Media) error {
 	if err != nil {
 		return err
 	}
-	recipient, err := r.recipient(m.To)
+	target, err := r.target(m.To)
 	if err != nil {
 		return err
 	}
@@ -163,8 +169,8 @@ func (r *run) media(m spec.Media) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:            r.engine.bot,
-		RecipientPhone: recipient,
+		Bot:    r.engine.bot,
+		Target: target,
 		Content: botflota.MediaContent{
 			Type: mediaType, URL: url, Path: path, Name: name,
 			Caption: caption, MIME: m.MIME,
@@ -192,7 +198,7 @@ func (r *run) contact(c spec.Contact) error {
 	if err != nil {
 		return err
 	}
-	recipient, err := r.recipient(c.To)
+	target, err := r.target(c.To)
 	if err != nil {
 		return err
 	}
@@ -225,11 +231,11 @@ func (r *run) contact(c spec.Contact) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:            r.engine.bot,
-		RecipientPhone: recipient,
-		Content:        botflota.ContactContent{Name: name, Entries: entries, Note: note},
-		Origin:         botflota.OriginPreset,
-		Routing:        r.routing,
+		Bot:     r.engine.bot,
+		Target:  target,
+		Content: botflota.ContactContent{Name: name, Entries: entries, Note: note},
+		Origin:  botflota.OriginPreset,
+		Routing: r.routing,
 	})
 	return nil
 }
@@ -247,7 +253,7 @@ func (r *run) poll(p spec.Poll) error {
 		}
 		options = append(options, rendered)
 	}
-	recipient, err := r.recipient(p.To)
+	target, err := r.target(p.To)
 	if err != nil {
 		return err
 	}
@@ -263,8 +269,8 @@ func (r *run) poll(p spec.Poll) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:            r.engine.bot,
-		RecipientPhone: recipient,
+		Bot:    r.engine.bot,
+		Target: target,
 		Content: botflota.PollContent{
 			Question: question, Options: options, Selectable: p.Selectable,
 		},
@@ -375,8 +381,8 @@ func (r *run) location(loc spec.Location) error {
 		}
 	}
 	r.out = append(r.out, botflota.OutgoingMessage{
-		Bot:            r.engine.bot,
-		RecipientPhone: r.msg.FromPhone,
+		Bot:    r.engine.bot,
+		Target: r.msg.Target,
 		Content: botflota.LocationContent{
 			Latitude:    loc.Latitude,
 			Longitude:   loc.Longitude,

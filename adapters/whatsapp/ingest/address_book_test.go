@@ -11,12 +11,13 @@ import (
 )
 
 // TestContactImporterKeepsTheAddressBookName covers the contact import: the
-// address-book name and the push name live in separate fields, so a later
-// push name never erases the name the phone's address book holds.
+// address-book name wins over a later push name, so the phone's own book is
+// never erased (ADR 0037, ADR 0051).
 func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewAddressBook("dev", "bot", db.Contacts(), db.AddressBook(), nil, nil)
+	importer := NewAddressBook("dev", "bot", db.Peers(), db.Directory(), nil, nil)
+	importer.SetSource(PeerKey("5215599999999"))
 	importer.Handle(ctx, &events.Contact{
 		JID: types.NewJID("5215500000000", types.DefaultUserServer),
 		Action: &waSyncAction.ContactAction{
@@ -28,43 +29,44 @@ func TestContactImporterKeepsTheAddressBookName(t *testing.T) {
 		JID:         types.NewJID("5215500000000", types.DefaultUserServer),
 		NewPushName: "anita",
 	})
-	contacts, err := db.AddressBook().List(ctx, "dev", "bot", 0)
+	entries, err := db.Directory().List(ctx, "dev", "bot", 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(contacts) != 1 {
-		t.Fatalf("contacts = %+v, want one", contacts)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %+v, want one", entries)
 	}
-	if contacts[0].Name != "Ana Perez" || contacts[0].PushName != "anita" {
-		t.Fatalf("contact = %+v", contacts[0])
+	if entries[0].DisplayName != "Ana Perez" {
+		t.Fatalf("display name = %q, want the address-book name", entries[0].DisplayName)
 	}
-	if contacts[0].DisplayName() != "Ana Perez" {
-		t.Fatalf("display name = %q, want the address-book name", contacts[0].DisplayName())
+	if entries[0].PeerKey != PeerKey("5215500000000") ||
+		entries[0].SourceIdentity != PeerKey("5215599999999") {
+		t.Fatalf("entry key = %+v, want the peer and its source account", entries[0])
 	}
-	// The imported phone is a contact the directory knows, marked as booked
-	// and without a first message of its own.
-	contact, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	// The imported peer is one the directory knows, marked as booked and
+	// without a first message of its own.
+	peer, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
 	if err != nil {
-		t.Fatalf("Get contact: %v", err)
+		t.Fatalf("Get peer: %v", err)
 	}
-	if !contact.AddressBookImported || contact.HasChat || !contact.FirstSeen.IsZero() {
-		t.Fatalf("contact = %#v, want booked, no chat, never messaged", contact)
+	if !peer.AddressBookImported || peer.HasChat || !peer.FirstSeen.IsZero() {
+		t.Fatalf("peer = %#v, want booked, no chat, never messaged", peer)
 	}
-	if contact.DisplayName != "anita" {
-		t.Fatalf("directory display name = %q, want imported push name", contact.DisplayName)
+	if peer.DisplayName != "Ana Perez" {
+		t.Fatalf("peer display name = %q, want the imported name", peer.DisplayName)
 	}
 	importer.Handle(ctx, &events.PushName{
 		JID:         types.NewJID("5215500000000", types.DefaultUserServer),
 		NewPushName: "newer name",
 	})
-	contact, err = db.Contacts().Get(ctx, "dev", "5215500000000")
-	if err != nil || contact.DisplayName != "anita" {
-		t.Fatalf("new push name replaced known directory name: %#v, %v", contact, err)
+	peer, err = db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
+	if err != nil || peer.DisplayName != "Ana Perez" {
+		t.Fatalf("new push name replaced the known name: %#v, %v", peer, err)
 	}
 }
 
 // TestContactImporterResolvesALID checks the contact import stores the phone
-// number, not the hidden user id (ADR 0020).
+// number subject, not the hidden user id (ADR 0020).
 func TestContactImporterResolvesALID(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
@@ -75,17 +77,18 @@ func TestContactImporterResolvesALID(t *testing.T) {
 		}
 		return types.NewJID("5215500000000", types.DefaultUserServer), true
 	}
-	importer := NewAddressBook("dev", "bot", db.Contacts(), db.AddressBook(), lookup, nil)
+	importer := NewAddressBook("dev", "bot", db.Peers(), db.Directory(), lookup, nil)
+	importer.SetSource(PeerKey("5215599999999"))
 	importer.Handle(ctx, &events.PushName{JID: lid, NewPushName: "Ana"})
-	contacts, err := db.AddressBook().List(ctx, "dev", "bot", 0)
+	entries, err := db.Directory().List(ctx, "dev", "bot", 0)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(contacts) != 0 {
-		t.Fatalf("push name created address-book membership: %+v", contacts)
+	if len(entries) != 0 {
+		t.Fatalf("push name created directory membership: %+v", entries)
 	}
-	contact, err := db.Contacts().Get(ctx, "dev", "5215500000000")
-	if err != nil || contact.AddressBookImported || contact.DisplayName != "Ana" {
-		t.Fatalf("contact = %#v, err %v; want name but no book membership", contact, err)
+	peer, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
+	if err != nil || peer.AddressBookImported || peer.DisplayName != "Ana" {
+		t.Fatalf("peer = %#v, err %v; want name but no book membership", peer, err)
 	}
 }

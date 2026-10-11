@@ -91,7 +91,7 @@ func runFleet(args []string) int {
 		logger.Error("open device store", "error", err)
 		return 1
 	}
-	if err := whatsapp.ValidateAccounts(ctx, devices, db.LinkedAccounts(),
+	if err := whatsapp.ValidateAccounts(ctx, devices, db.Bindings(),
 		db.Pairings()); err != nil {
 		logger.Error("validate pairings", "error", err)
 		return 1
@@ -100,7 +100,7 @@ func runFleet(args []string) int {
 	skippedCount := 0
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
-			state, err := whatsapp.CheckPairing(ctx, devices, db.LinkedAccounts(),
+			state, err := whatsapp.CheckPairing(ctx, devices, db.Bindings(),
 				db.Pairings(), scopeName, botName)
 			if err != nil {
 				logger.Error("validate pairing", "scope", scopeName,
@@ -123,7 +123,7 @@ func runFleet(args []string) int {
 	runner, err := fleet.New(cfg, fleet.Options{
 		Store:    db.Sessions(),
 		Chats:    db.Chats(),
-		Contacts: db.Contacts(),
+		Peers:    db.Peers(),
 		Messages: db.Messages(),
 		Turn:     db.Turns(),
 		Outbox:   db.Outbox(),
@@ -138,13 +138,13 @@ func runFleet(args []string) int {
 				Scope:          botSpec.Scope,
 				Bot:            botSpec.Name,
 				Devices:        devices,
-				Accounts:       db.LinkedAccounts(),
+				Bindings:       db.Bindings(),
 				Pairings:       db.Pairings(),
-				Contacts:       db.Contacts(),
+				Peers:          db.Peers(),
 				Chats:          db.Chats(),
 				Messages:       db.Messages(),
 				History:        historyEnabled(&botSpec.Settings),
-				AddressBook:    db.AddressBook(),
+				Directory:      db.Directory(),
 				ImportContacts: contactsEnabled(&botSpec.Settings),
 				Settings:       whatsappSettings(botSpec.Settings),
 				Log:            logger.With("scope", botSpec.Scope, "bot", botSpec.Name),
@@ -309,7 +309,7 @@ func serveAPI(
 	}
 	pairings := pairingManager(source, db, devices, runner, logger)
 	owner := whatsapp.AccountOwner{
-		Devices: devices, Accounts: db.LinkedAccounts(), Pairings: db.Pairings(),
+		Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
 		Outbox: db.Outbox(),
 	}
 	budgets := cfg.RateBudgets()
@@ -319,13 +319,13 @@ func serveAPI(
 		Writer:      tree,
 		Applier:     runner,
 		Fleet:       runner,
-		Accounts:    db.LinkedAccounts(),
+		Bindings:    db.Bindings(),
 		Pairings:    db.Pairings(),
 		Pairing:     pairings,
 		Presence:    owner,
 		Unpairer:    owner,
-		Contacts:    db.Contacts(),
-		AddressBook: db.AddressBook(),
+		Peers:       db.Peers(),
+		Directory:   db.Directory(),
 		Chats:       db.Chats(),
 		Sessions:    db.Sessions(),
 		Messages:    db.Messages(),
@@ -398,14 +398,14 @@ func pairingManager(
 				Scope:          scope,
 				Bot:            botName,
 				Devices:        devices,
-				Accounts:       db.LinkedAccounts(),
+				Bindings:       db.Bindings(),
 				Pairings:       db.Pairings(),
-				Contacts:       db.Contacts(),
+				Peers:          db.Peers(),
 				Chats:          db.Chats(),
 				Messages:       db.Messages(),
 				History:        historyEnabled(bot.Settings),
 				FullHistory:    fullHistory,
-				AddressBook:    db.AddressBook(),
+				Directory:      db.Directory(),
 				ImportContacts: contactsEnabled(bot.Settings),
 				Outbox:         db.Outbox(),
 				Log:            logger,

@@ -55,6 +55,12 @@ func (a *Adapter) onMessage(event *events.Message) {
 		a.onOwnMessage(event, id, content)
 		return
 	}
+	// A shared conversation has no approved execution policy, so it is
+	// refused instead of being treated as a direct message (ADR 0051).
+	if event.Info.IsGroup {
+		a.log.Debug("dropping message: shared conversations are not supported")
+		return
+	}
 	pn, ok := resolveFrom(event.Info, a.lookupPN)
 	if !ok {
 		a.log.Warn("dropping message: contact has no known phone number")
@@ -71,11 +77,11 @@ func (a *Adapter) onMessage(event *events.Message) {
 
 	message := botflota.IncomingMessage{
 		Bot:               a.bot,
-		FromPhone:         from,
+		Sender:            ingest.PeerKey(from),
+		Target:            ingest.DirectTarget(from),
 		FromName:          event.Info.PushName,
 		Content:           content,
 		ProviderMessageID: id,
-		IsGroup:           event.Info.IsGroup,
 		At:                event.Info.Timestamp,
 	}
 	// The queue applies backpressure instead of dropping: the whatsmeow event
@@ -110,9 +116,9 @@ func (a *Adapter) onOwnMessage(
 		a.log.Warn("dropping own message: chat has no known phone number")
 		return
 	}
-	message := botflota.OutboundMessage{
+	message := botflota.ExternalSend{
 		Bot:               a.bot,
-		RecipientPhone:    pn.User,
+		Target:            ingest.DirectTarget(pn.User),
 		Content:           content,
 		ProviderMessageID: id,
 		At:                event.Info.Timestamp,

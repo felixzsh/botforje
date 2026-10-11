@@ -10,7 +10,7 @@ import (
 )
 
 // DeleteBot removes one bot's chats — and with them, by cascade, their sessions,
-// messages, and queued replies — plus its address book. Contact identities
+// messages, and queued replies — plus its directory. Peer identities
 // belong to the scope and stay (ADR 0029). One transaction: a crash leaves all
 // of it or none of it.
 func (s *HistoryStore) DeleteBot(
@@ -28,27 +28,29 @@ func (s *HistoryStore) DeleteBot(
 			return fmt.Errorf("sqlite: delete chats: %w", err)
 		}
 		result, err := tx.ExecContext(ctx,
-			`DELETE FROM bot_contacts WHERE scope = ? AND bot = ?`, scope, bot)
+			`DELETE FROM directory_entries WHERE scope = ? AND bot = ?`, scope, bot)
 		if err != nil {
-			return fmt.Errorf("sqlite: delete address book: %w", err)
+			return fmt.Errorf("sqlite: delete directory: %w", err)
 		}
 		removed, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("sqlite: delete address book: %w", err)
+			return fmt.Errorf("sqlite: delete directory: %w", err)
 		}
-		counts.AddressBook = removed
+		counts.Directory = removed
 		return nil
 	})
 	return counts, err
 }
 
-// MoveBot re-keys one bot's chats and address book to another bot of the same scope.
+// MoveBot re-keys one bot's chats and directory to another bot of the same scope.
 // Nothing is merged: the destination must hold no chat, so every moved chat
 // keeps its start, activity, guards, and session runs and lands conflict-free.
 // The source's queued replies are removed rather than carried, because the
 // message they belong to now belongs to another bot. A run still active at the
 // source is expired, so the destination never looks like it resumes another
-// bot's graph (ADR 0042).
+// bot's graph (ADR 0042). The directory move preserves each entry's source
+// account identity: the data's owner changes, its historical origin does not
+// (ADR 0037/0051).
 func (s *HistoryStore) MoveBot(
 	ctx context.Context, scope, from, to string, at time.Time,
 ) (botflota.HistoryCounts, error) {
@@ -62,7 +64,7 @@ func (s *HistoryStore) MoveBot(
 		// A source with nothing left is a repeat of a migration that already
 		// landed: it reports zero rather than finding its own history at the
 		// destination and refusing itself (ADR 0042: a retry needs no key).
-		if counts.Chats == 0 && counts.AddressBook == 0 {
+		if counts.Chats == 0 && counts.Directory == 0 {
 			return nil
 		}
 		occupied, err := destinationHasChats(ctx, tx, scope, to)
@@ -90,24 +92,27 @@ func (s *HistoryStore) MoveBot(
 			to, scope, from); err != nil {
 			return fmt.Errorf("sqlite: move chats: %w", err)
 		}
-		// A phone the destination already knows keeps the destination's row: its
-		// own address book is the newer truth about that person (ADR 0037).
+		// A peer the destination already knows keeps the destination's row: its
+		// own directory is the newer truth about that person (ADR 0037).
 		result, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO bot_contacts
-				(scope, bot, phone, name, push_name, business_name, updated_at)
-			 SELECT scope, ?, phone, name, push_name, business_name, updated_at
-			 FROM bot_contacts WHERE scope = ? AND bot = ?`, to, scope, from)
+			`INSERT OR IGNORE INTO directory_entries
+				(scope, bot, provider, subject, source_provider, source_subject,
+				 display_name, updated_at)
+			 SELECT scope, ?, provider, subject, source_provider, source_subject,
+			   display_name, updated_at
+			 FROM directory_entries WHERE scope = ? AND bot = ?`, to, scope, from)
 		if err != nil {
-			return fmt.Errorf("sqlite: move address book: %w", err)
+			return fmt.Errorf("sqlite: move directory: %w", err)
 		}
 		moved, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("sqlite: move address book: %w", err)
+			return fmt.Errorf("sqlite: move directory: %w", err)
 		}
-		counts.AddressBook = moved
+		counts.Directory = moved
 		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM bot_contacts WHERE scope = ? AND bot = ?`, scope, from); err != nil {
-			return fmt.Errorf("sqlite: delete moved address book: %w", err)
+			`DELETE FROM directory_entries WHERE scope = ? AND bot = ?`,
+			scope, from); err != nil {
+			return fmt.Errorf("sqlite: delete moved directory: %w", err)
 		}
 		return nil
 	})
@@ -139,9 +144,9 @@ func countHistory(
 				(SELECT id FROM chats WHERE scope = ? AND bot = ?)),
 			(SELECT COUNT(*) FROM messages WHERE chat_id IN
 				(SELECT id FROM chats WHERE scope = ? AND bot = ?)),
-			(SELECT COUNT(*) FROM bot_contacts WHERE scope = ? AND bot = ?)`,
+			(SELECT COUNT(*) FROM directory_entries WHERE scope = ? AND bot = ?)`,
 		scope, bot, scope, bot, scope, bot, scope, bot,
-	).Scan(&counts.Chats, &counts.Sessions, &counts.Messages, &counts.AddressBook)
+	).Scan(&counts.Chats, &counts.Sessions, &counts.Messages, &counts.Directory)
 	if err != nil {
 		return botflota.HistoryCounts{}, fmt.Errorf("sqlite: count history: %w", err)
 	}

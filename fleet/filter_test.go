@@ -7,8 +7,15 @@ import (
 )
 
 func TestFilterAllow(t *testing.T) {
-	direct := botflota.IncomingMessage{FromPhone: "52155"}
-	group := botflota.IncomingMessage{FromPhone: "52155", IsGroup: true}
+	direct := botflota.IncomingMessage{
+		Sender: waKey("52155"), Target: waTarget("52155"),
+	}
+	group := botflota.IncomingMessage{
+		Sender: waKey("52155"),
+		Target: botflota.ChatTarget{
+			Provider: "whatsapp", Kind: botflota.ChatGroup, Thread: "52155",
+		},
+	}
 
 	cases := []struct {
 		name   string
@@ -17,8 +24,7 @@ func TestFilterAllow(t *testing.T) {
 		want   bool
 	}{
 		{"direct is allowed", Filter{}, direct, true},
-		{"group ignored by default", Filter{IgnoreGroups: true}, group, false},
-		{"group allowed when not ignored", Filter{IgnoreGroups: false}, group, true},
+		{"shared conversation is refused", Filter{}, group, false},
 		{"ignored sender", Filter{Ignored: []string{"52155"}}, direct, false},
 		{"allowed sender", Filter{Allowed: []string{"52155"}}, direct, true},
 		{"not in the allow list", Filter{Allowed: []string{"other"}}, direct, false},

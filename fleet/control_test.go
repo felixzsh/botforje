@@ -16,30 +16,30 @@ func TestBotHandsOverAChat(t *testing.T) {
 	bot := &Bot{
 		externalPause: 15 * time.Minute,
 		now:           func() time.Time { return now },
-		control:       map[string]chatControl{},
+		control:       map[botflota.ChatTarget]chatControl{},
 	}
-	if bot.paused("s", now) {
+	if bot.paused(waTarget("s"), now) {
 		t.Fatal("a fresh chat is not paused")
 	}
-	bot.noteExternal("s", now)
-	if !bot.paused("s", now.Add(time.Minute)) {
+	bot.noteExternal(waTarget("s"), now)
+	if !bot.paused(waTarget("s"), now.Add(time.Minute)) {
 		t.Fatal("an external reply did not pause the chat")
 	}
-	if bot.paused("s", now.Add(16*time.Minute)) {
+	if bot.paused(waTarget("s"), now.Add(16*time.Minute)) {
 		t.Fatal("the automatic pause outlived its window")
 	}
-	bot.setHuman("s", true)
-	if !bot.paused("s", now.Add(time.Hour)) {
+	bot.setHuman(waTarget("s"), true)
+	if !bot.paused(waTarget("s"), now.Add(time.Hour)) {
 		t.Fatal("a manual hold expired")
 	}
-	if state := bot.controlOf("s", now.Add(time.Hour)); state.Mode != botflota.ChatHuman {
+	if state := bot.controlOf(waTarget("s"), now.Add(time.Hour)); state.Mode != botflota.ChatHuman {
 		t.Fatalf("mode = %q, want human", state.Mode)
 	}
-	bot.setHuman("s", false)
-	if bot.paused("s", now) {
+	bot.setHuman(waTarget("s"), false)
+	if bot.paused(waTarget("s"), now) {
 		t.Fatal("a released chat is automatic")
 	}
-	if state := bot.controlOf("s", now); state.Mode != botflota.ChatAuto {
+	if state := bot.controlOf(waTarget("s"), now); state.Mode != botflota.ChatAuto {
 		t.Fatalf("mode = %q, want auto", state.Mode)
 	}
 }
@@ -51,14 +51,14 @@ func TestExternalReplyRestartsTheCountdown(t *testing.T) {
 	bot := &Bot{
 		externalPause: 15 * time.Minute,
 		now:           func() time.Time { return now },
-		control:       map[string]chatControl{},
+		control:       map[botflota.ChatTarget]chatControl{},
 	}
-	bot.noteExternal("s", now)
-	bot.noteExternal("s", now.Add(10*time.Minute))
-	if !bot.paused("s", now.Add(20*time.Minute)) {
+	bot.noteExternal(waTarget("s"), now)
+	bot.noteExternal(waTarget("s"), now.Add(10*time.Minute))
+	if !bot.paused(waTarget("s"), now.Add(20*time.Minute)) {
 		t.Fatal("the countdown was not restarted")
 	}
-	if bot.paused("other", now) {
+	if bot.paused(waTarget("other"), now) {
 		t.Fatal("another chat was paused too")
 	}
 }
@@ -70,16 +70,16 @@ func TestAnExternalReplyDoesNotReleaseAManualHold(t *testing.T) {
 	bot := &Bot{
 		externalPause: 15 * time.Minute,
 		now:           func() time.Time { return now },
-		control:       map[string]chatControl{},
+		control:       map[botflota.ChatTarget]chatControl{},
 	}
-	bot.setHuman("s", true)
-	bot.noteExternal("s", now)
+	bot.setHuman(waTarget("s"), true)
+	bot.noteExternal(waTarget("s"), now)
 
 	// Long past the countdown the external reply started, the hold still stands.
-	if !bot.paused("s", now.Add(time.Hour)) {
+	if !bot.paused(waTarget("s"), now.Add(time.Hour)) {
 		t.Fatal("an external reply released a manual hold")
 	}
-	if state := bot.controlOf("s", now.Add(time.Hour)); state.Mode != botflota.ChatHuman {
+	if state := bot.controlOf(waTarget("s"), now.Add(time.Hour)); state.Mode != botflota.ChatHuman {
 		t.Fatalf("mode = %q, want human", state.Mode)
 	}
 }
@@ -91,14 +91,14 @@ func TestAnExplicitAutoCancelsARunningCountdown(t *testing.T) {
 	bot := &Bot{
 		externalPause: 15 * time.Minute,
 		now:           func() time.Time { return now },
-		control:       map[string]chatControl{},
+		control:       map[botflota.ChatTarget]chatControl{},
 	}
-	bot.noteExternal("s", now)
-	if !bot.paused("s", now.Add(time.Minute)) {
+	bot.noteExternal(waTarget("s"), now)
+	if !bot.paused(waTarget("s"), now.Add(time.Minute)) {
 		t.Fatal("the chat was not paused")
 	}
-	bot.setHuman("s", false)
-	if bot.paused("s", now.Add(time.Minute)) {
+	bot.setHuman(waTarget("s"), false)
+	if bot.paused(waTarget("s"), now.Add(time.Minute)) {
 		t.Fatal("an explicit auto did not cancel the countdown")
 	}
 }

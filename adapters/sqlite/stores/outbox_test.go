@@ -19,17 +19,17 @@ func queueOneReply(t *testing.T, db *sqlite.DB, chat *botflota.Chat) {
 		Scope: "support", Bot: "support-bot",
 		Session: testSession(chat.ID), ChatID: chat.ID, At: t1,
 		Inbound: &botflota.Message{
-			ChatID: chat.ID, Direction: botflota.Inbound,
+			ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 			Content: botflota.TextContent{Body: "hola"}, At: t1,
 			Ingest: botflota.IngestLive,
 		},
 		Outbound: []botflota.OutboundRecord{{
+			Target: chat.Target,
 			Message: &botflota.Message{
-				ChatID: chat.ID, Direction: botflota.Outbound,
+				ChatID: chat.ID, Target: chat.Target, Direction: botflota.Outbound,
 				Content: botflota.TextContent{Body: "hola!"}, At: t1,
 				Ingest: botflota.IngestLive,
 			},
-			Recipient: "5215500000000",
 		}},
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func TestOutboxQueuesWithTheTurnAndCompletes(t *testing.T) {
 		t.Fatalf("entries = %#v, want one", entries)
 	}
 	entry := entries[0]
-	if entry.Recipient != "5215500000000" || entry.Attempts != 0 ||
+	if entry.Target != chat.Target || entry.Attempts != 0 ||
 		botflota.ContentText(entry.Content) != "hola!" {
 		t.Fatalf("entry = %#v, want the stored reply", entry)
 	}

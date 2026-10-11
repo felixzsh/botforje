@@ -85,7 +85,9 @@ func TestSendMessageQueues(t *testing.T) {
 	}
 	send := sends.sends[0]
 	if send.Scope != "support" || send.Bot != "demo" ||
-		send.To != "5215599999999" || send.ClientID != "order-1" {
+		send.Target != waTarget("5215599999999") ||
+		send.Recipient == nil || *send.Recipient != waKey("5215599999999") ||
+		send.ClientID != "order-1" {
 		t.Fatalf("send = %#v", send)
 	}
 	if body := botflota.ContentText(send.Content); body != "tu pedido está listo" {
@@ -132,8 +134,8 @@ func TestSendMessageValidatesTheRequest(t *testing.T) {
 			"bot": "ghost", "to": "5215599999999", "body": "x"}, http.StatusNotFound},
 		{"missing bot", map[string]any{
 			"to": "5215599999999", "body": "x"}, http.StatusBadRequest},
-		{"phone with a plus", map[string]any{
-			"bot": "demo", "to": "+5215599999999", "body": "x"}, http.StatusBadRequest},
+		{"missing destination", map[string]any{
+			"bot": "demo", "to": "", "body": "x"}, http.StatusBadRequest},
 		{"missing to", map[string]any{
 			"bot": "demo", "body": "x"}, http.StatusBadRequest},
 		{"empty body", map[string]any{

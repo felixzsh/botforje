@@ -36,16 +36,7 @@ func (s *Server) chatParams(
 		return "", "", nil, false
 	}
 	ctx := r.Context()
-	contact, err := s.contacts.Get(ctx, scope, phone)
-	if errors.Is(err, botflota.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "unknown contact")
-		return "", "", nil, false
-	}
-	if err != nil {
-		s.fail(w, "read contact", err)
-		return "", "", nil, false
-	}
-	chat, err = s.chats.ForContact(ctx, scope, bot, contact.ID)
+	chat, err := s.chats.ForTarget(ctx, scope, bot, legacyWhatsAppTarget(phone))
 	if errors.Is(err, botflota.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", "no chat for that contact")
 		return "", "", nil, false

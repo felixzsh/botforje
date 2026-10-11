@@ -26,7 +26,7 @@ type StateReporter interface {
 // credentials still exist, without exposing the device store or the transport
 // addressing to its consumers (ADR 0020, ADR 0039).
 type DevicePresence interface {
-	HasCredentials(ctx context.Context, account *LinkedAccount) (bool, error)
+	HasCredentials(ctx context.Context, account *Binding) (bool, error)
 }
 
 // AccountUnpairer removes a linked account and its local credentials, the
@@ -37,36 +37,25 @@ type AccountUnpairer interface {
 	UnpairAccount(ctx context.Context, scope, bot string) error
 }
 
-// OutboundMessage is a message that left a bot's linked account without
-// Botflota sending it: a human replied from the phone or another client
-// (ADR 0043). It carries the chat's plain phone number, never a LID. It is an
-// observation, not a routable turn.
-type OutboundMessage struct {
-	Bot               string
-	RecipientPhone    string
-	Content           MessageContent
-	ProviderMessageID string
-	At                time.Time
-}
-
 // OutboundObserver is an optional MessageChannel capability: a channel that
 // reports messages leaving the linked account outside Botflota, so a bot can
 // hand the chat to a human (ADR 0043). A channel that cannot tell its own echo
 // apart from an operator reply does not implement it.
 type OutboundObserver interface {
-	Outbound() <-chan OutboundMessage
+	Outbound() <-chan ExternalSend
 }
 
 // HistorySyncer is an optional MessageChannel capability: asking the primary
-// device for older messages of one chat over the live connection (ADR 0035).
+// device for older messages of one conversation over the live connection
+// (ADR 0035).
 type HistorySyncer interface {
 	SyncHistory(
-		ctx context.Context, phone string, count int, timeout time.Duration,
+		ctx context.Context, target ChatTarget, count int, timeout time.Duration,
 	) (HistoryResult, error)
 }
 
 // HistoryResult reports one chat's on-demand history backfill (ADR 0035).
-// Received counts the provider entries the phone answered with, Imported what
+// Received counts the provider entries the channel answered with, Imported what
 // the store kept, and Stable and Exhausted whether older pages remain.
 type HistoryResult struct {
 	Received  int
@@ -127,12 +116,16 @@ func (NullLLM) Realize(context.Context, RealizeRequest) (string, error) {
 // Store ports: the core package owns the interfaces and an adapter
 // implements them (ADR 0006). The persisted shapes live in records.go.
 
-// ChatStore records the durable chat with each person (ADR 0026, ADR 0027,
-// ADR 0029, ADR 0035). Ensure is a get-or-create keyed by the contact's
-// identity.
+// ChatStore records the durable chat with each conversation (ADR 0026,
+// ADR 0027, ADR 0029, ADR 0035). Ensure is a get-or-create keyed by the
+// complete conversation target; a nonzero peerID supplies explicit known
+// participant evidence and must resolve under the same scope and provider.
 type ChatStore interface {
-	Ensure(ctx context.Context, scope, bot string, contactID int64, at time.Time) (*Chat, error)
-	ForContact(ctx context.Context, scope, bot string, contactID int64) (*Chat, error)
+	Ensure(
+		ctx context.Context, scope, bot string, target ChatTarget, peerID int64,
+		at time.Time,
+	) (*Chat, error)
+	ForTarget(ctx context.Context, scope, bot string, target ChatTarget) (*Chat, error)
 	// Recent returns the most recently active chats first. A zero limit means
 	// every chat, which is how `chat sync --all` walks them (ADR 0035).
 	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
@@ -144,9 +137,9 @@ type ChatStore interface {
 	SaveGuards(ctx context.Context, chatID int64, guards map[string]GuardState) error
 }
 
-// ContactStore records the identity of each person a scope knows.
-// EnsureContact creates an identity without a first inbound message, so the
-// address book and an API send never consume the first-contact hook.
+// PeerStore records the identity of each person a scope knows.
+// EnsurePeer creates an identity without a first inbound message, so the
+// directory and an API send never consume the first-contact hook.
 // RecordInbound records a live inbound: it claims first_seen conditionally —
 // a row actually updated is the answer, so inbounds that share one timestamp
 // still report first only once — and commits the claim with the activity and
@@ -156,51 +149,51 @@ type ChatStore interface {
 // scope-level read: identities most recently seen first, filtered by
 // first_seen when since is not zero, with an opaque cursor a caller passes
 // back unchanged (ADR 0044).
-type ContactStore interface {
-	EnsureContact(ctx context.Context, scope, phone string, at time.Time) (*Contact, error)
+type PeerStore interface {
+	EnsurePeer(ctx context.Context, scope string, key IdentityKey, at time.Time) (*Peer, error)
 	RecordInbound(
-		ctx context.Context, scope, phone, name string, at time.Time,
-	) (*Contact, bool, error)
-	Get(ctx context.Context, scope, phone string) (*Contact, error)
-	SetDisplayName(ctx context.Context, scope, phone, name string, at time.Time) error
+		ctx context.Context, scope string, key IdentityKey, name string, at time.Time,
+	) (*Peer, bool, error)
+	Get(ctx context.Context, scope string, key IdentityKey) (*Peer, error)
+	SetDisplayName(ctx context.Context, scope string, key IdentityKey, name string, at time.Time) error
 	List(
 		ctx context.Context, scope string, since time.Time, limit int, cursor string,
-	) (ContactPage, error)
+	) (PeerPage, error)
 }
 
-// ContactPage is one page of a scope's contact identities. NextCursor is empty
+// PeerPage is one page of a scope's peer identities. NextCursor is empty
 // on the last page; a caller sends it back through List to read the next one.
-type ContactPage struct {
-	Contacts   []Contact
+type PeerPage struct {
+	Peers      []Peer
 	NextCursor string
 }
 
-// EventContactFirstSeen is the first-contact event: a phone wrote to a bot of
-// the scope for the first time (ADR 0045).
-const EventContactFirstSeen = "contact.first_seen"
+// EventPeerFirstSeen is the first-contact event: a peer wrote to a bot of the
+// scope for the first time (ADR 0045).
+const EventPeerFirstSeen = "peer.first_seen"
 
-// FirstContact is one contact's first allowed inbound message in a scope,
+// PeerFirstSeen is one peer's first allowed inbound message in a scope,
 // carrying the bot that saw it and when (ADR 0029, ADR 0045).
-type FirstContact struct {
-	Scope   string
-	Bot     string
-	Contact Contact
-	At      time.Time
+type PeerFirstSeen struct {
+	Scope string
+	Bot   string
+	Peer  Peer
+	At    time.Time
 }
 
-// FirstContactNotifier receives the first-contact hook so an adapter can
+// PeerFirstSeenNotifier receives the first-contact hook so an adapter can
 // deliver it outside the engine (ADR 0045). The engine calls it once per new
 // profile and the call records the event; delivery belongs to the adapter.
-type FirstContactNotifier interface {
-	FirstContact(ctx context.Context, event FirstContact) error
+type PeerFirstSeenNotifier interface {
+	PeerFirstSeen(ctx context.Context, event PeerFirstSeen) error
 }
 
 // HistoryStore owns the operations that span one bot's whole history — its
-// chats, sessions, messages, and address book — and must be atomic across all
-// of them. DeleteBot removes that history and leaves the scope's contact
-// identities alone (ADR 0029); MoveBot moves it to another bot of the same
-// scope and refuses a destination that already holds a chat, because history
-// is moved and never merged (ADR 0042).
+// chats, sessions, messages, and directory — and must be atomic across all of
+// them. DeleteBot removes that history and leaves the scope's peer identities
+// alone (ADR 0029); MoveBot moves it to another bot of the same scope and
+// refuses a destination that already holds a chat, because history is moved
+// and never merged (ADR 0042).
 type HistoryStore interface {
 	HistoryReader
 	DeleteBot(ctx context.Context, scope, bot string) (HistoryCounts, error)
@@ -212,8 +205,8 @@ type HistoryStore interface {
 // HistoryReader streams everything one bot's history holds, so it can leave the
 // instance without buffering a whole conversation (ADR 0042). The sink is called
 // once per stored row, table by table, in stored order; an error from any call
-// stops the read and is returned. Contact identities are not history — they
-// belong to the scope (ADR 0029) — but a chat carries its contact's phone and
+// stops the read and is returned. Peer identities are not history — they
+// belong to the scope (ADR 0029) — but a chat carries its peer key and
 // name so the result stands on its own.
 type HistoryReader interface {
 	ReadHistory(ctx context.Context, scope, bot string, sink HistorySink) error
@@ -224,10 +217,10 @@ type HistoryReader interface {
 type HistoryTable string
 
 const (
-	TableChats       HistoryTable = "chats"
-	TableSessions    HistoryTable = "sessions"
-	TableMessages    HistoryTable = "messages"
-	TableAddressBook HistoryTable = "bot_contacts"
+	TableChats     HistoryTable = "chats"
+	TableSessions  HistoryTable = "sessions"
+	TableMessages  HistoryTable = "messages"
+	TableDirectory HistoryTable = "directory"
 )
 
 // HistorySink receives one bot's history as it is read. BeginTable is called
@@ -239,18 +232,18 @@ type HistorySink interface {
 	Chat(HistoryChat) error
 	Session(Session) error
 	Message(Message) error
-	AddressBookEntry(AddressBookEntry) error
+	DirectoryEntry(DirectoryEntry) error
 }
 
-// AddressBookStore records the address-book entries of each bot's linked
-// account when contact import is on (ADR 0037). Put creates a proven address
-// book entry and merges non-empty names; Merge updates an existing entry
+// DirectoryStore records the account-directory entries of each bot's linked
+// account when contact import is on (ADR 0037, ADR 0051). Put creates a proven
+// directory entry and merges non-empty names; Merge updates an existing entry
 // without creating membership based on a message. List returns the most
 // recently updated entries first; zero limit means all entries.
-type AddressBookStore interface {
-	Put(ctx context.Context, entry *AddressBookEntry) error
-	Merge(ctx context.Context, entry *AddressBookEntry) error
-	List(ctx context.Context, scope, bot string, limit int) ([]AddressBookEntry, error)
+type DirectoryStore interface {
+	Put(ctx context.Context, entry *DirectoryEntry) error
+	Merge(ctx context.Context, entry *DirectoryEntry) error
+	List(ctx context.Context, scope, bot string, limit int) ([]DirectoryEntry, error)
 }
 
 // SessionStore records a chat's session runs (ADR 0026). Save inserts a run
@@ -268,29 +261,32 @@ type SessionStore interface {
 }
 
 // MessageStore records message history (ADR 0026). Append reports
-// ErrDuplicate when the chat already holds the same provider id; the outbox
-// records the channel id of a delivered reply when it marks it sent. Oldest
-// returns the oldest message that can anchor a history request — one with a
-// channel id, never a call row (ADR 0035). History returns up to limit
-// messages oldest first: the last ones when afterID is zero, or those newer
-// than afterID. HasProviderID is the cheap read the engine uses before it
+// ErrDuplicate when the message's destination already holds the same provider
+// id; the outbox records the channel id of a delivered reply when it marks it
+// sent. Oldest returns the oldest message that can anchor a history request —
+// one with a channel id, never a call row (ADR 0035). History returns up to
+// limit messages oldest first: the last ones when afterID is zero, or those
+// newer than afterID. HasProviderID is the cheap read the engine uses before it
 // runs a turn, so a redelivery never repeats an action.
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
 	Oldest(ctx context.Context, chatID int64) (*Message, error)
 	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
-	HasProviderID(ctx context.Context, chatID int64, providerID string) (bool, error)
+	HasProviderID(ctx context.Context, target ChatTarget, providerID string) (bool, error)
 }
 
 // SendRecord is one message the API asks a bot to deliver outside a turn: no
-// session run, no inbound message (ADR 0044). The store creates the contact
-// identity and the chat when they are missing, so a notice can reach a phone
-// that never wrote first.
+// session run, no inbound message (ADR 0044). Target is the required exact
+// destination; Recipient is the optional known recipient identity, nil when
+// the caller knows only the destination. The store creates the peer identity
+// and the chat when they are present or missing, so a notice can reach a
+// destination that never wrote first.
 type SendRecord struct {
-	Scope   string
-	Bot     string
-	To      string
-	Content SendableContent
+	Scope     string
+	Bot       string
+	Target    ChatTarget
+	Recipient *IdentityKey
+	Content   SendableContent
 	// ClientID is the caller's idempotency key; empty means no key.
 	ClientID string
 	At       time.Time
@@ -302,21 +298,22 @@ type SendResult struct {
 	OutboxID  int64
 }
 
-// SendStore commits one API-origin outbound message as one unit: the contact
-// identity, the chat, the stored message, the chat's activity, and the queued
-// delivery either all land or none does. A ClientID the bot already accepted
-// reports ErrDuplicate with the accepted message id in the result, so a caller
-// that lost the response can reconcile (ADR 0044).
+// SendStore commits one API-origin outbound message as one unit: the known
+// recipient identity, the chat, the stored message, the chat's activity, and
+// the queued delivery either all land or none does. A ClientID the bot already
+// accepted reports ErrDuplicate with the accepted message id in the result, so
+// a caller that lost the response can reconcile (ADR 0044).
 type SendStore interface {
 	CommitSend(ctx context.Context, send SendRecord) (SendResult, error)
 }
 
 // TurnRecord is one message turn's writes: the session it advanced, the
-// inbound message, the replies and their recipient identities, chat activity,
-// and the guard state it changed (ADR 0026, ADR 0027). Scope, Bot, Session,
-// and Inbound are required; CommitTurn links the messages to the session it
-// saved, reports their stored ids back through them, and queues every reply for
-// delivery in the same unit, so a crash never leaves a stored reply nobody sends.
+// inbound message, the replies and their destinations, chat activity, and the
+// guard state it changed (ADR 0026, ADR 0027). Scope, Bot, Session, and
+// Inbound are required; CommitTurn links the messages to the session it saved,
+// reports their stored ids back through them, and queues every reply for
+// delivery in the same unit, so a crash never leaves a stored reply nobody
+// sends.
 type TurnRecord struct {
 	Scope    string
 	Bot      string
@@ -329,12 +326,12 @@ type TurnRecord struct {
 	Guards map[string]GuardState
 }
 
-// OutboundRecord is one reply of the turn: the stored message and the phone
-// number it goes to, which may differ from the chat's contact when a step
-// overrides the recipient.
+// OutboundRecord is one reply of the turn: the stored message and the exact
+// conversation it goes to, which may differ from the chat whose history
+// records it when a step overrides the destination.
 type OutboundRecord struct {
-	Message   *Message
-	Recipient string
+	Message *Message
+	Target  ChatTarget
 }
 
 // TurnStore commits one message turn as one unit: either the whole turn
@@ -352,12 +349,12 @@ type TurnStore interface {
 	Record(ctx context.Context, message *Message, at time.Time) error
 }
 
-// OutboxEntry is one queued reply: the stored message id, the recipient, and
-// the sendable content, read back from the queue (ADR 0011).
+// OutboxEntry is one queued reply: the stored message id, the exact
+// destination, and the sendable content, read back from the queue (ADR 0011).
 type OutboxEntry struct {
 	ID        int64
 	Attempts  int
-	Recipient string
+	Target    ChatTarget
 	MessageID int64
 	// NextAttempt is when a retried reply becomes due; zero means due now.
 	NextAttempt time.Time
@@ -430,12 +427,12 @@ type WebhookStore interface {
 	MarkFailed(ctx context.Context, id int64, reason string, at time.Time) error
 }
 
-// LinkedAccountStore records the channel identity linked to each bot
-// (ADR 0006). Pairing is tracked separately by PairingStore.
-type LinkedAccountStore interface {
-	Get(ctx context.Context, scope, bot string) (*LinkedAccount, error)
-	List(ctx context.Context) ([]LinkedAccount, error)
-	Put(ctx context.Context, account *LinkedAccount) error
+// BindingStore records the channel account linked to each bot
+// (ADR 0006, ADR 0051). Pairing is tracked separately by PairingStore.
+type BindingStore interface {
+	Get(ctx context.Context, scope, bot string) (*Binding, error)
+	List(ctx context.Context) ([]Binding, error)
+	Put(ctx context.Context, account *Binding) error
 	Delete(ctx context.Context, scope, bot string) error
 }
 

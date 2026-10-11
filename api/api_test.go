@@ -79,12 +79,12 @@ func (f *fakeUnpairer) UnpairAccount(
 }
 
 type fakeAccounts struct {
-	accounts map[string]botflota.LinkedAccount
+	accounts map[string]botflota.Binding
 }
 
 func (f *fakeAccounts) Get(
 	_ context.Context, scope, bot string,
-) (*botflota.LinkedAccount, error) {
+) (*botflota.Binding, error) {
 	account, ok := f.accounts[scope+"/"+bot]
 	if !ok {
 		return nil, botflota.ErrNotFound
@@ -92,11 +92,11 @@ func (f *fakeAccounts) Get(
 	return &account, nil
 }
 
-func (f *fakeAccounts) List(context.Context) ([]botflota.LinkedAccount, error) {
+func (f *fakeAccounts) List(context.Context) ([]botflota.Binding, error) {
 	return nil, nil
 }
 
-func (f *fakeAccounts) Put(context.Context, *botflota.LinkedAccount) error {
+func (f *fakeAccounts) Put(context.Context, *botflota.Binding) error {
 	return nil
 }
 
@@ -229,18 +229,18 @@ func (f *fakeAccessTokens) Revoke(_ context.Context, id int64, at time.Time) err
 	return botflota.ErrNotFound
 }
 
-type fakeAddressBook struct{ entries []botflota.AddressBookEntry }
+type fakeDirectory struct{ entries []botflota.DirectoryEntry }
 
-func (f fakeAddressBook) Put(context.Context, *botflota.AddressBookEntry) error { return nil }
+func (f fakeDirectory) Put(context.Context, *botflota.DirectoryEntry) error { return nil }
 
-func (f fakeAddressBook) Merge(context.Context, *botflota.AddressBookEntry) error {
+func (f fakeDirectory) Merge(context.Context, *botflota.DirectoryEntry) error {
 	return nil
 }
 
-func (f fakeAddressBook) List(
+func (f fakeDirectory) List(
 	_ context.Context, scope, bot string, limit int,
-) ([]botflota.AddressBookEntry, error) {
-	out := make([]botflota.AddressBookEntry, 0, len(f.entries))
+) ([]botflota.DirectoryEntry, error) {
+	out := make([]botflota.DirectoryEntry, 0, len(f.entries))
 	for _, entry := range f.entries {
 		if entry.Scope == scope && entry.Bot == bot {
 			out = append(out, entry)
@@ -252,47 +252,51 @@ func (f fakeAddressBook) List(
 	return out, nil
 }
 
-// fakeContacts serves the scope's identities and records the last list read,
+// fakePeers serves the scope's identities and records the last list read,
 // so a test can assert the query parameters reached the store.
-type fakeContacts struct {
-	contacts   map[string]botflota.Contact
-	listPage   botflota.ContactPage
+type fakePeers struct {
+	contacts   map[string]botflota.Peer
+	listPage   botflota.PeerPage
 	listErr    error
 	lastSince  time.Time
 	lastLimit  int
 	lastCursor string
 }
 
-func (f fakeContacts) Get(_ context.Context, scope, phone string) (*botflota.Contact, error) {
-	contact, ok := f.contacts[scope+"/"+phone]
+func (f fakePeers) Get(
+	_ context.Context, scope string, key botflota.IdentityKey,
+) (*botflota.Peer, error) {
+	contact, ok := f.contacts[scope+"/"+key.Subject]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
 	return &contact, nil
 }
 
-func (f fakeContacts) EnsureContact(
-	context.Context, string, string, time.Time,
-) (*botflota.Contact, error) {
+func (f fakePeers) EnsurePeer(
+	context.Context, string, botflota.IdentityKey, time.Time,
+) (*botflota.Peer, error) {
 	return nil, nil
 }
 
-func (f fakeContacts) RecordInbound(
-	context.Context, string, string, string, time.Time,
-) (*botflota.Contact, bool, error) {
+func (f fakePeers) RecordInbound(
+	context.Context, string, botflota.IdentityKey, string, time.Time,
+) (*botflota.Peer, bool, error) {
 	return nil, false, nil
 }
 
-func (f fakeContacts) SetDisplayName(context.Context, string, string, string, time.Time) error {
+func (f fakePeers) SetDisplayName(
+	context.Context, string, botflota.IdentityKey, string, time.Time,
+) error {
 	return nil
 }
 
-func (f *fakeContacts) List(
+func (f *fakePeers) List(
 	_ context.Context, _ string, since time.Time, limit int, cursor string,
-) (botflota.ContactPage, error) {
+) (botflota.PeerPage, error) {
 	f.lastSince, f.lastLimit, f.lastCursor = since, limit, cursor
 	if f.listErr != nil {
-		return botflota.ContactPage{}, f.listErr
+		return botflota.PeerPage{}, f.listErr
 	}
 	return f.listPage, nil
 }
@@ -302,16 +306,16 @@ type fakeChats struct {
 }
 
 func (f fakeChats) Ensure(
-	context.Context, string, string, int64, time.Time,
+	context.Context, string, string, botflota.ChatTarget, int64, time.Time,
 ) (*botflota.Chat, error) {
 	return nil, nil
 }
 
-func (f fakeChats) ForContact(
-	_ context.Context, scope, bot string, contactID int64,
+func (f fakeChats) ForTarget(
+	_ context.Context, scope, bot string, target botflota.ChatTarget,
 ) (*botflota.Chat, error) {
 	for _, summary := range f.chats {
-		if summary.Scope == scope && summary.Bot == bot && summary.ContactID == contactID {
+		if summary.Scope == scope && summary.Bot == bot && summary.Target == target {
 			chat := summary.Chat
 			return &chat, nil
 		}
@@ -380,7 +384,7 @@ type fakeMessages struct{ messages map[int64][]botflota.Message }
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
 
 func (f fakeMessages) HasProviderID(
-	context.Context, int64, string,
+	context.Context, botflota.ChatTarget, string,
 ) (bool, error) {
 	return false, nil
 }
@@ -519,9 +523,10 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
-	accounts := fakeAccounts{accounts: map[string]botflota.LinkedAccount{
+	accounts := fakeAccounts{accounts: map[string]botflota.Binding{
 		"support/demo": {
-			Scope: "support", Bot: "demo", JID: "5215500000000@s.whatsapp.net",
+			Scope: "support", Bot: "demo",
+			Identity: waKey("5215500000000"),
 		},
 	}}
 	pairings := fakePairings{
@@ -530,26 +535,28 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 		},
 		changed: map[string]time.Time{"support/demo": testTime},
 	}
-	contact := botflota.Contact{
-		ID: 7, Scope: "support", Phone: "5215500000000", DisplayName: "Ana",
+	contact := botflota.Peer{
+		ID: 7, Scope: "support", Key: waKey("5215500000000"), DisplayName: "Ana",
 	}
 	chat := botflota.ChatSummary{
 		Chat: botflota.Chat{
-			ID: 3, Scope: "support", Bot: "demo", ContactID: contact.ID,
+			ID: 3, Scope: "support", Bot: "demo", PeerID: contact.ID,
+			Target:    waTarget("5215500000000"),
 			StartedAt: testTime, UpdatedAt: testTime, MessageCount: 2,
 		},
-		Phone: contact.Phone, DisplayName: contact.DisplayName,
+		PeerKey: contact.Key, DisplayName: contact.DisplayName,
 		Messages: 5, Sync: 3, Live: 2,
 	}
-	quiet := botflota.Contact{
-		ID: 8, Scope: "support", Phone: "5215599999999", DisplayName: "Luis",
+	quiet := botflota.Peer{
+		ID: 8, Scope: "support", Key: waKey("5215599999999"), DisplayName: "Luis",
 	}
 	quietChat := botflota.ChatSummary{
 		Chat: botflota.Chat{
-			ID: 4, Scope: "support", Bot: "demo", ContactID: quiet.ID,
+			ID: 4, Scope: "support", Bot: "demo", PeerID: quiet.ID,
+			Target:    waTarget("5215599999999"),
 			StartedAt: testTime, UpdatedAt: testTime,
 		},
-		Phone: quiet.Phone, DisplayName: quiet.DisplayName,
+		PeerKey: quiet.Key, DisplayName: quiet.DisplayName,
 	}
 	tokens := &fakeAccessTokens{nextID: 3, tokens: []botflota.AccessToken{
 		{
@@ -572,24 +579,27 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 		Saved:    config.NewSource(cfg),
 		Writer:   writer,
 		Fleet:    live,
-		Accounts: &accounts,
+		Bindings: &accounts,
 		Pairings: pairings,
-		Contacts: &fakeContacts{contacts: map[string]botflota.Contact{
-			"support/" + contact.Phone: contact,
-			"support/" + quiet.Phone:   quiet,
+		Peers: &fakePeers{contacts: map[string]botflota.Peer{
+			"support/" + contact.Key.Subject: contact,
+			"support/" + quiet.Key.Subject:   quiet,
 		}},
-		AddressBook: fakeAddressBook{entries: []botflota.AddressBookEntry{
+		Directory: fakeDirectory{entries: []botflota.DirectoryEntry{
 			{
-				Scope: "support", Bot: "demo", Phone: "5215500000001",
-				Name: "Ana", UpdatedAt: testTime,
+				Scope: "support", Bot: "demo", PeerKey: waKey("5215500000001"),
+				SourceIdentity: waKey("5215500000001"), DisplayName: "Ana",
+				UpdatedAt: testTime,
 			},
 			{
-				Scope: "support", Bot: "demo", Phone: "5215500000002",
-				PushName: "Beto", UpdatedAt: testTime,
+				Scope: "support", Bot: "demo", PeerKey: waKey("5215500000002"),
+				SourceIdentity: waKey("5215500000002"), DisplayName: "Beto",
+				UpdatedAt: testTime,
 			},
 			{
-				Scope: "ventas", Bot: "other", Phone: "5215500000003",
-				Name: "Cora", UpdatedAt: testTime,
+				Scope: "ventas", Bot: "other", PeerKey: waKey("5215500000003"),
+				SourceIdentity: waKey("5215500000003"), DisplayName: "Cora",
+				UpdatedAt: testTime,
 			},
 		}},
 		Chats: fakeChats{chats: map[string]botflota.ChatSummary{
@@ -774,7 +784,7 @@ func TestNewRequiresDependencies(t *testing.T) {
 		{"account unpairer", Options{
 			Config:   config.NewSource(&config.Config{}),
 			Fleet:    &fakeFleet{},
-			Accounts: &fakeAccounts{},
+			Bindings: &fakeAccounts{},
 			Pairings: fakePairings{},
 			Pairing:  &fakePairing{},
 		}},

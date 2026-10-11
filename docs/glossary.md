@@ -60,7 +60,7 @@
   ends on the graph timeout. Collections use `GraphRuns`, never bare `Runs`;
   bind attempts and SDK sessions are separate concepts.
 - PN (phone number) — WhatsApp's phone-number address; for WhatsApp it is the
-  contact's subject and the direct conversation's thread
+  peer's subject and the direct conversation's thread
   (`5215500000000`), without the JID suffix.
 - LID (hidden user) — WhatsApp's `user@lid` address; kept internal to
   WhatsApp handling for resolution and delivery.
@@ -68,14 +68,14 @@
   addresses to: the provider and an opaque subject. When a provider's ids are
   only meaningful inside one store or profile, the adapter composes that
   space's stable identifier into the subject (ADR 0051).
-- Peer (currently the scope-level `Contact`) — a durable messaging identity
+- Peer (the scope-level `Peer` record) — a durable messaging identity
   a scope knows, keyed by (scope, provider, subject) and shared by its bots.
   Knowing a peer does not require any prior message exchange: a directory
   import or an API send may register the identity. Neither counts as live
   inbound activity; `first_seen` belongs to the first allowed live inbound,
   never to an import or an API send. Identity, directory membership, and the
   chat's interaction history are distinct (ADR 0029, ADR 0051).
-- Directory entry (currently `AddressBookEntry`) — a recorded contact-list
+- Directory entry (the bot-level `DirectoryEntry` record) — a recorded contact-list
   membership of a bot's bound account, as exposed by its channel. It may
   exist without any prior inbound or outbound message. It is not a peer's
   interaction history or a chat, and does not guarantee current reachability
@@ -103,9 +103,9 @@
 - Channel — one implementation that reaches a messaging provider. WhatsApp
   has several: the native client today, other clients or the official Cloud API
   later.
-- Binding (currently `LinkedAccount`) — the fixed verified association of a
+- Binding (the `Binding` record) — the fixed verified association of a
   scoped bot with its normalized own messaging identity. Its SDK device/session
-  locator is separate and adapter-owned. P1's minimal identity contract uses
+  locator is separate and adapter-owned. P1 persists only the normalized own
   `IdentityKey`; full adapter/mode/namespace/generation metadata and lifecycle
   remain P3 (ADR 0051, ADR 0053). A temporary backend-context selection does not
   change the association.
@@ -123,11 +123,11 @@
 - Agent — a conventional external agent runtime (for example OpenClaw), a
   possible future integration. It does not name Botflota's own LLM behavior;
   that is the tool loop.
-- Filter — one bot's inbound rules (ignore groups, allow/ignore contacts)
+- Filter — one bot's inbound rules (refuse shared conversations, allow/ignore peers)
   applied before the engine; the fleet routes events to the bot.
 - Outbox — per-bot FIFO queue that paces outbound messages.
 - Webhook — an instance-level signed HTTP delivery of an outbound event to an
-  external system; the first event is `contact.first_seen` (ADR 0045).
+  external system; the first event is `peer.first_seen` (ADR 0045).
 - Secret reference — a `${NAME}` placeholder, allowed only in fields enabled for
   secrets (model `api_key`, request header values), resolved from the process
   environment at load or from the scope's secret catalog when it has one; the
@@ -135,10 +135,10 @@
 - Template — a string with `{{path.to.value}}` references resolved against the
   runtime context; a missing path is an error.
 - Runtime context — the values a template reads: graph and node variables,
-  peer, message, bot, tool inputs, and request results. The selected P1 peer
-  values are `id`, `provider`, `subject`, and `name`; approved legacy contact
-  references translate per consuming WhatsApp bot, not through a universal
-  phone field (ADR 0018, ADR 0020). Implementation is pending.
+  peer, message, bot, tool inputs, and request results. The P1 peer values are
+  `id`, `provider`, `subject`, and `name`. The old `contact.*` root is retired;
+  its per-bot WhatsApp translation is P2 work, never a universal phone field
+  (ADR 0018, ADR 0020).
 - Device store — the WhatsApp device credentials that keep a companion device
   linked: its identity keys, prekeys, and registration. It lives in the
   database, so a bot can run on a server.
@@ -169,6 +169,6 @@
   `settings.history_import_max_bytes` is not implemented; its semantics and
   default remain TBD (`docs/access-policy.md`).
 - History migration — moving, never copying, a bot's chats, messages, and
-  address book to another bot of the same scope, so a recreated or peer bot starts
+  directory to another bot of the same scope, so a recreated or peer bot starts
   from the same conversations; it runs with both bots stopped
   (`docs/current-plan.md`). Unlinking an account never deletes history.

@@ -23,7 +23,8 @@ func (s *OutboxStore) NextPending(
 	if limit <= 0 {
 		return nil, nil
 	}
-	const query = `SELECT o.id, o.attempts, o.recipient, o.next_attempt,
+	const query = `SELECT o.id, o.attempts, o.target_provider, o.target_kind,
+		o.target_thread, o.target_topic, o.next_attempt,
 		m.kind, m.body, m.content, m.origin, m.routing
 		FROM outbox o JOIN messages m ON m.id = o.message_id
 		WHERE o.scope = ? AND o.bot = ? AND o.state = 'pending'
@@ -37,16 +38,19 @@ func (s *OutboxStore) NextPending(
 	for rows.Next() {
 		var (
 			entry       botflota.OutboxEntry
+			targetKind  string
 			nextAttempt string
 			kind, body  string
 			content     string
 			origin      string
 			routing     string
 		)
-		if err := rows.Scan(&entry.ID, &entry.Attempts, &entry.Recipient,
-			&nextAttempt, &kind, &body, &content, &origin, &routing); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.Attempts, &entry.Target.Provider,
+			&targetKind, &entry.Target.Thread, &entry.Target.Topic, &nextAttempt,
+			&kind, &body, &content, &origin, &routing); err != nil {
 			return nil, fmt.Errorf("sqlite: outbox scan: %w", err)
 		}
+		entry.Target.Kind = botflota.ChatKind(targetKind)
 		decoded, err := botflota.ContentFromJSON(
 			botflota.MessageKind(kind), body, []byte(content))
 		if err != nil {

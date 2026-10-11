@@ -72,7 +72,7 @@ func attachHistory(
 		}
 		return pn, true
 	}
-	importer := ingest.NewHistory(opts.Scope, opts.Bot, opts.Contacts, opts.Chats,
+	importer := ingest.NewHistory(opts.Scope, opts.Bot, opts.Peers, opts.Chats,
 		opts.Messages, lookup, opts.Log)
 	if importer == nil {
 		return nil, nil
@@ -111,7 +111,7 @@ func attachContacts(
 		return pn, true
 	}
 	importer := ingest.NewAddressBook(
-		opts.Scope, opts.Bot, opts.Contacts, opts.AddressBook, lookup, opts.Log)
+		opts.Scope, opts.Bot, opts.Peers, opts.Directory, lookup, opts.Log)
 	if importer == nil {
 		return nil
 	}

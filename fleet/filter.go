@@ -3,15 +3,16 @@ package fleet
 import "github.com/felixzsh/botflota"
 
 // Filter holds one bot's inbound rules (ADR 0011). Deduplication lives in the
-// channel adapter, which sees the transport event first.
+// channel adapter, which sees the transport event first. A shared conversation
+// has no approved execution policy, so it is always refused rather than
+// treated as a direct message (ADR 0051).
 type Filter struct {
-	IgnoreGroups bool
-	Allowed      []string
-	Ignored      []string
+	Allowed []string
+	Ignored []string
 }
 
 func (f Filter) Allow(msg botflota.IncomingMessage) bool {
-	if msg.IsGroup && f.IgnoreGroups {
+	if msg.Target.Kind != botflota.ChatDirect {
 		return false
 	}
 	if matches(f.Ignored, msg) {
@@ -25,7 +26,7 @@ func (f Filter) Allow(msg botflota.IncomingMessage) bool {
 
 func matches(list []string, msg botflota.IncomingMessage) bool {
 	for _, id := range list {
-		if id == msg.FromPhone {
+		if id == msg.Sender.Subject {
 			return true
 		}
 	}

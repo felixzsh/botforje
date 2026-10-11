@@ -85,10 +85,10 @@ read only while registering, so changing it needs a new registration
   control-only shells WhatsApp sends for the account's address book.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
-- The account's contact names arrive with the sync and name the contacts
+- The account's directory names arrive with the sync and name the peers
   Botflota already knows.
 - The import does not run the bot and does not reply. The bot filter does not
-  apply: a chat outside `allowed_contacts` is still stored.
+  apply: a chat outside `allowed_peers` is still stored.
 - The sync arrives in chunks. `bot pair` captures what it sees before it
   exits; `fleet run` captures the rest when it connects, so start the fleet
   after pairing if the backlog does not appear at once. A sync delivered to a
@@ -143,7 +143,7 @@ It is best effort, not a guarantee:
 ## Address book
 
 An address book is not a conversation. WhatsApp Business knows every number in
-the phone's contact list, including people you only talk to from a personal
+the phone's directory, including people you only talk to from a personal
 account on the same phone, and it sends a control-only conversation shell for
 each of them. Those shells are skipped, so they never appear as chats.
 
@@ -221,11 +221,11 @@ Deterministic flow (a bot with no `llm`):
 - [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
 - [ ] With the fleet running, `bot list` reports the bot as `paired` with its
-  phone in the `PHONE` column.
+  subject in the `PHONE` column.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
-  contacts in the sync, and none of it generated a reply.
-- [ ] The contact names arrive and name those contacts.
-- [ ] `chat list <bot>` lists those contacts with the stored total split into
+  peers in the sync, and none of it generated a reply.
+- [ ] The directory names arrive and name those peers.
+- [ ] `chat list <bot>` lists those peers with the stored total split into
   `SYNC` and `LIVE`, and the first and last activity.
 - [ ] With the fleet running, `chat sync <bot> <contact>` pages one request of
   older messages back from the phone, or reports that it did not answer.

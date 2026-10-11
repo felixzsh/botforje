@@ -1,7 +1,8 @@
 # ADR 0037 — Account-directory import and historical provenance
 
-Status: Accepted (2026-09); P1 provenance design aligned on 2026-10-11.
-Implementation remains tracked in [the channel phases](../channels/phases.md).
+Status: Accepted (2026-09); P1 provenance design aligned and implemented on
+2026-10-11. Implementation is tracked in
+[the channel phases](../channels/phases.md).
 
 ## Context
 

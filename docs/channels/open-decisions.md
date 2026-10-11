@@ -86,14 +86,15 @@ silently harden the plan.
 
 ## Operational gaps carried over from the plan
 
-- **P1, identity and addressing design closed on 2026-10-11.** ADR 0051
+- **P1, identity and addressing implemented on 2026-10-11.** ADR 0051
   specifies comparable key/target fields, canonical absent topic, scoped
   lookups, valid live senders, optional explicit participants, normalized
   own account identity versus adapter device lookup, and actual outbound
   targets. ADR 0026/0029 separate graph execution and first-live-inbound.
-  Destination-dedup and close/reopen/restart remain executable P1 gates,
-  not undecided naming questions. No runtime implementation is authorized
-  by this design closure.
+  The destination-dedup and close/reopen/restart gates pass. The per-bot
+  WhatsApp translation of legacy `contact.*` template references moves to P2,
+  which owns the consuming bot's definition; the account-scoped durable dedup
+  key stays a P5 decision.
 - **P2, selector ambiguity.** ADR 0054's provider/mode selector must
   resolve the adapter kind unambiguously. Decide how indistinguishable
   installed implementations are rejected or selected before supporting

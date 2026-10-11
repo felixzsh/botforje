@@ -93,32 +93,26 @@ func backfillChat(
 // 0035). A control entry (a reaction or an edit) and an account-level call
 // record are not valid anchors, so they are never chosen.
 func oldestCursor(
-	ctx context.Context, scope, bot, phone string,
-	contacts botflota.ContactStore, chats botflota.ChatStore,
-	messages botflota.MessageStore,
+	ctx context.Context, scope, bot string, target botflota.ChatTarget,
+	chats botflota.ChatStore, messages botflota.MessageStore,
 ) (*historyCursor, error) {
-	contact, err := contacts.Get(ctx, scope, phone)
+	chat, err := chats.ForTarget(ctx, scope, bot, target)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"whatsapp: no contact %s in scope %q: %w", phone, scope, err)
-	}
-	chat, err := chats.ForContact(ctx, scope, bot, contact.ID)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"whatsapp: no chat with %s for bot %q: %w", phone, bot, err)
+			"whatsapp: no chat with %s for bot %q: %w", target.Thread, bot, err)
 	}
 	message, err := messages.Oldest(ctx, chat.ID)
 	if errors.Is(err, botflota.ErrNotFound) {
 		return nil, fmt.Errorf(
 			"whatsapp: chat with %s has no message to page from yet; "+
-				"only calls, control entries, or nothing arrived for it", phone)
+				"only calls, control entries, or nothing arrived for it", target.Thread)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: read oldest message: %w", err)
 	}
 	if message.ProviderMessageID == "" || message.At.IsZero() {
 		return nil, fmt.Errorf(
-			"whatsapp: oldest message of %s carries no provider cursor", phone)
+			"whatsapp: oldest message of %s carries no provider cursor", target.Thread)
 	}
 	return &historyCursor{
 		ID:     message.ProviderMessageID,
@@ -131,7 +125,7 @@ func oldestCursor(
 // 0035). Count is the total to request; zero means every entry the phone
 // makes available. One sync runs per bot at a time.
 func (a *Adapter) SyncHistory(
-	ctx context.Context, phone string, count int, timeout time.Duration,
+	ctx context.Context, target botflota.ChatTarget, count int, timeout time.Duration,
 ) (botflota.HistoryResult, error) {
 	if a.importer == nil {
 		return botflota.HistoryResult{}, errors.New(
@@ -146,13 +140,13 @@ func (a *Adapter) SyncHistory(
 	defer a.endSync()
 
 	load := func() (*historyCursor, error) {
-		return oldestCursor(ctx, a.scope, a.bot, phone, a.contacts, a.chats, a.messages)
+		return oldestCursor(ctx, a.scope, a.bot, target, a.chats, a.messages)
 	}
 	request := func(
 		requestCtx context.Context, from *historyCursor, batch int,
 		requestTimeout time.Duration,
 	) (historyPage, error) {
-		return a.requestHistory(requestCtx, phone, from, batch, requestTimeout)
+		return a.requestHistory(requestCtx, target, from, batch, requestTimeout)
 	}
 	return backfillChat(ctx, count, timeout, load, request)
 }
@@ -178,9 +172,10 @@ func (a *Adapter) endSync() {
 // request id. Chunks for other ids are still imported, but cannot answer this
 // round.
 func (a *Adapter) requestHistory(
-	ctx context.Context, phone string, from *historyCursor,
+	ctx context.Context, target botflota.ChatTarget, from *historyCursor,
 	count int, timeout time.Duration,
 ) (historyPage, error) {
+	phone := target.Thread
 	a.mu.Lock()
 	client := a.client
 	a.mu.Unlock()

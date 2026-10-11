@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math/rand"
 	"slices"
-	"strconv"
 	"testing"
 	"time"
 
@@ -18,93 +17,101 @@ import (
 var t0 = time.Date(2026, 9, 13, 10, 0, 0, 0, time.UTC)
 
 type memStore struct {
-	contacts    map[string]*botflota.Contact
-	chats       map[string]*botflota.Chat
-	sessions    map[int64]*botflota.Session
-	messages    []*botflota.Message
-	nextContact int64
-	nextChat    int64
-	nextSess    int64
-	nextMsg     int64
+	peers    map[string]*botflota.Peer
+	chats    map[string]*botflota.Chat
+	sessions map[int64]*botflota.Session
+	messages []*botflota.Message
+	nextPeer int64
+	nextChat int64
+	nextSess int64
+	nextMsg  int64
 }
 
 func newMemStore() *memStore {
 	return &memStore{
-		contacts: map[string]*botflota.Contact{},
+		peers:    map[string]*botflota.Peer{},
 		chats:    map[string]*botflota.Chat{},
 		sessions: map[int64]*botflota.Session{},
 	}
 }
 
-func contactKey(scope, phone string) string { return scope + "\x00" + phone }
-
-func storeKey(scope, bot string, contactID int64) string {
-	return scope + "\x00" + bot + "\x00" + strconv.FormatInt(contactID, 10)
+func peerKey(scope string, key botflota.IdentityKey) string {
+	return scope + "\x00" + key.Provider + "\x00" + key.Subject
 }
 
-func (s *memStore) EnsureContact(
-	_ context.Context, scope, phone string, at time.Time,
-) (*botflota.Contact, error) {
-	if contact, ok := s.contacts[contactKey(scope, phone)]; ok {
-		return contact, nil
+func storeKey(scope, bot string, target botflota.ChatTarget) string {
+	return scope + "\x00" + bot + "\x00" + target.Provider + "\x00" +
+		string(target.Kind) + "\x00" + target.Thread + "\x00" + target.Topic
+}
+
+func (s *memStore) EnsurePeer(
+	_ context.Context, scope string, key botflota.IdentityKey, at time.Time,
+) (*botflota.Peer, error) {
+	if peer, ok := s.peers[peerKey(scope, key)]; ok {
+		return peer, nil
 	}
-	s.nextContact++
-	contact := &botflota.Contact{ID: s.nextContact, Scope: scope, Phone: phone}
-	s.contacts[contactKey(scope, phone)] = contact
-	return contact, nil
+	s.nextPeer++
+	peer := &botflota.Peer{ID: s.nextPeer, Scope: scope, Key: key}
+	s.peers[peerKey(scope, key)] = peer
+	return peer, nil
 }
 
 func (s *memStore) RecordInbound(
-	_ context.Context, scope, phone, name string, at time.Time,
-) (*botflota.Contact, bool, error) {
-	contact, ok := s.contacts[contactKey(scope, phone)]
+	_ context.Context, scope string, key botflota.IdentityKey, name string,
+	at time.Time,
+) (*botflota.Peer, bool, error) {
+	peer, ok := s.peers[peerKey(scope, key)]
 	if !ok {
-		s.nextContact++
-		contact = &botflota.Contact{ID: s.nextContact, Scope: scope, Phone: phone}
-		s.contacts[contactKey(scope, phone)] = contact
+		s.nextPeer++
+		peer = &botflota.Peer{ID: s.nextPeer, Scope: scope, Key: key}
+		s.peers[peerKey(scope, key)] = peer
 	}
-	first := contact.FirstSeen.IsZero()
+	first := peer.FirstSeen.IsZero()
 	if first {
-		contact.FirstSeen = at
+		peer.FirstSeen = at
 	}
-	contact.LastSeen = at
-	if name != "" && name != contact.DisplayName {
-		contact.DisplayName = name
-		contact.NameUpdatedAt = at
+	peer.LastSeen = at
+	if name != "" && name != peer.DisplayName {
+		peer.DisplayName = name
+		peer.NameUpdatedAt = at
 	}
-	return contact, first, nil
+	return peer, first, nil
 }
 
 func (s *memStore) Get(
-	_ context.Context, scope, phone string,
-) (*botflota.Contact, error) {
-	contact, ok := s.contacts[contactKey(scope, phone)]
+	_ context.Context, scope string, key botflota.IdentityKey,
+) (*botflota.Peer, error) {
+	peer, ok := s.peers[peerKey(scope, key)]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
-	return contact, nil
+	return peer, nil
 }
 
 func (s *memStore) Ensure(
-	_ context.Context, scope, bot string, contactID int64, at time.Time,
+	_ context.Context, scope, bot string, target botflota.ChatTarget,
+	peerID int64, at time.Time,
 ) (*botflota.Chat, error) {
-	key := storeKey(scope, bot, contactID)
+	key := storeKey(scope, bot, target)
 	if chat, ok := s.chats[key]; ok {
+		if chat.PeerID == 0 && peerID != 0 {
+			chat.PeerID = peerID
+		}
 		return chat, nil
 	}
 	s.nextChat++
 	chat := &botflota.Chat{
-		ID: s.nextChat, Scope: scope, Bot: bot, ContactID: contactID,
+		ID: s.nextChat, Scope: scope, Bot: bot, Target: target, PeerID: peerID,
 		StartedAt: at, UpdatedAt: at,
 	}
 	s.chats[key] = chat
 	return chat, nil
 }
 
-func (s *memStore) ForContact(
-	_ context.Context, scope, bot string, contactID int64,
+func (s *memStore) ForTarget(
+	_ context.Context, scope, bot string, target botflota.ChatTarget,
 ) (*botflota.Chat, error) {
-	chat, ok := s.chats[storeKey(scope, bot, contactID)]
+	chat, ok := s.chats[storeKey(scope, bot, target)]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
@@ -141,11 +148,12 @@ func (s *memStore) SaveGuards(
 }
 
 func (s *memStore) SetDisplayName(
-	_ context.Context, scope, phone, name string, at time.Time,
+	_ context.Context, scope string, key botflota.IdentityKey, name string,
+	at time.Time,
 ) error {
-	if contact, ok := s.contacts[contactKey(scope, phone)]; ok && name != "" {
-		contact.DisplayName = name
-		contact.NameUpdatedAt = at
+	if peer, ok := s.peers[peerKey(scope, key)]; ok && name != "" {
+		peer.DisplayName = name
+		peer.NameUpdatedAt = at
 	}
 	return nil
 }
@@ -154,8 +162,8 @@ func (s *memStore) SetDisplayName(
 // SQLite store.
 func (s *memStore) List(
 	context.Context, string, time.Time, int, string,
-) (botflota.ContactPage, error) {
-	return botflota.ContactPage{}, errors.New("memstore: List is not implemented")
+) (botflota.PeerPage, error) {
+	return botflota.PeerPage{}, errors.New("memstore: List is not implemented")
 }
 
 func (s *memStore) NoteHistory(
@@ -228,13 +236,13 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 }
 
 func (s *memStore) HasProviderID(
-	_ context.Context, chatID int64, providerID string,
+	_ context.Context, target botflota.ChatTarget, providerID string,
 ) (bool, error) {
 	if providerID == "" {
 		return false, nil
 	}
 	for _, message := range s.messages {
-		if message.ChatID == chatID && message.ProviderMessageID == providerID {
+		if message.Target == target && message.ProviderMessageID == providerID {
 			return true, nil
 		}
 	}
@@ -331,12 +339,8 @@ func (s *memStore) History(
 	return out, nil
 }
 
-func (s *memStore) sessionFor(scope, bot, contact string) (*botflota.Session, error) {
-	profile, ok := s.contacts[contactKey(scope, contact)]
-	if !ok {
-		return nil, botflota.ErrNotFound
-	}
-	chat, ok := s.chats[storeKey(scope, bot, profile.ID)]
+func (s *memStore) sessionFor(scope, bot, subject string) (*botflota.Session, error) {
+	chat, ok := s.chats[storeKey(scope, bot, waTarget(subject))]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
@@ -369,7 +373,7 @@ func newTestEngine(t *testing.T, opts engine.Options) *engine.Engine {
 func outbound(t *testing.T, eng *engine.Engine, sender, text string) []string {
 	t.Helper()
 	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: sender, At: t0,
+		Bot: "support-bot", Sender: waKey(sender), Target: waTarget(sender), At: t0,
 		Content: botflota.TextContent{Body: text},
 	})
 	if err != nil {
@@ -388,7 +392,7 @@ func fixtureEngine(t *testing.T, store *memStore) *engine.Engine {
 }
 
 func fixtureEngineNotify(
-	t *testing.T, store *memStore, notify botflota.FirstContactNotifier,
+	t *testing.T, store *memStore, notify botflota.PeerFirstSeenNotifier,
 ) *engine.Engine {
 	t.Helper()
 	scope := loadScope(t)
@@ -399,7 +403,7 @@ func fixtureEngineNotify(
 		Actions:        scope.Actions,
 		Store:          store,
 		Chats:          store,
-		Contacts:       store,
+		Peers:          store,
 		Messages:       store,
 		Turn:           store,
 		Notify:         notify,
@@ -481,7 +485,7 @@ func TestSessionExpiresAndRestartsAtRoot(t *testing.T) {
 	eng := engine.New(engine.Options{
 		Bot: "support-bot", Scope: "support",
 		Graph: scope.Graphs["faq"], Actions: scope.Actions,
-		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 		Rand:           rand.New(rand.NewSource(1)),
@@ -524,7 +528,7 @@ func TestCooldownGuard(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -563,7 +567,7 @@ func TestRateLimitGuard(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 		Now: func() time.Time { return now },
 	})
 
@@ -604,7 +608,7 @@ func TestGuardStateOutlivesSessionExpiry(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 		DefaultTimeout: 300 * time.Second,
 		Now:            func() time.Time { return now },
 	})
@@ -633,20 +637,20 @@ func TestInboundKindRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph,
-		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
 	ctx := context.Background()
 	if _, err := eng.Handle(ctx, botflota.IncomingMessage{
-		FromPhone: "s", At: t0,
+		Sender: waKey("s"), Target: waTarget("s"), At: t0,
 		Content: botflota.MediaContent{Type: botflota.MediaImage},
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	profile, err := store.Get(ctx, "s", "s")
+	profile, err := store.Get(ctx, "s", waKey("s"))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	chat, err := store.Ensure(ctx, "s", "b", profile.ID, t0)
+	chat, err := store.Ensure(ctx, "s", "b", waTarget("s"), profile.ID, t0)
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -663,12 +667,12 @@ func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
 	if _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: "52155", FromName: "Ana", At: t0,
+		Bot: "support-bot", Sender: waKey("52155"), Target: waTarget("52155"), FromName: "Ana", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	profile, err := store.Get(context.Background(), "support", "52155")
+	profile, err := store.Get(context.Background(), "support", waKey("52155"))
 	if err != nil {
 		t.Fatalf("sender not persisted: %v", err)
 	}
@@ -679,8 +683,8 @@ func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 		t.Fatalf("chats = %d, want 1", len(store.chats))
 	}
 	for _, chat := range store.chats {
-		if chat.ContactID != profile.ID {
-			t.Fatalf("chat sender_id = %d, want the profile %d", chat.ContactID, profile.ID)
+		if chat.PeerID != profile.ID {
+			t.Fatalf("chat sender_id = %d, want the profile %d", chat.PeerID, profile.ID)
 		}
 	}
 }
@@ -692,11 +696,11 @@ func TestMessagesRecordedUnderChatAndSession(t *testing.T) {
 	outbound(t, eng, sender, "1")
 
 	ctx := context.Background()
-	profile, err := store.Get(ctx, "support", sender)
+	profile, err := store.Get(ctx, "support", waKey(sender))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	chat, err := store.Ensure(ctx, "support", "support-bot", profile.ID, t0)
+	chat, err := store.Ensure(ctx, "support", "support-bot", waTarget(sender), profile.ID, t0)
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -722,7 +726,7 @@ func TestMessagesRecordedUnderChatAndSession(t *testing.T) {
 func TestSenderNameFeedsTemplates(t *testing.T) {
 	actions := map[string]spec.Action{
 		"greet": {Steps: []spec.Step{{Message: &spec.Message{
-			Body: spec.Text{"hi {{contact.name}}"},
+			Body: spec.Text{"hi {{peer.name}}"},
 		}}}},
 	}
 	graph := spec.Graph{
@@ -732,15 +736,15 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 	store := newMemStore()
 	ctx := context.Background()
 	// A profile learned earlier fills the name when the message has none.
-	if _, _, err := store.RecordInbound(ctx, "s", "52155", "Ana", t0); err != nil {
+	if _, _, err := store.RecordInbound(ctx, "s", waKey("52155"), "Ana", t0); err != nil {
 		t.Fatalf("seed contact: %v", err)
 	}
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
-		Store: store, Chats: store, Contacts: store, Messages: store, Turn: store,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
 	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
-		Bot: "b", FromPhone: "52155", At: t0,
+		Bot: "b", Sender: waKey("52155"), Target: waTarget("52155"), At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
 	if err != nil {
@@ -775,7 +779,7 @@ func TestDuplicateMessageStopsBeforeTheTurn(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
 	message := botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: "5215500000000",
+		Bot: "support-bot", Sender: waKey("5215500000000"), Target: waTarget("5215500000000"),
 		ProviderMessageID: "dup-1", At: t0,
 		Content: botflota.TextContent{Body: "1"},
 	}
@@ -808,14 +812,14 @@ func TestDuplicateMessageWritesNothing(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
 	message := botflota.IncomingMessage{
-		Bot: "support-bot", FromPhone: "5215500000000",
+		Bot: "support-bot", Sender: waKey("5215500000000"), Target: waTarget("5215500000000"),
 		FromName: "Ana", ProviderMessageID: "dup-2", At: t0,
 		Content: botflota.TextContent{Body: "1"},
 	}
 	if _, err := eng.Handle(context.Background(), message); err != nil {
 		t.Fatalf("first Handle: %v", err)
 	}
-	if _, err := store.Get(context.Background(), "support", message.FromPhone); err != nil {
+	if _, err := store.Get(context.Background(), "support", message.Sender); err != nil {
 		t.Fatalf("get sender: %v", err)
 	}
 	chats, messages := len(store.chats), len(store.messages)
@@ -830,7 +834,7 @@ func TestDuplicateMessageWritesNothing(t *testing.T) {
 	if replies != nil {
 		t.Fatalf("duplicate replies = %#v, want none", replies)
 	}
-	again, err := store.Get(context.Background(), "support", message.FromPhone)
+	again, err := store.Get(context.Background(), "support", message.Sender)
 	if err != nil {
 		t.Fatalf("get sender again: %v", err)
 	}

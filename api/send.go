@@ -8,9 +8,10 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// handleSendMessage stores and queues one message from the API to a phone of
+// handleSendMessage stores and queues one message from the API to a peer of
 // one (scope, bot): no session turn, origin api, delivered by the bot's
-// outbox with the pacing of every reply (ADR 0044).
+// outbox with the pacing of every reply (ADR 0044). To is the legacy WhatsApp
+// selector of the destination conversation (ADR 0054).
 func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.scopeParam(w, r)
 	if !ok {
@@ -34,9 +35,9 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !plainDigits(body.To) {
+	if body.To == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request",
-			"to must be a phone number in plain digits")
+			"to is required")
 		return
 	}
 	if body.Body == "" {
@@ -53,8 +54,10 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			"sending is not available")
 		return
 	}
+	target := legacyWhatsAppTarget(body.To)
+	recipient := legacyWhatsAppPeer(body.To)
 	result, err := s.sends.CommitSend(r.Context(), botflota.SendRecord{
-		Scope: scope, Bot: bot, To: body.To,
+		Scope: scope, Bot: bot, Target: target, Recipient: &recipient,
 		Content:  botflota.TextContent{Body: body.Body},
 		ClientID: body.ClientID, At: time.Now(),
 	})
@@ -77,18 +80,4 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"id": result.MessageID, "status": "queued",
 	})
-}
-
-// plainDigits reports a phone number in the plain-digit form a scope keys its
-// contacts on (ADR 0020).
-func plainDigits(phone string) bool {
-	if phone == "" {
-		return false
-	}
-	for _, digit := range phone {
-		if digit < '0' || digit > '9' {
-			return false
-		}
-	}
-	return true
 }

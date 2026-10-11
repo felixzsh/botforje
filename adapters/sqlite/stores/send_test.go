@@ -13,9 +13,11 @@ func TestCommitSendCreatesContactChatAndQueue(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	result, err := db.Sends().CommitSend(ctx, botflota.SendRecord{
-		Scope: "support", Bot: "support-bot", To: "5215599999999",
-		Content:  botflota.TextContent{Body: "tu pedido está listo"},
-		ClientID: "order-1", At: t1,
+		Scope: "support", Bot: "support-bot",
+		Target:    waTarget("5215599999999"),
+		Recipient: waPeerPtr("5215599999999"),
+		Content:   botflota.TextContent{Body: "tu pedido está listo"},
+		ClientID:  "order-1", At: t1,
 	})
 	if err != nil {
 		t.Fatalf("CommitSend: %v", err)
@@ -24,7 +26,7 @@ func TestCommitSendCreatesContactChatAndQueue(t *testing.T) {
 		t.Fatalf("result = %#v, want both ids", result)
 	}
 
-	contact, err := db.Contacts().Get(ctx, "support", "5215599999999")
+	contact, err := db.Peers().Get(ctx, "support", waKey("5215599999999"))
 	if err != nil {
 		t.Fatalf("contact: %v", err)
 	}
@@ -33,7 +35,8 @@ func TestCommitSendCreatesContactChatAndQueue(t *testing.T) {
 	if !contact.FirstSeen.IsZero() || !contact.LastSeen.IsZero() {
 		t.Fatalf("contact seen = %v/%v, want zero", contact.FirstSeen, contact.LastSeen)
 	}
-	chat, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
+	chat, err := db.Chats().ForTarget(ctx, "support", "support-bot",
+		waTarget("5215599999999"))
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -71,7 +74,8 @@ func TestCommitSendCreatesContactChatAndQueue(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("queued = %d, want 1", len(entries))
 	}
-	if entries[0].ID != result.OutboxID || entries[0].Recipient != "5215599999999" ||
+	if entries[0].ID != result.OutboxID ||
+		entries[0].Target != waTarget("5215599999999") ||
 		entries[0].Origin != botflota.OriginAPI {
 		t.Fatalf("entry = %#v", entries[0])
 	}
@@ -93,8 +97,10 @@ func TestCommitSendClientIDIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	send := botflota.SendRecord{
-		Scope: "support", Bot: "support-bot", To: "5215599999999",
-		Content: botflota.TextContent{Body: "aviso"}, ClientID: "notice-7", At: t0,
+		Scope: "support", Bot: "support-bot",
+		Target:    waTarget("5215599999999"),
+		Recipient: waPeerPtr("5215599999999"),
+		Content:   botflota.TextContent{Body: "aviso"}, ClientID: "notice-7", At: t0,
 	}
 	first, err := db.Sends().CommitSend(ctx, send)
 	if err != nil {
@@ -141,21 +147,24 @@ func TestCommitSendClientIDIsIdempotent(t *testing.T) {
 func TestCommitSendKeepsTheExistingContactAndChat(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	contact, _, err := db.Contacts().RecordInbound(ctx, "support", "5215599999999", "Ana", t0)
+	contact, _, err := db.Peers().RecordInbound(ctx, "support", waKey("5215599999999"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("RecordMessage: %v", err)
 	}
-	chat, err := db.Chats().Ensure(ctx, "support", "support-bot", contact.ID, t0)
+	chat, err := db.Chats().Ensure(ctx, "support", "support-bot",
+		waTarget("5215599999999"), contact.ID, t0)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
 	if _, err := db.Sends().CommitSend(ctx, botflota.SendRecord{
-		Scope: "support", Bot: "support-bot", To: "5215599999999",
-		Content: botflota.TextContent{Body: "hola"}, At: t1,
+		Scope: "support", Bot: "support-bot",
+		Target:    waTarget("5215599999999"),
+		Recipient: waPeerPtr("5215599999999"),
+		Content:   botflota.TextContent{Body: "hola"}, At: t1,
 	}); err != nil {
 		t.Fatalf("CommitSend: %v", err)
 	}
-	got, err := db.Contacts().Get(ctx, "support", "5215599999999")
+	got, err := db.Peers().Get(ctx, "support", waKey("5215599999999"))
 	if err != nil {
 		t.Fatalf("contact: %v", err)
 	}
@@ -163,7 +172,8 @@ func TestCommitSendKeepsTheExistingContactAndChat(t *testing.T) {
 	if got.ID != contact.ID || got.DisplayName != "Ana" || !got.LastSeen.Equal(t0) {
 		t.Fatalf("contact = %#v, want the kept identity with last_seen %v", got, t0)
 	}
-	again, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
+	again, err := db.Chats().ForTarget(ctx, "support", "support-bot",
+		waTarget("5215599999999"))
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}

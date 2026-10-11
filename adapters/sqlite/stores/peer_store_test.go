@@ -13,22 +13,22 @@ import (
 func TestContactEnsureCreatesWithoutAFirstMessage(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.Contacts().Get(ctx, "support", "52155"); !errors.Is(
+	if _, err := db.Peers().Get(ctx, "support", waKey("52155")); !errors.Is(
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("Get missing = %v, want ErrNotFound", err)
 	}
-	contact, err := db.Contacts().EnsureContact(ctx, "support", "52155", t0)
+	contact, err := db.Peers().EnsurePeer(ctx, "support", waKey("52155"), t0)
 	if err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
-	if contact.ID == 0 || contact.Phone != "52155" {
+	if contact.ID == 0 || contact.Key.Subject != "52155" {
 		t.Fatalf("contact = %#v", contact)
 	}
 	if !contact.FirstSeen.IsZero() || !contact.LastSeen.IsZero() {
 		t.Fatalf("an import or API send must not set first/last seen: %#v", contact)
 	}
-	again, err := db.Contacts().EnsureContact(ctx, "support", "52155", t1)
+	again, err := db.Peers().EnsurePeer(ctx, "support", waKey("52155"), t1)
 	if err != nil {
 		t.Fatalf("Ensure again: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestContactEnsureCreatesWithoutAFirstMessage(t *testing.T) {
 func TestContactRecordMessageSetsFirstSeenOnce(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	first, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana", t0)
+	first, isFirst, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("RecordMessage: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestContactRecordMessageSetsFirstSeenOnce(t *testing.T) {
 		t.Fatalf("first_seen = %v, last_seen = %v, want %v",
 			first.FirstSeen, first.LastSeen, t0)
 	}
-	got, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "", t1)
+	got, isFirst, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "", t1)
 	if err != nil {
 		t.Fatalf("RecordMessage empty name: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestContactRecordMessageSetsFirstSeenOnce(t *testing.T) {
 	if got.DisplayName != "Ana" {
 		t.Fatalf("display_name = %q, want the kept %q", got.DisplayName, "Ana")
 	}
-	renamed, _, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana B", t2)
+	renamed, _, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "Ana B", t2)
 	if err != nil {
 		t.Fatalf("RecordMessage new name: %v", err)
 	}
@@ -78,10 +78,10 @@ func TestContactRecordMessageSetsFirstSeenOnce(t *testing.T) {
 func TestContactFirstMessageAfterAnImport(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	if _, err := db.Contacts().EnsureContact(ctx, "support", "52155", t0); err != nil {
+	if _, err := db.Peers().EnsurePeer(ctx, "support", waKey("52155"), t0); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
-	contact, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana", t1)
+	contact, isFirst, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "Ana", t1)
 	if err != nil {
 		t.Fatalf("RecordMessage: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestContactFirstMessageAfterAnImport(t *testing.T) {
 	if !contact.FirstSeen.Equal(t1) {
 		t.Fatalf("first_seen = %v, want the inbound time %v", contact.FirstSeen, t1)
 	}
-	_, isFirst, err = db.Contacts().RecordInbound(ctx, "support", "52155", "", t2)
+	_, isFirst, err = db.Peers().RecordInbound(ctx, "support", waKey("52155"), "", t2)
 	if err != nil || isFirst {
 		t.Fatalf("a second inbound = (first %v, err %v), want (false, nil)", isFirst, err)
 	}
@@ -102,60 +102,62 @@ func TestContactFirstMessageAfterAnImport(t *testing.T) {
 func TestContactFlagsAreDerived(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	contact, err := db.Contacts().EnsureContact(ctx, "support", "52155", t0)
+	contact, err := db.Peers().EnsurePeer(ctx, "support", waKey("52155"), t0)
 	if err != nil {
-		t.Fatalf("EnsureContact: %v", err)
+		t.Fatalf("EnsurePeer: %v", err)
 	}
-	got, err := db.Contacts().Get(ctx, "support", "52155")
+	got, err := db.Peers().Get(ctx, "support", waKey("52155"))
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	if got.AddressBookImported || got.HasChat || got.HasHistory {
 		t.Fatalf("flags = %#v, want both off before any relation", got)
 	}
-	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
-		Scope: "support", Bot: "support-bot", Phone: "52155",
-		Name: "Ana", UpdatedAt: t0,
+	if err := db.Directory().Put(ctx, &botflota.DirectoryEntry{
+		Scope: "support", Bot: "support-bot", PeerKey: waKey("52155"),
+		SourceIdentity: waKey("52155"), DisplayName: "Ana", UpdatedAt: t0,
 	}); err != nil {
 		t.Fatalf("Put address-book entry: %v", err)
 	}
-	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", contact.ID, t0); err != nil {
+	if _, err := db.Chats().Ensure(ctx, "support", "support-bot", waChatTarget,
+		contact.ID, t0); err != nil {
 		t.Fatalf("Ensure chat: %v", err)
 	}
-	got, err = db.Contacts().Get(ctx, "support", "52155")
+	got, err = db.Peers().Get(ctx, "support", waKey("52155"))
 	if err != nil {
 		t.Fatalf("Get after relations: %v", err)
 	}
 	if !got.AddressBookImported || !got.HasChat || got.HasHistory {
 		t.Fatalf("flags = %#v, want imported with a chat and no history", got)
 	}
-	chat, err := db.Chats().ForContact(ctx, "support", "support-bot", contact.ID)
+	chat, err := db.Chats().ForTarget(ctx, "support", "support-bot", waChatTarget)
 	if err != nil {
-		t.Fatalf("ForContact: %v", err)
+		t.Fatalf("ForTarget: %v", err)
 	}
 	if err := db.Messages().Append(ctx, &botflota.Message{
-		ChatID: chat.ID, Direction: botflota.Inbound,
+		ChatID: chat.ID, Target: chat.Target, Direction: botflota.Inbound,
 		Content: botflota.TextContent{Body: "before pairing"}, At: t0,
 		Ingest: botflota.IngestSync,
 	}); err != nil {
 		t.Fatalf("Append history: %v", err)
 	}
-	got, err = db.Contacts().Get(ctx, "support", "52155")
+	got, err = db.Peers().Get(ctx, "support", waKey("52155"))
 	if err != nil || !got.HasHistory || !got.FirstSeen.IsZero() {
 		t.Fatalf("history contact = %#v, err %v; want history, no live inbound", got, err)
 	}
 	// A book entry for another scope must not mark this identity.
-	if err := db.AddressBook().Put(ctx, &botflota.AddressBookEntry{
-		Scope: "other", Bot: "support-bot", Phone: "52155", UpdatedAt: t0,
+	if err := db.Directory().Put(ctx, &botflota.DirectoryEntry{
+		Scope: "other", Bot: "support-bot", PeerKey: waKey("52155"),
+		SourceIdentity: waKey("52155"), UpdatedAt: t0,
 	}); err != nil {
 		t.Fatalf("Put other entry: %v", err)
 	}
-	people, err := db.Contacts().List(ctx, "other", time.Time{}, 10, "")
+	people, err := db.Peers().List(ctx, "other", time.Time{}, 10, "")
 	if err != nil {
 		t.Fatalf("List other: %v", err)
 	}
-	if len(people.Contacts) != 0 {
-		t.Fatalf("other scope = %#v, want no identity", people.Contacts)
+	if len(people.Peers) != 0 {
+		t.Fatalf("other scope = %#v, want no identity", people.Peers)
 	}
 }
 
@@ -165,14 +167,14 @@ func TestContactFlagsAreDerived(t *testing.T) {
 func TestContactSameTimestampReportsFirstOnce(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	contact, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana", t0)
+	contact, isFirst, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("first RecordInbound: %v", err)
 	}
 	if !isFirst {
 		t.Fatal("the first message must report first")
 	}
-	again, isFirst, err := db.Contacts().RecordInbound(ctx, "support", "52155", "Ana", t0)
+	again, isFirst, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("second RecordInbound: %v", err)
 	}
@@ -191,22 +193,22 @@ func TestContactListPagesAnIdentityThatNeverWrote(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	for _, phone := range []string{"5215500000001", "5215500000002"} {
-		if _, err := db.Contacts().EnsureContact(ctx, "support", phone, t0); err != nil {
-			t.Fatalf("EnsureContact %s: %v", phone, err)
+		if _, err := db.Peers().EnsurePeer(ctx, "support", waKey(phone), t0); err != nil {
+			t.Fatalf("EnsurePeer %s: %v", phone, err)
 		}
 	}
-	page, err := db.Contacts().List(ctx, "support", time.Time{}, 1, "")
+	page, err := db.Peers().List(ctx, "support", time.Time{}, 1, "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(page.Contacts) != 1 || page.NextCursor == "" {
+	if len(page.Peers) != 1 || page.NextCursor == "" {
 		t.Fatalf("page = %#v, want one row and a cursor", page)
 	}
-	next, err := db.Contacts().List(ctx, "support", time.Time{}, 1, page.NextCursor)
+	next, err := db.Peers().List(ctx, "support", time.Time{}, 1, page.NextCursor)
 	if err != nil {
 		t.Fatalf("next page with an empty last_seen: %v", err)
 	}
-	if len(next.Contacts) != 1 || next.NextCursor != "" {
+	if len(next.Peers) != 1 || next.NextCursor != "" {
 		t.Fatalf("next = %#v, want the last row and no cursor", next)
 	}
 }
@@ -217,14 +219,14 @@ func TestContactListPagesAnIdentityThatNeverWrote(t *testing.T) {
 func TestContactSetDisplayName(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	contact, _, err := db.Contacts().RecordInbound(ctx, "support", "52155", "", t0)
+	contact, _, err := db.Peers().RecordInbound(ctx, "support", waKey("52155"), "", t0)
 	if err != nil {
 		t.Fatalf("RecordMessage: %v", err)
 	}
-	if err := db.Contacts().SetDisplayName(ctx, "support", "52155", "Ana", t2); err != nil {
+	if err := db.Peers().SetDisplayName(ctx, "support", waKey("52155"), "Ana", t2); err != nil {
 		t.Fatalf("SetDisplayName: %v", err)
 	}
-	got, err := db.Contacts().Get(ctx, "support", "52155")
+	got, err := db.Peers().Get(ctx, "support", waKey("52155"))
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -234,13 +236,13 @@ func TestContactSetDisplayName(t *testing.T) {
 	if !got.FirstSeen.Equal(t0) || !got.LastSeen.Equal(t0) {
 		t.Fatalf("contact times moved: %v..%v, want %v", got.FirstSeen, got.LastSeen, t0)
 	}
-	if err := db.Contacts().SetDisplayName(ctx, "support", "nobody", "X", t2); err != nil {
+	if err := db.Peers().SetDisplayName(ctx, "support", waKey("nobody"), "X", t2); err != nil {
 		t.Fatalf("SetDisplayName on a missing identity: %v", err)
 	}
-	if err := db.Contacts().SetDisplayName(ctx, "support", "52155", "Stale", t2); err != nil {
+	if err := db.Peers().SetDisplayName(ctx, "support", waKey("52155"), "Stale", t2); err != nil {
 		t.Fatalf("SetDisplayName over known name: %v", err)
 	}
-	got, err = db.Contacts().Get(ctx, "support", "52155")
+	got, err = db.Peers().Get(ctx, "support", waKey("52155"))
 	if err != nil || got.DisplayName != "Ana" || !got.NameUpdatedAt.Equal(t2) {
 		t.Fatalf("existing display name changed: contact %#v, err %v", got, err)
 	}
@@ -249,11 +251,11 @@ func TestContactSetDisplayName(t *testing.T) {
 func TestContactIsScoped(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	first, _, err := db.Contacts().RecordInbound(ctx, "a", "52155", "Ana", t0)
+	first, _, err := db.Peers().RecordInbound(ctx, "a", waKey("52155"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("RecordMessage a: %v", err)
 	}
-	second, _, err := db.Contacts().RecordInbound(ctx, "b", "52155", "Ana", t0)
+	second, _, err := db.Peers().RecordInbound(ctx, "b", waKey("52155"), "Ana", t0)
 	if err != nil {
 		t.Fatalf("RecordMessage b: %v", err)
 	}
@@ -277,40 +279,41 @@ func TestContactListPagesByLastSeen(t *testing.T) {
 		{"5215500000002", "Beto", t1, t1},
 		{"5215500000001", "Ana", t1, t3},
 	} {
-		if _, _, err := db.Contacts().RecordInbound(ctx, "support",
-			contact.phone, contact.name, contact.first); err != nil {
+		if _, _, err := db.Peers().RecordInbound(ctx, "support",
+			waKey(contact.phone), contact.name, contact.first); err != nil {
 			t.Fatalf("RecordMessage %s: %v", contact.phone, err)
 		}
 		if !contact.last.Equal(contact.first) {
-			if _, _, err := db.Contacts().RecordInbound(ctx, "support",
-				contact.phone, "", contact.last); err != nil {
+			if _, _, err := db.Peers().RecordInbound(ctx, "support",
+				waKey(contact.phone), "", contact.last); err != nil {
 				t.Fatalf("touch %s: %v", contact.phone, err)
 			}
 		}
 	}
-	if _, _, err := db.Contacts().RecordInbound(ctx, "other", "5215599999999", "Zoe", t0); err != nil {
+	if _, _, err := db.Peers().RecordInbound(ctx, "other", waKey("5215599999999"),
+		"Zoe", t0); err != nil {
 		t.Fatalf("RecordMessage other scope: %v", err)
 	}
 
-	page, err := db.Contacts().List(ctx, "support", time.Time{}, 2, "")
+	page, err := db.Peers().List(ctx, "support", time.Time{}, 2, "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(page.Contacts) != 2 ||
-		page.Contacts[0].Phone != "5215500000001" ||
-		page.Contacts[1].Phone != "5215500000002" {
-		t.Fatalf("page one = %#v", page.Contacts)
+	if len(page.Peers) != 2 ||
+		page.Peers[0].Key.Subject != "5215500000001" ||
+		page.Peers[1].Key.Subject != "5215500000002" {
+		t.Fatalf("page one = %#v", page.Peers)
 	}
 	if page.NextCursor == "" {
 		t.Fatal("a full page must carry a cursor")
 	}
 
-	next, err := db.Contacts().List(ctx, "support", time.Time{}, 2, page.NextCursor)
+	next, err := db.Peers().List(ctx, "support", time.Time{}, 2, page.NextCursor)
 	if err != nil {
 		t.Fatalf("next page: %v", err)
 	}
-	if len(next.Contacts) != 1 || next.Contacts[0].Phone != "5215500000003" {
-		t.Fatalf("page two = %#v", next.Contacts)
+	if len(next.Peers) != 1 || next.Peers[0].Key.Subject != "5215500000003" {
+		t.Fatalf("page two = %#v", next.Peers)
 	}
 	if next.NextCursor != "" {
 		t.Fatalf("last page cursor = %q, want none", next.NextCursor)
@@ -318,17 +321,17 @@ func TestContactListPagesByLastSeen(t *testing.T) {
 
 	// since filters by first_seen, so the active identity created before it is
 	// out even though its activity is the newest.
-	since, err := db.Contacts().List(ctx, "support", t1, 10, "")
+	since, err := db.Peers().List(ctx, "support", t1, 10, "")
 	if err != nil {
 		t.Fatalf("List since: %v", err)
 	}
-	if len(since.Contacts) != 2 ||
-		since.Contacts[0].Phone != "5215500000001" ||
-		since.Contacts[1].Phone != "5215500000002" {
-		t.Fatalf("since page = %#v", since.Contacts)
+	if len(since.Peers) != 2 ||
+		since.Peers[0].Key.Subject != "5215500000001" ||
+		since.Peers[1].Key.Subject != "5215500000002" {
+		t.Fatalf("since page = %#v", since.Peers)
 	}
 
-	_, err = db.Contacts().List(ctx, "support", time.Time{}, 2, "notacursor")
+	_, err = db.Peers().List(ctx, "support", time.Time{}, 2, "notacursor")
 	if !errors.Is(err, botflota.ErrInvalidCursor) {
 		t.Fatalf("bad cursor error = %v, want ErrInvalidCursor", err)
 	}

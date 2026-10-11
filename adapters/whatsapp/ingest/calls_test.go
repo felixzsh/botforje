@@ -18,7 +18,7 @@ import (
 func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, nil)
 
 	base := uint64(t0.Unix())
@@ -32,11 +32,11 @@ func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 	if stats.Imported != 1 || stats.Skipped != 0 {
 		t.Fatalf("stats = %#v, want 1 imported, 0 skipped", stats)
 	}
-	sender, err := db.Contacts().Get(ctx, "dev", "5215500000000")
+	sender, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	chat, err := db.Chats().ForContact(ctx, "dev", "bot", sender.ID)
+	chat, err := db.Chats().ForTarget(ctx, "dev", "bot", DirectTarget(sender.Key.Subject))
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestHistoryImporterStoresCallAttempts(t *testing.T) {
 func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	importer := NewHistory("dev", "bot", db.Contacts(), db.Chats(),
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
 		db.Messages(), nil, nil)
 	importer.ownPhone = "5215500000000"
 	call := &waSyncAction.CallLogRecord{
@@ -77,11 +77,11 @@ func TestHistoryImporterStoresAccountCallLogs(t *testing.T) {
 	if stats.Imported != 1 || stats.Received != 1 || stats.Skipped != 0 {
 		t.Fatalf("stats = %#v, want one imported call", stats)
 	}
-	sender, err := db.Contacts().Get(ctx, "dev", "5215500000001")
+	sender, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000001"))
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	chat, err := db.Chats().ForContact(ctx, "dev", "bot", sender.ID)
+	chat, err := db.Chats().ForTarget(ctx, "dev", "bot", DirectTarget(sender.Key.Subject))
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}

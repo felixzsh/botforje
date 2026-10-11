@@ -35,11 +35,11 @@ type PairOptions struct {
 	Scope    string
 	Bot      string
 	Devices  *Devices
-	Accounts botflota.LinkedAccountStore
+	Bindings botflota.BindingStore
 	Pairings botflota.PairingStore
-	// Contacts, Chats, and Messages are all required to import the history
+	// Peers, Chats, and Messages are all required to import the history
 	// sync; the fleet connection imports what this session misses (ADR 0035).
-	Contacts botflota.ContactStore
+	Peers    botflota.PeerStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
 	// History stores whatever WhatsApp delivers while the pairing connection
@@ -49,8 +49,8 @@ type PairOptions struct {
 	// for it; without it only the default recent window arrives and `chat
 	// sync` pages older messages per chat (ADR 0035).
 	FullHistory bool
-	// AddressBook receives the imported book when ImportContacts is on.
-	AddressBook botflota.AddressBookStore
+	// Directory receives the imported book when ImportContacts is on.
+	Directory botflota.DirectoryStore
 	// ImportContacts is off by default: the book may hold people this account
 	// never wrote to.
 	ImportContacts bool
@@ -78,9 +78,10 @@ type PairOptions struct {
 }
 
 // PairResult is what a successful pairing produced; the command prints it as
-// the result instead of the log stream (ADR 0038).
+// the result instead of the log stream (ADR 0038). Identity is the normalized
+// own identity; the device locator stays in the device store (ADR 0051).
 type PairResult struct {
-	JID         string
+	Identity    botflota.IdentityKey
 	History     ingest.ImportTotals
 	AddressBook int
 	Elapsed     time.Duration
@@ -94,12 +95,12 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	if opts.Devices == nil {
 		return PairResult{}, errors.New("whatsapp: no device store")
 	}
-	if err := ValidateAccountOwners(ctx, opts.Accounts); err != nil {
+	if err := ValidateAccountOwners(ctx, opts.Bindings); err != nil {
 		return PairResult{}, err
 	}
-	account, err := opts.Accounts.Get(ctx, opts.Scope, opts.Bot)
+	account, err := opts.Bindings.Get(ctx, opts.Scope, opts.Bot)
 	if err == nil && !opts.Force {
-		return PairResult{JID: account.JID}, nil
+		return PairResult{Identity: account.Identity}, nil
 	} else if err != nil && !errors.Is(err, botflota.ErrNotFound) {
 		return PairResult{}, err
 	}
@@ -126,7 +127,7 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	applyDeviceName(opts.DeviceName)
 	configureHistorySync(opts.FullHistory)
 	if account != nil {
-		if err := removePairing(ctx, opts.Devices, opts.Accounts, opts.Pairings,
+		if err := removePairing(ctx, opts.Devices, opts.Bindings, opts.Pairings,
 			opts.Outbox, account, PairingNow(opts.Now)); err != nil {
 			return PairResult{}, err
 		}
@@ -183,12 +184,17 @@ func pairOnce(
 			case whatsmeow.QRChannelEventCode:
 				render(item.Code)
 			case whatsmeow.QRChannelSuccess.Event:
-				jid, err := saveAccount(ctx, opts, client)
+				identity, err := saveAccount(ctx, opts, client)
 				if err != nil {
 					return PairResult{}, false, err
 				}
 				if opts.OnSaved != nil {
 					opts.OnSaved()
+				}
+				// The account identity is only known now, so the directory import
+				// records it as the source of every entry it stores (ADR 0051).
+				if contactImport != nil {
+					contactImport.SetSource(identity)
 				}
 				confirmLink(client, logger)
 				if historyWaiter != nil {
@@ -202,7 +208,7 @@ func pairOnce(
 							"complete", historyWaiter.finished())
 					}
 				}
-				result := PairResult{JID: jid}
+				result := PairResult{Identity: identity}
 				if historyImporter != nil {
 					result.History = historyImporter.Totals()
 				}
@@ -245,10 +251,10 @@ func waitForPairingRetry(ctx context.Context) error {
 func removePairing(
 	ctx context.Context,
 	devices *Devices,
-	accounts botflota.LinkedAccountStore,
+	accounts botflota.BindingStore,
 	pairings botflota.PairingStore,
 	outbox botflota.OutboxStore,
-	account *botflota.LinkedAccount,
+	account *botflota.Binding,
 	changedAt time.Time,
 ) error {
 	if outbox == nil {
@@ -317,28 +323,33 @@ func waitUntilDisconnected(client *whatsmeow.Client, timeout time.Duration) bool
 	return false
 }
 
-func saveAccount(ctx context.Context, opts PairOptions, client *whatsmeow.Client) (string, error) {
+func saveAccount(
+	ctx context.Context, opts PairOptions, client *whatsmeow.Client,
+) (botflota.IdentityKey, error) {
 	if client.Store == nil || client.Store.ID == nil {
-		return "", errors.New("whatsapp: pairing finished without an account id")
+		return botflota.IdentityKey{},
+			errors.New("whatsapp: pairing finished without an account id")
 	}
 	jid := client.Store.ID.String()
-	phone := Number(jid)
-	if err := ensurePhoneAvailable(ctx, opts.Accounts, phone, opts.Scope, opts.Bot); err != nil {
+	identity := ingest.PeerKey(Number(jid))
+	if err := ensurePhoneAvailable(ctx, opts.Bindings, identity, opts.Scope, opts.Bot); err != nil {
 		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
-			return "", fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
+			return botflota.IdentityKey{},
+				fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
 		}
-		return "", err
+		return botflota.IdentityKey{}, err
 	}
-	account := &botflota.LinkedAccount{Scope: opts.Scope, Bot: opts.Bot, JID: jid}
-	if err := opts.Accounts.Put(ctx, account); err != nil {
+	account := &botflota.Binding{Scope: opts.Scope, Bot: opts.Bot, Identity: identity}
+	if err := opts.Bindings.Put(ctx, account); err != nil {
 		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
-			return "", fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
+			return botflota.IdentityKey{},
+				fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
 		}
-		return "", err
+		return botflota.IdentityKey{}, err
 	}
 	if err := UpdatePairingStatus(ctx, opts.Pairings, opts.Scope, opts.Bot,
 		botflota.PairingPaired, PairingNow(opts.Now)); err != nil {
-		return "", err
+		return botflota.IdentityKey{}, err
 	}
-	return jid, nil
+	return identity, nil
 }

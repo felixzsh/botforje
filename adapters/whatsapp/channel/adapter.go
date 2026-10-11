@@ -45,22 +45,22 @@ type Settings struct {
 	Jitter time.Duration
 }
 
-// Options requires Bot, Scope, Devices, Accounts, and Pairings.
+// Options requires Bot, Scope, Devices, Bindings, and Pairings.
 type Options struct {
 	Scope    string
 	Bot      string
 	Devices  *whatsapp.Devices
-	Accounts botflota.LinkedAccountStore
+	Bindings botflota.BindingStore
 	Pairings botflota.PairingStore
-	// Contacts, Chats, and Messages are all required to import the account-wide
+	// Peers, Chats, and Messages are all required to import the account-wide
 	// history sync WhatsApp delivers after linking.
-	Contacts botflota.ContactStore
+	Peers    botflota.PeerStore
 	Chats    botflota.ChatStore
 	Messages botflota.MessageStore
 	// History enables the inert import of that sync (ADR 0035).
 	History bool
-	// AddressBook receives the imported book when ImportContacts is on.
-	AddressBook botflota.AddressBookStore
+	// Directory receives the imported book when ImportContacts is on.
+	Directory botflota.DirectoryStore
 	// ImportContacts is off by default: the book may hold people this account
 	// never wrote to.
 	ImportContacts bool
@@ -86,7 +86,7 @@ type Options struct {
 type Adapter struct {
 	scope    string
 	bot      string
-	accounts botflota.LinkedAccountStore
+	bindings botflota.BindingStore
 	pairings botflota.PairingStore
 	devices  *whatsapp.Devices
 	settings Settings
@@ -103,9 +103,9 @@ type Adapter struct {
 	incoming chan botflota.IncomingMessage
 	// outbound carries live messages that left the account outside Botflota,
 	// so the fleet can hand the chat to a human (ADR 0043).
-	outbound chan botflota.OutboundMessage
+	outbound chan botflota.ExternalSend
 
-	contacts        botflota.ContactStore
+	peers           botflota.PeerStore
 	chats           botflota.ChatStore
 	messages        botflota.MessageStore
 	importer        *ingest.HistoryImporter
@@ -172,7 +172,7 @@ func New(opts Options) (*Adapter, error) {
 	a := &Adapter{
 		scope:     opts.Scope,
 		bot:       opts.Bot,
-		accounts:  opts.Accounts,
+		bindings:  opts.Bindings,
 		pairings:  opts.Pairings,
 		devices:   opts.Devices,
 		settings:  opts.Settings,
@@ -184,11 +184,11 @@ func New(opts Options) (*Adapter, error) {
 		rnd:       rnd,
 		sleep:     opts.Sleep,
 		onState:   opts.OnState,
-		contacts:  opts.Contacts,
+		peers:     opts.Peers,
 		chats:     opts.Chats,
 		messages:  opts.Messages,
 		incoming:  make(chan botflota.IncomingMessage, queue),
-		outbound:  make(chan botflota.OutboundMessage, queue),
+		outbound:  make(chan botflota.ExternalSend, queue),
 		state:     StateStopped,
 		seen:      newDedup(2048),
 		sentIDs:   newDedup(2048),
@@ -199,10 +199,10 @@ func New(opts Options) (*Adapter, error) {
 	}
 	if opts.ImportContacts {
 		a.addressBook = ingest.NewAddressBook(
-			a.scope, a.bot, opts.Contacts, opts.AddressBook, a.lookupPN, log)
+			a.scope, a.bot, opts.Peers, opts.Directory, a.lookupPN, log)
 	}
 	if opts.History {
-		a.importer = ingest.NewHistory(a.scope, a.bot, opts.Contacts, opts.Chats,
+		a.importer = ingest.NewHistory(a.scope, a.bot, opts.Peers, opts.Chats,
 			opts.Messages, a.lookupPN, log)
 		if a.importer != nil {
 			a.history = make(chan *events.HistorySync, 16)
@@ -215,7 +215,7 @@ func New(opts Options) (*Adapter, error) {
 }
 
 func (a *Adapter) Connect(ctx context.Context) error {
-	account, err := a.accounts.Get(ctx, a.scope, a.bot)
+	account, err := a.bindings.Get(ctx, a.scope, a.bot)
 	if err != nil {
 		return fmt.Errorf("whatsapp: bot %q is not paired (use bot pair): %w", a.bot, err)
 	}
@@ -238,6 +238,9 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	client.AddEventHandler(a.handleEvent)
 	if a.importer != nil {
 		a.importer.SetOwnPhone(whatsapp.DevicePhone(device))
+	}
+	if a.addressBook != nil {
+		a.addressBook.SetSource(ingest.PeerKey(whatsapp.DevicePhone(device)))
 	}
 
 	a.mu.Lock()
@@ -270,7 +273,7 @@ func (a *Adapter) Disconnect(context.Context) error {
 
 func (a *Adapter) Incoming() <-chan botflota.IncomingMessage { return a.incoming }
 
-func (a *Adapter) Outbound() <-chan botflota.OutboundMessage { return a.outbound }
+func (a *Adapter) Outbound() <-chan botflota.ExternalSend { return a.outbound }
 
 // markSent remembers an id this adapter sent, so its echo is not mistaken for
 // an operator reply (ADR 0043).
@@ -342,7 +345,7 @@ func (a *Adapter) logPairingStatusError(err error) {
 	}
 }
 
-func missingDeviceError(account *botflota.LinkedAccount) error {
+func missingDeviceError(account *botflota.Binding) error {
 	return fmt.Errorf(
 		"whatsapp: bot %q (scope %q) has no local device credentials; "+
 			"use bot pair",

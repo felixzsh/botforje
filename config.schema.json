@@ -77,16 +77,13 @@
         "max_messages_per_minute": {
           "type": "integer"
         },
-        "ignore_groups": {
-          "type": "boolean"
-        },
-        "allowed_contacts": {
+        "allowed_peers": {
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "ignored_contacts": {
+        "ignored_peers": {
           "items": {
             "type": "string"
           },
@@ -98,7 +95,7 @@
         },
         "import_contacts": {
           "type": "boolean",
-          "description": "ImportContacts copies the linked account's address book into the\ninstance's own contacts, keyed by (scope, bot, phone). It defaults to\nfalse: the book may hold people this account never wrote to, and it can\noverlap with the address book of a personal account on the same phone."
+          "description": "ImportContacts copies the linked account's address book into the\ninstance's own directory, keyed by (scope, bot, peer identity). It\ndefaults to false: the book may hold people this account never wrote to,\nand it can overlap with the address book of a personal account on the\nsame phone."
         },
         "external_reply_pause": {
           "type": "integer",

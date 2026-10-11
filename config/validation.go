@@ -116,7 +116,7 @@ func validateScopeTemplates(cfg *Config, scopeName string, scope spec.Scope, add
 
 // webhookEvents is the outbound event vocabulary an instance may subscribe to
 // (ADR 0045).
-var webhookEvents = map[string]bool{botflota.EventContactFirstSeen: true}
+var webhookEvents = map[string]bool{botflota.EventPeerFirstSeen: true}
 
 // validateWebhooks checks the instance-level webhook list: an absolute http or
 // https URL, a signing secret, and known event names, with no URL repeated

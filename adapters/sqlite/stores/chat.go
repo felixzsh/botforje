@@ -14,32 +14,80 @@ type ChatStore struct{ db dbtx }
 
 func NewChatStore(db *sql.DB) *ChatStore { return &ChatStore{db: db} }
 
-const chatColumns = `id, scope, bot, contact_id, started_at, updated_at, message_count, guards`
+const chatColumns = `id, scope, bot, provider, kind, thread, topic, peer_id,
+	started_at, updated_at, message_count, guards`
 
+// Ensure creates or finds the chat of one complete target. A nonzero peerID
+// is explicit known participant evidence: it must resolve under the same scope
+// and provider, an absent reference is filled with it, and a conflicting known
+// participant is rejected instead of silently rewritten (ADR 0051).
 func (s *ChatStore) Ensure(
-	ctx context.Context, scope, bot string, contactID int64, at time.Time,
+	ctx context.Context, scope, bot string, target botflota.ChatTarget,
+	peerID int64, at time.Time,
 ) (*botflota.Chat, error) {
+	if !target.Valid() {
+		return nil, errors.New("sqlite: chat target needs provider, kind, and thread")
+	}
+	if peerID != 0 {
+		if err := s.checkPeer(ctx, scope, target.Provider, peerID); err != nil {
+			return nil, err
+		}
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO chats (scope, bot, contact_id, started_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT (scope, bot, contact_id) DO NOTHING`,
-		scope, bot, contactID, formatTime(at), formatTime(at))
+		`INSERT INTO chats
+		   (scope, bot, provider, kind, thread, topic, peer_id, started_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (scope, bot, provider, kind, thread, topic) DO NOTHING`,
+		scope, bot, target.Provider, string(target.Kind), target.Thread, target.Topic,
+		nullableID(peerID), formatTime(at), formatTime(at))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
 	}
-	chat, err := s.ForContact(ctx, scope, bot, contactID)
+	chat, err := s.ForTarget(ctx, scope, bot, target)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: ensure chat: %w", err)
 	}
+	if peerID == 0 || chat.PeerID == peerID {
+		return chat, nil
+	}
+	if chat.PeerID != 0 {
+		return nil, fmt.Errorf("%w: chat %d", botflota.ErrParticipantConflict, chat.ID)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		"UPDATE chats SET peer_id = ? WHERE id = ? AND peer_id IS NULL",
+		peerID, chat.ID); err != nil {
+		return nil, fmt.Errorf("sqlite: attach chat participant: %w", err)
+	}
+	chat.PeerID = peerID
 	return chat, nil
 }
 
-func (s *ChatStore) ForContact(
-	ctx context.Context, scope, bot string, contactID int64,
+// checkPeer rejects a participant that does not belong to the chat's scope and
+// provider.
+func (s *ChatStore) checkPeer(
+	ctx context.Context, scope, provider string, peerID int64,
+) error {
+	var exists bool
+	err := s.db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM peers
+		 WHERE id = ? AND scope = ? AND provider = ?)`,
+		peerID, scope, provider).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("sqlite: check chat participant: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("%w: peer %d", botflota.ErrNotFound, peerID)
+	}
+	return nil
+}
+
+func (s *ChatStore) ForTarget(
+	ctx context.Context, scope, bot string, target botflota.ChatTarget,
 ) (*botflota.Chat, error) {
 	row := s.db.QueryRowContext(ctx,
-		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ? AND contact_id = ?",
-		scope, bot, contactID)
+		"SELECT "+chatColumns+" FROM chats WHERE scope = ? AND bot = ?"+
+			" AND provider = ? AND kind = ? AND thread = ? AND topic = ?",
+		scope, bot, target.Provider, string(target.Kind), target.Thread, target.Topic)
 	chat, err := scanChat(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, botflota.ErrNotFound
@@ -59,10 +107,12 @@ func (s *ChatStore) Recent(
 	if limit <= 0 {
 		limit = -1
 	}
-	const query = `SELECT c.id, c.scope, c.bot, c.contact_id, c.started_at,
-			c.updated_at, c.message_count, c.guards, s.phone, s.display_name,
+	const query = `SELECT c.id, c.scope, c.bot, c.provider, c.kind, c.thread,
+			c.topic, c.peer_id, c.started_at, c.updated_at, c.message_count,
+			c.guards, COALESCE(p.provider, ''), COALESCE(p.subject, ''),
+			COALESCE(p.display_name, ''),
 			COALESCE(m.total, 0), COALESCE(m.sync, 0), COALESCE(m.live, 0)
-		FROM chats c JOIN contacts s ON s.id = c.contact_id
+		FROM chats c LEFT JOIN peers p ON p.id = c.peer_id
 		LEFT JOIN (
 			SELECT chat_id, COUNT(*) AS total,
 			       SUM(ingest_kind = 'sync') AS sync,
@@ -82,12 +132,18 @@ func (s *ChatStore) Recent(
 			summary              botflota.ChatSummary
 			startedAt, updatedAt string
 			guards               string
+			peerID               sql.NullInt64
 		)
 		if err := rows.Scan(&summary.ID, &summary.Scope, &summary.Bot,
-			&summary.ContactID, &startedAt, &updatedAt, &summary.MessageCount,
-			&guards, &summary.Phone, &summary.DisplayName,
+			&summary.Target.Provider, &summary.Target.Kind, &summary.Target.Thread,
+			&summary.Target.Topic, &peerID, &startedAt, &updatedAt,
+			&summary.MessageCount, &guards, &summary.PeerKey.Provider,
+			&summary.PeerKey.Subject, &summary.DisplayName,
 			&summary.Messages, &summary.Sync, &summary.Live); err != nil {
 			return nil, err
+		}
+		if peerID.Valid {
+			summary.PeerID = peerID.Int64
 		}
 		summary.StartedAt = parseTime(startedAt)
 		summary.UpdatedAt = parseTime(updatedAt)
@@ -102,12 +158,19 @@ func (s *ChatStore) Recent(
 func scanChat(row interface{ Scan(...any) error }) (*botflota.Chat, error) {
 	var (
 		chat                 botflota.Chat
+		kind                 string
+		peerID               sql.NullInt64
 		startedAt, updatedAt string
 		guards               string
 	)
-	if err := row.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.ContactID,
+	if err := row.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.Target.Provider,
+		&kind, &chat.Target.Thread, &chat.Target.Topic, &peerID,
 		&startedAt, &updatedAt, &chat.MessageCount, &guards); err != nil {
 		return nil, err
+	}
+	chat.Target.Kind = botflota.ChatKind(kind)
+	if peerID.Valid {
+		chat.PeerID = peerID.Int64
 	}
 	chat.StartedAt = parseTime(startedAt)
 	chat.UpdatedAt = parseTime(updatedAt)
@@ -167,4 +230,13 @@ func (s *ChatStore) SaveGuards(
 		return fmt.Errorf("sqlite: save guards: %w", err)
 	}
 	return nil
+}
+
+// nullableID maps the core's zero-means-absent convention onto SQLite NULL, so
+// an unknown participant is never a fabricated row (ADR 0051).
+func nullableID(id int64) any {
+	if id == 0 {
+		return nil
+	}
+	return id
 }

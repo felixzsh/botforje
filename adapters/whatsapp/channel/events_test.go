@@ -28,8 +28,10 @@ func TestOnMessageMapsAndDedups(t *testing.T) {
 			botflota.ContentText(message.Content) != "hello" {
 			t.Fatalf("message = %#v", message)
 		}
-		if message.FromPhone != "5215500000000" {
-			t.Fatalf("sender = %q, want the plain phone number", message.FromPhone)
+		if message.Sender != waKey("5215500000000") ||
+			message.Target != waTarget("5215500000000") {
+			t.Fatalf("sender/target = %#v / %#v, want the normalized pair",
+				message.Sender, message.Target)
 		}
 		if message.FromName != "Ana" {
 			t.Fatalf("sender name = %q, want the push name", message.FromName)
@@ -96,7 +98,7 @@ func TestOnOwnMessageReportsExternalReply(t *testing.T) {
 
 	select {
 	case out := <-a.outbound:
-		if out.RecipientPhone != "5215500000000" ||
+		if out.Target != waTarget("5215500000000") ||
 			botflota.ContentText(out.Content) != "lo veo yo" {
 			t.Fatalf("outbound = %#v", out)
 		}
@@ -160,14 +162,14 @@ func TestOnHistoryWithoutImporterIsInert(t *testing.T) {
 func TestLoggedOutPersistsUnpairedStatus(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
-	account := &botflota.LinkedAccount{
-		Scope: "dev", Bot: "bot", JID: "5215500000000:1@s.whatsapp.net",
+	account := &botflota.Binding{
+		Scope: "dev", Bot: "bot", Identity: waKey("5215500000000"),
 	}
-	if err := db.LinkedAccounts().Put(ctx, account); err != nil {
+	if err := db.Bindings().Put(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	a := &Adapter{
-		scope: "dev", bot: "bot", accounts: db.LinkedAccounts(),
+		scope: "dev", bot: "bot", bindings: db.Bindings(),
 		pairings: db.Pairings(), state: StateConnected,
 		stop: make(chan struct{}), log: botflota.DiscardLogger(), now: func() time.Time { return t1 },
 	}
@@ -185,7 +187,7 @@ func newTestAdapter() *Adapter {
 	return &Adapter{
 		bot:      "support-bot",
 		incoming: make(chan botflota.IncomingMessage, 4),
-		outbound: make(chan botflota.OutboundMessage, 4),
+		outbound: make(chan botflota.ExternalSend, 4),
 		seen:     newDedup(8),
 		sentIDs:  newDedup(8),
 		last:     map[string]lastInbound{},

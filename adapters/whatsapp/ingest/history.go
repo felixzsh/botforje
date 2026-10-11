@@ -22,7 +22,7 @@ import (
 type HistoryImporter struct {
 	scope     string
 	bot       string
-	contacts  botflota.ContactStore
+	peers     botflota.PeerStore
 	chats     botflota.ChatStore
 	messages  botflota.MessageStore
 	lookup    PNLookup
@@ -43,17 +43,17 @@ type HistoryImporter struct {
 // treat the import as disabled.
 func NewHistory(
 	scope, bot string,
-	contacts botflota.ContactStore, chats botflota.ChatStore,
+	peers botflota.PeerStore, chats botflota.ChatStore,
 	messages botflota.MessageStore, lookup PNLookup, log *slog.Logger,
 ) *HistoryImporter {
-	if contacts == nil || chats == nil || messages == nil {
+	if peers == nil || chats == nil || messages == nil {
 		return nil
 	}
 	if log == nil {
 		log = botflota.DiscardLogger()
 	}
 	return &HistoryImporter{
-		scope: scope, bot: bot, contacts: contacts, chats: chats,
+		scope: scope, bot: bot, peers: peers, chats: chats,
 		messages: messages, lookup: lookup, log: log, now: time.Now,
 		pushNames: map[string]string{},
 	}
@@ -202,7 +202,7 @@ func (h *HistoryImporter) importPushNames(
 		}
 		h.pushNames[phone] = name
 		stats.PushNames++
-		if err := h.contacts.SetDisplayName(ctx, h.scope, phone, name, at); err != nil {
+		if err := h.peers.SetDisplayName(ctx, h.scope, PeerKey(phone), name, at); err != nil {
 			h.log.Warn("import history push name", "error", err)
 		}
 	}
@@ -269,16 +269,18 @@ func (h *HistoryImporter) importConversation(
 	if ensureAt.IsZero() {
 		ensureAt = h.now().UTC()
 	}
-	contact, err := h.contacts.EnsureContact(ctx, h.scope, phone, ensureAt)
+	key := PeerKey(phone)
+	target := DirectTarget(phone)
+	peer, err := h.peers.EnsurePeer(ctx, h.scope, key, ensureAt)
 	if err != nil {
-		return 0, 0, skipped, received, fmt.Errorf("contact %s: %w", phone, err)
+		return 0, 0, skipped, received, fmt.Errorf("peer %s: %w", phone, err)
 	}
 	if name != "" {
-		if err := h.contacts.SetDisplayName(ctx, h.scope, phone, name, ensureAt); err != nil {
-			return 0, 0, skipped, received, fmt.Errorf("contact name %s: %w", phone, err)
+		if err := h.peers.SetDisplayName(ctx, h.scope, key, name, ensureAt); err != nil {
+			return 0, 0, skipped, received, fmt.Errorf("peer name %s: %w", phone, err)
 		}
 	}
-	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, contact.ID, ensureAt)
+	chat, err := h.chats.Ensure(ctx, h.scope, h.bot, target, peer.ID, ensureAt)
 	if err != nil {
 		return 0, 0, skipped, received, fmt.Errorf("chat %s: %w", phone, err)
 	}
@@ -288,6 +290,7 @@ func (h *HistoryImporter) importConversation(
 	imported, duplicate := 0, 0
 	for i := range records {
 		records[i].ChatID = chat.ID
+		records[i].Target = target
 		if err := h.messages.Append(ctx, &records[i]); err != nil {
 			if errors.Is(err, botflota.ErrDuplicate) {
 				duplicate++

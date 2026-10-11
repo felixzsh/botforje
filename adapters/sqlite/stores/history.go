@@ -31,7 +31,7 @@ func (s *HistoryStore) ReadHistory(
 		{botflota.TableChats, readHistoryChats},
 		{botflota.TableSessions, readHistorySessions},
 		{botflota.TableMessages, readHistoryMessages},
-		{botflota.TableAddressBook, readHistoryAddressBook},
+		{botflota.TableDirectory, readHistoryDirectory},
 	} {
 		if err := sink.BeginTable(table.name); err != nil {
 			return err
@@ -43,8 +43,8 @@ func (s *HistoryStore) ReadHistory(
 	return nil
 }
 
-// readHistoryChats carries the contact's phone and name, which the scope owns
-// and keeps, so the exported file can be read without them (ADR 0029).
+// readHistoryChats carries the peer's key and name, which the scope owns and
+// keeps, so the exported file can be read without them (ADR 0029).
 func readHistoryChats(
 	ctx context.Context, tx *sql.Tx, scope, bot string, sink botflota.HistorySink,
 ) error {
@@ -52,8 +52,9 @@ func readHistoryChats(
 	// list stays unqualified and cannot drift from the chat store's.
 	rows, err := tx.QueryContext(ctx,
 		`SELECT `+chatColumns+`,
-			(SELECT phone FROM contacts WHERE contacts.id = chats.contact_id),
-			(SELECT display_name FROM contacts WHERE contacts.id = chats.contact_id)
+			(SELECT provider FROM peers WHERE peers.id = chats.peer_id),
+			(SELECT subject FROM peers WHERE peers.id = chats.peer_id),
+			(SELECT display_name FROM peers WHERE peers.id = chats.peer_id)
 		 FROM chats WHERE chats.scope = ? AND chats.bot = ? ORDER BY chats.id`,
 		scope, bot)
 	if err != nil {
@@ -78,15 +79,29 @@ func readHistoryChats(
 func scanHistoryChat(rows *sql.Rows) (botflota.HistoryChat, error) {
 	var (
 		chat                 botflota.HistoryChat
+		kind                 string
+		peerID               sql.NullInt64
 		startedAt, updatedAt string
 		guards               string
+		peerProvider         sql.NullString
+		peerSubject          sql.NullString
+		peerName             sql.NullString
 	)
-	err := rows.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.ContactID,
+	err := rows.Scan(&chat.ID, &chat.Scope, &chat.Bot, &chat.Target.Provider,
+		&kind, &chat.Target.Thread, &chat.Target.Topic, &peerID,
 		&startedAt, &updatedAt, &chat.MessageCount, &guards,
-		&chat.ContactPhone, &chat.ContactName)
+		&peerProvider, &peerSubject, &peerName)
 	if err != nil {
 		return botflota.HistoryChat{}, err
 	}
+	chat.Target.Kind = botflota.ChatKind(kind)
+	if peerID.Valid {
+		chat.PeerID = peerID.Int64
+	}
+	chat.PeerKey = botflota.IdentityKey{
+		Provider: peerProvider.String, Subject: peerSubject.String,
+	}
+	chat.PeerName = peerName.String
 	chat.StartedAt, chat.UpdatedAt = parseTime(startedAt), parseTime(updatedAt)
 	if err := decodeJSON(guards, &chat.Guards); err != nil {
 		return botflota.HistoryChat{}, fmt.Errorf("sqlite: decode guards: %w", err)
@@ -146,40 +161,43 @@ func readHistoryMessages(
 	return nil
 }
 
-func readHistoryAddressBook(
+func readHistoryDirectory(
 	ctx context.Context, tx *sql.Tx, scope, bot string, sink botflota.HistorySink,
 ) error {
 	rows, err := tx.QueryContext(ctx,
-		`SELECT `+addressBookColumns+` FROM bot_contacts
-		 WHERE scope = ? AND bot = ? ORDER BY phone`, scope, bot)
+		`SELECT `+directoryColumns+` FROM directory_entries
+		 WHERE scope = ? AND bot = ?
+		 ORDER BY provider, subject, source_provider, source_subject`, scope, bot)
 	if err != nil {
-		return fmt.Errorf("sqlite: read history address book: %w", err)
+		return fmt.Errorf("sqlite: read history directory: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
-		entry, err := scanHistoryAddressBook(rows)
+		entry, err := scanHistoryDirectory(rows)
 		if err != nil {
-			return fmt.Errorf("sqlite: read history address book: %w", err)
+			return fmt.Errorf("sqlite: read history directory: %w", err)
 		}
-		if err := sink.AddressBookEntry(entry); err != nil {
+		if err := sink.DirectoryEntry(entry); err != nil {
 			return err
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("sqlite: read history address book: %w", err)
+		return fmt.Errorf("sqlite: read history directory: %w", err)
 	}
 	return nil
 }
 
-func scanHistoryAddressBook(rows *sql.Rows) (botflota.AddressBookEntry, error) {
+func scanHistoryDirectory(rows *sql.Rows) (botflota.DirectoryEntry, error) {
 	var (
-		entry     botflota.AddressBookEntry
+		entry     botflota.DirectoryEntry
 		updatedAt string
 	)
-	err := rows.Scan(&entry.Scope, &entry.Bot, &entry.Phone, &entry.Name,
-		&entry.PushName, &entry.BusinessName, &updatedAt)
+	err := rows.Scan(&entry.Scope, &entry.Bot,
+		&entry.PeerKey.Provider, &entry.PeerKey.Subject,
+		&entry.SourceIdentity.Provider, &entry.SourceIdentity.Subject,
+		&entry.DisplayName, &updatedAt)
 	if err != nil {
-		return botflota.AddressBookEntry{}, err
+		return botflota.DirectoryEntry{}, err
 	}
 	entry.UpdatedAt = parseTime(updatedAt)
 	return entry, nil
