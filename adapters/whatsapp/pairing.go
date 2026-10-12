@@ -217,11 +217,43 @@ func (m *PairManager) BeginSetup(
 	if err != nil {
 		return nil, err
 	}
-	now := m.opts.Now().UTC()
-	pairCtx, cancel := context.WithCancel(context.Background())
 	botRef := botflota.BotRef{Scope: scope, Bot: bot}
+	// The exclusion comes before any clock read: a begin that waits
+	// behind a detach must start with a fresh window, never with an
+	// expiry computed before the wait and a timer that already fired.
+	botLock := m.botLock(botRef)
+	botLock.Lock()
+	defer botLock.Unlock()
+
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, errPairingClosed
+	}
+	now := m.opts.Now().UTC()
+	m.sweepLocked(now)
+	if current, ok := m.sessions[botRef]; ok {
+		if current.requestKey == key {
+			m.mu.Unlock()
+			if current.sameBegin(req) {
+				m.mu.Lock()
+				published := m.publishLocked(current)
+				m.mu.Unlock()
+				return published, nil
+			}
+			return nil, botflota.ErrConflict
+		}
+		if !vacant(current) {
+			m.mu.Unlock()
+			return nil, botflota.ErrBusy
+		}
+	}
 	// The begin exclusion also covers detach: no new session slips
-	// between a detach's wait and its removal.
+	// between a detach's wait and its removal. The session, its times,
+	// and its expiry timer are created and registered together under
+	// the same lock, before the worker launches.
+	now = m.opts.Now().UTC()
+	pairCtx, cancel := context.WithCancel(context.Background())
 	session := &pairingSession{
 		neutral: botflota.SetupSession{
 			Bot: botRef, ID: m.opts.ID(), Method: SetupMethodQR, Mode: AccountMode,
@@ -234,44 +266,10 @@ func (m *PairManager) BeginSetup(
 		inputKeys:   make(map[string]int64),
 		ctx:         pairCtx, cancel: cancel, closed: make(chan struct{}),
 	}
-	// The timer exists before the session is visible, so no reader can find
-	// a session without one.
+	m.sessions[botRef] = session
 	session.timer = time.AfterFunc(m.opts.Lifetime, func() {
 		m.expire(botRef, session)
 	})
-
-	botLock := m.botLock(botRef)
-	botLock.Lock()
-	defer botLock.Unlock()
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
-		session.timer.Stop()
-		cancel()
-		return nil, errPairingClosed
-	}
-	m.sweepLocked(now)
-	if current, ok := m.sessions[botRef]; ok {
-		if current.requestKey == key {
-			m.mu.Unlock()
-			session.timer.Stop()
-			cancel()
-			if current.sameBegin(req) {
-				m.mu.Lock()
-				published := m.publishLocked(current)
-				m.mu.Unlock()
-				return published, nil
-			}
-			return nil, botflota.ErrConflict
-		}
-		if !vacant(current) {
-			m.mu.Unlock()
-			session.timer.Stop()
-			cancel()
-			return nil, botflota.ErrBusy
-		}
-	}
-	m.sessions[botRef] = session
 	// Publish before releasing the same lock Close uses to set m.closed;
 	// Close waits this session even before its goroutine is launched.
 	published := m.publishLocked(session)
@@ -487,9 +485,24 @@ func (m *PairManager) StartPair(
 	if err != nil {
 		return nil, err
 	}
+	key := botflota.BotRef{Scope: scope, Bot: bot}
+	// As in BeginSetup, the exclusion comes before any clock read, and
+	// the session, its times, and its expiry timer are created and
+	// registered together under the same lock.
+	botLock := m.botLock(key)
+	botLock.Lock()
+	defer botLock.Unlock()
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return nil, errPairingClosed
+	}
+	if current, ok := m.sessions[key]; ok && !vacant(current) {
+		m.mu.Unlock()
+		return nil, botflota.ErrBusy
+	}
 	now := m.opts.Now().UTC()
 	pairCtx, cancel := context.WithCancel(context.Background())
-	key := botflota.BotRef{Scope: scope, Bot: bot}
 	session := &pairingSession{
 		neutral: botflota.SetupSession{
 			Bot: key, ID: m.opts.ID(), Method: SetupMethodQR, Mode: AccountMode,
@@ -502,28 +515,10 @@ func (m *PairManager) StartPair(
 		inputKeys:   make(map[string]int64),
 		ctx:         pairCtx, cancel: cancel, closed: make(chan struct{}),
 	}
-	// The timer exists before the session is visible, so no reader can find
-	// a session without one.
+	m.sessions[key] = session
 	session.timer = time.AfterFunc(m.opts.Lifetime, func() {
 		m.expire(key, session)
 	})
-	botLock := m.botLock(key)
-	botLock.Lock()
-	defer botLock.Unlock()
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
-		session.timer.Stop()
-		cancel()
-		return nil, errPairingClosed
-	}
-	if current, ok := m.sessions[key]; ok && !vacant(current) {
-		m.mu.Unlock()
-		session.timer.Stop()
-		cancel()
-		return nil, botflota.ErrBusy
-	}
-	m.sessions[key] = session
 	// Publish before releasing the same lock Close uses to set m.closed;
 	// Close waits this session even before its goroutine is launched.
 	projected := m.legacyOf(session)

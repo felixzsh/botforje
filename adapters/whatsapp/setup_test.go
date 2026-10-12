@@ -798,3 +798,90 @@ func TestDetachWithoutSessionRemovesDirectly(t *testing.T) {
 		t.Fatal("the removal never ran")
 	}
 }
+
+// TestBeginBehindDetachKeepsItsLifetime: a begin that waits behind a
+// detach longer than its lifetime must start with a fresh window and
+// expire normally. It must never stay active with a timer that fired
+// before it was registered.
+func TestBeginBehindDetachKeepsItsLifetime(t *testing.T) {
+	manager, _ := testSetupManager(t, PairManagerOptions{
+		Lifetime: 20 * time.Millisecond,
+	})
+	manager.pair = func(ctx context.Context, _ PairOptions) (PairResult, error) {
+		<-ctx.Done()
+		return PairResult{}, ctx.Err()
+	}
+	ctx := context.Background()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	detached := make(chan error, 1)
+	go func() {
+		detached <- manager.Detach(ctx, "dev", "alpha",
+			func(context.Context) error {
+				close(entered)
+				<-release
+				return nil
+			})
+	}()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the detach never reached the removal")
+	}
+	begun := make(chan *botflota.SetupSession, 1)
+	beginErr := make(chan error, 1)
+	go func() {
+		session, err := manager.BeginSetup(ctx, "dev", "alpha",
+			botflota.SetupBegin{Method: "qr", RequestKey: "key-1"})
+		if err != nil {
+			beginErr <- err
+			return
+		}
+		begun <- session
+	}()
+	// Hold the detach past the lifetime: a pre-registration timer would
+	// fire during this wait.
+	select {
+	case <-begun:
+		t.Fatal("the begin did not wait behind the detach")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-detached; err != nil {
+		t.Fatalf("Detach: %v", err)
+	}
+	var started *botflota.SetupSession
+	select {
+	case started = <-begun:
+	case err := <-beginErr:
+		t.Fatalf("BeginSetup after detach: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the begin never started after the detach")
+	}
+	// The window starts at registration, not before the wait.
+	if window := started.ExpiresAt.Sub(started.StartedAt); window != 20*time.Millisecond {
+		t.Fatalf("window = %v, want a fresh lifetime", window)
+	}
+	if time.Until(started.ExpiresAt) <= 0 {
+		t.Fatal("the session started with an expiry already past")
+	}
+	// The registered timer fires and the worker ends: the session must
+	// expire instead of lingering active with a lost timer.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		session := readNeutral(t, manager, "dev", "alpha", started.ID)
+		if session.State == botflota.SetupExpired {
+			if session.ErrorCode != "expired" {
+				t.Fatalf("session = %#v, want the expiry recorded", session)
+			}
+			return
+		}
+		if session.State.Final() {
+			t.Fatalf("session = %#v, want expiry, not another outcome", session)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session = %#v, still active past its lifetime", session)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
