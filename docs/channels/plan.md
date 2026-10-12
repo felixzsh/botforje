@@ -5,9 +5,10 @@ is sufficient to proceed with phase-local design and implementation
 once the affected decisions are approved; another broad investigation
 is not a prerequisite. This does not approve unresolved contracts or
 close runtime gates. P0 (documentation only) is complete and accepted;
-P1's implementation landed on 2026-10-11 (ADR 0051), and P2's landed on
-2026-10-12 (ADR 0052/0054), both with their checklists and gates closed;
-P3–P6 are pending.
+P1's implementation landed on 2026-10-11 (ADR 0051), and P2/P3 landed on
+2026-10-12 with their reviewed runtime gates closed. P4's public contracts
+were owner-approved on 2026-10-12; P4 implementation and P5/P6 remain pending.
+[Open decisions](open-decisions.md) records the phase-local closures.
 
 **Owner decision — this preparation is new design, with no backward
 compatibility (2026-10-12).** P1–P6 replace the old WhatsApp-shaped domain
@@ -17,6 +18,14 @@ dual-format period. Databases start clean: no migration or backfill is required
 anywhere in the preparation. A phase boundary keeps WhatsApp *running through
 its adapted implementation*, not its old configuration or wire shapes. See
 `../../PLAN.md`, "no backward compatibility, clean databases".
+P4 public API/CLI names, arguments, fields, and exports follow the selected
+domain vocabulary, including pending internal renames (ADR 0054). Binding/setup
+routes use `/binding/setups`, not `/account/enrollments` (ADR 0053); ADR 0044
+closes neutral send selectors and no-binding admission, ADR 0052 discovery,
+and ADR 0042 the neutral ZIP/CSV format. These approved decisions authorize P4
+implementation, not checked implementation gates. P5's receive-completion,
+message-ID namespace, and delivery contracts still require their own closure.
+
 Code baseline: `3544357`, inspected on 2026-10-08; this research review
 is not a new code audit.
 `../../PLAN.md` Phase 7 owns overall progress; this document states the

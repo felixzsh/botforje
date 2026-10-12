@@ -325,6 +325,15 @@ Change: `api/api.go`, account/pairing handlers, `views.go`, `params.go`,
 serialization.
 Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
 
+Public-contract decisions closed with the owner on 2026-10-12; implementation
+is now the next slice, not another compatibility review. ADR 0054 owns public
+names matching the selected domain vocabulary, ADR 0053 the `/binding/setups`
+lifecycle, ADR 0044 neutral references and committed-binding send admission,
+ADR 0052 discovery/unsupported-operation views, and ADR 0042 ZIP/CSV sections.
+ADR 0045 matches the already selected `peer.first_seen` envelope. See
+[open-decisions.md](open-decisions.md) for the closure and remaining P5 decisions.
+The checkboxes below remain unchecked until code and executable gates land.
+
 - [ ] Wire neutral lifecycle/bind/capability dependencies into the API.
   Remove constructor requirements for WhatsApp pairing and unsupported
   live features; distinguish reading already stored history/address
@@ -348,11 +357,15 @@ Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
   target rules and common admission checks. Preserve atomic API sends,
   `client_id` reconciliation, chat-control semantics, and the default
   reply path without assuming arbitrary-address outreach is permitted.
+  Reject new unbound sends before persistence with 409 `binding_required`;
+  preserve duplicate reconciliation and do not confuse disconnected with unbound
+  (ADR 0044). P5 adds durable generation snapshots and delivery enforcement.
 - [ ] Make operational CLI commands consume neutral API views/selectors
-  and common bind steps. Keep the locked offline operator path and
-  existing WhatsApp commands working through the neutral operations; adding a
-  new adapter with existing step kinds must not require another CLI handler or
-  provider form.
+  and common setup steps. Commands, arguments, fields, and results match the
+  selected domain names: `bot bind`/`bot unbind`, peer, directory, chat, and
+  graph run, with no retired command aliases. Keep the locked offline operator
+  path and adapted WhatsApp workflows working through the neutral operations;
+  an adapter with existing step kinds needs no CLI handler or provider form.
 - [ ] Carry neutral identity/provenance through webhooks and CSV export,
   with no legacy field retained and no compatibility boundary. A serialized
   envelope or archive change is breaking by default; do not put a universal
@@ -404,9 +417,10 @@ and 0044.
   this plan does not create a new fallback DSL.
 - [ ] Check the stored binding generation at admission and immediately
   before sending. Serialize detach/replacement with in-flight delivery;
-  old pending entries cannot inherit a new identity. Close the
-  unbound-send decision in [open-decisions.md](open-decisions.md) rather
-  than guessing a future binding for queued messages.
+  old pending entries cannot inherit a new identity. Apply ADR 0044's closed
+  no-binding admission decision: reject a new send instead of guessing a
+  future binding. P4's API check does not replace these durable enforcement
+  gates; see [open-decisions.md](open-decisions.md).
 - [ ] Make send success mean downstream acceptance, not recipient
   delivery/read confirmation. Preserve the existing status contract
   through documented translation, optional provider IDs, and

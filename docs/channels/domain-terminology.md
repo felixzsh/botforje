@@ -1,11 +1,12 @@
 # Domain contract renames
 
-Target vocabulary; the P1 identity, target, peer, directory, and message-field
-names are implemented (2026-10-11). The binding, card, history-section, and
-external-send names remain pending their phases.
-Status: provisional — entries can change as findings land in
-`provider-findings/` and `provider-differences/`, and open questions
-live in [open-decisions.md](open-decisions.md).
+Selected vocabulary; P1 identity/target propagation and P3 binding/setup
+contracts are implemented. P4 public naming was owner-approved on 2026-10-12:
+HTTP resources, CLI commands and arguments, JSON fields, counts, and exports
+match these domain terms. Card and graph-run code renames and P4's public
+consumers remain implementation work; history-source and external-send behavior
+still belongs to P5. Open behavioral questions live in
+[open-decisions.md](open-decisions.md).
 Rationale: [plan.md](plan.md).
 
 The behavior notes live in that plan's section 2
@@ -37,14 +38,17 @@ representation or responsibilities; it is not a mechanical symbol replacement.
 `No rename; redesign` keeps the name but changes the contract. `Retire` has no
 replacement name, shown as `—`. The boundaries below settle these distinctions,
 not final layouts, signatures, or state values: those belong to the affected
-phase's decision review and canonical ADR updates before implementation.
+phase's canonical ADRs before implementation. P3's accepted contracts override
+older provisional bind-session spellings below; no second set of public setup
+names is introduced for them.
 
-Internal Go renames do not automatically change YAML/JSON keys, serialized values,
-HTTP routes, event topics, or archive formats. Preserve, translate, or deliberately
-change each public representation through an explicit compatibility decision;
-retaining every old format is not required. No global text replacement constitutes
-that decision. The selected `KindContactCard` rename keeps the serialized value
-`contact`; other public changes are not approved by this catalog.
+Internal Go renames do not themselves define wire formats. P4's approved public
+contracts live in ADR 0042/0044/0052/0053/0054 and use the selected domain
+vocabulary, not mechanically every old code symbol. There is no compatibility
+translation, alias, or dual-format period. `KindContactCard` and the selected
+card declaration keep the serialized kind/key `contact` and payload label
+`phone` (ADR 0036); neither names an identity or destination. Event naming is
+already `peer.first_seen` (ADR 0045).
 
 ## Identity and directory
 
@@ -57,6 +61,7 @@ that decision. The selected `KindContactCard` rename keeps the serialized value
 | `ContactStore.EnsureContact` | `PeerStore.EnsurePeer` | Rename + identity redesign |
 | `ContactPage` | `PeerPage` | Rename; follows peer redesign |
 | `ContactPage.Contacts` | `PeerPage.Peers` | Rename |
+| `Peer.AddressBookImported` | `Peer.DirectoryImported` | Align recorded-import terminology |
 | `AddressBookEntry` | `DirectoryEntry` | Rename + directory redesign |
 | `AddressBookEntry.Phone` | `DirectoryEntry.PeerKey` | Rename + identity redesign |
 | | `DirectoryEntry.SourceIdentity` | New field; historical account origin |
@@ -87,21 +92,21 @@ an optional channel capability with a separate port shape, not decided here.
 | --- | --- | --- |
 | `LinkedAccount` | `Binding` | Rename + binding redesign |
 | `LinkedAccountStore` | `BindingStore` | Rename + binding redesign |
-| `PairingRunner` | `BindRunner` | Rename + setup redesign |
-| `PairRequest` | `BindRequest` | Rename + setup redesign |
-| `PairingSession` | `BindSession` | Rename + setup redesign |
-| `PairState` | `BindState` | Rename + setup-state redesign |
-| `PairingResult` | `BindResult` | Rename + binding-result redesign |
-| `PairingSession.Code` | `BindSession.NextStep` | Redesign; typed setup step |
-| | `BindStep` | New type; generalizes QR challenge |
-| `DevicePresence` | `BindingInspector` | Rename + readiness redesign |
+| `PairingRunner` | `SetupRunner` | P3 contract; public consumers change in P4 |
+| `PairRequest` | `SetupBegin` | P3 contract; not a universal QR request |
+| `PairingSession` | `SetupSession` | P3 contract; typed, revisioned steps |
+| `PairState` | `SetupState` | P3 contract; setup attempt, not readiness |
+| `PairingResult` | `Binding` + setup outcome | Separate commit, activation, and import |
+| `PairingSession.Code` | `SetupSession.Step.Display` | Expiring display challenge |
+| | `SetupStep` | P3 typed display/input/approval/profile step |
+| `DevicePresence` | `AccountLifecycle.InspectBinding` | Readiness, not just presence |
 | `PairingStatus` | `BindingStatus` | Rename + readiness redesign |
 | `PairingState` | — | Retire old pairing enum |
 | `PairingStore` | — | Retire |
-| `AccountUnpairer` | `Unbinder` | Rename + detachment redesign |
-| `AccountUnpairer.UnpairAccount` | `Unbind` | Rename + detachment redesign |
+| `AccountUnpairer` | `AccountLifecycle` | P3 inspection/detachment contract |
+| `AccountUnpairer.UnpairAccount` | `DetachBinding` | Local detachment, not destruction |
 | `ErrAccountInUse` | `ErrIdentityInUse` | Rename + identity redesign |
-| `bot pair` / `bot unpair` | `bot bind` / `bot unbind` | CLI rename; compatibility pending |
+| `bot pair` / `bot unpair` | `bot bind` / `bot unbind` | Approved P4; no old alias |
 
 ## Messages, cards, and fields
 
@@ -136,8 +141,8 @@ current `IsGroup` flag. `HistoryChat.ContactPhone` already serves an identity ro
 `PeerKey` generalizes that projection rather than merely renaming a phone value.
 All `Target` entries use `ChatTarget`; known `Sender` and `Recipient` identities use
 `IdentityKey`. The selected P1 shapes and optional-value conventions now live in
-[ADR 0051](../adr/0051-channel-neutral-identity-and-conversations.md); their
-implementation is still pending.
+[ADR 0051](../adr/0051-channel-neutral-identity-and-conversations.md); P1
+implements them, and ADR 0044 selects their P4 public references.
 
 ### Outbound addressing
 
@@ -156,8 +161,8 @@ routing context needed by an authorization remain adapter-owned.
 [ADR 0051](../adr/0051-channel-neutral-identity-and-conversations.md) fixes the P1
 value types: `SendRecord.Recipient` uses `*IdentityKey`, with nil for unknown;
 `Target` is a required value. Other outbound contracts need not duplicate recipient
-metadata. Public API/config shapes still need their separate compatibility
-decisions; selecting these internal contracts does not implement them.
+metadata. ADR 0044 now selects the neutral P4 public API selectors; approval
+of those shapes does not implement their handlers.
 
 ### Shared contact cards
 
@@ -181,9 +186,9 @@ keys or stored formats without a separate compatibility decision.
 | `ChatSummary.Phone` | — | Retire phone-only projection |
 | `AddressBookEntry.PushName` / `.BusinessName` | — | Adapter-only; normalize directory name |
 | `ContactStore.RecordInbound` phone parameter | — | Retire phone parameter |
-| `contact.phone` template path | — | Retire; legacy alias only |
-| `RootContact` | `RootPeer` | Rename; per-bot compatibility selected |
-| `contact` runtime root | `peer` | Neutral root; WhatsApp aliases selected |
+| `contact.phone` template path | — | Retired; no alias |
+| `RootContact` | `RootPeer` | P1 neutral root |
+| `contact` runtime root | `peer` | Implemented; no provider translation |
 
 ## Other renames
 
@@ -198,29 +203,29 @@ keys or stored formats without a separate compatibility decision.
 | `FirstContact` | `PeerFirstSeen` | Rename |
 | `FirstContactNotifier` | `PeerFirstSeenNotifier` | Rename |
 | `FirstContact.Contact` | `PeerFirstSeen.Peer` | Rename |
-| `EventContactFirstSeen` | `EventPeerFirstSeen` | Rename; event compatibility pending |
+| `EventContactFirstSeen` | `EventPeerFirstSeen` | Implemented; topic `peer.first_seen` |
 | `HistoryTable` | `HistorySection` | Rename + grouping redesign |
 | `HistorySink.BeginTable` | `HistorySink.BeginSection` | Rename + grouping redesign |
-| `TableChats` | `SectionChats` | Rename; export compatibility separate |
-| `TableSessions` | `SectionGraphRuns` | Rename; export compatibility separate |
-| `TableMessages` | `SectionMessages` | Rename; export compatibility separate |
-| `TableAddressBook` | `SectionDirectory` | Rename; export compatibility separate |
+| `TableChats` | `SectionChats` | P4 domain section; format in ADR 0042 |
+| `TableSessions` | `SectionGraphRuns` | P4 domain section; format in ADR 0042 |
+| `TableMessages` | `SectionMessages` | P4 domain section; format in ADR 0042 |
+| `TableAddressBook` | `SectionDirectory` | P4 domain section; format in ADR 0042 |
 | `HistorySink.Session` | `HistorySink.GraphRun` | Rename |
 | `HistorySink.AddressBookEntry` | `HistorySink.DirectoryEntry` | Rename; directory redesign |
 | `api.Fleet.StopBotForUnpair` | `StopBotForUnbind` | Rename; binding lifecycle applies |
-| `PairingRunner.StartPair` | `Begin` | Rename + setup redesign |
-| `PairingRunner.CurrentPair` | `Get` | Rename + setup redesign |
-| `PairingRunner.CancelPair` | `Cancel` | Rename + setup redesign |
-| `PairingRunner.EndPair` | `Wait` | Rename + setup redesign |
+| `PairingRunner.StartPair` | `SetupRunner.BeginSetup` | P3; P4 public consumer |
+| `PairingRunner.CurrentPair` | `SetupRunner.ReadSetup` | P3 lookup by setup ID |
+| `PairingRunner.CancelPair` | `SetupRunner.CancelSetup` | P3 cancellation by setup ID |
+| `PairingRunner.EndPair` | — | Completion wait owned by detach implementation |
 | `HistoryCounts.Sessions` | `HistoryCounts.GraphRuns` | Rename |
 | `HistoryCounts.AddressBook` | `HistoryCounts.Directory` | Rename |
 
-History section names describe domain groupings, not SQL table names or archive
-filenames. Renaming constants does not authorize a serialized export-format change.
+History section names describe domain groupings, not SQL tables or filenames.
+ADR 0042 owns the approved P4 ZIP/CSV format; stores expose domain sections.
 
 ## Redesign boundaries
 
-- **`BindingInspector` (P3):** local credential presence is one fact, not proof
+- **`AccountLifecycle.InspectBinding` (P3):** local credential presence is one fact, not proof
   of current provider authorization or transport availability. The redesigned
   inspection distinguishes those facts and their unknown or stale observations;
   it does not relabel the current `HasCredentials` boolean as general readiness.
@@ -234,14 +239,13 @@ filenames. Renaming constants does not authorize a serialized export-format chan
 - **`BindingStatus` (P3):** describes binding status without treating the old
   paired/not-paired/unpaired enum as the new readiness model. `PairingStatus`
   and `PairingState` were a record and an enum, not interchangeable names.
-  The old enum retires; replacement facts and any justified state values are
-  decided in P3. `BindState` separately names an interactive attempt's lifecycle.
-- **`BindResult` (P3):** reports the binding operation's outcome, not a universal
-  phone or completed history import. `PairingResult.Phone` is not carried into
-  the common result; verified identity belongs to the neutral binding contract.
-  History and directory import metrics are separate operation outcomes, and
-  binding commit is distinct from runtime activation. Existing output fields
-  require explicit compatibility treatment, not automatic copying into `BindResult`.
+  The old enum retires from the P4 public contract; P3 readiness conditions
+  already separate the facts. `SetupState` names an interactive attempt's state.
+- **Setup outcome (P3/P4):** `Binding` carries the verified identity;
+  `SetupSession` reports setup outcome and a separate activation failure. No
+  universal phone or completed import defines success. History and directory
+  import metrics belong to their own operations, never copied into a public
+  compatibility result.
 
 These entries close the rename-versus-redesign classification, not the phase's
 contract signatures or runtime gates. P3/P5 decisions need not all be resolved

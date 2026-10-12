@@ -77,6 +77,37 @@ Databases start clean, so no migration or backfill is required. A host that
 keeps using WhatsApp keeps it through the neutral contracts, not by preserving
 their old shapes.
 
+**One domain vocabulary inside and outside (owner decision 2026-10-12).**
+P4's HTTP resources, CLI commands, arguments, query parameters, JSON fields,
+result counts, and export sections use the selected domain terminology in
+`docs/glossary.md` and `docs/channels/domain-terminology.md`. Pending Go renames
+are implementation work, not permission to expose their retired names. A peer
+is not a directory entry or a contact card; a graph run is not a setup session;
+a binding is not transport health. Do not introduce a second public dialect.
+
+Scope peers use `/api/v1/scopes/{scope}/peers`; bot-owned directory, chat, and
+graph-run resources use `directory`, `chats`, and `graph-runs` under
+`/api/v1/scopes/{scope}/bots/{bot}`. JSON uses snake_case, so a graph-run reference
+is `graph_run_id`. Binding and setup routes are owned by ADR 0053; send selectors
+by ADR 0044; archive sections by ADR 0042. Public identifiers and filters follow
+those owners, never a universal phone selector. The explicitly selected contact
+card serialized kind/key `contact` and its payload entry label `phone` remain
+unchanged (ADR 0036); they do not identify or address a messaging peer.
+
+The operational CLI uses `bot bind` and `bot unbind`, `peer`, `directory`,
+`chat`, and `graph-run` for the corresponding capabilities, with `--scope`,
+`--bot`, `--peer-id`, `--chat-id`, `--graph-run-id`, `--setup-id`, `--target`,
+and `--recipient` naming the same references as the API. A target or recipient
+argument carries its neutral JSON object, not an adapter-specific positional
+address. Setup uses `--method`, `--request-key`, and `--revision` when those
+values apply. Graph-run and setup-session references remain distinct. `pair`,
+`unpair`, `contact`, `address-book`, and `session` are not compatibility aliases
+for these commands or references. The CLI drives the
+common setup steps; new adapters need no provider-specific command handler.
+
+These public contracts are approved for P4; their implementation and runtime
+gates remain unchecked until code and tests land.
+
 **Trusted auxiliary endpoints wait for their decision.** A managed local
 channel endpoint (for example a SimpleX websocket) is not an action URL; it
 needs its own trusted-connection boundary before one is added. ADRs 0047–0049
@@ -98,4 +129,5 @@ supervisor, automatic sharding, or per-service account capacity is approved.
   not a switch in `cmd/`.
 - The reload path can tell a channel change from an ordinary setting change
   and defer it correctly (ADR 0009).
-- Implementation is P2, P5, and P6 of `docs/channel-adapter-findings/channel-plan.md`.
+- Implementation is phase-tracked in `docs/channels/phases.md`; P4 implements
+  the approved public vocabulary without a compatibility surface.

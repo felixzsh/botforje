@@ -16,15 +16,15 @@ managed local profile. A QR is presentation, not a universal method.
 ## Decision
 
 **A narrow lifecycle port beside the transport.** `AccountLifecycle` inspects
-readiness, describes supported setup methods, and detaches Botflota's local
-binding. Interactive setup runs in a separate session runner. `MessageChannel`
-keeps its four operations, and the optional ports stay optional (ADR 0004).
-WhatsApp's `PairingRunner` becomes a translation of this contract, not its
-definition.
+readiness and detaches Botflota's local binding. `SetupRunner` describes supported
+methods and drives interactive `SetupSession` instances. `MessageChannel` keeps
+its four operations, and the optional ports stay optional (ADR 0004). WhatsApp
+QR setup implements the same contracts; the old `PairingRunner` surface is
+removed with its P4 consumers, not retained as a compatibility translation.
 
 **Readiness separates facts.** Credential presence, provider authorization,
 and transport health are different facts. Readiness answers with an actionable
-condition (unconfigured, configured, action-required, unavailable), safe
+condition (`unconfigured`, `configured`, `action_required`, `unavailable`), safe
 reasons, and the appropriate setup method. An existing credential is not proof
 of access.
 
@@ -53,25 +53,48 @@ are a small closed set, not provider commands or a general form engine:
 Account persistence success is reported separately from runtime activation
 failure.
 
-**Additive routes.** Let `B` be `/api/v1/scopes/{scope}/bots/{bot}`:
+**Neutral routes (owner decision 2026-10-12).** Let `B` be
+`/api/v1/scopes/{scope}/bots/{bot}`. Public names follow the domain's `Binding`
+and `SetupSession`, not a second account/enrollment vocabulary (ADR 0054).
 
 | Operation | Route | Result |
 | --- | --- | --- |
-| Inspect binding and readiness | `GET B/account` | Safe identity and lifecycle metadata |
-| Discover setup | `GET B/account/methods` | Available methods and input requirements |
-| Begin setup | `POST B/account/enrollments` | `202`, session id and first state/step |
-| Follow setup | `GET B/account/enrollments/{id}` | State, revision, expiry, step |
-| Supply next input | `POST B/account/enrollments/{id}/inputs` | Validated step; safe state |
-| Cancel setup | `DELETE B/account/enrollments/{id}` | Idempotent cancellation |
-| Forget binding | `DELETE B/account` (existing) | Stops the bot, removes local binding |
+| Inspect binding and readiness | `GET B/binding` | Binding and safe readiness |
+| Discover setup | `GET B/binding/methods` | Methods and input requirements |
+| Begin setup | `POST B/binding/setups` | `202`, setup session |
+| Follow setup | `GET B/binding/setups/{id}` | State, revision, expiry, step |
+| Supply next input | `POST B/binding/setups/{id}/inputs` | Safe setup session |
+| Cancel setup | `DELETE B/binding/setups/{id}` | Idempotent cancellation |
+| Forget binding | `DELETE B/binding` | Stops the bot, removes local binding |
 
-The existing `/pairing` routes stay as a WhatsApp translation, so current CLI
-and API callers do not break. Status mapping is fixed before implementation:
-404 for an unknown or out-of-scope target, 409 for an incompatible active
-session or a stale step revision, a bounded 429 for retries, and 422 for an
-unsupported method; a malformed method is a client error, never an upstream
-internal one. A response never echoes a submitted secret, and GET exposes only
-a display challenge or a masked input hint.
+P4 removes the old `/account` and `/pairing` routes and the proposed
+`enrollments` spelling. It exposes no aliases or compatibility translation.
+The CLI uses `bot bind` and `bot unbind` over these same operations, including
+its locked offline path; QR is a display step, not a separate public command.
+
+The inspection JSON is `{binding, condition, reasons, method}`: an absent
+association is `binding: null`, and a present binding carries `scope`, `bot`,
+`provider`, `adapter`, `mode`, `namespace`, `identity: {provider, subject}`,
+`generation`, `created_at`, and `updated_at`. It exposes no SDK locator or
+credentials. `condition` uses the readiness values above. `reasons` are safe
+facts, including explicit unknown authorization or transport health; configured
+never means authorized or connected. Declared channel discovery is ADR 0052.
+
+A setup session uses `bot: {scope, bot}`, `id`, `method`, `mode`, `state`,
+`revision`, `started_at`, `updated_at`, `expires_at`, `error_code`,
+`activation_error`, and optional `step`, following P3's neutral types. Activation
+failure is sanitized and separate from binding success. Begin uses `method`,
+`request_key`, and adapter-validated `params`; input uses `revision`,
+`request_key`, and write-only `values`. Setup IDs never refer to graph runs.
+
+Status mapping is fixed: 404 for an unknown or out-of-scope target, 409 for an
+incompatible active session, conflicting request key, or stale step revision,
+a bounded 429 for retries, and 422 `unsupported_operation` for a method or
+operation the selected definition does not implement. Malformed inputs are
+client errors, never upstream internal ones. Authorize before discovery or
+session lookup; challenges are authenticated and non-cacheable. Responses,
+logs, and exports never echo a submitted secret, and reads expose only safe
+step metadata and display challenges. Bound input bodies and retry budgets.
 
 **Idempotent retries.** A start request key returns the same session; an input
 request key must not submit the same credential or code twice. Keys are scoped
@@ -84,7 +107,7 @@ different bots stay independent. Workers, retries, timeouts, and retained
 completed sessions are bounded, and workers stop before stores close. Active
 sessions stay in memory for the first implementation: a restart requires a
 fresh session, and persisted account success is discovered through
-`GET B/account`. No OTP or password is persisted for resumability.
+`GET B/binding`. No OTP or password is persisted for resumability.
 
 Credentials are server-side, adapter-owned runtime state — never graph context,
 draft YAML, or an API read. The native WhatsApp adapter uses the shared SQLite
@@ -106,12 +129,12 @@ checked first.
 **Commit and cancel.** Credentials are staged until provider confirmation and
 local account commit. A cancelled or expired uncommitted session can never
 activate later. Once committed, cancellation cannot claim the binding never
-existed; explicit detachment removes it. Unpair waits for the worker's actual
+existed; explicit detachment removes it. Unbind waits for the worker's actual
 completion, including the successful-pairing and history-wait race. Provider
 success followed by a local commit failure gets a defined recovery condition
 instead of an orphaned live remote session.
 
-**Detachment is local.** `DELETE B/account` removes Botflota's local binding
+**Detachment is local.** `DELETE B/binding` removes Botflota's local binding
 and settles pending sends without deleting history. Disconnect, local
 credential removal, provider-side session revocation, contact-address
 deletion, and account or profile destruction are different operations; the
@@ -138,6 +161,7 @@ than treating buffered events as traffic from the new account (ADR 0051).
   the same session contract.
 - WhatsApp's QR confidentiality and PN/LID handling stay inside its adapter.
 - The `auth` CLI namespace stays reserved for Botflota credentials (ADR 0025);
-  account setup stays under the bot's account resource.
+  setup stays under the bot's binding resource.
 - ADR 0004, 0021, 0022, 0025, and 0028 are updated in place to this contract.
-  Implementation is P3 and P4 of `docs/channel-adapter-findings/channel-plan.md`.
+  P3's runtime is implemented; P4's public contract is approved, with code and
+  gates still pending in `docs/channels/phases.md`.

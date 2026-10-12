@@ -34,10 +34,28 @@ text, bytes for media). Three answers stay distinct: supported by this
 adapter, authorized for this account, and currently usable for this
 conversation. Dynamic rights, block state, and reply windows cannot be
 certified by offline YAML validation, and unknown permission is not granted.
-`GET /api/v1/scopes/{scope}/bots/{bot}/channel` exposes the sanitized declared
-support and the account mode; a disconnected bot has declared support and no
-invented current permission. No route enumerates other scopes' bindings or
-managed endpoints.
+`GET /api/v1/scopes/{scope}/bots/{bot}/channel` exposes `provider`, `adapter`,
+`mode`, and `capabilities`: the installed definition's `send`, `receive`,
+`features`, and `card_variants`, without credentials or backend locators. A
+provider-correct limit is exposed only when the definition actually declares
+it; discovery never fabricates a generic limit map from validation code.
+
+**P4 public discovery (owner decision 2026-10-12).** Channel declarations,
+binding readiness, and conversation eligibility are separate facts and views.
+ADR 0053 owns `GET .../binding` and its `{binding, condition, reasons, method}`
+shape. Authorization and transport observations must be reported separately,
+with explicit unknown values/reasons when no observation exists; `configured`
+is not a grant. A disconnected bot keeps its declared capabilities without
+invented current permission. Discovery is authorized under scope and bot before
+any read, and never enumerates another scope's bindings or managed endpoints.
+
+An operation or submitted content the selected implementation does not support
+answers 422 `unsupported_operation`, before invocation or queue admission;
+missing optional ports never become an internal error. Reading a retained
+history or directory snapshot is distinct from invoking current history or
+directory import, so stored reads need no invented live capability. Public
+names follow the selected domain vocabulary (ADR 0054). These contracts are
+approved for P4; their runtime gates remain phase-tracked.
 
 **Validation at three points, one vocabulary.**
 
@@ -53,8 +71,8 @@ managed endpoints.
 
 **No silent downgrade.** The default is rejection. A textual fallback is
 author-declared and keeps the same intended choice values. A known unsupported
-configuration fails validation, and legacy queued messages that can never be
-delivered become failed without exhausting their retries.
+configuration fails validation, and queued messages that can never be delivered
+become failed without exhausting their retries.
 
 **Acceptance is not delivery.** `Send` success means the documented downstream
 transport or queue accepted the message, never that the recipient received or

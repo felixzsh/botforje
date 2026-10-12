@@ -1,9 +1,10 @@
 # Open decisions for channel preparation
 
-Status: working list, not approved for implementation. Nothing here
-authorizes incompatible behavior in code; each item must be resolved
-with the owner and recorded in its owning ADR or document before the
-affected slice is coded.
+Status: phase-local decision register. Open entries are not approved for
+implementation; each must be resolved with the owner and recorded in its owning
+ADR before the affected slice is coded. Closed entries record that approval,
+not passing implementation gates. P4's public contracts are closed below;
+P5 and future real-adapter decisions remain open.
 
 Several items below were previously stated as closed in `plan.md`.
 They are reopened here because their answers depend on provider
@@ -39,6 +40,48 @@ silently harden the plan.
   bundles a person's attributes. A bare number or address as text is
   already a `message` step. Connection/invitation links are a different,
   future `invite` kind with no consumer today, not a contact variant.
+
+## Closed on 2026-10-12 — P4 public contracts
+
+The owner approved the following choices after P3 review. Public API/CLI names,
+arguments, query parameters, fields, counts, and exports must match the selected
+internal domain vocabulary, even when a Go rename is still pending. These are
+contract decisions, not completed P4 code or gates:
+
+- **Resources and commands.** Scope peers and bot-owned directory, chats, and
+  graph runs use the selected domain names. CLI binding operations are
+  `bot bind` and `bot unbind`, without old aliases. Binding and setup routes use
+  `/bots/{bot}/binding` and `/binding/setups/{id}`, explicitly replacing the
+  earlier `/account/enrollments` proposal. Owners: ADR 0054 and ADR 0053.
+- **References and send selectors.** Public identities and targets use the
+  neutral P1 shapes. Reads/control/sync resolve chat IDs under scope and bot;
+  sends take exactly one of `chat_id` or explicit `target`, with an optional
+  separate known `recipient`. Graph references are `graph_run_id`; no phone or
+  ambiguous graph-session projection survives. Owner: ADR 0044, ADR 0054.
+- **Discovery, readiness, and unsupported operations.** Declared capabilities,
+  binding readiness, authorization, transport, and target eligibility remain
+  separate facts. Missing observations are explicitly unknown; an absent
+  operation is 422 `unsupported_operation`, not 500. Stored history/directory
+  reads do not imply live import support. Owners: ADR 0052 and ADR 0053.
+- **Export.** Keep streaming, snapshot-consistent ZIP/CSV with empty-section
+  headers. Domain sections are `chats`, `graph_runs`, `messages`, `directory`;
+  the format adapter owns filenames/encoding. Export neutral identities,
+  targets, and recorded directory origins, without speculative P5 provenance
+  fields, credentials, a legacy reader, or a compatibility archive. ADR 0042
+  fixes the filenames and headers; P6 verifies implementation conformance.
+- **No-binding send admission.** A new send without a committed binding is
+  rejected before persistence or queueing with 409 `binding_required`.
+  Disconnected does not mean unbound; an already accepted `client_id` retry is
+  reconciliation, not a new admission. Owner: ADR 0044. P4 implements the API
+  boundary; P5 still owns durable binding snapshots and delivery checks.
+- **Webhook alignment.** `peer.first_seen` and its neutral peer envelope are
+  already selected and implemented. ADR 0045 now matches them; P4 keeps the
+  durable first-inbound timing and byte-stable signed retries, not a legacy
+  topic or phone projection.
+
+No unresolved public-contract choice listed above blocks starting P4. Do not
+pull receive-completion, message-ID namespace, or production shared-service
+policy into P4; close those contracts before their own consumers are coded.
 
 ## Reopened claims waiting on provider evidence
 
@@ -120,27 +163,26 @@ silently harden the plan.
   settings key, selector, route, event, or archive section is removed with its
   owning phase and fails validation with a precise error; it is never
   translated, aliased, or accepted as a no-op. `contact.*` is gone with no
-  replacement (ADR 0018/0020). Remaining work is to choose the neutral HTTP
-  resources and serialized shapes for commands, filter/card keys, result
-  fields, event topics, and archives, which may break freely. A first allowed
-  inbound is not directory insertion; keep its durable timing and signed retry
-  bytes intact. Owner: ADR 0018, ADR 0044, ADR 0045, ADR 0053, ADR 0054.
+  replacement (ADR 0018/0020). The neutral resources, selectors, views, CLI
+  names, and archive contract are now also closed in the P4 section above.
+  The selected serialized contact-card kind/key remains `contact` (ADR 0036),
+  not a peer identity. A first allowed inbound is not directory insertion;
+  keep its durable timing and signed retry bytes intact. Owner: ADR 0018,
+  ADR 0044, ADR 0045, ADR 0053, ADR 0054.
 - **P5, history and external observations.** Source retrieval,
   traversal/exhaustion, and persisted import outcome must remain
   distinct. An emission outside this runtime is not necessarily
   human-originated. Settle normalized source and provenance boundaries
   with actual consumers before claiming support. Owner: ADR 0035,
   ADR 0043, ADR 0052.
-- **P4/P6, persistence and export boundary.** Domain history grouping
-  must not mirror SQL table names. Keep physical schema and archive
-  filenames in their adapters. A format or archive change is breaking by
-  default: there is no legacy-format reader and no compatibility archive.
-  Owner: ADR 0035, ADR 0042.
-- **P5, unbound sends.** ADR 0044 currently accepts sends to an unpaired
-  bot, but the new queue must be tied to the account authorized at
-  acceptance. Decide whether no-binding admission is rejected or has
-  another explicit safe contract; it cannot automatically attach to a
-  later identity. Owner: ADR 0044.
+- **P4/P6, persistence and export boundary.** Closed on 2026-10-12:
+  ADR 0042 owns the domain-section ZIP/CSV contract above. Physical schema
+  and format filenames stay out of shared history ports. P4 implementation
+  and P6 conformance remain pending; no legacy reader/archive is approved.
+- **P4/P5, unbound sends.** Closed on 2026-10-12: ADR 0044 requires a committed
+  binding for new admission and rejects its absence with 409 `binding_required`.
+  Pending code must apply that decision; durable queue snapshots, generation
+  checks, and replacement safety still belong to P5.
 - **P5, receive commit boundary.** If a replay/cursor channel needs a
   durable-processing signal, settle the narrow acknowledgement contract
   in ADR 0004/0040 before closing P5. Do not silently promote a channel

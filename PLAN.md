@@ -450,7 +450,7 @@ Deliverables:
 - [ ] The `chat sync --all` summary: report answered, timed-out, and skipped
   counts, and skip a chat with no anchor instead of failing the batch.
 
-Channel-neutral preparation (`docs/channel-adapter-findings/channel-plan.md`; decisions in ADR
+Channel-neutral preparation (`docs/channels/plan.md`; decisions in ADR
 0051–0054). Every slice keeps WhatsApp runnable:
 
 **Owner decision — no backward compatibility, clean databases
@@ -473,26 +473,25 @@ deprecation window, dual-format period, or compatibility translation layer.
   A superseded key, template root, selector, or result field is removed with its
   owning phase instead of translated.
 - Align the old-database and compatibility requirements in
-  `docs/channel-adapter-findings/channel-plan.md` and ADR 0051–0054 with this
+  `docs/channels/plan.md` and ADR 0051–0054 with this
   decision. Versioned migrations and compatibility shims still begin at the
   first release, which is after this preparation.
 
 **Owner direction — clean messaging domain (2026-10-08).** No messaging-provider-specific concept
 belongs in shared binding/peer/chat contracts, even as an optional field. Do not replace
 device locators with generic identity labels plus phone metadata or unchecked provider data.
-`docs/channel-adapter-findings/channel-plan.md`, section 5, owns the four-provider analysis,
-removal inventory, compatibility decisions, phase allocation, and acceptance criteria. Align the
-canonical ADRs named there before implementing the changed contracts. P1 is reopened; neutral key
-propagation alone did not close account identity, phone cleanup, or all persistence/restart gates.
-Exact contract, field, helper, and command renames live only in
-`docs/channel-adapter-findings/domain-contracts.md`.
-The channel plan owns reasons, phases, compatibility, and decisions still requiring approval.
+`docs/channels/plan.md` owns the preparation boundaries and document map;
+`docs/channels/phases.md` owns implementation and runtime gates. P1–P3 are implemented and reviewed;
+P4's public contracts are approved, not implemented. The research and cleanup evidence stays in
+`docs/channels/`; align the canonical ADRs before implementing any newly changed contract.
+Exact selected contract, field, helper, and command names live in
+`docs/channels/domain-terminology.md`; open decisions live in `docs/channels/open-decisions.md`.
 The four providers are contrast cases, never a closed domain taxonomy. Use Botflota's own neutral
 vocabulary and inward dependencies (ADR 0004, ADR 0034): new providers fitting existing capabilities
 adapt through ports and registration, without changing common records or adding provider branches.
 
 **Owner-approved contract review (2026-10-09).**
-`docs/channel-adapter-findings/channel-plan.md`, section 2.1, refines
+`docs/channels/plan.md`, section 2, refines
 logical binding views versus physical resources, adapter/auxiliary credential ownership,
 stable binding identity versus temporary context selection, message provenance, and receive
 completion. P2–P6 add shared-backend and replay-source fakes; the P5 completion signature and
@@ -564,8 +563,10 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   No migration, backfill, or legacy result shape survives; fresh-schema
   persistence, reopen, and detach-keeps-history gates pass. Its gate is
   checked in `docs/channels/phases.md`.
-- [ ] P4 — remote API and CLI integration (ADR 0053): binding operations and
-  discovery through scoped routes; a scoped HTTP client completes binding and
+- [ ] P4 — remote API and CLI integration (ADR 0053): public-contract decisions
+  are owner-approved on 2026-10-12 (`docs/channels/open-decisions.md`); code and
+  gates remain pending. Binding operations and discovery use scoped routes;
+  a scoped HTTP client completes binding and
   reauthorization without filesystem access. Neutral views, webhooks, and
   exports carry no universal phone field and no legacy output projection.
 - [ ] P5 — delivery and optional-operation semantics (ADR 0052): outbox
@@ -576,8 +577,8 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
 - [ ] P6 — regression gate and documentation: glossary, architecture, API,
   config examples/schema, and guides match the code; `make check`,
   `make test-race` where concurrency changed, and the WhatsApp manual
-  checklist pass. The full four-provider boundary audit in channel-plan section
-  5 passes, including optional fields, template context, and read/event models.
+  checklist pass. The boundary audit in `docs/channels/phases.md` P6 passes,
+  including optional fields, template context, and read/event models.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several

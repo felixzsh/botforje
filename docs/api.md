@@ -3,6 +3,10 @@
 This document defines the API's scope coverage and authority model. It is not
 the generated endpoint reference; the endpoint reference follows the code.
 `architecture.md` documents how the running instance composes and serves it.
+P4's neutral public contract was owner-approved on 2026-10-12; the resource,
+binding, conversation, send, and read contracts below are its implementation
+target, not a claim that the new handlers already exist. `channels/phases.md`
+tracks code and runtime gates; the current implementation is distinguished below.
 
 ## API contract
 
@@ -26,7 +30,7 @@ pair is the complete model, now and as planned.
 
 - A scoped access token authorizes reads and writes of the resources of its
   authorized scopes. It is not a read-only credential: inside those scopes it
-  may pair and unpair bots and drive their conversations through the
+  may bind and unbind bots and drive their conversations through the
   scope-addressed routes. Every request that addresses a scope checks that it
   is in the principal's authority; an out-of-scope target is
   indistinguishable from an unknown one.
@@ -155,18 +159,57 @@ editing, without stopping peer bots. Ordinary errors in one bot must remain
 local to
 that bot.
 
+### P4 public resources and binding
+
+Public names match the selected domain terminology, including CLI commands,
+arguments, JSON fields, and counts, not retired Go names awaiting their rename
+(ADR 0054). Let `S` be `/api/v1/scopes/{scope}` and `B` be `S/bots/{bot}`:
+
+| Resource | Public path | Ownership |
+| --- | --- | --- |
+| Peer | `S/peers/{id}` | Scope |
+| Directory | `B/directory` | Bot's historical snapshots |
+| Chat | `B/chats/{chat_id}` | Scope and bot |
+| Graph run | `B/graph-runs/{id}` | Scope and bot |
+| Channel discovery | `B/channel` | Bot's installed definition |
+| Binding | `B/binding` | Bot's committed association |
+| Setup session | `B/binding/setups/{id}` | Scope, bot, and setup ID |
+
+Collections use the same names without an item ID. `peer_id` filters, where
+supported, refer to a peer in the authorized scope; graph-run references use
+`graph_run_id`, never an ambiguous graph `session_id`. Resolve chat and graph-run
+IDs under scope and bot, not by global ID alone. A graph run is not a setup
+session. No `/contacts`, `/account`, `/pairing`, or `enrollments` alias survives.
+
+ADR 0053 owns setup discovery, begin/read/input/cancel, safe views, and status
+mapping; ADR 0052 owns declared-support discovery. A binding response reports
+safe association and readiness facts, not credentials. Authorization, transport
+health, and target eligibility remain separate observations: missing information
+is explicitly unknown, never permission. Retained history/directory reads do
+not require the selected channel to implement the corresponding live import.
+An absent optional operation answers 422 `unsupported_operation`, not 500.
+
+Operational CLI names are `bot bind`, `bot unbind`, `peer`, `directory`, `chat`,
+and `graph-run`; arguments name the same domain references as the API. The
+common runner presents display, input, approval, and profile steps without
+provider-specific commands. Submitted credentials stay write-only. While an
+instance runs, operations use the API; the locked offline operator path stays
+available through the same neutral contracts. See ADR 0054 for naming and
+ADR 0053 for setup semantics.
+
 ### Conversation control
 
-A chat is handed to a human in two ways, both per chat: an external reply from
-the linked account starts an automatic pause, and `PUT
-/api/v1/scopes/{scope}/chats/control?bot=&contact=` with `{"mode":"human"}` holds
-it until `{"mode":"auto"}` releases it (ADR 0043). Taking the hold cancels the
-automatic replies still queued for that chat; the bot's other chats are
-untouched. The pause length is the bot's `settings.external_reply_pause`, not a
-request field. `GET /api/v1/scopes/{scope}/chats` reports each chat's effective
-`control` (`auto`, `paused`, or `human`) and, while a pause counts down, its
-`paused_till`. Control state is live runtime state: a restart returns every
-chat to `auto`, and nothing received during a hold is replayed.
+A chat is handed to a human in two ways, both per chat: an external observation
+can start the automatic pause (ADR 0043), and `PUT B/chats/{chat_id}/control` with
+`{"mode":"human"}` holds it until `{"mode":"auto"}` releases it. The ID selects
+one conversation, not a peer's last or implied direct chat. Taking the hold
+cancels automatic replies still queued for that target; other chats are
+untouched. The pause length is `settings.external_reply_pause`, not a request
+field. Chat views report effective `control` (`auto`, `paused`, or `human`) and
+`paused_till` while a pause counts down. Control state is live runtime state:
+a restart returns every chat to `auto`, and held messages are not replayed.
+Chat sync uses `B/chats/{chat_id}/sync` and the same scoped lookup; it refuses
+an unsupported live operation instead of guessing a target from a peer.
 
 The `fleet run` process remains under the host supervisor. A future
 owner-only dashboard/API action may request a process restart through that
@@ -176,36 +219,56 @@ process restart must say so explicitly.
 
 ### Outbound sends
 
-An integration can ask a bot to message any peer of its scope, even one that
-never wrote first: `POST /api/v1/scopes/{scope}/messages` with
-`{"bot":"...","to":"5215594251984","body":"...","kind":"text"}` stores and
-queues the message — creating the peer identity and the chat when missing —
-and answers `202 {"id":123,"status":"queued"}` (ADR 0044). Only `text` is
-accepted today. `client_id` is optional; repeating one already accepted
-answers `409` with code `duplicate` and the accepted message's `id` beside the
-error. The message is stored as `direction=out`, `ingest=api`, `origin=api`,
-with no session run, and the bot's existing outbox paces and retries it like a
-reply. The send does not read or change a chat's control (`auto`, `paused`,
-`human`): it is delivered while a chat is held, and the channel's echo
-correlation keeps it from starting a pause (ADR 0043).
+`POST S/messages` accepts `bot` and exactly one of `chat_id` or a neutral
+`target`; optional known `recipient` is an identity, not another destination.
+For example, a text send to an existing chat is:
+
+```json
+{"bot":"assistant","chat_id":123,"body":"Notice","kind":"text"}
+```
+
+An explicit target has `{provider, kind, thread, topic}`; an optional recipient
+has `{provider, subject}`. Values are opaque and adapter-validated, never
+universal phone strings. A new destination need not have a prior inbound or a
+known participant. Atomic admission creates only the necessary identity/chat
+records and answers `202 {"id":123,"status":"queued"}`. It does not imply
+recipient delivery or arbitrary-address outreach. ADR 0044 owns the exact
+selectors, validation, and reconciliation contract.
+
+Without a committed binding, a new send answers 409 `binding_required` before
+creating data or queueing. Disconnected is not unbound. A repeat of an accepted
+`client_id` reconciles with 409 `duplicate` and the stored message ID without a
+new admission. Known restrictions and declared support are checked separately;
+unknown authorization or eligibility never establishes a right to send.
+The existing outbox owns delivery, and the API neither runs a graph nor changes
+chat control. Binding-generation snapshots and delivery enforcement remain P5.
 
 ### Peer and directory reads
 
-`GET /api/v1/scopes/{scope}/contacts` lists the scope's peer identities newest
-activity first; `since` (unix milliseconds) keeps identities whose `first_seen`
-is at or after it, and an opaque `cursor` pages the list, with `next_cursor`
-absent on the last page (ADR 0044). Each entry is `{provider, subject, phone,
-display_name, first_seen, last_seen, address_book_imported, has_chat,
-has_history}`; the current `phone` field is the legacy WhatsApp projection of
-`subject`, removed in P4 with no compatibility shape (ADR 0054, PLAN.md "no
-backward compatibility"). `first_seen` means the peer sent a live inbound message; outbound
-API messages do not count. The booleans are derived: a directory import supplied
-the identity, any bot has a chat, and any bot has an imported sync message.
-`address_book_imported` does not assert current membership in WhatsApp's
-directory. `GET .../contacts/{subject}` answers one identity or 404. Peers
-belong to the scope, not to a bot (ADR 0029), so the route names no bot;
-`GET .../bots/{bot}` reads one bot's view or 404, and
-`GET .../bots/{bot}/contacts` reads that bot's imported directory (ADR 0037).
+`GET S/peers` lists scoped peer identities, and `GET S/peers/{id}` resolves a
+scope-owned peer ID, never a bare subject shared by several providers. ADR 0044
+owns ordering, cursor/first-seen filters, and the neutral view. A first allowed
+live inbound is distinct from registration, an API send, or an import.
+`directory_imported`, `has_chat`, and `has_history` describe recorded facts,
+not current directory membership, reachability, or permission.
+
+`GET B/directory` reads that bot's retained directory snapshots (ADR 0037).
+Each entry separates its `peer: {provider, subject}` from its
+`source_identity: {provider, subject}`, with `scope`, `bot`, `display_name`, and
+`updated_at`. No phone projection or `/contacts` alias is retained. Both reads
+are available independently of the channel's current import capability.
+
+### History export
+
+ADR 0042 owns the approved ZIP/CSV contract: domain sections `chats`,
+`graph_runs`, `messages`, and `directory`, neutral identity/target/provenance
+columns, a consistent streaming snapshot, and headers for empty sections.
+`GET B/history/export` exports only modeled persisted data, never credentials
+or setup inputs. File naming and CSV encoding stay inside the format adapter;
+shared history ports do not expose SQL table names or physical filenames.
+There is no old-format reader or compatibility archive. History movement still
+requires compatible provider and identity spaces; matching provider strings
+alone does not grant compatibility.
 
 ### Webhooks
 
@@ -229,6 +292,10 @@ exponential backoff; a consumer deduplicates by the envelope `id`, which every
 retry reuses. Changing the webhook list requires a restart.
 
 ## Current implementation and target
+
+The P4 names and shapes above are approved but not implemented yet. Current
+handlers still use pre-P4 routes and selectors; that is pending replacement,
+not a supported compatibility contract for the new surface.
 
 Today, the API has owner and scoped bearer tokens, checks scope access on
 scope-addressed routes, reads and publishes scope configuration, and supports
