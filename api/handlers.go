@@ -153,7 +153,7 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 	}
 	syncer, ok := s.fleet.(historySyncer)
 	if !ok {
-		writeError(w, http.StatusNotImplemented, "unsupported",
+		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"on-demand history is not available")
 		return
 	}

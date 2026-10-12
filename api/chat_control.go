@@ -48,7 +48,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 	}
 	controller, ok := s.fleet.(chatController)
 	if !ok {
-		writeError(w, http.StatusNotImplemented, "unsupported",
+		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"chat control is not available")
 		return
 	}

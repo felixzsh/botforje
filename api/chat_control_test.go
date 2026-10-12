@@ -180,9 +180,7 @@ func TestChatControlWithoutACapableFleetSaysSo(t *testing.T) {
 	// The plain fixture fleet has no control capability.
 	recorder := setChatControl(t, testServer(t), "support", testOwnerToken,
 		"5215500000000", "human")
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501: %s", recorder.Code, recorder.Body.String())
-	}
+	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 }
 
 func TestChatListReportsControlOfAHeldChat(t *testing.T) {

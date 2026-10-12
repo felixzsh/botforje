@@ -267,6 +267,7 @@ func (s *Server) routes() http.Handler {
 
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots", s.handleScopeBots)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots/{bot}", s.handleScopeBot)
+	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots/{bot}/channel", s.handleChannelDiscovery)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts", s.handleContacts)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/contacts/{subject}", s.handleContact)
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/bots/{bot}/contacts", s.handleAddressBook)

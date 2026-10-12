@@ -70,7 +70,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.sends == nil {
-		writeError(w, http.StatusNotImplemented, "unsupported",
+		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"sending is not available")
 		return
 	}

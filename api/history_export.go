@@ -54,7 +54,7 @@ func (s *Server) handleHistoryExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.history == nil {
-		writeError(w, http.StatusNotImplemented, "unsupported",
+		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"history export is not available")
 		return
 	}

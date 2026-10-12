@@ -299,17 +299,13 @@ func TestHistoryOperationsPauseAndResumeTheBots(t *testing.T) {
 func TestHistoryOperationsWithoutAStoreSaySo(t *testing.T) {
 	server := testServer(t)
 	recorder := deleteHistory(t, server, "support", testOwnerToken, "support/demo")
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501", recorder.Code)
-	}
+	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 	// The destination must be a real bot of the scope, or the request is refused
 	// before the missing store is even reached.
 	server.config().Scopes["support"].Bots["replacement"] =
 		server.config().Scopes["support"].Bots["demo"]
 	recorder = migrateHistory(t, server, "support", testOwnerToken, "replacement")
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501", recorder.Code)
-	}
+	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 }
 
 // TestHistoryOperationsHoldTheBotLock keeps one bot's write operations from

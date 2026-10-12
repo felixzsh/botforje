@@ -71,9 +71,7 @@ func TestChatSyncReportsAFleetWithoutHistory(t *testing.T) {
 	recorder := post(t, server.Handler(),
 		"/api/v1/scopes/support/chats/sync?bot=demo&contact=5215500000000",
 		testOwnerToken)
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501", recorder.Code)
-	}
+	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 }
 
 func TestChatSyncRejectsAnUnknownChat(t *testing.T) {

@@ -278,8 +278,6 @@ func TestHistoryExportAuthority(t *testing.T) {
 	t.Run("a server without a reader says so", func(t *testing.T) {
 		server := testServer(t)
 		recorder := exportHistory(t, server, "support", testOwnerToken)
-		if recorder.Code != http.StatusNotImplemented {
-			t.Fatalf("status = %d, want 501", recorder.Code)
-		}
+		requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 	})
 }

@@ -249,9 +249,7 @@ func TestSendMessageUnavailableWithoutTheStore(t *testing.T) {
 		testOwnerToken, map[string]any{
 			"bot": "demo", "chat_id": 3, "body": "x",
 		})
-	if recorder.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501; body = %s", recorder.Code, recorder.Body)
-	}
+	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 }
 
 // A scoped token cannot send in another scope: the target is indistinguishable

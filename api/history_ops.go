@@ -34,7 +34,7 @@ func (s *Server) handleHistoryDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.history == nil {
-		writeError(w, http.StatusNotImplemented, "unsupported",
+		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"history operations are not available")
 		return
 	}
@@ -88,7 +88,7 @@ func (s *Server) handleHistoryMigrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.history == nil {
-		writeError(w, http.StatusNotImplemented, "unsupported",
+		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"history operations are not available")
 		return
 	}
