@@ -146,9 +146,11 @@ pure option decode, optional builder); `spec.Bot` gains the typed selector and
 adapter-owned legacy keys. The WhatsApp adapter declares its options, schema,
 capabilities, and builder; config validation, schema generation, startup, the
 watcher, and publication all consume the same pure catalog. Items 1-4 and
-7-10 landed across the three P2 commits; the card and readiness halves followed
-in the same pass. The P2 gates remain unchecked until the mixed-fleet and
-publication/reload cases are exercised end to end.
+7-10 landed across the P2 commits; the card and readiness halves followed in the
+same pass. Every P2 item and gate is checked as of 2026-10-12, with the tests in
+`channels`, `config`, `engine`, `fleet`, and `cmd` covering the selector, the
+schema/validator agreement, the mixed fleet, shared-resource views, and the
+per-bot capability and alias checks.
 
 - [x] Introduce the immutable injected catalog of installed
   definitions. Distinguish provider, adapter kind, and account mode;
@@ -213,20 +215,20 @@ publication/reload cases are exercised end to end.
 
 Gate:
 
-- [ ] Old YAML works; explicit unavailable selections and unknown option
+- [x] Old YAML works; explicit unavailable selections and unknown option
   fields fail with context. The generated editor schema and runtime
   validator agree on installed option shapes.
-- [ ] A preconfigured text-only fake joins a mixed fleet through
+- [x] A preconfigured text-only fake joins a mixed fleet through
   registration and runs without WhatsApp devices, QR setup, or
   adapter-specific settings. Common construction has no provider
   switch, and config-only operations perform no channel I/O.
-- [ ] A registered fake builds two logical channels over one shared
+- [x] A registered fake builds two logical channels over one shared
   resource without new common pool or process-management contracts.
   Starting/stopping one view leaves the other usable.
-- [ ] Unsupported referenced actions/settings fail for the consuming
+- [x] Unsupported referenced actions/settings fail for the consuming
   bot; invalid publication preserves files and active channels, and a
   restart-required edit does not reconnect a peer scope.
-- [ ] One shared action/graph is checked independently for a capable
+- [x] One shared action/graph is checked independently for a capable
   fake and a text-only fake; the incompatible bot fails with
   file/entity/action/step context even behind a guard or tool path.
   Cover a supported kind with an unsupported variant or known limit

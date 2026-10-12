@@ -397,3 +397,44 @@ func TestContactCardVariantCheckedPerConsumingBot(t *testing.T) {
 		t.Fatalf("no problem mentions %q; got %v", want, errs)
 	}
 }
+
+// TestUnsupportedContentFoundBehindToolsAndGuards proves the per-bot check
+// follows every path that reaches an action, not only a node's entry: a tool
+// reference and a guard's on_blocked steps are checked too (ADR 0052).
+func TestUnsupportedContentFoundBehindToolsAndGuards(t *testing.T) {
+	image := []spec.Step{{Media: &spec.Media{
+		Kind: "image", URL: "https://example.test/a.png",
+	}}}
+	textBot := spec.Bot{
+		Graph:   "menu",
+		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+	}
+
+	toolCase := botConfig(textBot, nil)
+	scope := toolCase.Scopes["dev"]
+	scope.Actions["photo"] = spec.Action{Steps: image}
+	graph := scope.Graphs["menu"]
+	node := graph.Nodes["root"]
+	node.Tools = []string{"photo"}
+	graph.Nodes["root"] = node
+	scope.Graphs["menu"] = graph
+	toolCase.Scopes["dev"] = scope
+	if !mentions(Validate(toolCase, capabilityCatalog(t)),
+		`action "photo" step 0: channel fake/text cannot send image`) {
+		t.Fatal("an unsupported kind behind a tool path was not reported")
+	}
+
+	guardCase := botConfig(textBot, nil)
+	scope = guardCase.Scopes["dev"]
+	scope.Actions["greet"] = spec.Action{
+		Guards: &spec.Guards{Cooldown: &spec.Cooldown{
+			Duration: 60, OnBlocked: image,
+		}},
+		Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"hi"}}}},
+	}
+	guardCase.Scopes["dev"] = scope
+	if !mentions(Validate(guardCase, capabilityCatalog(t)),
+		`action "greet" cooldown.on_blocked step 0: channel fake/text cannot send image`) {
+		t.Fatal("an unsupported kind behind a guard was not reported")
+	}
+}

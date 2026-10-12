@@ -252,3 +252,49 @@ func TestPrepareSkipsAnUnreadyBotWithoutBuildingIt(t *testing.T) {
 		})
 	}
 }
+
+// TestMixedFleetResolvesEachBotThroughItsDefinition proves one fleet can run
+// two providers at once: each bot reaches the builder of the definition its
+// selector names, with no provider switch in the shared construction
+// (ADR 0052, ADR 0054).
+func TestMixedFleetResolvesEachBotThroughItsDefinition(t *testing.T) {
+	built := map[string]string{}
+	definition := func(provider, mode string) channels.Definition {
+		return channels.Definition{
+			Provider: provider, Kind: "fake", Modes: []string{mode},
+			Capabilities: channels.Capabilities{
+				Send: []botflota.MessageKind{botflota.KindText},
+			},
+			Build: func(bind channels.Bind) (botflota.MessageChannel, error) {
+				built[bind.Bot] = provider
+				return newFakeChannel(), nil
+			},
+		}
+	}
+	catalog, err := channels.New(definition("whatsapp", "native"), definition("fake", "text"))
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	cfg := textFakeConfig()
+	scope := cfg.Scopes["dev"]
+	scope.Bots["wa"] = spec.Bot{
+		Graph:   "menu",
+		Channel: &spec.Channel{Provider: "whatsapp", Mode: "native"},
+	}
+	cfg.Scopes["dev"] = scope
+
+	store := newStore()
+	if _, err := New(cfg, Options{
+		Store: store, Chats: store, Peers: store, Messages: store,
+		Turn: store, Outbox: store, Catalog: catalog,
+		DefaultTimeout: time.Minute, Now: func() time.Time { return t0 },
+	}); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if built["demo"] != "fake" {
+		t.Fatalf("bot demo built on %q, want fake", built["demo"])
+	}
+	if built["wa"] != "whatsapp" {
+		t.Fatalf("bot wa built on %q, want whatsapp", built["wa"])
+	}
+}

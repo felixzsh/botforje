@@ -535,12 +535,18 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   the consuming bot's definition and moves to P2, which retires the old root
   without a universal phone field. No legacy backfill or pre-change database
   gate is required.
-- [ ] P2 — declared capabilities and channel configuration (ADR 0052, ADR
+- [x] P2 — declared capabilities and channel configuration (ADR 0052, ADR
   0054): the injected catalog, typed selector, pure support checks, reload
   comparison, and composition; old YAML works and a fake text-only channel
   needs no WhatsApp device store. Legacy phone templates and peer-card YAML
   are definition-owned translations, not common `spec` fields or defaults. Land
   the neutral peer-card declaration/content, codec, and WhatsApp mappings together.
+  Completed 2026-10-12: `channels` holds the catalog and definitions, config,
+  schema, startup, watcher, and publication share the pure catalog, each bot's
+  graph is checked against its own definition, the WhatsApp adapter owns its
+  options, template aliases, card variants, readiness, and builder, and the
+  device store opens only for a selected adapter. Its gate is checked in
+  `docs/channels/phases.md`.
   A future `invite` step (label plus opaque link or `self` plus kind `peer`|`group`)
   is decided but gated on a first real consumer; P5 admission/delivery checks apply
   once it lands.

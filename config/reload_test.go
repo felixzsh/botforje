@@ -14,12 +14,24 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 			Port: 3000,
 			Scopes: map[string]spec.Scope{
 				"support": {Bots: map[string]spec.Bot{
-					"demo": {Graph: "menu", Settings: &spec.BotSettings{
-						QueueDelay: 900,
-					}},
+					"demo": {
+						Graph:   "menu",
+						Channel: &spec.Channel{Provider: "whatsapp", Mode: "native"},
+						Settings: &spec.BotSettings{
+							QueueDelay: 900,
+						},
+					},
 				}},
 			},
 		}
+	}
+	botChannel := func(c *Config, change func(*spec.Channel)) {
+		scope := c.Scopes["support"]
+		bot := scope.Bots["demo"]
+		channel := *bot.Channel
+		change(&channel)
+		bot.Channel = &channel
+		scope.Bots["demo"] = bot
 	}
 	botSettings := func(c *Config, change func(*spec.BotSettings)) {
 		scope := c.Scopes["support"]
@@ -54,6 +66,18 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 		}, nil},
 		{"channel settings", func(c *Config) {
 			botSettings(c, func(s *spec.BotSettings) { s.QueueDelay = 100 })
+		}, []string{
+			`channel settings of bot "demo" in scope "support"`,
+		}},
+		{"channel mode change", func(c *Config) {
+			botChannel(c, func(ch *spec.Channel) { ch.Mode = "cloud" })
+		}, []string{
+			`channel settings of bot "demo" in scope "support"`,
+		}},
+		{"channel options change", func(c *Config) {
+			botChannel(c, func(ch *spec.Channel) {
+				ch.Options = channelOptions(t, "read_receipts: true")
+			})
 		}, []string{
 			`channel settings of bot "demo" in scope "support"`,
 		}},
