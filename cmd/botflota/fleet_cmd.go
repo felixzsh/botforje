@@ -387,7 +387,7 @@ func closer(closePairings func()) {
 	}
 }
 
-// pairingManager is the API path of `bot pair`: the session it runs resolves
+// pairingManager is the API path of `bot bind`: the session it runs resolves
 // the bot's settings against the current config snapshot, so a reload reaches
 // it too, and starts the bot when WhatsApp accepts the scan (ADR 0025).
 func pairingManager(

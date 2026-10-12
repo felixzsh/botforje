@@ -25,7 +25,7 @@ func parseArgs(fs *flag.FlagSet, args []string) int {
 
 // orderFlags moves every flag ahead of the arguments. The standard flag
 // package stops parsing at the first non-flag argument, so without this a
-// flag written after the arguments is dropped in silence: `bot pair dev-bot
+// flag written after the arguments is dropped in silence: `bot bind dev-bot
 // --force` would pair as if --force were absent. A "--" ends the flags, so
 // everything after it stays an argument.
 func orderFlags(fs *flag.FlagSet, args []string) []string {

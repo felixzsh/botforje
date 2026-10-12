@@ -10,74 +10,8 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
-	"github.com/felixzsh/botflota/adapters/whatsapp"
-	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
-	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"github.com/felixzsh/botflota/config"
 )
-
-// TestPrintPairImport covers the result `bot pair` answers with (ADR 0038):
-// a switch that is off prints no line at all.
-func TestPrintPairImport(t *testing.T) {
-	options := func(history, contacts bool) channel.BotOptions {
-		return channel.BotOptions{History: history, ImportContacts: contacts}
-	}
-	cases := []struct {
-		name    string
-		options channel.BotOptions
-		result  whatsapp.PairResult
-		want    []string
-		absent  []string
-	}{
-		{
-			name:    "history and contacts",
-			options: options(true, true),
-			result: whatsapp.PairResult{
-				History: ingest.ImportTotals{
-					Chunks: 706, Conversations: 184, Imported: 2727,
-					Duplicate: 31, Skipped: 58,
-				},
-				AddressBook: 312,
-				Elapsed:     2*time.Minute + 10*time.Second,
-			},
-			want: []string{
-				"history: 184 chats, 2727 messages (31 duplicate, 58 skipped) in 2m10s",
-				"address book: 312 imported",
-			},
-		},
-		{
-			name:    "nothing arrived",
-			options: options(true, false),
-			result:  whatsapp.PairResult{},
-			want:    []string{"history: nothing arrived"},
-			absent:  []string{"address book:"},
-		},
-		{
-			name:    "history disabled",
-			options: options(false, true),
-			result:  whatsapp.PairResult{AddressBook: 5},
-			want:    []string{"address book: 5 imported"},
-			absent:  []string{"history:"},
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var buffer bytes.Buffer
-			printPairImport(&buffer, tc.options, tc.result)
-			out := buffer.String()
-			for _, want := range tc.want {
-				if !strings.Contains(out, want) {
-					t.Errorf("output %q is missing %q", out, want)
-				}
-			}
-			for _, absent := range tc.absent {
-				if strings.Contains(out, absent) {
-					t.Errorf("output %q should not contain %q", out, absent)
-				}
-			}
-		})
-	}
-}
 
 // TestListBotsReadsTheAPI covers `bot list` as an instance query: it never
 // opens the database, it maps what the API answers (ADR 0039).
@@ -121,85 +55,221 @@ func TestListBotsReadsTheAPI(t *testing.T) {
 
 var testBotListTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
-// TestPairThroughAPI covers `bot pair` under a live instance: it drives the
-// pairing session over HTTP and never opens the database (ADR 0039).
-func TestPairThroughAPI(t *testing.T) {
-	bots := `{"bots":[{"scope":"dev","bot":"alpha","phone":"","pairing":"not paired"}]}`
+const (
+	bindUnconfigured = `{"binding":null,"condition":"unconfigured"}`
+	bindBound        = `{"binding":{"provider":"whatsapp","mode":"native",` +
+		`"generation":1,"identity":{"provider":"whatsapp","subject":"opaque-1"}},` +
+		`"condition":"configured"}`
+	bindSucceededSession = `{"id":"s1","method":"qr","state":"succeeded","revision":2}`
+)
+
+func bindTestClient(server *httptest.Server) *apiClient {
+	return &apiClient{base: server.URL, token: "tok", http: server.Client()}
+}
+
+func writeJSON(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
+}
+
+// TestBindThroughAPI covers `bot bind` under a live instance: it drives the
+// neutral setup session over HTTP and never opens the database (ADR 0053).
+func TestBindThroughAPI(t *testing.T) {
+	inspects := 0
 	server := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			switch {
-			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
-				_, _ = w.Write([]byte(bots))
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				inspects++
+				if inspects == 1 {
+					writeJSON(w, http.StatusOK, bindUnconfigured)
+				} else {
+					writeJSON(w, http.StatusOK, bindBound)
+				}
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr"]}`)
 			case r.Method == http.MethodPost &&
-				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
-				w.WriteHeader(http.StatusAccepted)
-				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"provider":"whatsapp","subject":"5215500000001","chunks":9,"chats":2,` +
-					`"messages":30,"duplicate":1,"skipped":0,"address_book":4,` +
-					`"elapsed_seconds":65}}`))
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
+				writeJSON(w, http.StatusAccepted, bindSucceededSession)
 			default:
 				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				http.NotFound(w, r)
 			}
 		}))
 	defer server.Close()
-	clearAPIEnv(t)
-	t.Setenv("BOTFLOTA_API_URL", server.URL)
-	t.Setenv("BOTFLOTA_TOKEN", "tok")
-	cfg := &config.Config{DataDir: t.TempDir()}
 
 	var out bytes.Buffer
-	options := channel.BotOptions{History: true, ImportContacts: true}
-	code := pairThroughAPI(&out, cfg, "dev", "alpha", options, true, false)
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha", bindOptions{}, strings.NewReader(""), &out)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	printed := out.String()
-	for _, want := range []string{
-		`bot "alpha" (scope "dev") is paired as whatsapp/5215500000001`,
-		"history: 2 chats, 30 messages (1 duplicate, 0 skipped) in 1m5s",
-		"address book: 4 imported",
-	} {
-		if !strings.Contains(printed, want) {
-			t.Errorf("output %q is missing %q", printed, want)
-		}
+	want := `bot "alpha" (scope "dev") is bound as whatsapp/opaque-1`
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("output %q is missing %q", out.String(), want)
 	}
 }
 
-// TestPairThroughAPIReportsAPairedBot covers the idempotent answer: a bot the
-// instance already knows is reported, not paired again.
-func TestPairThroughAPIReportsAPairedBot(t *testing.T) {
-	bots := `{"bots":[{"scope":"dev","bot":"alpha",` +
-		`"phone":"5215500000009","pairing":"paired"}]}`
+// TestBindThroughAPIInputStep drives an input step: the typed value travels
+// toward the instance and never comes back printed.
+func TestBindThroughAPIInputStep(t *testing.T) {
+	var gotInputs string
+	inspects := 0
 	server := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/api/v1/bots" {
-				t.Errorf("path = %s, want only the bots list", r.URL.Path)
+			switch {
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				inspects++
+				if inspects == 1 {
+					writeJSON(w, http.StatusOK, bindUnconfigured)
+				} else {
+					writeJSON(w, http.StatusOK, bindBound)
+				}
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["token"]}`)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
+				writeJSON(w, http.StatusAccepted, `{"id":"s1","method":"token",`+
+					`"state":"awaiting_input","revision":1,`+
+					`"step":{"kind":"input","fields":[`+
+					`{"name":"token","kind":"credential","label":"Token"}]}}`)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups/s1/inputs":
+				raw := make([]byte, r.ContentLength)
+				_, _ = r.Body.Read(raw)
+				gotInputs = string(raw)
+				writeJSON(w, http.StatusOK, bindSucceededSession)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
 			}
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			_, _ = w.Write([]byte(bots))
 		}))
 	defer server.Close()
-	clearAPIEnv(t)
-	t.Setenv("BOTFLOTA_API_URL", server.URL)
-	t.Setenv("BOTFLOTA_TOKEN", "tok")
 
 	var out bytes.Buffer
-	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", channel.BotOptions{}, false, false)
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha",
+		bindOptions{requestKey: "k1"},
+		strings.NewReader("super-secret\n"), &out)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	if !strings.Contains(out.String(),
-		"is already paired as 5215500000009") {
+	if !strings.Contains(gotInputs, `"token":"super-secret"`) {
+		t.Fatalf("inputs request %q did not carry the typed value", gotInputs)
+	}
+	if strings.Contains(out.String(), "super-secret") {
+		t.Fatalf("output %q echoes the submitted secret", out.String())
+	}
+	if !strings.Contains(out.String(), "is bound as whatsapp/opaque-1") {
+		t.Fatalf("output %q is missing the bound report", out.String())
+	}
+}
+
+// TestBindThroughAPIReportsABoundBot covers the idempotent answer: a bot the
+// instance already knows is reported, not bound again.
+func TestBindThroughAPIReportsABoundBot(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v1/scopes/dev/bots/alpha/binding" {
+				t.Errorf("path = %s, want only the binding inspect", r.URL.Path)
+			}
+			writeJSON(w, http.StatusOK, bindBound)
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha", bindOptions{}, strings.NewReader(""), &out)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "is already bound as whatsapp/opaque-1") {
 		t.Fatalf("output = %q", out.String())
 	}
 }
 
-// TestUnpairThroughAPI drives the running instance: the delete hits the
-// account route and its answer becomes the command's result (ADR 0039).
-func TestUnpairThroughAPI(t *testing.T) {
+// TestBindThroughAPINeedsAMethod: several advertised methods with no
+// --method is an error, never a silent pick.
+func TestBindThroughAPINeedsAMethod(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				writeJSON(w, http.StatusOK, bindUnconfigured)
+			case r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr","token"]}`)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha", bindOptions{}, strings.NewReader(""), &out)
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+}
+
+// TestBindThroughAPIForceDetachesFirst: replacing a binding under a live
+// instance is a detach followed by a new session — no state needs a stopped
+// fleet (ADR 0053).
+func TestBindThroughAPIForceDetachesFirst(t *testing.T) {
+	deletes := 0
+	inspects := 0
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				inspects++
+				writeJSON(w, http.StatusOK, bindBound)
+			case r.Method == http.MethodDelete &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				deletes++
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr"]}`)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
+				writeJSON(w, http.StatusAccepted, bindSucceededSession)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha", bindOptions{force: true}, strings.NewReader(""), &out)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if deletes != 1 || inspects != 2 {
+		t.Fatalf("deletes = %d inspects = %d, want the detach-then-bind", deletes, inspects)
+	}
+	if !strings.Contains(out.String(), "is bound as whatsapp/opaque-1") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+// TestUnbindThroughAPI drives the running instance: the delete hits the
+// binding route and its answer becomes the command's result (ADR 0053).
+func TestUnbindThroughAPI(t *testing.T) {
 	var gotMethod, gotPath string
 	server := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -212,30 +282,30 @@ func TestUnpairThroughAPI(t *testing.T) {
 	t.Setenv("BOTFLOTA_TOKEN", "tok")
 
 	var out bytes.Buffer
-	code := unpairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
+	code := unbindThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
 		"support", "demo")
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	if gotMethod != http.MethodDelete ||
-		gotPath != "/api/v1/scopes/support/bots/demo/account" {
-		t.Fatalf("request = %s %s, want the account route", gotMethod, gotPath)
+		gotPath != "/api/v1/scopes/support/bots/demo/binding" {
+		t.Fatalf("request = %s %s, want the binding route", gotMethod, gotPath)
 	}
-	want := `bot "demo" (scope "support") unpaired`
+	want := `bot "demo" (scope "support") unbound`
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("output %q is missing %q", out.String(), want)
 	}
 }
 
-// TestUnpairThroughAPIReportsTheFailure: a refused delete is an error, never
+// TestUnbindThroughAPIReportsTheFailure: a refused delete is an error, never
 // a success line on stdout.
-func TestUnpairThroughAPIReportsTheFailure(t *testing.T) {
+func TestUnbindThroughAPIReportsTheFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(
-				`{"error":{"code":"not_found","message":"no linked account"}}`))
+				`{"error":{"code":"not_found","message":"no committed binding"}}`))
 		}))
 	defer server.Close()
 	clearAPIEnv(t)
@@ -243,140 +313,12 @@ func TestUnpairThroughAPIReportsTheFailure(t *testing.T) {
 	t.Setenv("BOTFLOTA_TOKEN", "tok")
 
 	var out bytes.Buffer
-	code := unpairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
+	code := unbindThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
 		"support", "demo")
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("output = %q, want nothing on stdout", out.String())
-	}
-}
-
-// TestPairThroughAPIForceReplacesTheLink: replacing a pairing under a live
-// instance is an unpair followed by a new session, both through the API —
-// no state needs a stopped fleet (ADR 0039).
-func TestPairThroughAPIForceReplacesTheLink(t *testing.T) {
-	bots := `{"bots":[{"scope":"dev","bot":"alpha",` +
-		`"phone":"5215500000009","pairing":"paired"}]}`
-	deletes := 0
-	server := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			switch {
-			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
-				_, _ = w.Write([]byte(bots))
-			case r.Method == http.MethodDelete &&
-				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/account":
-				deletes++
-				w.WriteHeader(http.StatusNoContent)
-			case r.Method == http.MethodPost &&
-				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
-				w.WriteHeader(http.StatusAccepted)
-				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"provider":"whatsapp","subject":"5215500000001"}}`))
-			default:
-				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-				http.NotFound(w, r)
-			}
-		}))
-	defer server.Close()
-	clearAPIEnv(t)
-	t.Setenv("BOTFLOTA_API_URL", server.URL)
-	t.Setenv("BOTFLOTA_TOKEN", "tok")
-
-	var out bytes.Buffer
-	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", channel.BotOptions{}, false, true)
-	if code != 0 {
-		t.Fatalf("code = %d, want 0", code)
-	}
-	if deletes != 1 {
-		t.Fatalf("account deletes = %d, want the replace unpair", deletes)
-	}
-	if !strings.Contains(out.String(), "is paired as whatsapp/5215500000001") {
-		t.Fatalf("output = %q", out.String())
-	}
-}
-
-// TestPairThroughAPIForceRemovesResidualLink: an account row without local
-// credentials lists as unpaired, but POST /pairing still refuses it, so
-// --force has to drop that residual link before the new session (ADR 0039).
-func TestPairThroughAPIForceRemovesResidualLink(t *testing.T) {
-	bots := `{"bots":[{"scope":"dev","bot":"alpha","pairing":"unpaired"}]}`
-	deletes := 0
-	server := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			switch {
-			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
-				_, _ = w.Write([]byte(bots))
-			case r.Method == http.MethodDelete &&
-				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/account":
-				deletes++
-				w.WriteHeader(http.StatusNoContent)
-			case r.Method == http.MethodPost &&
-				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
-				w.WriteHeader(http.StatusAccepted)
-				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"provider":"whatsapp","subject":"5215500000001"}}`))
-			default:
-				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-				http.NotFound(w, r)
-			}
-		}))
-	defer server.Close()
-	clearAPIEnv(t)
-	t.Setenv("BOTFLOTA_API_URL", server.URL)
-	t.Setenv("BOTFLOTA_TOKEN", "tok")
-
-	var out bytes.Buffer
-	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", channel.BotOptions{}, false, true)
-	if code != 0 {
-		t.Fatalf("code = %d, want 0", code)
-	}
-	if deletes != 1 {
-		t.Fatalf("account deletes = %d, want the residual link removed", deletes)
-	}
-	if !strings.Contains(out.String(), "is paired as whatsapp/5215500000001") {
-		t.Fatalf("output = %q", out.String())
-	}
-}
-
-// TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete: a fresh bot has no
-// account row, so --force goes straight to the session instead of asking the
-// instance to remove a link that is not there.
-func TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete(t *testing.T) {
-	bots := `{"bots":[{"scope":"dev","bot":"alpha","pairing":"not paired"}]}`
-	server := httptest.NewServer(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			switch {
-			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/bots":
-				_, _ = w.Write([]byte(bots))
-			case r.Method == http.MethodPost &&
-				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
-				w.WriteHeader(http.StatusAccepted)
-				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"provider":"whatsapp","subject":"5215500000001"}}`))
-			default:
-				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-				http.NotFound(w, r)
-			}
-		}))
-	defer server.Close()
-	clearAPIEnv(t)
-	t.Setenv("BOTFLOTA_API_URL", server.URL)
-	t.Setenv("BOTFLOTA_TOKEN", "tok")
-
-	var out bytes.Buffer
-	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", channel.BotOptions{}, false, true)
-	if code != 0 {
-		t.Fatalf("code = %d, want 0", code)
-	}
-	if !strings.Contains(out.String(), "is paired as whatsapp/5215500000001") {
-		t.Fatalf("output = %q", out.String())
 	}
 }

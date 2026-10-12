@@ -24,7 +24,7 @@ func cliTree() *commandHelp {
 		examples: []string{
 			"botflota config validate",
 			"botflota bot list",
-			"botflota bot pair support-bot",
+			"botflota bot bind support-bot",
 			"botflota fleet run",
 			"botflota fleet status",
 			"botflota chat list support-bot",
@@ -93,12 +93,12 @@ func cliTree() *commandHelp {
 			{
 				name:    "bot",
 				summary: "operate on bots",
-				long:    "List pairing state, pair a device, and remove a local pairing.",
+				long:    "List binding state, bind a bot to its channel account, and remove a local binding.",
 				usage:   "botflota bot <command> [options]",
 				examples: []string{
 					"botflota bot list",
-					"botflota bot pair support-bot",
-					"botflota bot unpair support-bot",
+					"botflota bot bind support-bot",
+					"botflota bot unbind support-bot",
 				},
 				moreHelp: "for more help: botflota bot <command> --help",
 				sub: []commandHelp{
@@ -118,48 +118,44 @@ func cliTree() *commandHelp {
 						run:   runBotList,
 					},
 					{
-						name:    "pair",
-						summary: "pair a bot by scanning a QR code",
-						long: "Link a bot to WhatsApp by scanning a QR code. The command\n" +
-							"rejects a phone number already owned by another bot. While the\n" +
-							"instance runs it pairs through the API of fleet run, so the bot\n" +
-							"joins the fleet as soon as the scan is accepted; with the fleet\n" +
-							"stopped it pairs locally under the instance lock. An already\n" +
-							"paired bot is reported and left alone; replacing a pairing is a\n" +
-							"local operation with --force, which registers again and is also\n" +
-							"the only way to change what the registration carries.\n" +
-							"Whatever WhatsApp delivers while the pairing connection is alive\n" +
-							"is stored; --import-history also asks for the full history window\n" +
-							"and waits for it, which is what brings the older chats. Without\n" +
-							"it the default recent window arrives and `chat sync` pages\n" +
-							"older messages per chat.\n" +
-							"The command answers with what it stored: the chats and messages\n" +
-							"the history sync brought, and the contacts the address book\n" +
-							"added. --verbose prints the structured log of a local pairing;\n" +
-							"a pairing through the instance logs to fleet run.",
-						usage: "botflota bot pair [options] <bot>",
+						name:    "bind",
+						summary: "bind a bot to its channel account",
+						long: "Drive the bot's neutral account setup: discover the method,\n" +
+							"begin a session, and answer its steps. Display steps render\n" +
+							"here (a QR code prints to the terminal); input steps prompt\n" +
+							"for their typed values, which travel only toward the\n" +
+							"instance and are never printed back. While the instance\n" +
+							"runs it binds through the API of fleet run, so the bot\n" +
+							"joins the fleet as soon as setup commits; with the fleet\n" +
+							"stopped it binds locally under the instance lock. An\n" +
+							"already bound bot is reported and left alone; replacing a\n" +
+							"binding is --force, which detaches first and binds again.\n" +
+							"--param passes method parameters as name=value pairs.",
+						usage: "botflota bot bind [options] <bot>",
 						examples: []string{
-							"botflota bot pair support-bot",
-							"botflota bot pair --import-history support-bot",
-							"botflota bot pair --scope dev support-bot",
-							"botflota bot pair --force support-bot",
-							"botflota bot pair --import-history --verbose support-bot",
+							"botflota bot bind support-bot",
+							"botflota bot bind --method qr support-bot",
+							"botflota bot bind --scope dev support-bot",
+							"botflota bot bind --force support-bot",
+							"botflota bot bind --param full_history=true support-bot",
 						},
-						flags: func() *flag.FlagSet { return newPairCmd().fs },
-						run:   runPair,
+						flags: func() *flag.FlagSet { return newBindCmd().fs },
+						run:   runBind,
 					},
 					{
-						name:    "unpair",
-						summary: "remove a bot's local pairing",
-						long: "Remove local credentials and the account record. It does not\n" +
-							"unlink the companion in WhatsApp.",
-						usage: "botflota bot unpair [options] <bot>",
+						name:    "unbind",
+						summary: "remove a bot's local binding",
+						long: "Detach the committed binding: the running bot stops first,\n" +
+							"then the local binding is forgotten. Chats, directory, and\n" +
+							"history stay; the provider account itself is never\n" +
+							"destroyed.",
+						usage: "botflota bot unbind [options] <bot>",
 						examples: []string{
-							"botflota bot unpair support-bot",
-							"botflota bot unpair --scope dev support-bot",
+							"botflota bot unbind support-bot",
+							"botflota bot unbind --scope dev support-bot",
 						},
-						flags: func() *flag.FlagSet { return newUnpairCmd().fs },
-						run:   runUnpair,
+						flags: func() *flag.FlagSet { return newUnbindCmd().fs },
+						run:   runUnbind,
 					},
 				},
 			},

@@ -1,0 +1,868 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/mdp/qrterminal"
+
+	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/sqlite"
+	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/instance"
+)
+
+// bindCmd binds a bot to its channel account through the neutral setup
+// lifecycle (ADR 0053, ADR 0054): discover the method, begin a session, and
+// drive its steps — display, input, approval, profile — without a
+// provider-specific form. --param carries method parameters as name=value
+// pairs (for example full_history=true); an adapter with existing step
+// kinds needs no CLI handler.
+type bindCmd struct {
+	fs         *flag.FlagSet
+	config     *string
+	scope      *string
+	method     *string
+	requestKey *string
+	params     paramList
+	force      *bool
+	verbose    *bool
+}
+
+type paramList []string
+
+func (p *paramList) String() string     { return strings.Join(*p, ",") }
+func (p *paramList) Set(v string) error { *p = append(*p, v); return nil }
+
+func newBindCmd() *bindCmd {
+	fs := flag.NewFlagSet("bot bind", flag.ContinueOnError)
+	fs.Usage = func() {}
+	cmd := &bindCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
+		method: fs.String("method", "",
+			"`NAME` setup method; empty picks the only advertised method"),
+		requestKey: fs.String("request-key", "",
+			"`KEY` idempotency key for the setup start; empty mints one"),
+		force: fs.Bool("force", false, "detach the committed binding and bind again"),
+		verbose: fs.Bool("verbose", false,
+			"print the structured log at the configured log_level"),
+	}
+	fs.Var(&cmd.params, "param",
+		"`NAME=VALUE` setup parameter, repeatable (for example full_history=true)")
+	return cmd
+}
+
+type unbindCmd struct {
+	fs     *flag.FlagSet
+	config *string
+	scope  *string
+}
+
+func newUnbindCmd() *unbindCmd {
+	fs := flag.NewFlagSet("bot unbind", flag.ContinueOnError)
+	fs.Usage = func() {}
+	return &unbindCmd{
+		fs:     fs,
+		config: configFlag(fs),
+		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
+	}
+}
+
+// setupSession is the CLI's view of a neutral setup session; it mirrors the
+// API's sanitized session, which never carries submitted secret values.
+type setupSession struct {
+	ID              string     `json:"id"`
+	Method          string     `json:"method"`
+	State           string     `json:"state"`
+	Revision        int64      `json:"revision"`
+	ErrorCode       string     `json:"error_code"`
+	ActivationError string     `json:"activation_error"`
+	Step            *setupStep `json:"step"`
+}
+
+type setupStep struct {
+	Kind    string `json:"kind"`
+	Display *struct {
+		Format  string `json:"format"`
+		Payload string `json:"payload"`
+		Hint    string `json:"hint"`
+	} `json:"display"`
+	Fields []struct {
+		Name  string `json:"name"`
+		Kind  string `json:"kind"`
+		Label string `json:"label"`
+	} `json:"fields"`
+	Approval *struct {
+		Destination string `json:"destination"`
+		Instruction string `json:"instruction"`
+	} `json:"approval"`
+	Profile *struct {
+		Methods     []string `json:"methods"`
+		Options     []string `json:"options"`
+		AllowCreate bool     `json:"allow_create"`
+		Params      []struct {
+			Name  string `json:"name"`
+			Kind  string `json:"kind"`
+			Label string `json:"label"`
+		} `json:"params"`
+	} `json:"profile"`
+}
+
+type bindingStatus struct {
+	Binding *struct {
+		Provider   string `json:"provider"`
+		Mode       string `json:"mode"`
+		Generation int64  `json:"generation"`
+		Identity   struct {
+			Provider string `json:"provider"`
+			Subject  string `json:"subject"`
+		} `json:"identity"`
+	} `json:"binding"`
+	Condition string `json:"condition"`
+}
+
+// bindEndpoints is the neutral lifecycle over either transport: the running
+// instance's API or the locked offline stores. Both speak the same session
+// contract, so the driver never branches on provider.
+type bindEndpoints interface {
+	inspect(ctx context.Context, scope, bot string) (bindingStatus, error)
+	detach(ctx context.Context, scope, bot string) error
+	methods(ctx context.Context, scope, bot string) ([]string, error)
+	begin(ctx context.Context, scope, bot, method, key string,
+		params map[string]string) (*setupSession, error)
+	read(ctx context.Context, scope, bot, id string) (*setupSession, error)
+	input(ctx context.Context, scope, bot, id string, revision int64,
+		key string, values map[string]string) (*setupSession, error)
+}
+
+type bindOptions struct {
+	method     string
+	requestKey string
+	params     map[string]string
+	force      bool
+}
+
+// bindPollInterval is how often the CLI re-reads a session it is driving;
+// display payloads rotate on their own, so a missed one is never final.
+const bindPollInterval = 500 * time.Millisecond
+
+func driveBind(
+	ctx context.Context, ep bindEndpoints, scope, bot string, opts bindOptions,
+	stdin io.Reader, stdout io.Writer,
+) int {
+	status, err := ep.inspect(ctx, scope, bot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if status.Binding != nil && !opts.force {
+		fmt.Fprintf(stdout, "bot %q (scope %q) is already bound as %s/%s; "+
+			"use --force to replace the binding\n",
+			bot, scope, status.Binding.Identity.Provider,
+			dash(status.Binding.Identity.Subject))
+		return 0
+	}
+	if status.Binding != nil {
+		if err := ep.detach(ctx, scope, bot); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	}
+	method := opts.method
+	if method == "" {
+		advertised, err := ep.methods(ctx, scope, bot)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		switch len(advertised) {
+		case 0:
+			fmt.Fprintln(os.Stderr, "that channel offers no account setup")
+			return 1
+		case 1:
+			method = advertised[0]
+		default:
+			fmt.Fprintf(os.Stderr,
+				"that channel offers several setup methods (%s); choose one with --method\n",
+				strings.Join(advertised, ", "))
+			return 1
+		}
+	}
+	key := opts.requestKey
+	if key == "" {
+		key = "bind-" + randomHex(8)
+	}
+	session, err := ep.begin(ctx, scope, bot, method, key, opts.params)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	reader := bufio.NewReader(stdin)
+	lastDisplay := ""
+	for {
+		switch session.State {
+		case "succeeded":
+			return reportBound(ctx, ep, scope, bot, session, stdout)
+		case "failed":
+			fmt.Fprintln(os.Stderr, "setup failed: "+dash(session.ErrorCode))
+			return 1
+		case "cancelled":
+			fmt.Fprintln(os.Stderr, "the setup session was cancelled")
+			return 1
+		case "expired":
+			fmt.Fprintln(os.Stderr, "the setup session expired; run bot bind again")
+			return 1
+		}
+		if session.Step == nil {
+			time.Sleep(bindPollInterval)
+		} else {
+			switch session.Step.Kind {
+			case "display":
+				if session.Step.Display != nil &&
+					session.Step.Display.Payload != lastDisplay {
+					renderSetupDisplay(stdout, session.Step.Display.Format,
+						session.Step.Display.Payload, session.Step.Display.Hint)
+					lastDisplay = session.Step.Display.Payload
+				}
+				time.Sleep(bindPollInterval)
+			case "approval":
+				if session.Step.Approval != nil {
+					if session.Step.Approval.Destination != "" {
+						fmt.Fprintln(stdout, "approve at "+
+							session.Step.Approval.Destination)
+					}
+					if session.Step.Approval.Instruction != "" {
+						fmt.Fprintln(stdout, session.Step.Approval.Instruction)
+					}
+				}
+				time.Sleep(bindPollInterval)
+			case "input", "profile":
+				values, ok := answerSetupStep(session.Step, reader, stdout)
+				if !ok {
+					return 1
+				}
+				updated, err := ep.input(ctx, scope, bot, session.ID,
+					session.Revision, "input-"+randomHex(8), values)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+				session = updated
+				continue
+			default:
+				fmt.Fprintf(os.Stderr, "unsupported setup step %q\n", session.Step.Kind)
+				return 1
+			}
+		}
+		updated, err := ep.read(ctx, scope, bot, session.ID)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		session = updated
+	}
+}
+
+func reportBound(
+	ctx context.Context, ep bindEndpoints, scope, bot string,
+	session *setupSession, stdout io.Writer,
+) int {
+	if session.ActivationError != "" {
+		fmt.Fprintf(stdout, "bot %q (scope %q) setup succeeded but did not activate: %s\n",
+			bot, scope, session.ActivationError)
+		return 0
+	}
+	status, err := ep.inspect(ctx, scope, bot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if status.Binding == nil {
+		fmt.Fprintf(stdout, "bot %q (scope %q) setup succeeded\n", bot, scope)
+		return 0
+	}
+	fmt.Fprintf(stdout, "bot %q (scope %q) is bound as %s/%s\n",
+		bot, scope, status.Binding.Identity.Provider,
+		dash(status.Binding.Identity.Subject))
+	return 0
+}
+
+// answerSetupStep prompts for a step's typed values on stdout; secrets travel
+// only toward the instance, never back into a response the CLI would print.
+func answerSetupStep(
+	step *setupStep, reader *bufio.Reader, stdout io.Writer,
+) (map[string]string, bool) {
+	if step.Kind == "profile" && step.Profile != nil {
+		return answerProfileStep(step, reader, stdout)
+	}
+	values := map[string]string{}
+	for _, field := range step.Fields {
+		label := field.Label
+		if label == "" {
+			label = field.Name
+		}
+		fmt.Fprintf(stdout, "%s: ", label)
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			fmt.Fprintln(os.Stderr, err)
+			return nil, false
+		}
+		values[field.Name] = strings.TrimSpace(line)
+	}
+	return values, true
+}
+
+func answerProfileStep(
+	step *setupStep, reader *bufio.Reader, stdout io.Writer,
+) (map[string]string, bool) {
+	profile := step.Profile
+	for i, option := range profile.Options {
+		fmt.Fprintf(stdout, "[%d] %s\n", i+1, option)
+	}
+	if profile.AllowCreate {
+		fmt.Fprintln(stdout, "empty choice creates a new profile")
+	}
+	fmt.Fprint(stdout, "profile: ")
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		fmt.Fprintln(os.Stderr, err)
+		return nil, false
+	}
+	choice := strings.TrimSpace(line)
+	if choice == "" {
+		if !profile.AllowCreate {
+			fmt.Fprintln(os.Stderr, "that setup step needs a profile choice")
+			return nil, false
+		}
+		values := map[string]string{"profile": "new"}
+		for _, param := range profile.Params {
+			label := param.Label
+			if label == "" {
+				label = param.Name
+			}
+			fmt.Fprintf(stdout, "%s: ", label)
+			line, err := reader.ReadString('\n')
+			if err != nil && !errors.Is(err, io.EOF) {
+				fmt.Fprintln(os.Stderr, err)
+				return nil, false
+			}
+			values[param.Name] = strings.TrimSpace(line)
+		}
+		return values, true
+	}
+	return map[string]string{"profile": choice}, true
+}
+
+func renderSetupDisplay(stdout io.Writer, format, payload, hint string) {
+	switch format {
+	case "qr":
+		qrterminal.GenerateHalfBlock(payload, qrterminal.L, stdout)
+	case "uri":
+		fmt.Fprintln(stdout, "open "+payload)
+	default:
+		fmt.Fprintf(stdout, "setup challenge (%s)\n", dash(format))
+	}
+	if hint != "" {
+		fmt.Fprintln(stdout, hint)
+	}
+}
+
+func randomHex(n int) string {
+	raw := make([]byte, n)
+	if _, err := rand.Read(raw); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(raw)
+}
+
+func runBind(args []string) int {
+	cmd := newBindCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
+	}
+	if cmd.fs.NArg() < 1 {
+		printHelp(os.Stderr, "bot", "bind")
+		return 2
+	}
+	name := cmd.fs.Arg(0)
+
+	// The instance is taken before the tree is read, so a local bind runs
+	// cannot race the owner's (ADR 0039, ADR 0042).
+	configFile, err := configPath(*cmd.config)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	lock, err := ownInstance(configFile)
+	owned := err == nil
+	if err != nil && !errors.Is(err, instance.ErrOwned) {
+		reportOwned(err, "binding (one device cannot be connected twice)")
+		return 1
+	}
+	cfg, code := loadConfig(configFile)
+	if code != 0 {
+		return code
+	}
+	scopeName, _, err := findBot(cfg, name, *cmd.scope)
+	if err != nil {
+		if owned {
+			releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
+		}
+		fmt.Fprintln(os.Stderr, err)
+		printHelp(os.Stderr, "bot", "bind")
+		return 1
+	}
+	params := map[string]string{}
+	for _, param := range cmd.params {
+		name, value, ok := strings.Cut(param, "=")
+		if !ok || name == "" {
+			fmt.Fprintf(os.Stderr, "invalid --param %q, want name=value\n", param)
+			return 2
+		}
+		params[name] = value
+	}
+	opts := bindOptions{
+		method: *cmd.method, requestKey: *cmd.requestKey,
+		params: params, force: *cmd.force,
+	}
+	if !owned {
+		return bindThroughAPI(os.Stdout, os.Stdin, cfg, scopeName, name, opts)
+	}
+	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
+	return bindOffline(os.Stdout, os.Stdin, cfg, scopeName, name, opts,
+		*cmd.verbose)
+}
+
+func runUnbind(args []string) int {
+	cmd := newUnbindCmd()
+	if code := parseArgs(cmd.fs, args); code >= 0 {
+		return code
+	}
+	if cmd.fs.NArg() < 1 {
+		printHelp(os.Stderr, "bot", "unbind")
+		return 2
+	}
+	// The instance is taken before the tree is read, so the recovery a local
+	// unbind runs cannot race the owner's (ADR 0039, ADR 0042).
+	configFile, err := configPath(*cmd.config)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	lock, err := ownInstance(configFile)
+	owned := err == nil
+	if err != nil && !errors.Is(err, instance.ErrOwned) {
+		reportOwned(err, "unbinding")
+		return 1
+	}
+	cfg, code := loadConfig(configFile)
+	if code != 0 {
+		return code
+	}
+	name := cmd.fs.Arg(0)
+	scopeName, _, err := findBot(cfg, name, *cmd.scope)
+	if err != nil {
+		if owned {
+			releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
+		}
+		fmt.Fprintln(os.Stderr, err)
+		printHelp(os.Stderr, "bot", "unbind")
+		return 1
+	}
+	if !owned {
+		return unbindThroughAPI(os.Stdout, cfg, scopeName, name)
+	}
+	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
+	return unbindOffline(os.Stdout, cfg, scopeName, name)
+}
+
+// unbindTimeout bounds the call: the instance stops the bot, draining its
+// outbox, before it removes the binding.
+const unbindTimeout = time.Minute
+
+func bindingPath(scope, bot string) string {
+	return "/api/v1/scopes/" + url.PathEscape(scope) + "/bots/" +
+		url.PathEscape(bot) + "/binding"
+}
+
+func setupPath(scope, bot string) string { return bindingPath(scope, bot) + "/setups" }
+
+// remoteBind drives the running instance's neutral lifecycle: the same
+// operations a host backend uses, with challenges rendered here
+// (ADR 0046, ADR 0053).
+type remoteBind struct {
+	client *apiClient
+}
+
+func (r remoteBind) inspect(
+	ctx context.Context, scope, bot string,
+) (bindingStatus, error) {
+	var status bindingStatus
+	err := r.client.get(ctx, bindingPath(scope, bot), &status)
+	return status, err
+}
+
+func (r remoteBind) detach(ctx context.Context, scope, bot string) error {
+	return r.client.delete(ctx, bindingPath(scope, bot), unbindTimeout)
+}
+
+func (r remoteBind) methods(ctx context.Context, scope, bot string) ([]string, error) {
+	var body struct {
+		Methods []string `json:"methods"`
+	}
+	err := r.client.get(ctx, bindingPath(scope, bot)+"/methods", &body)
+	return body.Methods, err
+}
+
+func (r remoteBind) begin(
+	ctx context.Context, scope, bot, method, key string, params map[string]string,
+) (*setupSession, error) {
+	var session setupSession
+	err := r.client.postJSON(ctx, setupPath(scope, bot), map[string]any{
+		"method": method, "request_key": key, "params": params,
+	}, &session, apiTimeout)
+	return &session, err
+}
+
+func (r remoteBind) read(
+	ctx context.Context, scope, bot, id string,
+) (*setupSession, error) {
+	var session setupSession
+	err := r.client.get(ctx, setupPath(scope, bot)+"/"+url.PathEscape(id), &session)
+	return &session, err
+}
+
+func (r remoteBind) input(
+	ctx context.Context, scope, bot, id string, revision int64,
+	key string, values map[string]string,
+) (*setupSession, error) {
+	var session setupSession
+	err := r.client.postJSON(ctx,
+		setupPath(scope, bot)+"/"+url.PathEscape(id)+"/inputs", map[string]any{
+			"revision": revision, "request_key": key, "values": values,
+		}, &session, apiTimeout)
+	return &session, err
+}
+
+func bindThroughAPI(
+	stdout io.Writer, stdin io.Reader, cfg *config.Config, scopeName, botName string,
+	opts bindOptions,
+) int {
+	client, err := newAPIClient(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if stdout == nil {
+		stdout = os.Stdout
+	}
+	if stdin == nil {
+		stdin = os.Stdin
+	}
+	return driveBind(context.Background(), remoteBind{client: client},
+		scopeName, botName, opts, stdin, stdout)
+}
+
+// unbindThroughAPI drops the binding through the running instance — the
+// same path a host backend uses: it stops the bot before the binding goes
+// (ADR 0021, ADR 0053).
+func unbindThroughAPI(
+	w io.Writer, cfg *config.Config, scopeName, botName string,
+) int {
+	client, err := newAPIClient(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	err = client.delete(context.Background(), bindingPath(scopeName, botName),
+		unbindTimeout)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Fprintf(w, "bot %q (scope %q) unbound\n", botName, scopeName)
+	return 0
+}
+
+// bindLogger is the logger of a one-shot command: without --verbose only
+// warnings and errors surface (ADR 0038).
+func bindLogger(cfg *config.Config, verbose bool) *slog.Logger {
+	if !verbose {
+		return botflota.NewLogger("warn", os.Stderr)
+	}
+	return botflota.NewLogger(cfg.LogLevel, os.Stderr)
+}
+
+// bindOffline binds under the instance lock through the bot's installed
+// setup runner directly: the same neutral operations the API drives, with
+// no provider-specific form (ADR 0053).
+func bindOffline(
+	stdout io.Writer, stdin io.Reader, cfg *config.Config,
+	scopeName, botName string, opts bindOptions, verbose bool,
+) int {
+	ctx := context.Background()
+	db, err := openDatabase(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer db.Close()
+	logger := bindLogger(cfg, verbose)
+	var deps *slog.Logger
+	if verbose {
+		deps = logger
+	}
+	devices, err := openDevices(ctx, db, deps, cfg.LogLevelDeps)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	manager := whatsapp.NewPairManager(whatsapp.PairManagerOptions{
+		Build: offlinePairBuild(cfg, db, devices),
+		OnPaired: func(context.Context, string, string) error {
+			return errors.New("fleet is not running")
+		},
+		Log: logger,
+	})
+	defer manager.Close()
+	owner := whatsapp.AccountOwner{
+		Devices: devices, Bindings: db.Bindings(),
+		Pairings: db.Pairings(), Outbox: db.Outbox(), Pairs: manager,
+	}
+	return driveBind(ctx, directBind{lifecycle: owner, runner: manager},
+		scopeName, botName, opts, stdin, stdout)
+}
+
+func unbindOffline(w io.Writer, cfg *config.Config, scopeName, botName string) int {
+	ctx := context.Background()
+	db, err := openDatabase(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer db.Close()
+	devices, err := openDevices(ctx, db, nil, cfg.LogLevelDeps)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	owner := whatsapp.AccountOwner{
+		Devices: devices, Bindings: db.Bindings(),
+		Pairings: db.Pairings(), Outbox: db.Outbox(),
+	}
+	status, err := owner.InspectBinding(ctx, scopeName, botName)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if status.Binding == nil {
+		fmt.Fprintln(os.Stderr, "no committed binding for that bot")
+		return 1
+	}
+	if err := owner.DetachBinding(ctx, scopeName, botName); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Fprintf(w, "bot %q (scope %q) unbound\n", botName, scopeName)
+	return 0
+}
+
+// directBind drives the installed setup runner without leaving the process:
+// the locked offline operator path speaks the same session contract as the
+// API (ADR 0053).
+type directBind struct {
+	lifecycle botflota.AccountLifecycle
+	runner    botflota.SetupRunner
+}
+
+func (d directBind) inspect(
+	ctx context.Context, scope, bot string,
+) (bindingStatus, error) {
+	status, err := d.lifecycle.InspectBinding(ctx, scope, bot)
+	if err != nil {
+		return bindingStatus{}, err
+	}
+	return bindingStatusOf(status), nil
+}
+
+func (d directBind) detach(ctx context.Context, scope, bot string) error {
+	return d.lifecycle.DetachBinding(ctx, scope, bot)
+}
+
+func (d directBind) methods(ctx context.Context, scope, bot string) ([]string, error) {
+	return d.runner.SetupMethods(ctx, scope, bot)
+}
+
+func (d directBind) begin(
+	ctx context.Context, scope, bot, method, key string, params map[string]string,
+) (*setupSession, error) {
+	session, err := d.runner.BeginSetup(ctx, scope, bot,
+		botflota.SetupBegin{Method: method, RequestKey: key, Params: params})
+	if err != nil {
+		return nil, err
+	}
+	return setupSessionOf(session), nil
+}
+
+func (d directBind) read(
+	ctx context.Context, scope, bot, id string,
+) (*setupSession, error) {
+	session, err := d.runner.ReadSetup(ctx, scope, bot, id)
+	if err != nil {
+		return nil, err
+	}
+	return setupSessionOf(session), nil
+}
+
+func (d directBind) input(
+	ctx context.Context, scope, bot, id string, revision int64,
+	key string, values map[string]string,
+) (*setupSession, error) {
+	session, err := d.runner.InputSetup(ctx, scope, bot, id, botflota.SetupInput{
+		Revision: revision, RequestKey: key, Values: values,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return setupSessionOf(session), nil
+}
+
+func bindingStatusOf(status botflota.BindingStatus) bindingStatus {
+	view := bindingStatus{Condition: string(status.Condition)}
+	if status.Binding != nil {
+		view.Binding = &struct {
+			Provider   string `json:"provider"`
+			Mode       string `json:"mode"`
+			Generation int64  `json:"generation"`
+			Identity   struct {
+				Provider string `json:"provider"`
+				Subject  string `json:"subject"`
+			} `json:"identity"`
+		}{
+			Provider:   status.Binding.Provider,
+			Mode:       status.Binding.Mode,
+			Generation: status.Binding.Generation,
+		}
+		view.Binding.Identity.Provider = status.Binding.Identity.Provider
+		view.Binding.Identity.Subject = status.Binding.Identity.Subject
+	}
+	return view
+}
+
+func setupSessionOf(session *botflota.SetupSession) *setupSession {
+	view := &setupSession{
+		ID: session.ID, Method: session.Method, State: string(session.State),
+		Revision: session.Revision, ErrorCode: session.ErrorCode,
+		ActivationError: session.ActivationError,
+	}
+	if session.Step != nil {
+		step := &setupStep{Kind: session.Step.Kind}
+		if session.Step.Display != nil {
+			step.Display = &struct {
+				Format  string `json:"format"`
+				Payload string `json:"payload"`
+				Hint    string `json:"hint"`
+			}{
+				Format:  session.Step.Display.Format,
+				Payload: session.Step.Display.Payload,
+				Hint:    session.Step.Display.Hint,
+			}
+		}
+		for _, field := range session.Step.Fields {
+			step.Fields = append(step.Fields, struct {
+				Name  string `json:"name"`
+				Kind  string `json:"kind"`
+				Label string `json:"label"`
+			}{Name: field.Name, Kind: field.Kind, Label: field.Label})
+		}
+		if session.Step.Approval != nil {
+			step.Approval = &struct {
+				Destination string `json:"destination"`
+				Instruction string `json:"instruction"`
+			}{
+				Destination: session.Step.Approval.Destination,
+				Instruction: session.Step.Approval.Instruction,
+			}
+		}
+		if session.Step.Profile != nil {
+			step.Profile = &struct {
+				Methods     []string `json:"methods"`
+				Options     []string `json:"options"`
+				AllowCreate bool     `json:"allow_create"`
+				Params      []struct {
+					Name  string `json:"name"`
+					Kind  string `json:"kind"`
+					Label string `json:"label"`
+				} `json:"params"`
+			}{
+				Methods:     session.Step.Profile.Methods,
+				Options:     session.Step.Profile.Options,
+				AllowCreate: session.Step.Profile.AllowCreate,
+			}
+			for _, param := range session.Step.Profile.Params {
+				step.Profile.Params = append(step.Profile.Params, struct {
+					Name  string `json:"name"`
+					Kind  string `json:"kind"`
+					Label string `json:"label"`
+				}{Name: param.Name, Kind: param.Kind, Label: param.Label})
+			}
+		}
+		view.Step = step
+	}
+	return view
+}
+
+// offlinePairBuild resolves one bot's local pairing settings from the config
+// file the locked command already holds, so a reload cannot move them
+// mid-bind.
+func offlinePairBuild(
+	cfg *config.Config, db *sqlite.DB, devices *whatsapp.Devices,
+) func(scope, bot string, fullHistory bool) (whatsapp.PairOptions, error) {
+	return func(scope, botName string, fullHistory bool) (whatsapp.PairOptions, error) {
+		scopeCfg, ok := cfg.Scopes[scope]
+		if !ok {
+			return whatsapp.PairOptions{}, fmt.Errorf("unknown scope %q", scope)
+		}
+		bot, ok := scopeCfg.Bots[botName]
+		if !ok {
+			return whatsapp.PairOptions{}, fmt.Errorf(
+				"bot %q not found in scope %q", botName, scope)
+		}
+		options, err := whatsappOptions(bot)
+		if err != nil {
+			return whatsapp.PairOptions{}, err
+		}
+		return whatsapp.PairOptions{
+			Scope:          scope,
+			Bot:            botName,
+			Devices:        devices,
+			Bindings:       db.Bindings(),
+			Pairings:       db.Pairings(),
+			Peers:          db.Peers(),
+			Chats:          db.Chats(),
+			Messages:       db.Messages(),
+			History:        options.History,
+			FullHistory:    fullHistory,
+			Directory:      db.Directory(),
+			ImportContacts: options.ImportContacts,
+			Outbox:         db.Outbox(),
+			Log:            botflota.DiscardLogger(),
+			DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
+			DeviceName:     cfg.DeviceName,
+		}, nil
+	}
+}

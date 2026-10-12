@@ -65,9 +65,9 @@ func TestHelpOutputSections(t *testing.T) {
 			contains: []string{"usage: botflota bot", "commands:", "options:"},
 		},
 		{
-			name:     "pair leaf",
-			path:     []string{"bot", "pair"},
-			contains: []string{"usage: botflota bot pair", "options:", "-h, --help"},
+			name:     "bind leaf",
+			path:     []string{"bot", "bind"},
+			contains: []string{"usage: botflota bot bind", "options:", "-h, --help"},
 			absent:   []string{"commands:"},
 		},
 	}
@@ -148,22 +148,22 @@ func TestOrderFlags(t *testing.T) {
 }
 
 func TestParseArgsAcceptsAFlagAfterTheArguments(t *testing.T) {
-	pair := newPairCmd()
-	if code := parseArgs(pair.fs, []string{"dev-bot", "--import-history"}); code != -1 {
+	bind := newBindCmd()
+	if code := parseArgs(bind.fs, []string{"dev-bot", "--force"}); code != -1 {
 		t.Fatalf("parseArgs = %d, want -1", code)
 	}
-	if !*pair.importHistory {
+	if !*bind.force {
 		t.Fatal("a flag after the arguments was dropped")
 	}
-	if pair.fs.NArg() != 1 || pair.fs.Arg(0) != "dev-bot" {
-		t.Fatalf("arguments = %v, want just the bot", pair.fs.Args())
+	if bind.fs.NArg() != 1 || bind.fs.Arg(0) != "dev-bot" {
+		t.Fatalf("arguments = %v, want just the bot", bind.fs.Args())
 	}
 }
 
 func TestParseArgsRejectsAnUnknownFlag(t *testing.T) {
 	silenceStderr(t)
-	pair := newPairCmd()
-	if code := parseArgs(pair.fs, []string{"dev-bot", "--import-histoy"}); code != 2 {
+	bind := newBindCmd()
+	if code := parseArgs(bind.fs, []string{"dev-bot", "--forec"}); code != 2 {
 		t.Fatalf("parseArgs = %d, want 2", code)
 	}
 }
