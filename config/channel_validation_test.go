@@ -386,10 +386,9 @@ func TestChannelSchemaHasOneBranchPerSelector(t *testing.T) {
 	}
 }
 
-// TestDefinitionContentValidatorIsUsedPerBot proves the extension point: a
-// definition enforces its own provider-correct limits and config reports them
-// with the consuming bot's context (ADR 0052). A definition without the hook
-// falls back to its declared capabilities, covered above.
+// TestDefinitionContentValidatorIsUsedPerBot proves the extension point is
+// additive: the adapter's own limit is enforced, and the declared-capability
+// check still rejects a kind the definition cannot send (ADR 0052).
 func TestDefinitionContentValidatorIsUsedPerBot(t *testing.T) {
 	catalog, err := channels.New(channels.Definition{
 		Provider: "fake", Kind: "fake", Modes: []string{"text"},
@@ -418,12 +417,27 @@ func TestDefinitionContentValidatorIsUsedPerBot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catalog: %v", err)
 	}
-	cfg := botConfig(spec.Bot{
-		Graph:   "menu",
-		Channel: spec.Channel{Provider: "fake", Mode: "text"},
-	}, []spec.Step{{Message: &spec.Message{Body: spec.Text{"toolong"}}}})
-	errs := Validate(cfg, catalog)
+	bot := func(steps ...spec.Step) *Config {
+		return botConfig(spec.Bot{
+			Graph:   "menu",
+			Channel: spec.Channel{Provider: "fake", Mode: "text"},
+		}, steps)
+	}
+
+	errs := Validate(bot(
+		spec.Step{Message: &spec.Message{Body: spec.Text{"toolong"}}},
+		spec.Step{Media: &spec.Media{Kind: "image", URL: "https://example.test/a.png"}},
+	), catalog)
 	if !mentions(errs, "limits a body to 3 characters") {
 		t.Fatalf("the definition's own limit was not enforced: %v", errs)
+	}
+	if !mentions(errs, "cannot send image") {
+		t.Fatalf("the adapter hook disabled the base capability check: %v", errs)
+	}
+
+	if errs := Validate(bot(spec.Step{
+		Message: &spec.Message{Body: spec.Text{"ok"}},
+	}), catalog); len(errs) != 0 {
+		t.Fatalf("a short supported body must pass: %v", errs)
 	}
 }

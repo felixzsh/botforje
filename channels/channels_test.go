@@ -175,3 +175,26 @@ func TestCatalogDoesNotShareMutableDefinitions(t *testing.T) {
 		t.Fatal("Definitions leaked the internal definition")
 	}
 }
+
+// TestValidateDeclaredContentCapturesItsOwnCapabilities proves the default
+// validator cannot be changed through the slice its caller still holds: it
+// clones on construction like the catalog does (ADR 0052).
+func TestValidateDeclaredContentCapturesItsOwnCapabilities(t *testing.T) {
+	caps := Capabilities{Send: []botflota.MessageKind{botflota.KindText}}
+	validate := ValidateDeclaredContent(caps)
+	caps.Send[0] = botflota.KindImage
+
+	key := Key{Provider: "fake", Mode: "text"}
+	image := spec.Action{Steps: []spec.Step{{Media: &spec.Media{
+		Kind: "image", URL: "https://example.test/a.png",
+	}}}}
+	if reasons := validate(key, "greet", image); len(reasons) == 0 {
+		t.Fatal("the captured capabilities changed with the caller's slice")
+	}
+	text := spec.Action{Steps: []spec.Step{{Message: &spec.Message{
+		Body: spec.Text{"hi"},
+	}}}}
+	if reasons := validate(key, "greet", text); len(reasons) != 0 {
+		t.Fatalf("text must still be accepted: %v", reasons)
+	}
+}

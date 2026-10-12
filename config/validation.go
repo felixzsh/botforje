@@ -545,10 +545,7 @@ func validateBotCapabilities(
 	if !ok {
 		return
 	}
-	validate := def.ValidateContent
-	if validate == nil {
-		validate = channels.ValidateDeclaredContent(def.Capabilities)
-	}
+	validate := channels.ValidateDeclaredContent(def.Capabilities)
 	seen := map[string]bool{}
 	check := func(actionName string) {
 		if actionName == "" || seen[actionName] {
@@ -559,7 +556,11 @@ func validateBotCapabilities(
 		if !ok {
 			return
 		}
-		for _, reason := range validate(key, actionName, action) {
+		reasons := validate(key, actionName, action)
+		if def.ValidateContent != nil {
+			reasons = append(reasons, def.ValidateContent(key, actionName, action)...)
+		}
+		for _, reason := range reasons {
 			add(file, entity, "%s", reason)
 		}
 	}

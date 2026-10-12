@@ -94,8 +94,10 @@ type ContentValidator func(key Key, actionName string, action spec.Action) []str
 
 // ValidateDeclaredContent is the default ContentValidator: it checks every
 // step's content kind and contact-card variant against caps. An adapter supplies
-// its own ContentValidator to add provider-correct limits on top.
+// its own ContentValidator to add provider-correct limits on top; the two run
+// together, so a hook never replaces this base check.
 func ValidateDeclaredContent(caps Capabilities) ContentValidator {
+	caps = caps.clone()
 	return func(key Key, actionName string, action spec.Action) []string {
 		var reasons []string
 		check := func(steps []spec.Step, where string) {
@@ -188,10 +190,11 @@ type Definition struct {
 	// typed value, or reports why the author's values cannot be accepted. It is
 	// pure: no store opens, no transport starts.
 	Decode func(bot spec.Bot) (any, []string)
-	// ValidateContent reports what one action cannot send on this
-	// implementation. A nil hook falls back to the declared capabilities
-	// (ValidateDeclaredContent), so content kind support is always checked and
-	// an adapter only adds the limits and variants it alone knows (ADR 0052).
+	// ValidateContent adds what one action cannot send on this implementation
+	// beyond the declared capabilities, such as a provider-correct limit. It is
+	// additional: shared validation always checks content kinds and card variants
+	// against Capabilities first, so a hook never disables that base check. A nil
+	// hook adds nothing (ADR 0052).
 	ValidateContent ContentValidator
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.

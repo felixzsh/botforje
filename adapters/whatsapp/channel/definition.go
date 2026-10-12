@@ -74,13 +74,12 @@ func Definition() channels.Definition {
 		},
 	}
 	return channels.Definition{
-		Provider:        Provider,
-		Kind:            "whatsmeow",
-		Modes:           []string{Mode},
-		Capabilities:    caps,
-		OptionsSchema:   optionsSchema,
-		Decode:          decodeBot,
-		ValidateContent: channels.ValidateDeclaredContent(caps),
+		Provider:      Provider,
+		Kind:          "whatsmeow",
+		Modes:         []string{Mode},
+		Capabilities:  caps,
+		OptionsSchema: optionsSchema,
+		Decode:        decodeBot,
 	}
 }
 
