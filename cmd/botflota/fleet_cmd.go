@@ -17,6 +17,7 @@ import (
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/api"
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
 	"github.com/felixzsh/botflota/webhook"
@@ -92,65 +93,50 @@ func runFleet(args []string) int {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	devices, err := openDevices(ctx, db, logger, cfg.LogLevelDeps)
-	if err != nil {
-		logger.Error("open device store", "error", err)
-		return 1
-	}
-	if err := whatsapp.ValidateAccounts(ctx, devices, db.Bindings(),
-		db.Pairings()); err != nil {
-		logger.Error("validate pairings", "error", err)
-		return 1
-	}
-	catalog, err := runtimeCatalog(channel.Deps{
-		Devices:      devices,
-		Bindings:     db.Bindings(),
-		Pairings:     db.Pairings(),
-		Peers:        db.Peers(),
-		Chats:        db.Chats(),
-		Messages:     db.Messages(),
-		Directory:    db.Directory(),
-		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
-	})
-	if err != nil {
-		logger.Error("build channel catalog", "error", err)
-		return 1
-	}
-	skipped := make(map[string]map[string]bool)
-	skippedCount := 0
-	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
-		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
-			state, err := whatsapp.CheckPairing(ctx, devices, db.Bindings(),
-				db.Pairings(), scopeName, botName)
-			if err != nil {
-				logger.Error("validate pairing", "scope", scopeName,
-					"bot", botName, "error", err)
-				return 1
-			}
-			if state == botflota.PairingPaired {
-				continue
-			}
-			if skipped[scopeName] == nil {
-				skipped[scopeName] = make(map[string]bool)
-			}
-			skipped[scopeName][botName] = true
-			skippedCount++
-			logger.Warn("bot not initialized; use bot pair",
-				"scope", scopeName, "bot", botName, "state", string(state))
+	// Only the adapters the config selects are assembled: a fleet that runs no
+	// WhatsApp bot opens no WhatsApp device store (ADR 0052, ADR 0054).
+	var devices *whatsapp.Devices
+	var catalog *channels.Catalog
+	if whatsappSelected(cfg) {
+		devices, err = openDevices(ctx, db, logger, cfg.LogLevelDeps)
+		if err != nil {
+			logger.Error("open device store", "error", err)
+			return 1
+		}
+		if err := whatsapp.ValidateAccounts(ctx, devices, db.Bindings(),
+			db.Pairings()); err != nil {
+			logger.Error("validate pairings", "error", err)
+			return 1
+		}
+		catalog, err = runtimeCatalog(channel.Deps{
+			Devices:      devices,
+			Bindings:     db.Bindings(),
+			Pairings:     db.Pairings(),
+			Peers:        db.Peers(),
+			Chats:        db.Chats(),
+			Messages:     db.Messages(),
+			Directory:    db.Directory(),
+			DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
+		})
+		if err != nil {
+			logger.Error("build channel catalog", "error", err)
+			return 1
+		}
+	} else {
+		catalog, err = channels.New()
+		if err != nil {
+			logger.Error("build channel catalog", "error", err)
+			return 1
 		}
 	}
 
 	runner, err := fleet.New(cfg, fleet.Options{
-		Store:    db.Sessions(),
-		Chats:    db.Chats(),
-		Peers:    db.Peers(),
-		Messages: db.Messages(),
-		Turn:     db.Turns(),
-		Outbox:   db.Outbox(),
-		Notify:   webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
-		Skip: func(scope, bot string) bool {
-			return skipped[scope][bot]
-		},
+		Store: db.Sessions(),
+		Chats: db.Chats(), Peers: db.Peers(),
+		Messages:       db.Messages(),
+		Turn:           db.Turns(),
+		Outbox:         db.Outbox(),
+		Notify:         webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,
 		Catalog:        catalog,
@@ -161,7 +147,7 @@ func runFleet(args []string) int {
 	}
 
 	statuses := runner.Status()
-	logger.Info("fleet starting", "bots", len(statuses), "skipped", skippedCount)
+	logger.Info("fleet starting", "bots", len(statuses))
 	for _, status := range statuses {
 		logger.Debug("bot configured", "scope", status.Scope, "bot", status.Bot)
 	}
@@ -310,10 +296,20 @@ func serveAPI(
 		logger.Warn("owner token rotated",
 			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
-	pairings := pairingManager(source, db, devices, runner, logger)
-	owner := whatsapp.AccountOwner{
-		Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
-		Outbox: db.Outbox(),
+	var (
+		pairings      botflota.PairingRunner   = noRemoteSetup{}
+		presence      botflota.DevicePresence  = noLocalAccount{}
+		unpairer      botflota.AccountUnpairer = noLocalAccount{}
+		closePairings func()
+	)
+	if devices != nil {
+		manager := pairingManager(source, db, devices, runner, logger)
+		owner := whatsapp.AccountOwner{
+			Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
+			Outbox: db.Outbox(),
+		}
+		pairings, presence, unpairer = manager, owner, owner
+		closePairings = manager.Close
 	}
 	budgets := cfg.RateBudgets()
 	server, err := api.New(api.Options{
@@ -325,8 +321,8 @@ func serveAPI(
 		Bindings:    db.Bindings(),
 		Pairings:    db.Pairings(),
 		Pairing:     pairings,
-		Presence:    owner,
-		Unpairer:    owner,
+		Presence:    presence,
+		Unpairer:    unpairer,
 		Peers:       db.Peers(),
 		Directory:   db.Directory(),
 		Chats:       db.Chats(),
@@ -341,12 +337,12 @@ func serveAPI(
 		Log:         logger,
 	})
 	if err != nil {
-		pairings.Close()
+		closer(closePairings)
 		return nil, err
 	}
 	listener, err := server.Listen()
 	if err != nil {
-		pairings.Close()
+		closer(closePairings)
 		return nil, err
 	}
 	logger.Info("api listening", "address", listener.Addr().String())
@@ -363,9 +359,15 @@ func serveAPI(
 		once.Do(func() {
 			stop()
 			<-served
-			pairings.Close()
+			closer(closePairings)
 		})
 	}, nil
+}
+
+func closer(closePairings func()) {
+	if closePairings != nil {
+		closePairings()
+	}
 }
 
 // pairingManager is the API path of `bot pair`: the session it runs resolves

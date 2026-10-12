@@ -2,6 +2,7 @@ package channel
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -256,6 +257,21 @@ func builtOptions(raw rawOptions, common spec.BotSettings) BotOptions {
 		options.ExternalReplyPause = time.Duration(*raw.ExternalReplyPause) * time.Millisecond
 	}
 	return options
+}
+
+// Prepare returns the definition's readiness hook bound to one installation's
+// dependencies: a bot joins the fleet only once WhatsApp confirms a usable link,
+// and a residual or missing pairing skips it without stopping its peers
+// (ADR 0022, ADR 0053).
+func Prepare(deps Deps) func(context.Context, channels.Bind) (bool, string, error) {
+	return func(ctx context.Context, bind channels.Bind) (bool, string, error) {
+		state, err := whatsapp.CheckPairing(
+			ctx, deps.Devices, deps.Bindings, deps.Pairings, bind.Scope, bind.Bot)
+		if err != nil {
+			return false, "", err
+		}
+		return state == botflota.PairingPaired, string(state), nil
+	}
 }
 
 // Deps are the process-wide dependencies one WhatsApp installation needs; the

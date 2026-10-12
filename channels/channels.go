@@ -6,6 +6,7 @@
 package channels
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -131,6 +132,11 @@ type Definition struct {
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)
+	// Prepare is an optional hook run before one bot joins the fleet: a bot
+	// whose local credentials are missing is skipped without stopping its
+	// peers, and err is fatal to startup (ADR 0022, ADR 0053). A nil Prepare
+	// means always ready.
+	Prepare func(ctx context.Context, bind Bind) (ready bool, state string, err error)
 }
 
 // Key identifies one installed implementation by provider and account mode.

@@ -28,6 +28,12 @@ condition (unconfigured, configured, action-required, unavailable), safe
 reasons, and the appropriate setup method. An existing credential is not proof
 of access.
 
+**P2 implements only the join decision.** A channel definition reports whether
+one bot can join the fleet now and a safe state string; startup skips an
+unready bot without stopping its peers, and an adapter's stores are opened only
+when the config selects it. The session, revision, and generation model below
+is this ADR's decision and is not implied by that hook.
+
 **Session and steps.** A setup session carries `{bot ref, session id, method,
 account mode, state, revision, start/update/expiry times, sanitized error code,
 optional typed next step}`. States are `starting`, `awaiting_input`,

@@ -174,6 +174,15 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 			if opts.Skip != nil && opts.Skip(scopeName, botName) {
 				continue
 			}
+			ready, state, err := fleet.prepareBot(context.Background(), scopeName, botName)
+			if err != nil {
+				return nil, err
+			}
+			if !ready {
+				opts.Log.Warn("bot not ready; skipping it",
+					"scope", scopeName, "bot", botName, "state", state)
+				continue
+			}
 			invalid, err := fleet.hasInvalidActiveSession(
 				context.Background(), scopeName, botName, scope.Graphs[bot.Graph])
 			if err != nil {
@@ -268,6 +277,36 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 			}
 		},
 	}, nil
+}
+
+// prepareBot asks the bot's definition whether it can join the fleet now. A
+// definition without a Prepare hook is always ready (ADR 0022, ADR 0053).
+func (f *Fleet) prepareBot(
+	ctx context.Context, scopeName, botName string,
+) (bool, string, error) {
+	scope, ok := f.cfg.Scopes[scopeName]
+	if !ok {
+		return false, "", fmt.Errorf("fleet: unknown scope %q", scopeName)
+	}
+	bot, ok := scope.Bots[botName]
+	if !ok {
+		return false, "", fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
+	}
+	def, _, err := f.opts.Catalog.Resolve(bot.Channel)
+	if err != nil {
+		return false, "", fmt.Errorf("fleet: bot %q: %w", botName, err)
+	}
+	if def.Prepare == nil {
+		return true, "", nil
+	}
+	options, reasons := decodeOptions(def, bot)
+	if len(reasons) > 0 {
+		return false, "", fmt.Errorf(
+			"fleet: bot %q channel: %s", botName, strings.Join(reasons, "; "))
+	}
+	return def.Prepare(ctx, channels.Bind{
+		Scope: scopeName, Bot: botName, Options: options, Log: f.opts.Log,
+	})
 }
 
 // botAliases resolves one bot's definition from a config snapshot and returns
@@ -390,6 +429,13 @@ func (f *Fleet) StartBot(scope, name string) error {
 	} else if invalid {
 		return fmt.Errorf("fleet: active session for %s/%s references a removed node",
 			scope, name)
+	}
+	ready, state, err := f.prepareBot(f.ctx, scope, name)
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return fmt.Errorf("fleet: bot %s/%s is not ready (%s)", scope, name, state)
 	}
 	key := botflota.BotRef{Scope: scope, Bot: name}
 	if bot, ok := f.bots[key]; ok && bot.running.Load() {

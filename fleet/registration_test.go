@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -172,5 +173,82 @@ func waitUntil(t *testing.T, ready func() bool, what string) {
 			t.Fatalf("timed out waiting until %s", what)
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestPrepareSkipsAnUnreadyBotWithoutBuildingIt proves startup asks the
+// definition before assembling a bot: an unready bot joins no fleet, its peers
+// are untouched, and no channel is constructed (ADR 0022, ADR 0053).
+func TestPrepareSkipsAnUnreadyBotWithoutBuildingIt(t *testing.T) {
+	cases := []struct {
+		name       string
+		prepare    func(context.Context, channels.Bind) (bool, string, error)
+		wantBots   int
+		wantBuilds int
+		wantErr    bool
+	}{
+		{
+			name: "not ready skips",
+			prepare: func(context.Context, channels.Bind) (bool, string, error) {
+				return false, "missing credentials", nil
+			},
+			wantBots:   0,
+			wantBuilds: 0,
+		},
+		{
+			name: "ready builds",
+			prepare: func(context.Context, channels.Bind) (bool, string, error) {
+				return true, "", nil
+			},
+			wantBots:   1,
+			wantBuilds: 1,
+		},
+		{
+			name: "error is fatal",
+			prepare: func(context.Context, channels.Bind) (bool, string, error) {
+				return false, "", errors.New("credential store unreadable")
+			},
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			built := 0
+			catalog, err := channels.New(channels.Definition{
+				Provider: "fake", Kind: "fake", Modes: []string{"text"},
+				Capabilities: channels.Capabilities{
+					Send: []botflota.MessageKind{botflota.KindText},
+				},
+				Build: func(channels.Bind) (botflota.MessageChannel, error) {
+					built++
+					return newFakeChannel(), nil
+				},
+				Prepare: tc.prepare,
+			})
+			if err != nil {
+				t.Fatalf("catalog: %v", err)
+			}
+			store := newStore()
+			runner, err := New(textFakeConfig(), Options{
+				Store: store, Chats: store, Peers: store, Messages: store,
+				Turn: store, Outbox: store, Catalog: catalog,
+				DefaultTimeout: time.Minute, Now: func() time.Time { return t0 },
+			})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("a failing Prepare must fail startup")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			if len(runner.bots) != tc.wantBots {
+				t.Fatalf("bots = %d, want %d", len(runner.bots), tc.wantBots)
+			}
+			if built != tc.wantBuilds {
+				t.Fatalf("builds = %d, want %d", built, tc.wantBuilds)
+			}
+		})
 	}
 }

@@ -145,10 +145,10 @@ pure option decode, optional builder); `spec.Bot` gains the typed selector and
 `BotSettings` keeps only the shared pacing/filter fields plus an inline map for
 adapter-owned legacy keys. The WhatsApp adapter declares its options, schema,
 capabilities, and builder; config validation, schema generation, startup, the
-watcher, and publication all consume the same pure catalog. Still open below:
-the per-bot legacy template/peer-card decoding, the neutral card slice, and the
-adapter-owned readiness/dependency assembly that keeps `cmd` from opening
-WhatsApp stores for a fleet that has no WhatsApp bot.
+watcher, and publication all consume the same pure catalog. Items 1-4 and
+7-10 landed across the three P2 commits; the card and readiness halves followed
+in the same pass. The P2 gates remain unchecked until the mixed-fleet and
+publication/reload cases are exercised end to end.
 
 - [x] Introduce the immutable injected catalog of installed
   definitions. Distinguish provider, adapter kind, and account mode;
@@ -195,13 +195,16 @@ WhatsApp stores for a fleet that has no WhatsApp bot.
   implemented content/features and provider-correct limits, not a
   platform-wide promise; default to rejection instead of silent
   downgrade.
-- [ ] Replace WhatsApp-only fleet construction with registered builders.
+- [x] Replace WhatsApp-only fleet construction with registered builders.
   Move settings translation and channel-specific dependency assembly
   into the adapter's integration boundary; initialize device stores or
   auxiliary resources only when the selected adapter/bind method needs
   them. Permit adapter-owned shared dependencies behind independent
   per-binding channel views; config-only operations still perform no
-  channel I/O.
+  channel I/O. Landed over 2026-10-12: the catalog builder, the adapter's
+  `Prepare` join hook, and per-config assembly that opens the WhatsApp
+  device store only when a bot selects it, with explicit no-remote-setup
+  and no-local-account surfaces otherwise.
 - [x] Compare selectors, account modes, options, and binding-relevant
   references on reload. Preserve restart-required transport changes,
   saved/active differences, and isolation of peers. Config publication
