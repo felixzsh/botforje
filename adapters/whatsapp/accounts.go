@@ -20,6 +20,19 @@ import (
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 )
 
+// The neutral definition metadata WhatsApp commits with every binding
+// (ADR 0053): the catalog provider, the adapter kind, the account mode this
+// installation serves, and the setup method its sessions speak. WhatsApp
+// subjects are provider-wide phone-number addresses, so the namespace stays
+// empty; the digits are the adapter's opaque subject, never telephone
+// metadata the common contracts parse (ADR 0051).
+const (
+	ProviderName  = ingest.Provider
+	AdapterKind   = "whatsmeow"
+	AccountMode   = "native"
+	SetupMethodQR = "qr"
+)
+
 // Devices is the whatsmeow device store on Botflota's shared SQLite connection
 // (ADR 0006). Open it once per process: the container is built and upgraded
 // once.
@@ -135,7 +148,12 @@ func ValidateAccountOwners(ctx context.Context, accounts botflota.BindingStore) 
 	return nil
 }
 
-// Missing local credentials are recoverable and do not abort validation.
+// ValidateAccounts reconciles the committed bindings this installation
+// serves with their local credentials. Bindings of another provider are
+// never this adapter's business: each bot is inspected through its own
+// definition, never by scanning every bot through one device store
+// (ADR 0053). A binding without local credentials is recoverable and marks
+// the bot unpaired without aborting validation.
 func ValidateAccounts(
 	ctx context.Context, devices *Devices,
 	accounts botflota.BindingStore, pairings botflota.PairingStore,
@@ -151,6 +169,9 @@ func ValidateAccounts(
 		return fmt.Errorf("whatsapp: list linked accounts: %w", err)
 	}
 	for i := range all {
+		if all[i].Identity.Provider != ingest.Provider {
+			continue
+		}
 		device, err := devices.Load(ctx, &all[i])
 		if err != nil {
 			return err
@@ -232,7 +253,10 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 		opts.Outbox, account, PairingNow(nil))
 }
 
-func ensurePhoneAvailable(
+// ensureIdentityAvailable rejects an identity already linked to another
+// bot of the instance (ADR 0021). The conflict detail is for the instance
+// log; the caller reads only the sentinel.
+func ensureIdentityAvailable(
 	ctx context.Context, accounts botflota.BindingStore, key botflota.IdentityKey,
 	scope, bot string,
 ) error {
@@ -328,6 +352,76 @@ type AccountOwner struct {
 	Bindings botflota.BindingStore
 	Pairings botflota.PairingStore
 	Outbox   botflota.OutboxStore
+	// Pairs is the live setup runner, when the instance runs one: detach
+	// waits for the bot's in-flight setup before it forgets the binding, so
+	// no stale worker activates later (ADR 0053). Nil means no setup runs
+	// here and detach skips the wait.
+	Pairs *PairManager
+}
+
+// InspectBinding answers one bot's committed binding with its actionable
+// readiness condition (ADR 0053). Credential presence, provider
+// authorization, and transport health stay separate facts: a stored device
+// proves neither authorization nor a live connection, and the reasons say
+// so. A bot without a binding stays inspectable.
+func (o AccountOwner) InspectBinding(
+	ctx context.Context, scope, bot string,
+) (botflota.BindingStatus, error) {
+	if o.Devices == nil {
+		return botflota.BindingStatus{}, errors.New("whatsapp: no device store")
+	}
+	account, err := o.Bindings.Get(ctx, scope, bot)
+	if errors.Is(err, botflota.ErrNotFound) {
+		return botflota.BindingStatus{
+			Condition: botflota.ReadinessUnconfigured,
+			Reasons:   []string{"no account linked"},
+			Method:    SetupMethodQR,
+		}, nil
+	}
+	if err != nil {
+		return botflota.BindingStatus{}, fmt.Errorf("whatsapp: read binding: %w", err)
+	}
+	if account.Identity.Provider != ingest.Provider {
+		return botflota.BindingStatus{}, fmt.Errorf(
+			"whatsapp: bot %q (scope %q) names provider %q",
+			bot, scope, account.Identity.Provider)
+	}
+	present, err := HasLocalDevice(ctx, o.Devices, account)
+	if err != nil {
+		return botflota.BindingStatus{}, err
+	}
+	if !present {
+		status := botflota.BindingStatus{
+			Binding:   account,
+			Condition: botflota.ReadinessActionRequired,
+			Reasons:   []string{"local credentials are missing; complete setup again"},
+			Method:    SetupMethodQR,
+		}
+		return status, nil
+	}
+	return botflota.BindingStatus{
+		Binding:   account,
+		Condition: botflota.ReadinessConfigured,
+		Reasons: []string{
+			"local credentials are stored",
+			"provider authorization and transport health are unknown until connect",
+		},
+	}, nil
+}
+
+// DetachBinding forgets one bot's local binding through the same serialized
+// path as an unpair: it waits for the in-flight setup when one runs,
+// settles the queued replies, and leaves chats, directory, and history
+// alone. It never destroys the provider account (ADR 0053).
+func (o AccountOwner) DetachBinding(ctx context.Context, scope, bot string) error {
+	if o.Pairs != nil {
+		wait, cancel := context.WithTimeout(ctx, pairActivationBudget)
+		defer cancel()
+		if err := o.Pairs.EndPair(wait, scope, bot); err != nil {
+			return fmt.Errorf("whatsapp: end setup before detach: %w", err)
+		}
+	}
+	return o.UnpairAccount(ctx, scope, bot)
 }
 
 // UnpairAccount removes the local credentials, the account record, and the

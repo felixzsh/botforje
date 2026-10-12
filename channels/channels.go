@@ -204,6 +204,16 @@ type Definition struct {
 	// peers, and err is fatal to startup (ADR 0022, ADR 0053). A nil Prepare
 	// means always ready.
 	Prepare func(ctx context.Context, bind Bind) (ready bool, state string, err error)
+	// SetupMethods names the account-setup methods this implementation
+	// supports for one bot ("qr", a credential handoff, a multi-step
+	// approval, a managed-profile selection). Empty means the
+	// implementation offers no remote setup (ADR 0053).
+	SetupMethods []string
+	// Setup returns one bot's neutral account lifecycle and setup runner.
+	// A definition injected into a config-only command leaves it nil;
+	// nothing invokes it there. Either return may be nil when the
+	// implementation does not offer that half.
+	Setup func(Bind) (botflota.AccountLifecycle, botflota.SetupRunner, error)
 }
 
 // Key identifies one installed implementation by provider and account mode.
@@ -278,6 +288,7 @@ func (c *Catalog) Definitions() []Definition {
 func (d Definition) clone() Definition {
 	d.Modes = slices.Clone(d.Modes)
 	d.Capabilities = d.Capabilities.clone()
+	d.SetupMethods = slices.Clone(d.SetupMethods)
 	return d
 }
 

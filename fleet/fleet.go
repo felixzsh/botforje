@@ -309,6 +309,40 @@ func (f *Fleet) prepareBot(
 	})
 }
 
+// SetupFor resolves one bot's neutral account lifecycle and setup runner
+// through its definition: inspection, bind, and unbind select the bot's
+// installed implementation, never every bot through one device store
+// (ADR 0053). A definition without a Setup hook offers no account setup.
+func (f *Fleet) SetupFor(
+	scopeName, botName string,
+) (botflota.AccountLifecycle, botflota.SetupRunner, error) {
+	scope, ok := f.cfg.Scopes[scopeName]
+	if !ok {
+		return nil, nil, fmt.Errorf("fleet: unknown scope %q", scopeName)
+	}
+	bot, ok := scope.Bots[botName]
+	if !ok {
+		return nil, nil, fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
+	}
+	def, _, err := f.opts.Catalog.Resolve(bot.Channel)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fleet: bot %q: %w", botName, err)
+	}
+	if def.Setup == nil {
+		return nil, nil, fmt.Errorf(
+			"fleet: bot %q channel %s/%s offers no account setup",
+			botName, bot.Channel.Provider, bot.Channel.Mode)
+	}
+	options, reasons := decodeOptions(def, bot)
+	if len(reasons) > 0 {
+		return nil, nil, fmt.Errorf(
+			"fleet: bot %q channel: %s", botName, strings.Join(reasons, "; "))
+	}
+	return def.Setup(channels.Bind{
+		Scope: scopeName, Bot: botName, Options: options, Log: f.opts.Log,
+	})
+}
+
 // buildRuntime resolves one bot's engine and filter against cfg: both adopt a
 // replaced config at the bot's next message, unlike the channel and outbox
 // (ADR 0009).

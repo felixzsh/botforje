@@ -552,12 +552,18 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   A future `invite` step (label plus opaque link or `self` plus kind `peer`|`group`)
   is decided but gated on a first real consumer; P5 admission/delivery checks apply
   once it lands.
-- [ ] P3 — binding runtime (ADR 0053): neutral association metadata, the
+- [x] P3 — binding runtime (ADR 0053): neutral association metadata, the
   inspection/bind/unbind operations, and the WhatsApp adaptation, with QR,
   write-only credential, multi-step approval, and profile binding modeled by
   fakes. Persist binding generation and identity-space context; remove common
   phone-bearing pairing results and phone-specific ownership/error semantics
   instead of translating them.
+  Completed 2026-10-12: committed `Binding` metadata with generations,
+  neutral setup sessions with revisions and request keys, definition-selected
+  inspection/detach, and the WhatsApp translation over the same machinery.
+  No migration, backfill, or legacy result shape survives; fresh-schema
+  persistence, reopen, and detach-keeps-history gates pass. Its gate is
+  checked in `docs/channels/phases.md`.
 - [ ] P4 — remote API and CLI integration (ADR 0053): binding operations and
   discovery through scoped routes; a scoped HTTP client completes binding and
   reauthorization without filesystem access. Neutral views, webhooks, and

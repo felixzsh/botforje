@@ -53,6 +53,13 @@ var ErrInvalidCursor = errors.New("invalid cursor")
 // rewritten (ADR 0051).
 var ErrParticipantConflict = errors.New("chat already has a different participant")
 
+// ErrConflict reports a setup request that contradicts the session it
+// targets: a stale revision, a request key already used for different
+// parameters, or an input the session's method does not accept (ADR 0053).
+// A stale session id is not a conflict; it answers ErrNotFound and stays
+// inert, so a retry can never affect a replacement.
+var ErrConflict = errors.New("conflicting setup request")
+
 // IncomingMessage is one inbound message. Sender is the resolved comparable
 // identity; the adapter normalizes it and never assigns a fabricated peer
 // (ADR 0051). Target addresses the conversation it arrived in. FromName is a

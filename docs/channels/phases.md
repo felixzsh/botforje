@@ -241,7 +241,23 @@ binding persistence; `adapters/whatsapp/pair.go`, `pairing.go`, and
 account ownership; fleet/startup readiness and assembly.
 Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
 
-- [ ] Complete P1's neutral account record with committed binding
+Landed 2026-10-12 on the accepted P2 baseline: `Binding` carries the
+committed association (provider, adapter kind, account mode, namespace,
+normalized identity, generation, times); `BindingStore.Commit` assigns
+generation one, keeps it on same-space renewal, and advances it on
+replacement. The neutral session/step/readiness model (`SetupSession`,
+`SetupStep`, `BindingStatus`) and the `AccountLifecycle`/`SetupRunner`
+ports live in the core; WhatsApp's `PairManager` speaks both the neutral
+runner and the pairing translation over one engine, and `fleet.SetupFor`
+resolves endpoints through the bot's definition. The schema is edited in
+place under the pre-release reset policy (`../../PLAN.md`): no migration,
+backfill, or legacy result shape survives. Every P3 item and gate is
+checked as of 2026-10-12, with the tests in the core, `stores`,
+`whatsapp`, `channel`, `fleet`, and `channels` covering the sessions, the
+commit races, the generations, the shared-backend isolation, and the
+definition-selected assembly.
+
+- [x] Complete P1's neutral account record with committed binding
   metadata, stable identity-space context where needed, and generation,
   separately from adapter credentials. Implement inspection, bind, and
   unbind operations; select by the bot's definition, never inspect every
@@ -251,30 +267,30 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
   Separate common binding persistence from adapter/auxiliary credential
   stores; do not impose a shared SQLite credential schema on every
   implementation.
-- [ ] Separate credential presence, provider authorization, transport
+- [x] Separate credential presence, provider authorization, transport
   health, and import progress. Readiness exposes safe actionable
   conditions; stored credentials or connection startup return do not
   prove authorization/connection. Missing transport reporting means
   unknown.
-- [ ] Implement the accepted session/step model: scoped bot, session ID,
+- [x] Implement the accepted session/step model: scoped bot, session ID,
   revision, times, safe errors, display challenges, typed write-only
   inputs, external approval, and managed-profile selection. Distinguish
   login QR challenges from public invitations.
-- [ ] Reuse per-bot mutation serialization and completion waits for
+- [x] Reuse per-bot mutation serialization and completion waits for
   begin/input/cancel/detach. Workers belong to the instance, not HTTP
   request lifetimes; expiry, retained sessions, retries, and shutdown
   are bounded. Active setup sessions remain in memory, not resumable
   secret storage.
-- [ ] Stage setup until provider confirmation and local binding commit.
+- [x] Stage setup until provider confirmation and local binding commit.
   Preserve the actual outcome across cancellation/expiry, report
   activation failures separately, and handle provider success followed
   by local persistence failure with cleanup or an explicit recovery
   condition.
-- [ ] Adapt WhatsApp QR pairing and its results to the same neutral
+- [x] Adapt WhatsApp QR pairing and its results to the same neutral
   lifecycle/session machinery, preserving its credential store,
   confidentiality, and successful-pairing/history-wait protection.
   Import completion must not define generic account success.
-- [ ] Support same-identity reauthorization and explicit identity
+- [x] Support same-identity reauthorization and explicit identity
   replacement through the same contracts. Preserve stable identity
   spaces, verify ownership, serialize with sends, and keep history.
   Detachment forgets the local binding; it does not destroy an account
@@ -284,18 +300,18 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
 
 Gate:
 
-- [ ] Executable fakes complete QR, credential-only, multi-step
+- [x] Executable fakes complete QR, credential-only, multi-step
   approval, and local-profile setup without phone fields or a universal
   QR. Reconnect/restart preserves committed identity spaces.
-- [ ] Test stale input/session IDs, QR rotation versus session expiry,
+- [x] Test stale input/session IDs, QR rotation versus session expiry,
   duplicate request keys, cancellation versus commit, detach during
   import, commit then activation failure, and shutdown. No
   stale/cancelled worker activates later, and successful setup never
   activates twice.
-- [ ] An unconfigured or revoked bot remains inspectable/setup-capable
+- [x] An unconfigured or revoked bot remains inspectable/setup-capable
   without stopping peers; detachment keeps its chats, directory,
   history, and the actual outcome of any completed setup.
-- [ ] Two fixed bindings share a fake backend: selecting one context
+- [x] Two fixed bindings share a fake backend: selecting one context
   leaves both identities and generations unchanged; detach/replacement
   cannot reassign stale events or destroy the peer's profile. Credential
   ownership can remain outside common binding storage.

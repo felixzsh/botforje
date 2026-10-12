@@ -62,8 +62,9 @@ func TestPairManagerCloseWaitsForPublishedSession(t *testing.T) {
 	manager := testPairManager(t, PairManagerOptions{})
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &pairingSession{
-		state: botflota.PairingSession{
-			Scope: "dev", Bot: "alpha", State: botflota.PairPending,
+		neutral: botflota.SetupSession{
+			Bot:   botflota.BotRef{Scope: "dev", Bot: "alpha"},
+			State: botflota.SetupStarting,
 		},
 		ctx: ctx, cancel: cancel, timer: time.NewTimer(time.Hour),
 		closed: make(chan struct{}),

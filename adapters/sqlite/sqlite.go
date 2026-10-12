@@ -105,10 +105,16 @@ var schema = []string{
 	`CREATE INDEX IF NOT EXISTS directory_entries_updated
 		ON directory_entries (scope, bot, updated_at DESC)`,
 	`CREATE TABLE IF NOT EXISTS bindings (
-		scope    TEXT NOT NULL,
-		bot      TEXT NOT NULL,
-		provider TEXT NOT NULL,
-		subject  TEXT NOT NULL,
+		scope      TEXT NOT NULL,
+		bot        TEXT NOT NULL,
+		provider   TEXT NOT NULL,
+		adapter    TEXT NOT NULL DEFAULT '',
+		mode       TEXT NOT NULL DEFAULT '',
+		namespace  TEXT NOT NULL DEFAULT '',
+		subject     TEXT NOT NULL,
+		generation INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
 	`CREATE TABLE IF NOT EXISTS pairing_status (

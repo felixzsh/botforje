@@ -332,15 +332,23 @@ func saveAccount(
 	}
 	jid := client.Store.ID.String()
 	identity := ingest.PeerKey(Number(jid))
-	if err := ensurePhoneAvailable(ctx, opts.Bindings, identity, opts.Scope, opts.Bot); err != nil {
+	if err := ensureIdentityAvailable(ctx, opts.Bindings, identity, opts.Scope, opts.Bot); err != nil {
 		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
 			return botflota.IdentityKey{},
 				fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)
 		}
 		return botflota.IdentityKey{}, err
 	}
-	account := &botflota.Binding{Scope: opts.Scope, Bot: opts.Bot, Identity: identity}
-	if err := opts.Bindings.Put(ctx, account); err != nil {
+	account := &botflota.Binding{
+		Scope: opts.Scope, Bot: opts.Bot,
+		Provider: ProviderName, Adapter: AdapterKind, Mode: AccountMode,
+		Identity: identity,
+	}
+	if err := opts.Bindings.Commit(ctx, account); err != nil {
+		// The provider confirmed the link but the local commit failed: drop
+		// the just-created credentials instead of leaving a live remote
+		// session no binding can reach, and report the failure explicitly
+		// (ADR 0053).
 		if cleanupErr := client.Store.Delete(ctx); cleanupErr != nil {
 			return botflota.IdentityKey{},
 				fmt.Errorf("%w; local cleanup failed: %v", err, cleanupErr)

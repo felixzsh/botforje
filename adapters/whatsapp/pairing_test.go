@@ -130,7 +130,7 @@ func TestPairManagerPairingSucceeds(t *testing.T) {
 		t.Fatalf("final = %#v", final)
 	}
 	result := final.Result
-	if result.Phone != "5215500000001" || result.Chats != 3 ||
+	if result.Identity != waKey("5215500000001") || result.Chats != 3 ||
 		result.Messages != 40 || result.Duplicate != 2 || result.Skipped != 1 ||
 		result.AddressBook != 7 || result.Elapsed != 90*time.Second {
 		t.Fatalf("result = %#v", result)
@@ -240,8 +240,8 @@ func TestPairManagerCancelDuringActivationKeepsSuccess(t *testing.T) {
 	if final.State != botflota.PairSucceeded {
 		t.Fatalf("state = %s, want paired", final.State)
 	}
-	if final.Result.Phone != "5215500000001" {
-		t.Fatalf("result = %#v, want the stored phone", final.Result)
+	if final.Result.Identity != waKey("5215500000001") {
+		t.Fatalf("result = %#v, want the stored identity", final.Result)
 	}
 }
 
@@ -323,8 +323,8 @@ func TestPairManagerEndPairKeepsTheStoredLink(t *testing.T) {
 		t.Fatalf("state = %s, want the stored link reported as paired",
 			final.State)
 	}
-	if final.Result.Phone != "5215500000001" {
-		t.Fatalf("result = %#v, want the stored phone", final.Result)
+	if final.Result.Identity != waKey("5215500000001") {
+		t.Fatalf("result = %#v, want the stored identity", final.Result)
 	}
 	if activated {
 		t.Fatal("the unpair activated a bot it removes right after")

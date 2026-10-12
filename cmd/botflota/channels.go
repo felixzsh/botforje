@@ -26,6 +26,7 @@ func runtimeCatalog(deps channel.Deps) (*channels.Catalog, error) {
 	def := channel.Definition()
 	def.Build = channel.Builder(deps)
 	def.Prepare = channel.Prepare(deps)
+	def.Setup = channel.Setup(deps)
 	return channels.New(def)
 }
 

@@ -104,10 +104,12 @@
   has several: the native client today, other clients or the official Cloud API
   later.
 - Binding (the `Binding` record) — the fixed verified association of a
-  scoped bot with its normalized own messaging identity. Its SDK device/session
-  locator is separate and adapter-owned. P1 persists only the normalized own
-  `IdentityKey`; full adapter/mode/namespace/generation metadata and lifecycle
-  remain P3 (ADR 0051, ADR 0053). A temporary backend-context selection does not
+  scoped bot with its normalized own messaging identity: provider, adapter
+  kind, account mode, stable identity-space context, normalized own
+  `IdentityKey`, and generation, with commit times. Its SDK device/session
+  locator and credentials are separate and adapter-owned. Renewing the same
+  identity space keeps its generation; an unrelated replacement advances it
+  (ADR 0051, ADR 0053). A temporary backend-context selection does not
   change the association.
 - Shared catalog — the instance-level `system_one` and `llms` a host provides, in
   the main config file only; a bot resolves `system_one` and `llm` in its scope first

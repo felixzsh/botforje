@@ -10,26 +10,29 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
+type pairingResultView struct {
+	Provider      string  `json:"provider"`
+	Subject       string  `json:"subject"`
+	Chunks        int     `json:"chunks"`
+	Chats         int     `json:"chats"`
+	Messages      int     `json:"messages"`
+	Duplicate     int     `json:"duplicate"`
+	Skipped       int     `json:"skipped"`
+	AddressBook   int     `json:"address_book"`
+	ElapsedSecond float64 `json:"elapsed_seconds"`
+}
+
 type pairingView struct {
-	Scope     string    `json:"scope"`
-	Bot       string    `json:"bot"`
-	Method    string    `json:"method"`
-	State     string    `json:"state"`
-	Code      string    `json:"code,omitempty"`
-	StartedAt time.Time `json:"started_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Error     string    `json:"error,omitempty"`
-	Result    *struct {
-		Phone         string  `json:"phone"`
-		Chunks        int     `json:"chunks"`
-		Chats         int     `json:"chats"`
-		Messages      int     `json:"messages"`
-		Duplicate     int     `json:"duplicate"`
-		Skipped       int     `json:"skipped"`
-		AddressBook   int     `json:"address_book"`
-		ElapsedSecond float64 `json:"elapsed_seconds"`
-	} `json:"result,omitempty"`
+	Scope     string             `json:"scope"`
+	Bot       string             `json:"bot"`
+	Method    string             `json:"method"`
+	State     string             `json:"state"`
+	Code      string             `json:"code,omitempty"`
+	StartedAt time.Time          `json:"started_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Error     string             `json:"error,omitempty"`
+	Result    *pairingResultView `json:"result,omitempty"`
 }
 
 type pairRequest struct {
@@ -44,17 +47,9 @@ func pairingViewOf(session *botflota.PairingSession) pairingView {
 		ExpiresAt: session.ExpiresAt, Error: session.Error,
 	}
 	if session.State == botflota.PairSucceeded {
-		view.Result = &struct {
-			Phone         string  `json:"phone"`
-			Chunks        int     `json:"chunks"`
-			Chats         int     `json:"chats"`
-			Messages      int     `json:"messages"`
-			Duplicate     int     `json:"duplicate"`
-			Skipped       int     `json:"skipped"`
-			AddressBook   int     `json:"address_book"`
-			ElapsedSecond float64 `json:"elapsed_seconds"`
-		}{
-			Phone:         session.Result.Phone,
+		view.Result = &pairingResultView{
+			Provider:      session.Result.Identity.Provider,
+			Subject:       session.Result.Identity.Subject,
 			Chunks:        session.Result.Chunks,
 			Chats:         session.Result.Chats,
 			Messages:      session.Result.Messages,

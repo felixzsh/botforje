@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -97,6 +98,8 @@ func runFleet(args []string) int {
 	// WhatsApp bot opens no WhatsApp device store (ADR 0052, ADR 0054).
 	var devices *whatsapp.Devices
 	var catalog *channels.Catalog
+	var runner *fleet.Fleet
+	var manager *whatsapp.PairManager
 	if whatsappSelected(cfg) {
 		devices, err = openDevices(ctx, db, logger, cfg.LogLevelDeps)
 		if err != nil {
@@ -108,6 +111,16 @@ func runFleet(args []string) int {
 			logger.Error("validate pairings", "error", err)
 			return 1
 		}
+		// The setup runner is assembled with the catalog: its activation
+		// reaches the fleet through a late binding, because the fleet is
+		// built from this same catalog below (ADR 0053).
+		manager = pairingManager(source, db, devices,
+			func(ctx context.Context, scope, bot string) error {
+				if runner == nil {
+					return errors.New("fleet is not running")
+				}
+				return runner.StartBot(scope, bot)
+			}, logger)
 		catalog, err = runtimeCatalog(channel.Deps{
 			Devices:      devices,
 			Bindings:     db.Bindings(),
@@ -116,12 +129,16 @@ func runFleet(args []string) int {
 			Chats:        db.Chats(),
 			Messages:     db.Messages(),
 			Directory:    db.Directory(),
+			Outbox:       db.Outbox(),
+			Pairs:        manager,
 			DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
 		})
 		if err != nil {
 			logger.Error("build channel catalog", "error", err)
 			return 1
 		}
+		// Setup workers stop before the stores they write go away (ADR 0053).
+		defer manager.Close()
 	} else {
 		catalog, err = channels.New()
 		if err != nil {
@@ -130,7 +147,7 @@ func runFleet(args []string) int {
 		}
 	}
 
-	runner, err := fleet.New(cfg, fleet.Options{
+	runner, err = fleet.New(cfg, fleet.Options{
 		Store: db.Sessions(),
 		Chats: db.Chats(), Peers: db.Peers(),
 		Messages:       db.Messages(),
@@ -179,7 +196,7 @@ func runFleet(args []string) int {
 		}
 	} else {
 		stopAPI, err := serveAPI(ctx, stop, cfg, source, saved, tree, runner, db,
-			devices, logger, *cmd.newOwnerToken)
+			devices, manager, logger, *cmd.newOwnerToken)
 		if err != nil {
 			logger.Error("start api", "error", err)
 			return 1
@@ -274,7 +291,7 @@ func runFleetStatus(args []string) int {
 func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
 	source, saved *config.Source, tree *config.Writer, runner *fleet.Fleet,
-	db *sqlite.DB, devices *whatsapp.Devices,
+	db *sqlite.DB, devices *whatsapp.Devices, manager *whatsapp.PairManager,
 	logger *slog.Logger, rotate bool,
 ) (func(), error) {
 	dataDir, err := cfg.DataDirPath()
@@ -303,10 +320,9 @@ func serveAPI(
 		closePairings func()
 	)
 	if devices != nil {
-		manager := pairingManager(source, db, devices, runner, logger)
 		owner := whatsapp.AccountOwner{
 			Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
-			Outbox: db.Outbox(),
+			Outbox: db.Outbox(), Pairs: manager,
 		}
 		pairings, presence, unpairer = manager, owner, owner
 		closePairings = manager.Close
@@ -375,7 +391,7 @@ func closer(closePairings func()) {
 // it too, and starts the bot when WhatsApp accepts the scan (ADR 0025).
 func pairingManager(
 	source *config.Source, db *sqlite.DB, devices *whatsapp.Devices,
-	runner *fleet.Fleet, logger *slog.Logger,
+	onPaired func(context.Context, string, string) error, logger *slog.Logger,
 ) *whatsapp.PairManager {
 	return whatsapp.NewPairManager(whatsapp.PairManagerOptions{
 		Build: func(scope, botName string, fullHistory bool) (whatsapp.PairOptions, error) {
@@ -412,8 +428,11 @@ func pairingManager(
 				DeviceName:     cfg.DeviceName,
 			}, nil
 		},
-		OnPaired: func(_ context.Context, scope, botName string) error {
-			return runner.StartBot(scope, botName)
+		OnPaired: func(ctx context.Context, scope, botName string) error {
+			if onPaired == nil {
+				return errors.New("fleet is not running")
+			}
+			return onPaired(ctx, scope, botName)
 		},
 		Log: logger,
 	})

@@ -17,10 +17,10 @@ func TestValidateAccountOwners(t *testing.T) {
 	db := openWhatsAppTestDB(t)
 	accounts := db.Bindings()
 	for _, account := range []botflota.Binding{
-		{Scope: "dev", Bot: "first", Identity: waKey("5215500000000")},
-		{Scope: "dev", Bot: "second", Identity: waKey("5215500000000")},
+		{Scope: "dev", Bot: "first", Provider: "whatsapp", Identity: waKey("5215500000000")},
+		{Scope: "dev", Bot: "second", Provider: "whatsapp", Identity: waKey("5215500000000")},
 	} {
-		if err := accounts.Put(ctx, &account); err != nil {
+		if err := accounts.Commit(ctx, &account); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -33,9 +33,9 @@ func TestValidateAccountsAllowsMissingDevice(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	account := &botflota.Binding{
-		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
+		Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
 	}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -64,7 +64,7 @@ func TestCheckPairingAllowsRecoverableStates(t *testing.T) {
 		{
 			name: "unpaired",
 			account: &botflota.Binding{
-				Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
+				Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
 			},
 			want: botflota.PairingUnpaired,
 		},
@@ -74,7 +74,7 @@ func TestCheckPairingAllowsRecoverableStates(t *testing.T) {
 			ctx := context.Background()
 			db := openWhatsAppTestDB(t)
 			if tc.account != nil {
-				if err := db.Bindings().Put(ctx, tc.account); err != nil {
+				if err := db.Bindings().Commit(ctx, tc.account); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -98,9 +98,9 @@ func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	account := &botflota.Binding{
-		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
+		Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
 	}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -181,9 +181,9 @@ func TestUnpairFailsTheQueuedReplies(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	account := &botflota.Binding{
-		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
+		Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
 	}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -257,7 +257,7 @@ func TestNumber(t *testing.T) {
 func TestOwnershipConflictNamesNoOtherBot(t *testing.T) {
 	err := duplicateAccountError(ingest.PeerKey("5215500000000"),
 		botflota.Binding{
-			Scope: "hidden", Bot: "peer", Identity: waKey("5215500000000"),
+			Scope: "hidden", Bot: "peer", Provider: "whatsapp", Identity: waKey("5215500000000"),
 		},
 		botflota.Binding{Scope: "support", Bot: "demo"})
 	if !errors.Is(err, botflota.ErrIdentityInUse) {

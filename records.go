@@ -16,13 +16,28 @@ type BotRef struct {
 	Bot   string
 }
 
-// Binding is a bot's linked channel account: its normalized own
-// identity (ADR 0006, ADR 0016, ADR 0051). The SDK device locator and the
-// credentials stay in adapter-owned storage; its lifecycle is PairingStatus.
+// Binding is a bot's committed association with its messaging account: the
+// neutral metadata the fleet inspects and the normalized own identity the
+// adapter mapped (ADR 0051, ADR 0053). Provider names the catalog provider,
+// Adapter the adapter kind, and Mode the account mode the bot selected; the
+// three identify the installed implementation, never a bare provider string.
+// Namespace carries the stable identity-space context when the provider's
+// ids are local to one store or profile, and stays empty for provider-wide
+// ids the adapter needs no space for. Generation starts at one and advances
+// on every identity replacement; renewing the same identity keeps it. The
+// SDK device locator and the credentials stay in adapter-owned storage; the
+// binding records the association, never a copy of their schema.
 type Binding struct {
-	Scope    string
-	Bot      string
-	Identity IdentityKey
+	Scope      string
+	Bot        string
+	Provider   string
+	Adapter    string
+	Mode       string
+	Namespace  string
+	Identity   IdentityKey
+	Generation int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Peer is one person's durable identity in a scope (ADR 0029). Key is the

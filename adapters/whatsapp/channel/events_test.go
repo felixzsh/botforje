@@ -163,9 +163,9 @@ func TestLoggedOutPersistsUnpairedStatus(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	account := &botflota.Binding{
-		Scope: "dev", Bot: "bot", Identity: waKey("5215500000000"),
+		Scope: "dev", Bot: "bot", Provider: "whatsapp", Identity: waKey("5215500000000"),
 	}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	a := &Adapter{

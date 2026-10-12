@@ -114,8 +114,10 @@ func TestClearPairing(t *testing.T) {
 	if err := device.Save(ctx); err != nil {
 		t.Fatal(err)
 	}
-	account := &botflota.Binding{Scope: "dev", Bot: "bot", Identity: waKey(jid.User)}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	account := &botflota.Binding{
+		Scope: "dev", Bot: "bot", Provider: "whatsapp", Identity: waKey(jid.User),
+	}
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 

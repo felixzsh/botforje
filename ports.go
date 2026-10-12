@@ -435,12 +435,20 @@ type WebhookStore interface {
 	MarkFailed(ctx context.Context, id int64, reason string, at time.Time) error
 }
 
-// BindingStore records the channel account linked to each bot
-// (ADR 0006, ADR 0051). Pairing is tracked separately by PairingStore.
+// BindingStore records the committed account association of each bot
+// (ADR 0006, ADR 0051, ADR 0053). Commit inserts the first binding of a bot
+// with generation one, keeps the generation when the same identity-space
+// renews its credentials, and advances it when an unrelated identity
+// replaces the stored one; creation and update times are set by the store.
+// The identity-space comparison covers provider, namespace, and subject, so
+// a replacement that recycles a bare subject from another space still
+// advances. Pairing progress is tracked separately by the setup session,
+// never in this row. Delete forgets the local binding and leaves chats,
+// directory, and history alone; detachment never destroys them (ADR 0053).
 type BindingStore interface {
 	Get(ctx context.Context, scope, bot string) (*Binding, error)
 	List(ctx context.Context) ([]Binding, error)
-	Put(ctx context.Context, account *Binding) error
+	Commit(ctx context.Context, account *Binding) error
 	Delete(ctx context.Context, scope, bot string) error
 }
 
@@ -467,6 +475,43 @@ type AccessTokenStore interface {
 	FindByHash(ctx context.Context, hash []byte) (*AccessToken, error)
 	List(ctx context.Context) ([]AccessToken, error)
 	Revoke(ctx context.Context, id int64, at time.Time) error
+}
+
+// AccountLifecycle is the neutral inspection and detachment contract of one
+// bot's account binding (ADR 0053). InspectBinding answers the committed
+// binding with its actionable readiness condition; a bot without a binding
+// stays inspectable. DetachBinding forgets the local binding and settles its
+// pending sends without deleting history, and never destroys the provider
+// account or a managed profile; a stronger operation needs explicit support.
+// Detachment serializes with in-flight setup and delivery, so no stale or
+// cancelled worker activates later and a replacement cannot inherit the old
+// queue (ADR 0040). Implementations are selected by the bot's definition.
+type AccountLifecycle interface {
+	InspectBinding(ctx context.Context, scope, bot string) (BindingStatus, error)
+	DetachBinding(ctx context.Context, scope, bot string) error
+}
+
+// SetupRunner drives one bot's interactive account setup through the neutral
+// session contract (ADR 0053). Methods names the supported setup methods of
+// the bot's definition ("qr", a credential handoff, a multi-step approval,
+// a managed-profile selection); a definition with no remote setup reports
+// none. BeginSetup stages credentials until provider confirmation and local
+// commit: a cancelled or expired uncommitted session can never activate
+// later, and a committed one reports its actual outcome instead. Once
+// committed, cancellation cannot claim the binding never existed; explicit
+// detachment removes it. Active sessions stay in memory: a restart requires
+// a fresh session, and no secret is persisted for resumability. One setup
+// mutation per bot runs at a time and different bots stay independent;
+// workers, retries, timeouts, and retained completed sessions are bounded,
+// and workers stop before the stores close.
+type SetupRunner interface {
+	SetupMethods(ctx context.Context, scope, bot string) ([]string, error)
+	BeginSetup(ctx context.Context, scope, bot string, req SetupBegin) (*SetupSession, error)
+	ReadSetup(ctx context.Context, scope, bot, sessionID string) (*SetupSession, error)
+	InputSetup(
+		ctx context.Context, scope, bot, sessionID string, input SetupInput,
+	) (*SetupSession, error)
+	CancelSetup(ctx context.Context, scope, bot, sessionID string) error
 }
 
 // PairingRunner drives the live pairing session of one bot, so the CLI and a

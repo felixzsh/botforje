@@ -135,7 +135,7 @@ func TestPairThroughAPI(t *testing.T) {
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
 				w.WriteHeader(http.StatusAccepted)
 				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"phone":"5215500000001","chunks":9,"chats":2,` +
+					`"provider":"whatsapp","subject":"5215500000001","chunks":9,"chats":2,` +
 					`"messages":30,"duplicate":1,"skipped":0,"address_book":4,` +
 					`"elapsed_seconds":65}}`))
 			default:
@@ -157,7 +157,7 @@ func TestPairThroughAPI(t *testing.T) {
 	}
 	printed := out.String()
 	for _, want := range []string{
-		`bot "alpha" (scope "dev") is paired as 5215500000001`,
+		`bot "alpha" (scope "dev") is paired as whatsapp/5215500000001`,
 		"history: 2 chats, 30 messages (1 duplicate, 0 skipped) in 1m5s",
 		"address book: 4 imported",
 	} {
@@ -274,7 +274,7 @@ func TestPairThroughAPIForceReplacesTheLink(t *testing.T) {
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
 				w.WriteHeader(http.StatusAccepted)
 				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"phone":"5215500000001"}}`))
+					`"provider":"whatsapp","subject":"5215500000001"}}`))
 			default:
 				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				http.NotFound(w, r)
@@ -294,7 +294,7 @@ func TestPairThroughAPIForceReplacesTheLink(t *testing.T) {
 	if deletes != 1 {
 		t.Fatalf("account deletes = %d, want the replace unpair", deletes)
 	}
-	if !strings.Contains(out.String(), "is paired as 5215500000001") {
+	if !strings.Contains(out.String(), "is paired as whatsapp/5215500000001") {
 		t.Fatalf("output = %q", out.String())
 	}
 }
@@ -319,7 +319,7 @@ func TestPairThroughAPIForceRemovesResidualLink(t *testing.T) {
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
 				w.WriteHeader(http.StatusAccepted)
 				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"phone":"5215500000001"}}`))
+					`"provider":"whatsapp","subject":"5215500000001"}}`))
 			default:
 				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				http.NotFound(w, r)
@@ -339,7 +339,7 @@ func TestPairThroughAPIForceRemovesResidualLink(t *testing.T) {
 	if deletes != 1 {
 		t.Fatalf("account deletes = %d, want the residual link removed", deletes)
 	}
-	if !strings.Contains(out.String(), "is paired as 5215500000001") {
+	if !strings.Contains(out.String(), "is paired as whatsapp/5215500000001") {
 		t.Fatalf("output = %q", out.String())
 	}
 }
@@ -359,7 +359,7 @@ func TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete(t *testing.T) {
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/pairing":
 				w.WriteHeader(http.StatusAccepted)
 				_, _ = w.Write([]byte(`{"state":"paired","result":{` +
-					`"phone":"5215500000001"}}`))
+					`"provider":"whatsapp","subject":"5215500000001"}}`))
 			default:
 				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				http.NotFound(w, r)
@@ -376,7 +376,7 @@ func TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	if !strings.Contains(out.String(), "is paired as 5215500000001") {
+	if !strings.Contains(out.String(), "is paired as whatsapp/5215500000001") {
 		t.Fatalf("output = %q", out.String())
 	}
 }

@@ -80,6 +80,7 @@ func Definition() channels.Definition {
 		Capabilities:  caps,
 		OptionsSchema: optionsSchema,
 		Decode:        decodeBot,
+		SetupMethods:  []string{whatsapp.SetupMethodQR},
 	}
 }
 
@@ -180,6 +181,34 @@ func Prepare(deps Deps) func(context.Context, channels.Bind) (bool, string, erro
 	}
 }
 
+// Setup returns one bot's neutral account lifecycle and setup runner over
+// the installation's stores: inspection reads the committed binding and the
+// device store, detachment settles the queue before it forgets the link, and
+// the pairing manager speaks the neutral session contract (ADR 0053). A nil
+// Pairs leaves detachment without a setup wait; every other nil dependency
+// is an error, never an invented state.
+func Setup(deps Deps) func(channels.Bind) (botflota.AccountLifecycle, botflota.SetupRunner, error) {
+	return func(bind channels.Bind) (botflota.AccountLifecycle, botflota.SetupRunner, error) {
+		if deps.Devices == nil {
+			return nil, nil, fmt.Errorf("whatsapp: no device store")
+		}
+		if deps.Bindings == nil {
+			return nil, nil, fmt.Errorf("whatsapp: no binding store")
+		}
+		if deps.Outbox == nil {
+			return nil, nil, fmt.Errorf("whatsapp: no outbox store")
+		}
+		if deps.Pairs == nil {
+			return nil, nil, fmt.Errorf("whatsapp: no setup runner")
+		}
+		owner := whatsapp.AccountOwner{
+			Devices: deps.Devices, Bindings: deps.Bindings,
+			Pairings: deps.Pairings, Outbox: deps.Outbox, Pairs: deps.Pairs,
+		}
+		return owner, deps.Pairs, nil
+	}
+}
+
 // Deps are the process-wide dependencies one WhatsApp installation needs; the
 // definition's builder closes over them, so the shared fleet code never sees a
 // device store (ADR 0052, ADR 0054).
@@ -191,6 +220,8 @@ type Deps struct {
 	Chats      botflota.ChatStore
 	Messages   botflota.MessageStore
 	Directory  botflota.DirectoryStore
+	Outbox     botflota.OutboxStore
+	Pairs      *whatsapp.PairManager
 	HTTPClient *http.Client
 	// DepsLogLevel is the minimum level for forwarded whatsmeow logs.
 	DepsLogLevel slog.Level

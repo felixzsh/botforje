@@ -96,7 +96,7 @@ func (f *fakeAccounts) List(context.Context) ([]botflota.Binding, error) {
 	return nil, nil
 }
 
-func (f *fakeAccounts) Put(context.Context, *botflota.Binding) error {
+func (f *fakeAccounts) Commit(context.Context, *botflota.Binding) error {
 	return nil
 }
 

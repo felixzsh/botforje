@@ -33,9 +33,9 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	account := &botflota.Binding{
-		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
+		Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
 	}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := whatsapp.OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -60,9 +60,9 @@ func TestDisconnectStopsWorkersAfterConnectFails(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	account := &botflota.Binding{
-		Scope: "dev", Bot: "botsito", Identity: waKey("5215500000000"),
+		Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
 	}
-	if err := db.Bindings().Put(ctx, account); err != nil {
+	if err := db.Bindings().Commit(ctx, account); err != nil {
 		t.Fatal(err)
 	}
 	devices, err := whatsapp.OpenDevices(ctx, db.DB, nil, slog.LevelInfo)

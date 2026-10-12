@@ -271,8 +271,8 @@ func pairThroughAPI(
 	for {
 		switch session.State {
 		case string(botflota.PairSucceeded):
-			fmt.Fprintf(w, "bot %q (scope %q) is paired as %s\n",
-				botName, scopeName, dash(session.Result.Phone))
+			fmt.Fprintf(w, "bot %q (scope %q) is paired as %s/%s\n",
+				botName, scopeName, session.Result.Provider, dash(session.Result.Subject))
 			printPairImport(w, options, importTotalsOf(session))
 			return 0
 		case string(botflota.PairFailed):
@@ -307,7 +307,8 @@ type pairSessionView struct {
 	Code   string `json:"code"`
 	Error  string `json:"error"`
 	Result struct {
-		Phone         string  `json:"phone"`
+		Provider      string  `json:"provider"`
+		Subject       string  `json:"subject"`
 		Chunks        int     `json:"chunks"`
 		Chats         int     `json:"chats"`
 		Messages      int     `json:"messages"`
