@@ -2,11 +2,75 @@ package fleet
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/sqlite"
 )
+
+// TestReopenedFleetSendsToThePersistedConversation is the P1 runtime gate: the
+// database is closed and reopened, and a fresh fleet with no sender cache —
+// nothing in memory from the first run — delivers the reply it still owes to
+// the conversation persisted for it, whose thread differs from the sender and
+// whose subject is opaque (ADR 0051).
+func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	path := filepath.Join(t.TempDir(), "app.db")
+	target := botflota.ChatTarget{
+		Provider: "signal", Kind: botflota.ChatDirect, Thread: "thread-77",
+	}
+
+	first, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	// The destination never wrote first: the send alone registers its chat,
+	// which is the knowledge a later run must trust (ADR 0051).
+	if _, err := first.Sends().CommitSend(ctx, botflota.SendRecord{
+		Scope: "dev", Bot: "alpha", Target: target,
+		Content: botflota.TextContent{Body: "queued before restart"}, At: t0,
+	}); err != nil {
+		t.Fatalf("CommitSend: %v", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	reopened, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+
+	channels := map[string]*fakeChannel{}
+	runner, err := New(loadFleetConfig(t), Options{
+		Store: reopened.Sessions(), Chats: reopened.Chats(), Peers: reopened.Peers(),
+		Messages: reopened.Messages(), Turn: reopened.Turns(), Outbox: reopened.Outbox(),
+		DefaultTimeout: time.Minute, Now: func() time.Time { return t0 },
+		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
+			channel := newFakeChannel()
+			channels[spec.Name] = channel
+			return channel, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	go func() { _ = runner.Run(ctx) }()
+	waitConnected(t, runner)
+
+	sent := receive(t, channels["alpha"].sent)
+	if sent.Target != target {
+		t.Fatalf("delivered to %#v, want the persisted conversation %#v",
+			sent.Target, target)
+	}
+	if body := botflota.ContentText(sent.Content); body != "queued before restart" {
+		t.Fatalf("delivered body = %q, want the queued reply", body)
+	}
+}
 
 // TestOneSenderInTwoConversationsHasIndependentState is the P1 gate: the same
 // sender in two supported conversations keeps independent chats, sessions, and

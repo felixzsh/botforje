@@ -428,6 +428,10 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 		if !ok {
 			return errors.New("memstore: reply is not sendable")
 		}
+		// The outbox worker reads the queue on its own goroutine, so the enqueue
+		// takes the same lock as NextPending (the SQLite store gets this from its
+		// transaction).
+		s.mu.Lock()
 		s.nextOut++
 		s.outbox = append(s.outbox, queuedReply{
 			scope: turn.Scope, bot: turn.Bot,
@@ -438,6 +442,7 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 				Routing: outbound.Message.Routing,
 			},
 		})
+		s.mu.Unlock()
 	}
 	if err := s.RecordMessage(ctx, turn.ChatID, turn.At); err != nil {
 		return err
@@ -658,16 +663,9 @@ func buildFleetWithStore(
 	t *testing.T, blocking string, log *slog.Logger,
 ) (*Fleet, map[string]*fakeChannel, *memStore) {
 	t.Helper()
-	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
-	if err != nil {
-		t.Fatalf("load config: %v", err)
-	}
-	if errs := config.Validate(cfg); len(errs) != 0 {
-		t.Fatalf("config invalid: %v", errs)
-	}
 	channels := map[string]*fakeChannel{}
 	store := newStore()
-	runner, err := New(cfg, Options{
+	runner, err := New(loadFleetConfig(t), Options{
 		Store:          store,
 		Chats:          store,
 		Peers:          store,
@@ -691,6 +689,18 @@ func buildFleetWithStore(
 		t.Fatalf("New: %v", err)
 	}
 	return runner, channels, store
+}
+
+func loadFleetConfig(t *testing.T) *config.Config {
+	t.Helper()
+	cfg, err := (config.Loader{}).Load("testdata/two-bots.yml")
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if errs := config.Validate(cfg); len(errs) != 0 {
+		t.Fatalf("config invalid: %v", errs)
+	}
+	return cfg
 }
 
 type syncChannel struct {

@@ -2,6 +2,7 @@ package stores_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -110,5 +111,45 @@ func TestOpaqueIdentityAndTargetSurviveReopen(t *testing.T) {
 	}
 	if chatA.ID == chatB.ID {
 		t.Fatal("two local spaces sharing one thread id collapsed into one chat")
+	}
+}
+
+// TestAlternateDestinationSharesNoIDWithTheSourceChat is the other half of the
+// P1 gate: a channel id the source chat already holds belongs to a different
+// destination and stores there, while the same id arriving in that destination
+// again is the duplicate (ADR 0051).
+func TestAlternateDestinationSharesNoIDWithTheSourceChat(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	source := ensureChat(t, db)
+	destination := waTarget("5215500000001")
+	if err := db.Messages().Append(ctx, &botflota.Message{
+		ChatID: source.ID, Target: source.Target, Direction: botflota.Inbound,
+		Content: botflota.TextContent{Body: "in"}, At: t0,
+		ProviderMessageID: "overlap", Ingest: botflota.IngestLive,
+	}); err != nil {
+		t.Fatalf("Append source: %v", err)
+	}
+	destinationChat, err := db.Chats().Ensure(ctx, "support", "support-bot",
+		destination, 0, t0)
+	if err != nil {
+		t.Fatalf("Ensure destination: %v", err)
+	}
+	// The reply goes to the alternate destination with the id the source chat
+	// already holds; the two are different messages.
+	if err := db.Messages().Append(ctx, &botflota.Message{
+		ChatID: destinationChat.ID, Target: destination,
+		Direction: botflota.Outbound, Content: botflota.TextContent{Body: "out"},
+		At: t1, ProviderMessageID: "overlap", Ingest: botflota.IngestLive,
+	}); err != nil {
+		t.Fatalf("Append alternate destination: %v", err)
+	}
+	// The destination's own copy of the id is the duplicate.
+	if err := db.Messages().Append(ctx, &botflota.Message{
+		ChatID: destinationChat.ID, Target: destination,
+		Direction: botflota.Inbound, Content: botflota.TextContent{Body: "echo"},
+		At: t1, ProviderMessageID: "overlap", Ingest: botflota.IngestSync,
+	}); !errors.Is(err, botflota.ErrDuplicate) {
+		t.Fatalf("destination echo = %v, want ErrDuplicate", err)
 	}
 }
