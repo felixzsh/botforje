@@ -25,6 +25,13 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	if !message.Target.Valid() {
 		return errors.New("sqlite: message has no destination target")
 	}
+	// The owner comes from the chat, so a message is deduplicated inside the
+	// bot that stores it, never against another bot's identical destination
+	// (ADR 0051).
+	scope, bot, err := s.chatOwner(ctx, message.ChatID)
+	if err != nil {
+		return err
+	}
 	content, err := botflota.ContentJSON(message.Content)
 	if err != nil {
 		return fmt.Errorf("sqlite: encode message content: %w", err)
@@ -34,16 +41,17 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 		sessionID = message.SessionID
 	}
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO messages (chat_id, session_id, target_provider, target_kind,
-		 target_thread, target_topic, direction, kind, body, content,
+		`INSERT INTO messages (chat_id, scope, bot, session_id, target_provider,
+		 target_kind, target_thread, target_topic, direction, kind, body, content,
 		 sent_at, provider_message_id, ingest_kind, origin, routing)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT DO NOTHING`,
-		message.ChatID, sessionID, message.Target.Provider, string(message.Target.Kind),
-		message.Target.Thread, message.Target.Topic, string(message.Direction),
-		string(message.Content.MessageKind()), message.Content.VisibleText(),
-		string(content), formatTime(message.At), message.ProviderMessageID,
-		string(message.Ingest), string(message.Origin), string(message.Routing))
+		message.ChatID, scope, bot, sessionID, message.Target.Provider,
+		string(message.Target.Kind), message.Target.Thread, message.Target.Topic,
+		string(message.Direction), string(message.Content.MessageKind()),
+		message.Content.VisibleText(), string(content), formatTime(message.At),
+		message.ProviderMessageID, string(message.Ingest), string(message.Origin),
+		string(message.Routing))
 	if err != nil {
 		return fmt.Errorf("sqlite: append message: %w", err)
 	}
@@ -62,12 +70,31 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	return nil
 }
 
-// HasProviderID reports whether the destination already stored a message with
-// this channel id; an empty id never matches. The id is scoped by the actual
-// destination, so an alternate recipient's ids never collide with the chat
-// whose history records the send (ADR 0051).
+// chatOwner reads the scope and bot that own a chat, so a stored message is
+// deduplicated inside its owner, never across bots (ADR 0051).
+func (s *MessageStore) chatOwner(
+	ctx context.Context, chatID int64,
+) (string, string, error) {
+	var scope, bot string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT scope, bot FROM chats WHERE id = ?", chatID).Scan(&scope, &bot)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", fmt.Errorf("%w: chat %d", botflota.ErrNotFound, chatID)
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("sqlite: message chat owner: %w", err)
+	}
+	return scope, bot, nil
+}
+
+// HasProviderID reports whether this bot already stored a message to this
+// destination with this channel id; an empty id never matches. Both the
+// destination and the owner scope the id, so an alternate recipient's ids
+// never collide with the chat whose history records the send, and one bot
+// never sees another's (ADR 0051).
 func (s *MessageStore) HasProviderID(
-	ctx context.Context, target botflota.ChatTarget, providerID string,
+	ctx context.Context, scope, bot string, target botflota.ChatTarget,
+	providerID string,
 ) (bool, error) {
 	if providerID == "" {
 		return false, nil
@@ -75,10 +102,11 @@ func (s *MessageStore) HasProviderID(
 	var exists bool
 	err := s.db.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM messages
-		 WHERE target_provider = ? AND target_kind = ? AND target_thread = ?
+		 WHERE scope = ? AND bot = ?
+		 AND target_provider = ? AND target_kind = ? AND target_thread = ?
 		 AND target_topic = ? AND provider_message_id = ?)`,
-		target.Provider, string(target.Kind), target.Thread, target.Topic,
-		providerID).Scan(&exists)
+		scope, bot, target.Provider, string(target.Kind), target.Thread,
+		target.Topic, providerID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("sqlite: find provider id: %w", err)
 	}

@@ -164,8 +164,8 @@ func (f *fakeOutbox) FailPending(
 	return 1, nil
 }
 
-func (f *fakeOutbox) FailPendingForChat(
-	context.Context, int64, string, time.Time,
+func (f *fakeOutbox) FailPendingForTarget(
+	context.Context, string, string, botflota.ChatTarget, string, time.Time,
 ) (int, error) {
 	return 0, nil
 }

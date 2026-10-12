@@ -62,6 +62,8 @@ var schema = []string{
 		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 		chat_id             INTEGER NOT NULL
 			REFERENCES chats (id) ON DELETE CASCADE,
+		scope               TEXT NOT NULL,
+		bot                 TEXT NOT NULL,
 		session_id          INTEGER
 			REFERENCES sessions (id) ON DELETE SET NULL,
 		target_provider     TEXT NOT NULL,
@@ -80,11 +82,13 @@ var schema = []string{
 	)`,
 	`CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id, id)`,
 	// The provider id is scoped by the destination the message actually
-	// belongs to, so an alternate recipient's ids never collide with the chat
-	// that records the send (ADR 0051). P5 owns the final account-scoped key.
+	// belongs to and by the bot that owns it, so an alternate recipient's ids
+	// never collide with the chat that records the send, and one bot's message
+	// is never taken for another's (ADR 0051). P5 owns the final
+	// binding-scoped key.
 	`CREATE UNIQUE INDEX IF NOT EXISTS messages_provider
-		ON messages (target_provider, target_kind, target_thread, target_topic,
-		             provider_message_id)
+		ON messages (scope, bot, target_provider, target_kind, target_thread,
+		             target_topic, provider_message_id)
 		WHERE provider_message_id != ''`,
 	`CREATE TABLE IF NOT EXISTS directory_entries (
 		scope           TEXT NOT NULL,

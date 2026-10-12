@@ -36,8 +36,8 @@ Two policies were explicitly selected:
 Durable local-space normalization follows ADR 0051; a provider match alone does
 not prove migration compatibility. P3 association generations/freshness and P5
 receive/message-space decisions remain outside this design closure. The durable
-message-ID/dedup key is destination-scoped in P1 and its account/binding scoping
-stays a P5 decision.
+message-ID/dedup key is scoped by the owning bot and by the destination in P1;
+its account/binding-generation scoping stays a P5 decision.
 
 One approved compatibility item moved to P2: the per-bot WhatsApp translation of
 legacy `contact.id/name/phone` template references needs the consuming bot's

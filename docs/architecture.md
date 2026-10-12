@@ -404,9 +404,9 @@ chats. The directory itself is a separate, opt-in import
 (`settings.import_contacts`): it fills the `directory_entries` resource per bot
 and never touches the scope's peers, chats, or the engine (ADR 0037).
 `provider_message_id` (the channel's own id) is the dedup key, scoped by the
-destination the message belongs to, both for a redelivered sync chunk and for a
-live reply the sync echoes afterwards. The `PUSH_NAME` chunk names the peers the
-import knows, and importing a
+bot that owns the message and by the destination it belongs to, both for a
+redelivered sync chunk and for a live reply the sync echoes afterwards. The
+`PUSH_NAME` chunk names the peers the import knows, and importing a
 conversation widens the chat's activity to the imported range. `chat sync`
 pages older messages back from the chat's oldest stored message in sequential
 batches, re-anchoring on the oldest message each page returned, until a page

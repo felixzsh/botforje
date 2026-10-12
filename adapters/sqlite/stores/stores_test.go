@@ -83,7 +83,7 @@ func TestForeignKeysEnforced(t *testing.T) {
 		Content: botflota.TextContent{Body: "orphan"}, At: t1,
 	}
 	if err := db.Messages().Append(ctx, orphanChat); err == nil {
-		t.Fatal("Append with unknown chat succeeded, want a foreign key error")
+		t.Fatal("Append with unknown chat succeeded, want an error")
 	}
 
 	chat := ensureChat(t, db)

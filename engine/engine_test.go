@@ -236,7 +236,7 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 }
 
 func (s *memStore) HasProviderID(
-	_ context.Context, target botflota.ChatTarget, providerID string,
+	_ context.Context, _, _ string, target botflota.ChatTarget, providerID string,
 ) (bool, error) {
 	if providerID == "" {
 		return false, nil

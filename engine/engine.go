@@ -177,10 +177,11 @@ func (e *Engine) Handle(
 	return r.out, nil
 }
 
-// storedBefore reports a message the destination already stores. It reads
-// nothing else: the provider id is scoped by the destination the message
-// belongs to, so a redelivery never re-runs an action or an HTTP side effect
-// and never moves last_seen (ADR 0026, ADR 0040, ADR 0051).
+// storedBefore reports a message this bot already stores for that destination.
+// The provider id is scoped by the destination and by the bot itself, so a
+// redelivery never re-runs an action or an HTTP side effect, never moves
+// last_seen, and is never taken for another bot's message (ADR 0026, ADR 0040,
+// ADR 0051).
 func (e *Engine) storedBefore(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) (bool, error) {
@@ -191,7 +192,8 @@ func (e *Engine) storedBefore(
 		// Nothing can be stored; load reports the missing store.
 		return false, nil
 	}
-	seen, err := e.messages.HasProviderID(ctx, msg.Target, msg.ProviderMessageID)
+	seen, err := e.messages.HasProviderID(ctx, e.scope, e.bot, msg.Target,
+		msg.ProviderMessageID)
 	if err != nil {
 		return false, fmt.Errorf("engine: dedup: %w", err)
 	}

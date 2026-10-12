@@ -154,19 +154,27 @@ func (s *OutboxStore) FailPending(
 	return int(affected), nil
 }
 
-// FailPendingForChat ends the queued replies stored under one chat, so a chat
-// handed to a human never sends an automatic reply already queued; the bot's
-// other chats and their messages are left alone (ADR 0043).
-func (s *OutboxStore) FailPendingForChat(
-	ctx context.Context, chatID int64, reason string, at time.Time,
+// FailPendingForTarget ends the queued replies addressed to one destination,
+// so a conversation handed to a human never sends an automatic reply already
+// queued there. The actual destination decides, not the chat whose history
+// records the reply; the bot's other destinations and their messages are left
+// alone (ADR 0043, ADR 0051).
+func (s *OutboxStore) FailPendingForTarget(
+	ctx context.Context, scope, bot string, target botflota.ChatTarget,
+	reason string, at time.Time,
 ) (int, error) {
+	if !target.Valid() {
+		return 0, errors.New("sqlite: outbox target needs provider, kind, and thread")
+	}
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE outbox SET state = 'failed', error = ?, updated_at = ?
-		 WHERE state = 'pending' AND message_id IN (
-		   SELECT id FROM messages WHERE chat_id = ?)`,
-		reason, formatTime(at), chatID)
+		 WHERE scope = ? AND bot = ? AND state = 'pending'
+		 AND target_provider = ? AND target_kind = ? AND target_thread = ?
+		 AND target_topic = ?`,
+		reason, formatTime(at), scope, bot, target.Provider,
+		string(target.Kind), target.Thread, target.Topic)
 	if err != nil {
-		return 0, fmt.Errorf("sqlite: outbox fail chat: %w", err)
+		return 0, fmt.Errorf("sqlite: outbox fail target: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {

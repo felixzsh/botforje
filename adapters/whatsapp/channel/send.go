@@ -78,8 +78,8 @@ func (a *Adapter) Send(ctx context.Context, msg botflota.OutgoingMessage) (strin
 }
 
 // thread validates an outbound target and returns the phone-number thread this
-// adapter addresses. A shared conversation is refused, never sent as a direct
-// message (ADR 0051).
+// adapter addresses. A shared conversation and a topic are refused rather than
+// sent to a different conversation than the one the target names (ADR 0051).
 func (a *Adapter) thread(target botflota.ChatTarget) (string, error) {
 	if target.Provider != ingest.Provider {
 		return "", fmt.Errorf(
@@ -90,6 +90,11 @@ func (a *Adapter) thread(target botflota.ChatTarget) (string, error) {
 	}
 	if target.Thread == "" {
 		return "", errors.New("whatsapp: message has no target thread")
+	}
+	if target.Topic != "" {
+		// WhatsApp has no topics: sending the thread alone would deliver to a
+		// different conversation than the target names.
+		return "", fmt.Errorf("whatsapp: direct target carries topic %q", target.Topic)
 	}
 	return target.Thread, nil
 }

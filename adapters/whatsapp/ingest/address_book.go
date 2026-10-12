@@ -97,9 +97,12 @@ func (h *AddressBookImporter) ImportAll(
 		if !info.Found {
 			continue
 		}
-		name := directoryName(contactName(info.FullName, info.FirstName),
-			info.BusinessName, info.PushName)
-		member := name != ""
+		// Membership comes from the address book alone; a push or business
+		// name only names an identity that is already a member, and never
+		// fabricates one (ADR 0037, ADR 0051).
+		book := contactName(info.FullName, info.FirstName)
+		name := directoryName(book, info.BusinessName, info.PushName)
+		member := book != ""
 		if h.put(ctx, jid, "", member, h.now().UTC(), name) && member {
 			stored++
 		}

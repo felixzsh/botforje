@@ -92,3 +92,56 @@ func TestContactImporterResolvesALID(t *testing.T) {
 		t.Fatalf("peer = %#v, err %v; want name but no book membership", peer, err)
 	}
 }
+
+// TestContactImporterCachedNamesKeepMembershipToTheBook covers the cached import
+// a reconnect replays: only an address-book name records membership, while a
+// push or business name still names the peer without adding it to the book
+// (ADR 0037, ADR 0051).
+func TestContactImporterCachedNamesKeepMembershipToTheBook(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		info types.ContactInfo
+		want int
+	}{
+		{
+			name: "address-book name",
+			info: types.ContactInfo{Found: true, FullName: "Ana Perez"},
+			want: 1,
+		},
+		{
+			name: "push name only",
+			info: types.ContactInfo{Found: true, PushName: "anita"},
+			want: 0,
+		},
+		{
+			name: "business name only",
+			info: types.ContactInfo{Found: true, BusinessName: "Ana S.A."},
+			want: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := openWhatsAppTestDB(t)
+			importer := NewAddressBook("dev", "bot", db.Peers(), db.Directory(),
+				nil, nil)
+			importer.SetSource(PeerKey("5215599999999"))
+			stored := importer.ImportAll(ctx, map[types.JID]types.ContactInfo{
+				types.NewJID("5215500000000", types.DefaultUserServer): tc.info,
+			})
+			entries, err := db.Directory().List(ctx, "dev", "bot", 0)
+			if err != nil {
+				t.Fatalf("List: %v", err)
+			}
+			if stored != tc.want || len(entries) != tc.want {
+				t.Fatalf("stored/entries = %d/%d, want %d; entries = %+v",
+					stored, len(entries), tc.want, entries)
+			}
+			if tc.want == 0 {
+				peer, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
+				if err != nil || peer.AddressBookImported {
+					t.Fatalf("peer = %#v, err %v; want no book membership", peer, err)
+				}
+			}
+		})
+	}
+}

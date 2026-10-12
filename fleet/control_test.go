@@ -1,12 +1,48 @@
 package fleet
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
 )
+
+// recordingOutbox records the destination a hand-over cancels; the methods the
+// hand-over does not use stay unexercised.
+type recordingOutbox struct {
+	botflota.OutboxStore
+	scope, bot string
+	target     botflota.ChatTarget
+	calls      int
+}
+
+func (r *recordingOutbox) FailPendingForTarget(
+	_ context.Context, scope, bot string, target botflota.ChatTarget,
+	_ string, _ time.Time,
+) (int, error) {
+	r.calls++
+	r.scope, r.bot, r.target = scope, bot, target
+	return 3, nil
+}
+
+// TestCancelChatAddressesTheHeldDestination: the hand-over cancels the replies
+// addressed to the conversation it held, which the actual destination decides —
+// never the chat whose history records the reply (ADR 0043, ADR 0051).
+func TestCancelChatAddressesTheHeldDestination(t *testing.T) {
+	outbox := &recordingOutbox{}
+	fleet := &Fleet{opts: Options{Outbox: outbox, Log: botflota.DiscardLogger()}}
+	target := waTarget("5215500000001")
+	if err := fleet.cancelChat(context.Background(), "dev", "alpha", target); err != nil {
+		t.Fatalf("cancelChat: %v", err)
+	}
+	if outbox.calls != 1 || outbox.scope != "dev" || outbox.bot != "alpha" ||
+		outbox.target != target {
+		t.Fatalf("cancelled %d %s/%s %+v, want the held destination %+v",
+			outbox.calls, outbox.scope, outbox.bot, outbox.target, target)
+	}
+}
 
 // TestBotHandsOverAChat covers the two ways in and the release: an external
 // reply counts down, a manual hold does not expire, and a release returns the

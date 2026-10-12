@@ -51,63 +51,62 @@ func TestRecordStoresWithoutASession(t *testing.T) {
 	}
 }
 
-// TestFailPendingForChatLeavesOtherChats proves a hand-over cancels only its
-// own chat's queued replies, and that the worker's recheck sees the
-// cancellation (ADR 0043).
-func TestFailPendingForChatLeavesOtherChats(t *testing.T) {
+// TestFailPendingForTargetLeavesOtherDestinations proves a hand-over cancels the
+// replies addressed to the conversation it held — including one whose history
+// another chat records — and leaves every other destination's replies waiting,
+// with the worker's recheck seeing the cancellation (ADR 0043, ADR 0051).
+func TestFailPendingForTargetLeavesOtherDestinations(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	chat := ensureChat(t, db)
-	other := ensureChatFor(t, db, "5215500000001", "Beto")
-	queueReply(t, db, chat, "chat reply")
-	queueReply(t, db, other, "other reply")
+	source := ensureChat(t, db)
+	// The destination is addressed by a reply recorded under the source chat,
+	// and by a chat of its own.
+	destinationPeer, _, err := db.Peers().RecordInbound(ctx, "support",
+		waKey("5215500000001"), "Beto", t0)
+	if err != nil {
+		t.Fatalf("RecordInbound: %v", err)
+	}
+	destinationTarget := waTarget("5215500000001")
+	if _, err := db.Chats().Ensure(ctx, "support", "support-bot",
+		destinationTarget, destinationPeer.ID, t0); err != nil {
+		t.Fatalf("Ensure destination chat: %v", err)
+	}
+	queueReply(t, db, source, source.Target, "source reply")
+	queueReply(t, db, source, destinationTarget, "alternate reply")
+	queueReply(t, db, source, destinationTarget, "destination reply")
 
 	before, err := db.Outbox().NextPending(ctx, "support", "support-bot", 10)
 	if err != nil {
 		t.Fatalf("NextPending: %v", err)
 	}
-	if len(before) != 2 {
-		t.Fatalf("pending = %d, want 2", len(before))
+	if len(before) != 3 {
+		t.Fatalf("pending = %d, want 3", len(before))
 	}
-	count, err := db.Outbox().FailPendingForChat(ctx, chat.ID, "hand-over", t2)
+	count, err := db.Outbox().FailPendingForTarget(ctx, "support", "support-bot",
+		destinationTarget, "hand-over", t2)
 	if err != nil {
-		t.Fatalf("FailPendingForChat: %v", err)
+		t.Fatalf("FailPendingForTarget: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("failed = %d, want the chat's one reply", count)
+	if count != 2 {
+		t.Fatalf("failed = %d, want the destination's two replies", count)
 	}
-	gone, err := db.Outbox().IsPending(ctx, before[0].ID)
-	if err != nil {
-		t.Fatalf("IsPending: %v", err)
-	}
-	if gone {
-		t.Fatal("the cancelled reply still reports pending")
-	}
-	kept, err := db.Outbox().IsPending(ctx, before[1].ID)
-	if err != nil {
-		t.Fatalf("IsPending: %v", err)
-	}
-	if !kept {
-		t.Fatal("the other chat's reply was cancelled too")
+	for _, queued := range before {
+		pending, err := db.Outbox().IsPending(ctx, queued.ID)
+		if err != nil {
+			t.Fatalf("IsPending: %v", err)
+		}
+		wantPending := queued.Target == source.Target
+		if pending != wantPending {
+			t.Fatalf("reply to %s: pending = %v, want %v",
+				queued.Target.Thread, pending, wantPending)
+		}
 	}
 }
 
-func ensureChatFor(t *testing.T, db *sqlite.DB, phone, name string) *botflota.Chat {
-	t.Helper()
-	contact, _, err := db.Peers().RecordInbound(
-		context.Background(), "support", waKey(phone), name, t0)
-	if err != nil {
-		t.Fatalf("RecordMessage contact: %v", err)
-	}
-	chat, err := db.Chats().Ensure(context.Background(), "support", "support-bot",
-		waTarget(phone), contact.ID, t0)
-	if err != nil {
-		t.Fatalf("Ensure chat: %v", err)
-	}
-	return chat
-}
-
-func queueReply(t *testing.T, db *sqlite.DB, chat *botflota.Chat, body string) {
+func queueReply(
+	t *testing.T, db *sqlite.DB, chat *botflota.Chat, target botflota.ChatTarget,
+	body string,
+) {
 	t.Helper()
 	ctx := context.Background()
 	err := db.Turns().CommitTurn(ctx, botflota.TurnRecord{
@@ -119,9 +118,9 @@ func queueReply(t *testing.T, db *sqlite.DB, chat *botflota.Chat, body string) {
 			Ingest: botflota.IngestLive,
 		},
 		Outbound: []botflota.OutboundRecord{{
-			Target: chat.Target,
+			Target: target,
 			Message: &botflota.Message{
-				ChatID: chat.ID, Target: chat.Target, Direction: botflota.Outbound,
+				ChatID: chat.ID, Target: target, Direction: botflota.Outbound,
 				Content: botflota.TextContent{Body: body}, At: t1,
 				Ingest: botflota.IngestLive,
 			},

@@ -132,7 +132,8 @@ func TestMessageContentRoundTrip(t *testing.T) {
 }
 
 // TestMessageProviderIDIsUnique covers the dedup key of a history import: a
-// reported channel id cannot repeat in a chat, while rows without one may.
+// reported channel id cannot repeat for one bot's destination, while rows
+// without one may.
 func TestMessageProviderIDIsUnique(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
@@ -155,6 +156,76 @@ func TestMessageProviderIDIsUnique(t *testing.T) {
 	}
 	if err := db.Messages().Append(ctx, message("")); err != nil {
 		t.Fatalf("second append without provider id: %v", err)
+	}
+}
+
+// TestMessageProviderIDIsScopedToItsOwner covers the other half of the dedup
+// key: the same provider id for the same destination belongs to one bot alone,
+// so an alternate recipient's id never blocks another bot or scope that
+// addresses that destination (ADR 0051).
+func TestMessageProviderIDIsScopedToItsOwner(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	source := ensureChat(t, db)
+	destination := waTarget("5215500000001")
+	appendTo := func(chat *botflota.Chat, target botflota.ChatTarget, id string) error {
+		return db.Messages().Append(ctx, &botflota.Message{
+			ChatID: chat.ID, Target: target, Direction: botflota.Outbound,
+			Content: botflota.TextContent{Body: "hola"}, At: t1,
+			ProviderMessageID: id, Ingest: botflota.IngestLive,
+		})
+	}
+	// An alternate destination is recorded under the source chat.
+	if err := appendTo(source, destination, "wamid.B"); err != nil {
+		t.Fatalf("append alternate destination: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name       string
+		scope, bot string
+		wantDup    bool
+	}{
+		{"the owner repeats its own destination", "support", "support-bot", true},
+		{"another bot of the scope", "support", "other-bot", false},
+		{"another scope", "other", "support-bot", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chat, err := db.Chats().Ensure(ctx, tc.scope, tc.bot, destination, 0, t0)
+			if err != nil {
+				t.Fatalf("Ensure chat: %v", err)
+			}
+			err = appendTo(chat, destination, "wamid.B")
+			if errors.Is(err, botflota.ErrDuplicate) != tc.wantDup {
+				t.Fatalf("append = %v, want duplicate %v", err, tc.wantDup)
+			}
+		})
+	}
+
+	for _, tc := range []struct {
+		name       string
+		scope, bot string
+		target     botflota.ChatTarget
+		want       bool
+	}{
+		{"owner destination", "support", "support-bot", destination, true},
+		{"owner source", "support", "support-bot", source.Target, false},
+		// The bot and the scope that stored it see their own row, and an
+		// owner that never stored it does not.
+		{"other bot that stored it", "support", "other-bot", destination, true},
+		{"other scope that stored it", "other", "support-bot", destination, true},
+		{"unrelated bot", "support", "third-bot", destination, false},
+		{"unrelated scope", "third-scope", "support-bot", destination, false},
+	} {
+		t.Run("has "+tc.name, func(t *testing.T) {
+			got, err := db.Messages().HasProviderID(ctx, tc.scope, tc.bot,
+				tc.target, "wamid.B")
+			if err != nil {
+				t.Fatalf("HasProviderID: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("HasProviderID = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

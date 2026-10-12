@@ -373,7 +373,7 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 }
 
 func (s *memStore) HasProviderID(
-	_ context.Context, target botflota.ChatTarget, providerID string,
+	_ context.Context, _, _ string, target botflota.ChatTarget, providerID string,
 ) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -576,21 +576,17 @@ func (s *memStore) FailPending(
 	return failed, nil
 }
 
-func (s *memStore) FailPendingForChat(
-	_ context.Context, chatID int64, _ string, _ time.Time,
+func (s *memStore) FailPendingForTarget(
+	_ context.Context, scope, bot string, target botflota.ChatTarget,
+	_ string, _ time.Time,
 ) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	stored := map[int64]bool{}
-	for _, message := range s.messages {
-		if message.ChatID == chatID {
-			stored[message.ID] = true
-		}
-	}
 	failed := 0
 	for i := range s.outbox {
 		queued := &s.outbox[i]
-		if queued.sent || queued.failed || !stored[queued.entry.MessageID] {
+		if queued.scope != scope || queued.bot != bot ||
+			queued.entry.Target != target || queued.sent || queued.failed {
 			continue
 		}
 		queued.failed = true

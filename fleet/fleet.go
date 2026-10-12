@@ -824,19 +824,14 @@ func (f *Fleet) bot(scope, bot string) (*Bot, bool) {
 	return found, ok
 }
 
-// cancelChat fails the pending replies stored under one chat, so a hand-over
-// never sends an automatic reply already queued (ADR 0043).
+// cancelChat fails the pending replies addressed to one destination, so a
+// hand-over never sends an automatic reply already queued there. The actual
+// destination decides, not the chat whose history records the reply, which an
+// alternate `to` may differ from (ADR 0043, ADR 0051).
 func (f *Fleet) cancelChat(
 	ctx context.Context, scope, bot string, target botflota.ChatTarget,
 ) error {
-	chat, err := f.opts.Chats.ForTarget(ctx, scope, bot, target)
-	if errors.Is(err, botflota.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("fleet: chat for control: %w", err)
-	}
-	count, err := f.opts.Outbox.FailPendingForChat(ctx, chat.ID,
+	count, err := f.opts.Outbox.FailPendingForTarget(ctx, scope, bot, target,
 		"chat handed to a human", f.now())
 	if err != nil {
 		return fmt.Errorf("fleet: cancel pending replies: %w", err)

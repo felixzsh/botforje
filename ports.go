@@ -261,18 +261,23 @@ type SessionStore interface {
 }
 
 // MessageStore records message history (ADR 0026). Append reports
-// ErrDuplicate when the message's destination already holds the same provider
-// id; the outbox records the channel id of a delivered reply when it marks it
-// sent. Oldest returns the oldest message that can anchor a history request —
-// one with a channel id, never a call row (ADR 0035). History returns up to
-// limit messages oldest first: the last ones when afterID is zero, or those
-// newer than afterID. HasProviderID is the cheap read the engine uses before it
-// runs a turn, so a redelivery never repeats an action.
+// ErrDuplicate when the same bot already stores the same provider id for that
+// message's destination; the outbox records the channel id of a delivered
+// reply when it marks it sent. Oldest returns the oldest message that can
+// anchor a history request — one with a channel id, never a call row (ADR
+// 0035). History returns up to limit messages oldest first: the last ones when
+// afterID is zero, or those newer than afterID. HasProviderID is the cheap read
+// the engine uses before it runs a turn, so a redelivery never repeats an
+// action. Both the destination and the owning bot scope the provider id
+// (ADR 0051).
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
 	Oldest(ctx context.Context, chatID int64) (*Message, error)
 	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
-	HasProviderID(ctx context.Context, target ChatTarget, providerID string) (bool, error)
+	HasProviderID(
+		ctx context.Context, scope, bot string, target ChatTarget,
+		providerID string,
+	) (bool, error)
 }
 
 // SendRecord is one message the API asks a bot to deliver outside a turn: no
@@ -384,11 +389,14 @@ type OutboxStore interface {
 	FailPending(
 		ctx context.Context, scope, bot, reason string, at time.Time,
 	) (int, error)
-	// FailPendingForChat ends the queued replies stored under one chat, so a
-	// chat handed to a human never sends an automatic reply already queued
-	// (ADR 0043). It leaves the bot's other chats and its messages alone.
-	FailPendingForChat(
-		ctx context.Context, chatID int64, reason string, at time.Time,
+	// FailPendingForTarget ends the queued replies addressed to one
+	// destination, so a conversation handed to a human never sends an automatic
+	// reply already queued there (ADR 0043). The actual destination decides,
+	// not the chat whose history records the reply (ADR 0051); the bot's other
+	// destinations and their messages are left alone.
+	FailPendingForTarget(
+		ctx context.Context, scope, bot string, target ChatTarget,
+		reason string, at time.Time,
 	) (int, error)
 	// IsPending reports whether one queued reply is still waiting; the worker
 	// rechecks it right before sending, so a reply cancelled for a hand-over
