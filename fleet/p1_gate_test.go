@@ -10,11 +10,11 @@ import (
 	"github.com/felixzsh/botflota/adapters/sqlite"
 )
 
-// TestReopenedFleetSendsToThePersistedConversation is the P1 runtime gate: the
-// database is closed and reopened, and a fresh fleet with no sender cache —
-// nothing in memory from the first run — delivers the reply it still owes to
-// the conversation persisted for it, whose thread differs from the sender and
-// whose subject is opaque (ADR 0051).
+// TestReopenedFleetSendsToThePersistedConversation is the P1 runtime gate: a
+// reply an API send queued to a destination whose participant is unknown
+// survives the database being closed and reopened, and a fresh fleet with no
+// in-memory state from the earlier run delivers it to that persisted target and
+// records the outcome (ADR 0051).
 func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -27,12 +27,13 @@ func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	// The destination never wrote first: the send alone registers its chat,
-	// which is the knowledge a later run must trust (ADR 0051).
-	if _, err := first.Sends().CommitSend(ctx, botflota.SendRecord{
+	// The destination never wrote first, so the send alone registers its chat:
+	// that persisted target is the knowledge a later run must trust (ADR 0051).
+	queued, err := first.Sends().CommitSend(ctx, botflota.SendRecord{
 		Scope: "dev", Bot: "alpha", Target: target,
 		Content: botflota.TextContent{Body: "queued before restart"}, At: t0,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("CommitSend: %v", err)
 	}
 	if err := first.Close(); err != nil {
@@ -59,7 +60,8 @@ func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	go func() { _ = runner.Run(ctx) }()
+	runDone := make(chan error, 1)
+	go func() { runDone <- runner.Run(ctx) }()
 	waitConnected(t, runner)
 
 	sent := receive(t, channels["alpha"].sent)
@@ -69,6 +71,39 @@ func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 	}
 	if body := botflota.ContentText(sent.Content); body != "queued before restart" {
 		t.Fatalf("delivered body = %q, want the queued reply", body)
+	}
+	// Stop before reading the outcome: the worker records the send after the
+	// channel returns, so only a finished run proves the queue moved on.
+	cancel()
+	if err := <-runDone; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	read := context.Background()
+	if pending, err := reopened.Outbox().IsPending(read, queued.OutboxID); err != nil {
+		t.Fatalf("IsPending: %v", err)
+	} else if pending {
+		t.Fatal("the delivered reply is still queued")
+	}
+	chat, err := reopened.Chats().ForTarget(read, "dev", "alpha", target)
+	if err != nil {
+		t.Fatalf("ForTarget: %v", err)
+	}
+	stored, err := reopened.Messages().History(read, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	var recorded *botflota.Message
+	for i := range stored {
+		if stored[i].ID == queued.MessageID {
+			recorded = &stored[i]
+		}
+	}
+	if recorded == nil {
+		t.Fatalf("message %d is missing from %+v", queued.MessageID, stored)
+	}
+	if recorded.Target != target ||
+		recorded.ProviderMessageID != "wamid.queued before restart" {
+		t.Fatalf("stored message = %+v, want the target and the channel id", recorded)
 	}
 }
 

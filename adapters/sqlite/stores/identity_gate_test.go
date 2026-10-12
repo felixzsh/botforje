@@ -115,9 +115,10 @@ func TestOpaqueIdentityAndTargetSurviveReopen(t *testing.T) {
 }
 
 // TestAlternateDestinationSharesNoIDWithTheSourceChat is the other half of the
-// P1 gate: a channel id the source chat already holds belongs to a different
-// destination and stores there, while the same id arriving in that destination
-// again is the duplicate (ADR 0051).
+// P1 gate: a reply to an alternate destination is recorded under the source
+// chat's history, so an id the source chat already holds is a different message
+// there, while the same id arriving in that destination again is the duplicate
+// (ADR 0051).
 func TestAlternateDestinationSharesNoIDWithTheSourceChat(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
@@ -135,10 +136,11 @@ func TestAlternateDestinationSharesNoIDWithTheSourceChat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ensure destination: %v", err)
 	}
-	// The reply goes to the alternate destination with the id the source chat
-	// already holds; the two are different messages.
+	// The reply's history association stays with the source chat while its
+	// actual destination is the alternate one; the id the source chat already
+	// holds is a different message there.
 	if err := db.Messages().Append(ctx, &botflota.Message{
-		ChatID: destinationChat.ID, Target: destination,
+		ChatID: source.ID, Target: destination,
 		Direction: botflota.Outbound, Content: botflota.TextContent{Body: "out"},
 		At: t1, ProviderMessageID: "overlap", Ingest: botflota.IngestLive,
 	}); err != nil {
