@@ -204,6 +204,105 @@ func TestMoveBotMovesAddressBookWithoutChats(t *testing.T) {
 	}
 }
 
+func TestMoveBotMovesMessageOwnership(t *testing.T) {
+	for _, target := range []botflota.ChatTarget{waChatTarget, waTarget("alternate")} {
+		t.Run(target.Thread, func(t *testing.T) {
+			ctx := context.Background()
+			db := open(t, filepath.Join(t.TempDir(), "app.db"))
+			chat := seedHistory(t, db, "lost-bot")
+			message := &botflota.Message{
+				ChatID: chat.ID, Target: target, Direction: botflota.Inbound,
+				Content: botflota.TextContent{Body: "original"}, At: t1,
+				ProviderMessageID: "same-id", Ingest: botflota.IngestSync,
+			}
+			if err := db.Messages().Append(ctx, message); err != nil {
+				t.Fatalf("Append: %v", err)
+			}
+			if _, err := db.History().MoveBot(ctx, "support", "lost-bot", "new-bot", t2); err != nil {
+				t.Fatalf("MoveBot: %v", err)
+			}
+			var mismatched int
+			if err := db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM messages m JOIN chats c ON c.id = m.chat_id
+				 WHERE m.scope <> c.scope OR m.bot <> c.bot`).Scan(&mismatched); err != nil {
+				t.Fatalf("read ownership: %v", err)
+			}
+			if mismatched != 0 {
+				t.Fatalf("mismatched message owners = %d", mismatched)
+			}
+			for _, owner := range []struct {
+				bot  string
+				want bool
+			}{{"lost-bot", false}, {"new-bot", true}} {
+				got, err := db.Messages().HasProviderID(ctx, "support", owner.bot, target, "same-id")
+				if err != nil || got != owner.want {
+					t.Fatalf("HasProviderID(%s) = %v, %v; want %v",
+						owner.bot, got, err, owner.want)
+				}
+			}
+			stored, err := db.Messages().History(ctx, chat.ID, 0, 10)
+			if err != nil {
+				t.Fatalf("History: %v", err)
+			}
+			got := stored[len(stored)-1]
+			if got.Target != target || got.ProviderMessageID != "same-id" ||
+				got.Ingest != botflota.IngestSync || !got.At.Equal(t1) {
+				t.Fatalf("migration changed message data: %+v", got)
+			}
+			if err := db.Messages().Append(ctx, message); !errors.Is(err, botflota.ErrDuplicate) {
+				t.Fatalf("destination duplicate = %v, want ErrDuplicate", err)
+			}
+			fresh, err := db.Chats().Ensure(ctx, "support", "lost-bot", chat.Target, 0, t2)
+			if err != nil {
+				t.Fatalf("recreate source: %v", err)
+			}
+			message.ChatID = fresh.ID
+			message.ID = 0
+			if err := db.Messages().Append(ctx, message); err != nil {
+				t.Fatalf("append to emptied source: %v", err)
+			}
+		})
+	}
+}
+
+func TestMoveBotRollsBackMessageOwnership(t *testing.T) {
+	for _, failTable := range []string{"chats", "directory_entries"} {
+		t.Run(failTable, func(t *testing.T) {
+			ctx := context.Background()
+			db := open(t, filepath.Join(t.TempDir(), "app.db"))
+			chat := seedHistory(t, db, "lost-bot")
+			statement := `CREATE TRIGGER reject_move BEFORE UPDATE ON chats
+			 BEGIN SELECT RAISE(ABORT, 'rejected move'); END`
+			if failTable == "directory_entries" {
+				statement = `CREATE TRIGGER reject_move BEFORE INSERT ON directory_entries
+				 BEGIN SELECT RAISE(ABORT, 'rejected move'); END`
+			}
+			if _, err := db.ExecContext(ctx, statement); err != nil {
+				t.Fatalf("create trigger: %v", err)
+			}
+			if _, err := db.History().MoveBot(ctx, "support", "lost-bot", "new-bot", t1); err == nil {
+				t.Fatal("MoveBot succeeded despite trigger")
+			}
+			var messageBot, chatBot string
+			if err := db.QueryRowContext(ctx,
+				`SELECT m.bot, c.bot FROM messages m JOIN chats c ON c.id = m.chat_id
+				 WHERE c.id = ?`, chat.ID).Scan(&messageBot, &chatBot); err != nil {
+				t.Fatalf("read ownership: %v", err)
+			}
+			if messageBot != "lost-bot" || chatBot != "lost-bot" {
+				t.Fatalf("owners after rollback = %q/%q", messageBot, chatBot)
+			}
+			if depth, err := db.Outbox().Depth(ctx, "support", "lost-bot"); err != nil || depth != 1 {
+				t.Fatalf("queue after rollback = %d, %v; want 1", depth, err)
+			}
+			session, err := db.Sessions().Latest(ctx, chat.ID)
+			if err != nil || session.Expired(t1) {
+				t.Fatalf("session after rollback = %+v, %v", session, err)
+			}
+		})
+	}
+}
+
 func TestMoveBotRefusesADestinationThatHoldsHistory(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))

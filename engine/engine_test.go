@@ -236,14 +236,20 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 }
 
 func (s *memStore) HasProviderID(
-	_ context.Context, _, _ string, target botflota.ChatTarget, providerID string,
+	_ context.Context, scope, bot string, target botflota.ChatTarget, providerID string,
 ) (bool, error) {
 	if providerID == "" {
 		return false, nil
 	}
-	for _, message := range s.messages {
-		if message.Target == target && message.ProviderMessageID == providerID {
-			return true, nil
+	for _, chat := range s.chats {
+		if chat.Scope != scope || chat.Bot != bot {
+			continue
+		}
+		for _, message := range s.messages {
+			if message.ChatID == chat.ID && message.Target == target &&
+				message.ProviderMessageID == providerID {
+				return true, nil
+			}
 		}
 	}
 	return false, nil

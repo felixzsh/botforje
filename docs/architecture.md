@@ -542,8 +542,12 @@ another bot of the same scope — a recreated bot or a peer bot — while contac
 identities stay with the scope they are shared by (ADR 0029). A migration is a move, not a copy:
 it runs with both bots stopped, fails the source's queued replies before the
 old link can send them, and ends the source's active sessions instead of
-pretending the destination's graph sits at the same node. Neither operation
-runs as a side effect of pairing, unpairing, or a config edit. Both are
+pretending the destination's graph sits at the same node. Stored message
+ownership follows its chat in the same transaction, including the owner columns
+used for deduplication; its target, provider ID, and historical metadata stay
+unchanged. Current data ownership is not binding/message-space provenance
+(ADR 0051); that remaining policy stays in P5. Neither operation runs as a
+side effect of pairing, unpairing, or a config edit. Both are
 planned in `docs/current-plan.md` and settled in ADR 0042.
 
 ## Concurrency

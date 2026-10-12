@@ -67,13 +67,14 @@ func TestFailPendingForTargetLeavesOtherDestinations(t *testing.T) {
 		t.Fatalf("RecordInbound: %v", err)
 	}
 	destinationTarget := waTarget("5215500000001")
-	if _, err := db.Chats().Ensure(ctx, "support", "support-bot",
-		destinationTarget, destinationPeer.ID, t0); err != nil {
+	destination, err := db.Chats().Ensure(ctx, "support", "support-bot",
+		destinationTarget, destinationPeer.ID, t0)
+	if err != nil {
 		t.Fatalf("Ensure destination chat: %v", err)
 	}
 	queueReply(t, db, source, source.Target, "source reply")
 	queueReply(t, db, source, destinationTarget, "alternate reply")
-	queueReply(t, db, source, destinationTarget, "destination reply")
+	queueReply(t, db, destination, destinationTarget, "destination reply")
 
 	before, err := db.Outbox().NextPending(ctx, "support", "support-bot", 10)
 	if err != nil {
@@ -100,6 +101,61 @@ func TestFailPendingForTargetLeavesOtherDestinations(t *testing.T) {
 			t.Fatalf("reply to %s: pending = %v, want %v",
 				queued.Target.Thread, pending, wantPending)
 		}
+	}
+}
+
+func TestFailPendingForTargetIsIsolated(t *testing.T) {
+	for _, tc := range []struct {
+		name, scope, bot string
+		target           botflota.ChatTarget
+	}{
+		{"another scope", "other", "support-bot", waChatTarget},
+		{"another bot", "support", "other-bot", waChatTarget},
+		{"another thread", "support", "support-bot", waTarget("other")},
+		{"another provider", "support", "support-bot", botflota.ChatTarget{
+			Provider: "signal", Kind: botflota.ChatDirect, Thread: waChatTarget.Thread,
+		}},
+		{"another kind", "support", "support-bot", botflota.ChatTarget{
+			Provider: "whatsapp", Kind: botflota.ChatGroup, Thread: waChatTarget.Thread,
+		}},
+		{"another topic", "support", "support-bot", botflota.ChatTarget{
+			Provider: "whatsapp", Kind: botflota.ChatDirect,
+			Thread: waChatTarget.Thread, Topic: "topic",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := open(t, filepath.Join(t.TempDir(), "app.db"))
+			held, err := db.Sends().CommitSend(ctx, botflota.SendRecord{
+				Scope: "support", Bot: "support-bot", Target: waChatTarget,
+				Content: botflota.TextContent{Body: "held"}, At: t1,
+			})
+			if err != nil {
+				t.Fatalf("queue held: %v", err)
+			}
+			other, err := db.Sends().CommitSend(ctx, botflota.SendRecord{
+				Scope: tc.scope, Bot: tc.bot, Target: tc.target,
+				Content: botflota.TextContent{Body: "other"}, At: t1,
+			})
+			if err != nil {
+				t.Fatalf("queue other: %v", err)
+			}
+			count, err := db.Outbox().FailPendingForTarget(ctx, "support", "support-bot",
+				waChatTarget, "hand-over", t2)
+			if err != nil || count != 1 {
+				t.Fatalf("FailPendingForTarget = %d, %v; want 1", count, err)
+			}
+			for _, queued := range []struct {
+				id   int64
+				want bool
+			}{{held.OutboxID, false}, {other.OutboxID, true}} {
+				pending, err := db.Outbox().IsPending(ctx, queued.id)
+				if err != nil || pending != queued.want {
+					t.Fatalf("IsPending(%d) = %v, %v; want %v",
+						queued.id, pending, err, queued.want)
+				}
+			}
+		})
 	}
 }
 

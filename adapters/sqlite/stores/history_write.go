@@ -88,6 +88,12 @@ func (s *HistoryStore) MoveBot(
 			return fmt.Errorf("sqlite: expire source sessions: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx,
+			`UPDATE messages SET bot = ?
+			 WHERE chat_id IN (SELECT id FROM chats WHERE scope = ? AND bot = ?)`,
+			to, scope, from); err != nil {
+			return fmt.Errorf("sqlite: move message ownership: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE chats SET bot = ? WHERE scope = ? AND bot = ?`,
 			to, scope, from); err != nil {
 			return fmt.Errorf("sqlite: move chats: %w", err)
