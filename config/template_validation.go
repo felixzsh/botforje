@@ -1,23 +1,13 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
 )
-
-// legacyTemplates is the compatibility view of the installed definitions: the
-// exact legacy references some adapter still accepts. The scope pass leaves
-// those to the per-bot check, so one shared action can fit the adapter that owns
-// the alias and fail for every other (ADR 0018/0020).
-type legacyTemplates struct {
-	paths map[string]bool
-}
 
 // templateIssue is one template problem in a scope. Action names the action
 // that owns the site, or the referenced one for a Graph or Node check.
@@ -37,11 +27,13 @@ type templateSite struct {
 // validateTemplates checks every template string a scope declares: syntax,
 // known roots, and declared inputs, graph and node variables, and request
 // results (ADR 0018). The caller adds file and entity context.
-func validateTemplates(scope spec.Scope, legacy legacyTemplates) []templateIssue {
+func validateTemplates(scope spec.Scope) []templateIssue {
 	var issues []templateIssue
 	for _, name := range slices.Sorted(maps.Keys(scope.Actions)) {
 		for _, site := range templateSites(scope.Actions[name]) {
-			issues = append(issues, checkTemplateSyntax(name, site, legacy)...)
+			if _, err := botflota.ParseTemplate(site.text); err != nil {
+				issues = append(issues, templateIssue{Action: name, Site: site.where, Err: err})
+			}
 		}
 	}
 	for _, graphName := range slices.Sorted(maps.Keys(scope.Graphs)) {
@@ -49,35 +41,6 @@ func validateTemplates(scope spec.Scope, legacy legacyTemplates) []templateIssue
 		for _, nodeName := range slices.Sorted(maps.Keys(g.Nodes)) {
 			issues = append(issues, validateNodeTemplates(scope, graphName, nodeName, g)...)
 		}
-	}
-	return issues
-}
-
-// checkTemplateSyntax reports the syntax errors of one template site. A
-// reference whose exact path some installed adapter still accepts is left to
-// the per-bot check; every other unknown root fails here, so an action no bot
-// reaches still reports it (ADR 0018/0020).
-func checkTemplateSyntax(
-	actionName string, site templateSite, legacy legacyTemplates,
-) []templateIssue {
-	tmpl, err := botflota.ParseTemplateAny(site.text)
-	if err != nil {
-		return []templateIssue{{Action: actionName, Site: site.where, Err: err}}
-	}
-	var issues []templateIssue
-	for _, path := range tmpl.References() {
-		if _, _, err := botflota.ParseTemplatePath(path); err == nil ||
-			!errors.Is(err, botflota.ErrUnknownRoot) {
-			continue
-		}
-		if legacy.paths[path] {
-			continue
-		}
-		root := strings.SplitN(path, ".", 2)[0]
-		issues = append(issues, templateIssue{
-			Action: actionName, Site: site.where,
-			Err: fmt.Errorf("%w: %q", botflota.ErrUnknownRoot, root),
-		})
 	}
 	return issues
 }

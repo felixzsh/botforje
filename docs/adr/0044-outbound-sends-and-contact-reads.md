@@ -50,8 +50,10 @@ of an accepted `client_id` answers `409 duplicate` with the accepted message's
 /api/v1/scopes/{scope}/contacts` lists the scope's identities newest activity
 first, with `since` (unix milliseconds) filtering on `first_seen`, an opaque
 keyset cursor, and `next_cursor` absent on the last page; `GET
-.../contacts/{id}` answers one identity or 404, accepting a WhatsApp phone
-number as the legacy selector. This is
+.../contacts/{id}` answers one identity or 404. P4 replaces the phone selector
+with the neutral peer reference and removes it outright: no legacy phone
+selector, output projection, or compatibility alias is retained (ADR 0054,
+PLAN.md "no backward compatibility"). This is
 the API's first cursor-paginated read; ROADMAP Phase 10 generalizes the
 convention rather than replacing it.
 

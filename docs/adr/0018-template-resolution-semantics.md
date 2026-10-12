@@ -40,24 +40,18 @@ Rules:
 - An unknown root fails when the reference is parsed; a missing path and a
   non-scalar value fail when it is rendered.
 
-## Approved P1 compatibility
+## No compatibility translation
 
 Neutral peer paths are `peer.id`, `peer.provider`, `peer.subject`, and `peer.name`.
 The internal identity ID renders as an opaque string; external subject values
 remain opaque and are not automatically destinations.
 
-For a bot consuming the approved WhatsApp compatibility, `contact.id` and
-`contact.name` translate to `peer.id` and `peer.name`; `contact.phone` translates
-to `peer.subject` only under its PN normalization policy (ADR 0020). Other
-adapters do not inherit these aliases. Apply adapter-declared reference mapping
-to a per-bot effective view without changing the shared graph or performing
-unbounded textual replacement. Validate references after that translation;
-unsupported aliases are errors, never silently empty values.
-
-P1 implements the neutral `peer` root and retires `contact`; the per-bot
-WhatsApp translation of the legacy `contact.*` references needs the consuming
-bot's definition and is P2 work. Remaining config, selector, output, and archive
-compatibility belongs to its own phase and owner.
+P1 implements the neutral `peer` root and retires `contact`; the template root
+simply no longer exists. There is no `contact.*` alias, adapter-declared
+reference mapping, or other compatibility translation (PLAN.md, "no backward
+compatibility"): an old reference fails validation with an unknown-root error
+instead of being rewritten into a peer path. A shared graph never carries a
+provider-specific alias, and no phase adds one.
 
 ## Consequences
 

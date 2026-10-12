@@ -5,7 +5,13 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/channels"
+	"github.com/felixzsh/botflota/spec"
 )
+
+// testChannel is the selector the API test bots use; every bot names one.
+func testChannel() spec.Channel {
+	return spec.Channel{Provider: "whatsapp", Mode: "native"}
+}
 
 // testCatalog is the installed set the API tests publish against: one fake
 // definition registered like an adapter, so a publication is validated against

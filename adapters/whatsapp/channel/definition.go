@@ -36,26 +36,17 @@ type BotOptions struct {
 	ExternalReplyPause time.Duration
 }
 
-// rawOptions is the authored shape of channel.options, and of the legacy
-// settings keys the definition still accepts. Pointers distinguish an absent
-// key from an explicit zero, so a conflict between the two authored locations
-// is detectable (ADR 0054).
+// rawOptions is the authored shape of channel.options. A pointer distinguishes
+// an absent switch from an explicit false, so the adapter's own defaults apply
+// only where the author said nothing (ADR 0054).
 type rawOptions struct {
 	ReadReceipts       *bool `yaml:"read_receipts" json:"read_receipts,omitempty"`
-	ReadReceiptDelay   *int  `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
-	ReplyDelay         *int  `yaml:"reply_delay" json:"reply_delay,omitempty"`
+	ReadReceiptDelay   int   `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
+	ReplyDelay         int   `yaml:"reply_delay" json:"reply_delay,omitempty"`
 	SimulateTyping     *bool `yaml:"simulate_typing" json:"simulate_typing,omitempty"`
 	HistorySync        *bool `yaml:"history_sync" json:"history_sync,omitempty"`
 	ImportContacts     *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
-	ExternalReplyPause *int  `yaml:"external_reply_pause" json:"external_reply_pause,omitempty"`
-}
-
-// legacySettings are the settings keys this adapter still reads from the
-// common block, so an existing WhatsApp document keeps loading unchanged
-// (ADR 0054).
-var legacySettings = []string{
-	"read_receipts", "read_receipt_delay", "reply_delay", "simulate_typing",
-	"history_sync", "import_contacts", "external_reply_pause",
+	ExternalReplyPause int   `yaml:"external_reply_pause" json:"external_reply_pause,omitempty"`
 }
 
 // Definition is the pure declaration of this adapter: no device store opens
@@ -91,22 +82,8 @@ func Definition() channels.Definition {
 				spec.ContactAddress, spec.ContactURL,
 			},
 		},
-		OptionsSchema:   optionsSchema(),
-		Decode:          decodeBot,
-		LegacySettings:  legacySettings,
-		TemplateAliases: templateAliases(),
-	}
-}
-
-// templateAliases is the WhatsApp PN compatibility table: an old reference maps
-// to the neutral peer path that means the same, and contact.phone maps to
-// peer.subject only because the native account mode addresses by PN
-// (ADR 0018/0020). Every other adapter does not inherit these aliases.
-func templateAliases() map[string]string {
-	return map[string]string{
-		"contact.id":    "peer.id",
-		"contact.name":  "peer.name",
-		"contact.phone": "peer.subject",
+		OptionsSchema: optionsSchema(),
+		Decode:        decodeBot,
 	}
 }
 
@@ -121,24 +98,16 @@ func optionsSchema() *jsonschema.Schema {
 	return reflector.Reflect(&rawOptions{})
 }
 
-// decodeBot reads the authored options and legacy settings into BotOptions,
-// reporting every value the adapter cannot accept (ADR 0052).
+// decodeBot reads the authored options into BotOptions, reporting every value
+// the adapter cannot accept (ADR 0052).
 func decodeBot(bot spec.Bot) (any, []string) {
-	var authored *yaml.Node
-	if bot.Channel != nil {
-		authored = bot.Channel.Options.Node()
-	}
-	fromOptions, reasons := decodeNode(authored, "channel.options")
-	fromSettings, settingsReasons := decodeLegacy(bot.Settings)
-	reasons = append(reasons, settingsReasons...)
-	merged, mergeReasons := mergeOptions(fromOptions, fromSettings)
-	reasons = append(reasons, mergeReasons...)
-	reasons = append(reasons, checkRanges(merged)...)
+	raw, reasons := decodeNode(bot.Channel.Options.Node(), "channel.options")
+	reasons = append(reasons, checkRanges(raw)...)
 	common := spec.BotSettings{}
 	if bot.Settings != nil {
 		common = *bot.Settings
 	}
-	return builtOptions(merged, common), reasons
+	return builtOptions(raw, common), reasons
 }
 
 // decodeNode strictly decodes an authored node, so a misspelled option is
@@ -160,69 +129,17 @@ func decodeNode(node *yaml.Node, where string) (rawOptions, []string) {
 	return raw, nil
 }
 
-// decodeLegacy decodes the adapter-owned keys of the common settings block.
-func decodeLegacy(settings *spec.BotSettings) (rawOptions, []string) {
-	var raw rawOptions
-	if settings == nil || len(settings.Adapter) == 0 {
-		return raw, nil
-	}
-	data, err := yaml.Marshal(settings.Adapter)
-	if err != nil {
-		return raw, []string{fmt.Sprintf("settings: %v", err)}
-	}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&raw); err != nil {
-		return raw, []string{fmt.Sprintf("settings: %v", err)}
-	}
-	return raw, nil
-}
-
-// mergeOptions folds the legacy settings into the authored options, rejecting
-// a key the author declared in both places.
-func mergeOptions(options, legacy rawOptions) (rawOptions, []string) {
-	var reasons []string
-	o, l := &options, &legacy
-	o.ReadReceipts = mergeOption("read_receipts", o.ReadReceipts, l.ReadReceipts, &reasons)
-	o.ReadReceiptDelay = mergeOption(
-		"read_receipt_delay", o.ReadReceiptDelay, l.ReadReceiptDelay, &reasons)
-	o.ReplyDelay = mergeOption("reply_delay", o.ReplyDelay, l.ReplyDelay, &reasons)
-	o.SimulateTyping = mergeOption(
-		"simulate_typing", o.SimulateTyping, l.SimulateTyping, &reasons)
-	o.HistorySync = mergeOption("history_sync", o.HistorySync, l.HistorySync, &reasons)
-	o.ImportContacts = mergeOption(
-		"import_contacts", o.ImportContacts, l.ImportContacts, &reasons)
-	o.ExternalReplyPause = mergeOption(
-		"external_reply_pause", o.ExternalReplyPause, l.ExternalReplyPause, &reasons)
-	return *o, reasons
-}
-
-// mergeOption keeps the authored options value, falls back to the legacy
-// settings key, and reports a key written in both places.
-func mergeOption[T any](name string, options, legacy *T, reasons *[]string) *T {
-	switch {
-	case options != nil && legacy != nil:
-		*reasons = append(*reasons,
-			name+" is declared in both channel.options and settings")
-		return options
-	case options != nil:
-		return options
-	default:
-		return legacy
-	}
-}
-
 func checkRanges(raw rawOptions) []string {
 	var reasons []string
 	for _, value := range []struct {
 		name string
-		at   *int
+		at   int
 	}{
 		{"read_receipt_delay", raw.ReadReceiptDelay},
 		{"reply_delay", raw.ReplyDelay},
 		{"external_reply_pause", raw.ExternalReplyPause},
 	} {
-		if value.at != nil && *value.at < 0 {
+		if value.at < 0 {
 			reasons = append(reasons, value.name+" must be >= 0")
 		}
 	}
@@ -237,12 +154,9 @@ func builtOptions(raw rawOptions, common spec.BotSettings) BotOptions {
 	if raw.ReadReceipts != nil {
 		options.Settings.ReadReceipts = *raw.ReadReceipts
 	}
-	if raw.ReadReceiptDelay != nil {
-		options.Settings.ReadReceiptDelay = time.Duration(*raw.ReadReceiptDelay) * time.Millisecond
-	}
-	if raw.ReplyDelay != nil {
-		options.Settings.ReplyDelay = time.Duration(*raw.ReplyDelay) * time.Millisecond
-	}
+	options.Settings.ReadReceiptDelay =
+		time.Duration(raw.ReadReceiptDelay) * time.Millisecond
+	options.Settings.ReplyDelay = time.Duration(raw.ReplyDelay) * time.Millisecond
 	if raw.SimulateTyping != nil {
 		options.Settings.SimulateTyping = *raw.SimulateTyping
 	}
@@ -253,9 +167,8 @@ func builtOptions(raw rawOptions, common spec.BotSettings) BotOptions {
 	if raw.ImportContacts != nil {
 		options.ImportContacts = *raw.ImportContacts
 	}
-	if raw.ExternalReplyPause != nil {
-		options.ExternalReplyPause = time.Duration(*raw.ExternalReplyPause) * time.Millisecond
-	}
+	options.ExternalReplyPause =
+		time.Duration(raw.ExternalReplyPause) * time.Millisecond
 	return options
 }
 

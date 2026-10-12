@@ -196,8 +196,9 @@ activity first; `since` (unix milliseconds) keeps identities whose `first_seen`
 is at or after it, and an opaque `cursor` pages the list, with `next_cursor`
 absent on the last page (ADR 0044). Each entry is `{provider, subject, phone,
 display_name, first_seen, last_seen, address_book_imported, has_chat,
-has_history}`; `phone` is the legacy WhatsApp projection of `subject`
-(ADR 0054). `first_seen` means the peer sent a live inbound message; outbound
+has_history}`; the current `phone` field is the legacy WhatsApp projection of
+`subject`, removed in P4 with no compatibility shape (ADR 0054, PLAN.md "no
+backward compatibility"). `first_seen` means the peer sent a live inbound message; outbound
 API messages do not count. The booleans are derived: a directory import supplied
 the identity, any bot has a chat, and any bot has an imported sync message.
 `address_book_imported` does not assert current membership in WhatsApp's

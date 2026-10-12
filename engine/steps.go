@@ -60,7 +60,7 @@ func (r *run) message(m spec.Message) error {
 	}
 	body := r.pickVariant(m.Body)
 	if body != "" {
-		rendered, renderErr := r.render(body)
+		rendered, renderErr := botflota.RenderTemplate(body, r.tctx.Get)
 		if renderErr != nil {
 			return renderErr
 		}
@@ -118,7 +118,7 @@ func (r *run) target(to string) (botflota.ChatTarget, error) {
 	if to == "" {
 		return r.msg.Target, nil
 	}
-	thread, err := r.render(to)
+	thread, err := botflota.RenderTemplate(to, r.tctx.Get)
 	if err != nil {
 		return botflota.ChatTarget{}, err
 	}
@@ -137,19 +137,19 @@ func (r *run) media(m spec.Media) error {
 	if !ok {
 		return fmt.Errorf("unknown media kind %q", m.Kind)
 	}
-	url, err := r.render(m.URL)
+	url, err := botflota.RenderTemplate(m.URL, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	path, err := r.render(m.Path)
+	path, err := botflota.RenderTemplate(m.Path, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	name, err := r.render(m.Name)
+	name, err := botflota.RenderTemplate(m.Name, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	caption, err := r.render(m.Caption)
+	caption, err := botflota.RenderTemplate(m.Caption, r.tctx.Get)
 	if err != nil {
 		return err
 	}
@@ -190,11 +190,11 @@ func mediaTypeOf(name string) (botflota.MediaType, bool) {
 }
 
 func (r *run) contact(c spec.Contact) error {
-	name, err := r.render(c.Name)
+	name, err := botflota.RenderTemplate(c.Name, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	note, err := r.render(c.Note)
+	note, err := botflota.RenderTemplate(c.Note, r.tctx.Get)
 	if err != nil {
 		return err
 	}
@@ -211,11 +211,11 @@ func (r *run) contact(c spec.Contact) error {
 		if !spec.ContactEntryKind(e.Kind).Valid() {
 			return fmt.Errorf("contact entry kind %q must be phone, email, address, or url", e.Kind)
 		}
-		value, err := r.render(e.Value)
+		value, err := botflota.RenderTemplate(e.Value, r.tctx.Get)
 		if err != nil {
 			return err
 		}
-		label, err := r.render(e.Label)
+		label, err := botflota.RenderTemplate(e.Label, r.tctx.Get)
 		if err != nil {
 			return err
 		}
@@ -241,13 +241,13 @@ func (r *run) contact(c spec.Contact) error {
 }
 
 func (r *run) poll(p spec.Poll) error {
-	question, err := r.render(p.Question)
+	question, err := botflota.RenderTemplate(p.Question, r.tctx.Get)
 	if err != nil {
 		return err
 	}
 	options := make([]string, 0, len(p.Options))
 	for _, option := range p.Options {
-		rendered, err := r.render(option)
+		rendered, err := botflota.RenderTemplate(option, r.tctx.Get)
 		if err != nil {
 			return err
 		}
@@ -281,11 +281,11 @@ func (r *run) poll(p spec.Poll) error {
 }
 
 func (r *run) request(req spec.Request) error {
-	url, err := r.render(req.URL)
+	url, err := botflota.RenderTemplate(req.URL, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	body, err := r.render(req.Body)
+	body, err := botflota.RenderTemplate(req.Body, r.tctx.Get)
 	if err != nil {
 		return err
 	}
@@ -297,7 +297,7 @@ func (r *run) request(req spec.Request) error {
 			headers[name] = value.Reveal()
 			continue
 		}
-		rendered, err := r.render(value.Raw())
+		rendered, err := botflota.RenderTemplate(value.Raw(), r.tctx.Get)
 		if err != nil {
 			return err
 		}
@@ -359,19 +359,19 @@ func (r *run) doRequest(
 }
 
 func (r *run) location(loc spec.Location) error {
-	name, err := r.render(loc.Name)
+	name, err := botflota.RenderTemplate(loc.Name, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	address, err := r.render(loc.Address)
+	address, err := botflota.RenderTemplate(loc.Address, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	url, err := r.render(loc.URL)
+	url, err := botflota.RenderTemplate(loc.URL, r.tctx.Get)
 	if err != nil {
 		return err
 	}
-	description, err := r.render(loc.Description)
+	description, err := botflota.RenderTemplate(loc.Description, r.tctx.Get)
 	if err != nil {
 		return err
 	}

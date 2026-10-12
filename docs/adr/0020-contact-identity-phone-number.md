@@ -37,22 +37,17 @@ The JID and LID stay inside the WhatsApp adapter:
 - Own account identity is normalized separately from the companion-device JID;
   its private SDK lookup remains adapter-owned (ADR 0051).
 
-### Approved legacy template compatibility
+### No legacy template translation
 
-For a bot explicitly consuming WhatsApp compatibility, old `contact.id` and
-`contact.name` references translate to `peer.id` and `peer.name`. `contact.phone`
-translates to `peer.subject` only where this adapter's PN policy preserves its
-old meaning. This is an adapter-declared translation, not a phone path available
-on every provider and not a subject-to-phone parser in common code.
+The retired `contact.*` template root has no alias. Old `contact.id/name/phone`
+references are not translated to `peer.*`, no `phone` value is seeded into the
+common context, and no adapter-declared reference mapping exists (ADR 0018,
+PLAN.md "no backward compatibility"). A reference to the old root fails
+validation as an unknown root; it is never silently empty.
 
-Apply reference translation to the consuming bot's effective graph/template view,
-never by mutating a shared declaration or broad text replacement. Unsupported
-aliases fail validation, and missing paths remain errors (ADR 0018). No `phone`
-value is seeded into the common context, including an empty fallback.
-
-Other legacy selectors, outputs, archives, and setup/result formats need their
-own compatibility decisions. Approving template translation does not approve
-changing those public contracts or duplicating account/setup implementations.
+Other legacy selectors, outputs, archives, and setup/result formats are removed
+by their owning phase the same way; none of them gets a compatibility
+translation or a duplicate account/setup implementation.
 
 ## Consequences
 

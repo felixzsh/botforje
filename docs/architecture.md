@@ -447,8 +447,10 @@ scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
 `contacts`, `sessions`, and `messages`, and a bot exposes its imported
 directory at `/bots/{bot}/contacts`. Every addressable object carries its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
-pair plus the `contact=<subject>` selector, the legacy WhatsApp compatibility
-boundary ADR 0054 keeps while neutral references are added. `messages` returns
+pair plus the neutral `peer=<subject>` selector; P4 removes the legacy
+`contact=<subject>` selector and phone projection instead of keeping them
+alongside the neutral references (ADR 0054, PLAN.md "no backward
+compatibility"). `messages` returns
 the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
 polls, and each message carries its kind, its visible text, and the structured

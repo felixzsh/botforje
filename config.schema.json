@@ -35,7 +35,7 @@
       "properties": {
         "channel": {
           "$ref": "#/$defs/Channel",
-          "description": "Channel selects the installed implementation this bot runs on; absent\nmeans the documented WhatsApp native default."
+          "description": "Channel selects the installed implementation this bot runs on. Every bot\nnames one; there is no implicit provider."
         },
         "display_name": {
           "description": "DisplayName is an optional label for people-facing interfaces.",
@@ -52,7 +52,8 @@
         }
       },
       "required": [
-        "graph"
+        "graph",
+        "channel"
       ],
       "type": "object"
     },
@@ -70,14 +71,12 @@
           "description": "ExternalReplyPause is the milliseconds one chat stays handed to a human\nafter a message leaves the account without Botflota sending it. It is a\nfleet policy, so it stays shared; observing the external reply at all is\nthe channel's declared capability and a channel without it refuses the\nsetting.",
           "type": "integer"
         },
-        "history_sync": {},
         "ignored_peers": {
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "import_contacts": {},
         "jitter": {
           "type": "integer"
         },
@@ -86,11 +85,7 @@
         },
         "queue_delay": {
           "type": "integer"
-        },
-        "read_receipt_delay": {},
-        "read_receipts": {},
-        "reply_delay": {},
-        "simulate_typing": {}
+        }
       },
       "type": "object"
     },

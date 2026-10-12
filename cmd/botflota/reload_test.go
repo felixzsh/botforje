@@ -22,6 +22,9 @@ scopes:
     bots:
       demo:
         graph: "menu"
+        channel:
+          provider: whatsapp
+          mode: native
 `
 
 func writeConfig(t *testing.T, content string) string {

@@ -19,3 +19,6 @@ scopes:
       b:
         graph: g
         llm: primary
+        channel:
+          provider: whatsapp
+          mode: native

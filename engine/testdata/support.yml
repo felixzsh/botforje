@@ -76,3 +76,6 @@ scopes:
     bots:
       support-bot:
         graph: "faq"
+        channel:
+          provider: whatsapp
+          mode: native

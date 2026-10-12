@@ -15,7 +15,13 @@ scopes:
     bots:
       alpha:
         graph: "menu"
+        channel:
+          provider: whatsapp
+          mode: native
       beta:
         graph: "menu"
+        channel:
+          provider: whatsapp
+          mode: native
         settings:
           ignored_peers: ["999"]

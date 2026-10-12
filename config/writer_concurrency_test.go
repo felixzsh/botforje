@@ -28,6 +28,9 @@ scopes:
     bots:
       demo:
         graph: main
+        channel:
+          provider: whatsapp
+          mode: native
   ventas:
     graphs:
       main:
@@ -38,6 +41,9 @@ scopes:
     bots:
       other:
         graph: main
+        channel:
+          provider: whatsapp
+          mode: native
 `
 	if err := writeTreeFile(main, content); err != nil {
 		t.Fatalf("write main: %v", err)

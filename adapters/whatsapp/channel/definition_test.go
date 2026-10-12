@@ -82,25 +82,6 @@ settings:
 	}
 }
 
-func TestDecodeBotStillReadsLegacySettings(t *testing.T) {
-	options, reasons := decodeYAML(t, `graph: menu
-settings:
-  read_receipts: true
-  reply_delay: 900
-  history_sync: false
-  import_contacts: true
-`)
-	if len(reasons) != 0 {
-		t.Fatalf("reasons = %v", reasons)
-	}
-	if !options.Settings.ReadReceipts || options.Settings.ReplyDelay != 900*time.Millisecond {
-		t.Errorf("legacy presence not mapped: %#v", options.Settings)
-	}
-	if options.History || !options.ImportContacts {
-		t.Errorf("legacy import switches not mapped: %#v", options)
-	}
-}
-
 func TestDecodeBotReportsWhatItCannotAccept(t *testing.T) {
 	cases := []struct {
 		name string
@@ -119,23 +100,13 @@ channel:
 			want: "channel.options",
 		},
 		{
-			name: "declared twice",
+			name: "negative delay",
 			doc: `graph: menu
 channel:
   provider: whatsapp
   mode: native
   options:
-    reply_delay: 900
-settings:
-  reply_delay: 500
-`,
-			want: "declared in both",
-		},
-		{
-			name: "negative delay",
-			doc: `graph: menu
-settings:
-  reply_delay: -1
+    reply_delay: -1
 `,
 			want: "must be >= 0",
 		},
@@ -183,8 +154,5 @@ func TestDefinitionDeclaresItsCapabilities(t *testing.T) {
 	}
 	if def.OptionsSchema == nil {
 		t.Fatal("options schema is missing")
-	}
-	if len(def.LegacySettings) == 0 {
-		t.Fatal("legacy settings are not declared")
 	}
 }

@@ -68,9 +68,7 @@ func applyChannelCatalog(root map[string]any, catalog *channels.Catalog) error {
 		return errors.New("config: generated schema has no $defs")
 	}
 	var branches []any
-	var legacy []string
 	for _, def := range catalog.Definitions() {
-		legacy = append(legacy, def.LegacySettings...)
 		options, err := schemaMap(def.OptionsSchema)
 		if err != nil {
 			return fmt.Errorf("config: channel %s options schema: %w", def.Provider, err)
@@ -96,18 +94,6 @@ func applyChannelCatalog(root map[string]any, catalog *channels.Catalog) error {
 		return errors.New("config: no channel definition is installed")
 	}
 	defs["Channel"] = map[string]any{"oneOf": branches}
-
-	// Legacy adapter settings stay valid for the editor while the transition
-	// lasts; the runtime validator still rejects one a bot's own definition
-	// does not declare (ADR 0054).
-	settings, _ := defs["BotSettings"].(map[string]any)
-	if properties, ok := settings["properties"].(map[string]any); ok {
-		for _, key := range legacy {
-			if _, exists := properties[key]; !exists {
-				properties[key] = map[string]any{}
-			}
-		}
-	}
 	return nil
 }
 

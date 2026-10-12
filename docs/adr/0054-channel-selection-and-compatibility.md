@@ -22,16 +22,16 @@ channel:
   options: {}          # adapter-specific, validated by the catalog
 ```
 
-`provider` and `mode` are core-typed. `options` is validated by the channel
-definition's pure validator (ADR 0052), decoded strictly (unknown fields
-rejected), and preserved as authored on publication. Two installed definitions
-that share a provider and a mode are rejected when the catalog is built: the
-adapter kind is an implementation label, never a third selection key or a
-precedence rule a caller has to reason about. A missing selector means
-WhatsApp native during a documented transition, so every existing file loads
-unchanged. An unavailable provider or mode fails load, even when its name
-appears among the preparation plan's reference cases; a provider that is named
-but not installed is not silently WhatsApp.
+`provider` and `mode` are core-typed and **required**: every bot names one,
+and there is no implicit provider or missing-selector default. `options` is
+validated by the channel definition's pure validator (ADR 0052), decoded
+strictly (unknown fields rejected), and preserved as authored on publication.
+Two installed definitions that share a provider and a mode are rejected when
+the catalog is built: the adapter kind is an implementation label, never a third
+selection key or a precedence rule a caller has to reason about. An unavailable
+provider or mode fails load, even when its name appears among the preparation
+plan's reference cases; a provider that is named but not installed is never
+silently WhatsApp.
 
 **Common settings and adapter options stay apart.** Pacing, jitter, the
 per-minute ceiling, and contact filtering are shared messaging settings.
@@ -69,14 +69,13 @@ A temporary context selection inside an adapter-owned backend is not a config
 change or binding replacement. Compare the fixed binding/profile reference,
 not whichever profile the service happens to have selected (ADR 0051/0053).
 
-**Additive API and CLI compatibility.** Neutral contact, account, and
-conversation references are added, and legacy phone selectors remain for
-WhatsApp (ADR 0051, ADR 0044). Numeric or opaque chat ids resolve under their
-scope and bot, never by id alone. First-contact webhooks and CSV exports gain
-neutral identity and provenance without leaking keys, keeping existing fields
-where possible; an incompatible payload or archive change needs its own
-decision. History migration refuses incompatible providers or local identity spaces
-until an explicit mapping exists (ADR 0042).
+**No compatibility layer.** The preparation is new design (ADR 0052, PLAN.md
+"no backward compatibility"). A superseded key, template root, selector, event,
+or result field is removed with its owning phase and fails validation with a
+precise error; it is never translated, aliased, or accepted as a no-op.
+Databases start clean, so no migration or backfill is required. A host that
+keeps using WhatsApp keeps it through the neutral contracts, not by preserving
+their old shapes.
 
 **Trusted auxiliary endpoints wait for their decision.** A managed local
 channel endpoint (for example a SimpleX websocket) is not an action URL; it
@@ -93,8 +92,8 @@ supervisor, automatic sharding, or per-service account capacity is approved.
 
 ## Consequences
 
-- Existing YAML keeps working; the transition ends when examples and fixtures
-  make the selector explicit.
+- A bot names its channel; a document without a selector fails validation
+  instead of assuming WhatsApp.
 - A second provider adds a definition and a builder at the composition root,
   not a switch in `cmd/`.
 - The reload path can tell a channel change from an ordinary setting change

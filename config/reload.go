@@ -80,11 +80,10 @@ func scopeRuntimeChanges(was, now spec.Scope, name string) []string {
 // options as the file authored them; a provider, mode, or option change is a
 // binding-relevant change, not an ordinary setting edit (ADR 0054).
 func channelOf(bot spec.Bot) string {
-	if bot.Channel == nil {
-		return "<default>"
-	}
 	encoded, err := json.Marshal(bot.Channel)
 	if err != nil {
+		// Options that cannot round-trip still differ from the provider and
+		// mode alone, so keep the identity part instead of dropping the change.
 		return bot.Channel.Provider + "/" + bot.Channel.Mode
 	}
 	return bot.Channel.Provider + "/" + bot.Channel.Mode + ":" + string(encoded)
@@ -122,8 +121,7 @@ func channelSettingsEqual(was, now *spec.BotSettings) bool {
 	// restart; contact filtering and the hand-over window are adopted live.
 	return old.QueueDelay == current.QueueDelay &&
 		old.Jitter == current.Jitter &&
-		old.MaxMsgPerMinute == current.MaxMsgPerMinute &&
-		reflect.DeepEqual(old.Adapter, current.Adapter)
+		old.MaxMsgPerMinute == current.MaxMsgPerMinute
 }
 
 func botSettingsOf(settings *spec.BotSettings) spec.BotSettings {

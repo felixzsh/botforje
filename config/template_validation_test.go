@@ -87,7 +87,7 @@ func TestValidateTemplates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			scope := templateScope()
 			tc.mutate(&scope)
-			issues := validateTemplates(scope, legacyTemplates{})
+			issues := validateTemplates(scope)
 			if tc.want == "" {
 				if len(issues) != 0 {
 					t.Fatalf("issues = %#v, want none", issues)
@@ -109,7 +109,7 @@ func TestValidateTemplates(t *testing.T) {
 func TestValidateTemplatesContext(t *testing.T) {
 	scope := templateScope()
 	setTemplateBody(&scope, "greet", "{{node.missing}}")
-	issues := validateTemplates(scope, legacyTemplates{})
+	issues := validateTemplates(scope)
 	if len(issues) != 1 {
 		t.Fatalf("issues = %#v, want exactly one", issues)
 	}

@@ -453,26 +453,29 @@ Deliverables:
 Channel-neutral preparation (`docs/channel-adapter-findings/channel-plan.md`; decisions in ADR
 0051–0054). Every slice keeps WhatsApp runnable:
 
-**Owner decision — clean pre-release persistence (2026-10-08).** There is no
-real deployment data to preserve. Prefer the smallest coherent channel-neutral
-schema over compatibility with the development database. Renaming or replacing
-tables, columns, keys, indexes, and constraints is allowed within P1–P6 when it
-removes channel assumptions or redundant storage. Do not add features, unused
-fields, speculative tables, or a generic provider-payload escape hatch.
+**Owner decision — no backward compatibility, clean databases
+(2026-10-12, extending the 2026-10-08 clean pre-release persistence
+decision).** The whole channel preparation (P1–P6) is new design: there is no
+legacy to preserve and no deployment to migrate. Prefer the smallest coherent
+channel-neutral design over compatibility with earlier YAML, API/CLI shapes,
+templates, events, or exports. Breaking changes are the default and need no
+deprecation window, dual-format period, or compatibility translation layer.
 
-- No migration, WhatsApp backfill, old numeric-ID preservation, or legacy-schema
-  upgrade gate is required for this preparation. Recreate an incompatible
-  development database explicitly through `make dev-reset`; startup must not
-  silently drop data or reset a database.
-- This changes database compatibility, not the requirement to keep WhatsApp
-  operational through its adapted implementation at each phase boundary.
-  Existing YAML/API/CLI compatibility remains in scope. Fresh-schema persistence,
-  reopen/restart, atomic turns, deduplication, isolation, and durable delivery
-  remain mandatory; removing upgrade tests must not remove those runtime gates.
-- Align the old-database requirements in
-  `docs/channel-adapter-findings/channel-plan.md` and ADR 0051
-  with this decision in the implementation work. ADR 0006 already permits
-  explicit development resets; versioned migrations still begin at first release.
+- Databases start clean. No migration, backfill, old numeric-ID preservation,
+  or legacy-schema upgrade gate is required anywhere in P1–P6. Recreate an
+  incompatible development database explicitly through `make dev-reset`;
+  startup must not silently drop data or reset a database.
+- Fresh-schema persistence, reopen/restart, atomic turns, deduplication,
+  isolation, and durable delivery remain mandatory runtime gates; dropping
+  upgrade tests must not drop those.
+- Keeping WhatsApp operational across a phase boundary means its adapted
+  implementation runs, not that its old configuration or wire shapes survive.
+  A superseded key, template root, selector, or result field is removed with its
+  owning phase instead of translated.
+- Align the old-database and compatibility requirements in
+  `docs/channel-adapter-findings/channel-plan.md` and ADR 0051–0054 with this
+  decision. Versioned migrations and compatibility shims still begin at the
+  first release, which is after this preparation.
 
 **Owner direction — clean messaging domain (2026-10-08).** No messaging-provider-specific concept
 belongs in shared binding/peer/chat contracts, even as an optional field. Do not replace
@@ -530,36 +533,35 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   SQLite stores, engine, fleet, WhatsApp mapping, and the API/CLI/webhook
   consumers. The schema is destination-keyed and created fresh; a provider id is
   deduplicated in its actual destination; and the gate closes/reopens the
-  database and reads the persisted conversation with no sender cache. The
-  per-bot WhatsApp translation of legacy `contact.*` template references needs
-  the consuming bot's definition and moves to P2, which retires the old root
-  without a universal phone field. No legacy backfill or pre-change database
-  gate is required.
+  database and reads the persisted conversation with no sender cache. P1 retired
+  the `contact` template root without a universal phone field and with no
+  compatibility translation; only the neutral `peer.*` values remain, and no
+  legacy backfill or pre-change database gate is required.
 - [x] P2 — declared capabilities and channel configuration (ADR 0052, ADR
   0054): the injected catalog, typed selector, pure support checks, reload
-  comparison, and composition; old YAML works and a fake text-only channel
-  needs no WhatsApp device store. Legacy phone templates and peer-card YAML
-  are definition-owned translations, not common `spec` fields or defaults. Land
-  the neutral peer-card declaration/content, codec, and WhatsApp mappings together.
+  comparison, and composition; a bot names its channel explicitly and a fake
+  text-only channel needs no WhatsApp device store. No compatibility layer,
+  legacy settings map, or template alias survives; the selector is required and
+  adapter settings live only in `channel.options`.
   Completed 2026-10-12: `channels` holds the catalog and definitions, config,
   schema, startup, watcher, and publication share the pure catalog, each bot's
   graph is checked against its own definition, the WhatsApp adapter owns its
-  options, template aliases, card variants, readiness, and builder, and the
-  device store opens only for a selected adapter. Its gate is checked in
+  options, card variants, readiness, and builder, and the device store opens
+  only for a selected adapter. Its gate is checked in
   `docs/channels/phases.md`.
   A future `invite` step (label plus opaque link or `self` plus kind `peer`|`group`)
   is decided but gated on a first real consumer; P5 admission/delivery checks apply
   once it lands.
 - [ ] P3 — binding runtime (ADR 0053): neutral association metadata, the
-  inspection/bind/unbind operations, and the WhatsApp translation, with QR,
+  inspection/bind/unbind operations, and the WhatsApp adaptation, with QR,
   write-only credential, multi-step approval, and profile binding modeled by
-  fakes. Persist binding generation and compatibility context; remove common
-  phone-bearing pairing results and phone-specific ownership/error semantics.
-- [ ] P4 — remote API and CLI integration (ADR 0053): binding operations,
-  discovery and approved legacy translations; a scoped HTTP client completes
-  binding and reauthorization without filesystem access. Neutral
-  views, webhooks, and exports do not require universal phone fields; retained
-  legacy outputs come from named adapter-owned projections.
+  fakes. Persist binding generation and identity-space context; remove common
+  phone-bearing pairing results and phone-specific ownership/error semantics
+  instead of translating them.
+- [ ] P4 — remote API and CLI integration (ADR 0053): binding operations and
+  discovery through scoped routes; a scoped HTTP client completes binding and
+  reauthorization without filesystem access. Neutral views, webhooks, and
+  exports carry no universal phone field and no legacy output projection.
 - [ ] P5 — delivery and optional-operation semantics (ADR 0052): outbox
   failure classes, binding-generation checks, and normalized
   history/external-reply contracts; a replacement account cannot send the

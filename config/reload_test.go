@@ -16,7 +16,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 				"support": {Bots: map[string]spec.Bot{
 					"demo": {
 						Graph:   "menu",
-						Channel: &spec.Channel{Provider: "whatsapp", Mode: "native"},
+						Channel: spec.Channel{Provider: "whatsapp", Mode: "native"},
 						Settings: &spec.BotSettings{
 							QueueDelay: 900,
 						},
@@ -28,9 +28,9 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 	botChannel := func(c *Config, change func(*spec.Channel)) {
 		scope := c.Scopes["support"]
 		bot := scope.Bots["demo"]
-		channel := *bot.Channel
+		channel := bot.Channel
 		change(&channel)
-		bot.Channel = &channel
+		bot.Channel = channel
 		scope.Bots["demo"] = bot
 	}
 	botSettings := func(c *Config, change func(*spec.BotSettings)) {

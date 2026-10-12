@@ -8,6 +8,9 @@ scopes:
             edges: []
     bots:
       b:
+        channel:
+          provider: whatsapp
+          mode: native
         graph: g
         settings:
           queue_delay: -1

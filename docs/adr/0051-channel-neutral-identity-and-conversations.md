@@ -169,18 +169,24 @@ that overlap those in the triggering chat; full retained-history/replacement
 provenance and the durable dedup key remain P5 decisions with ADR 0026. Neither
 binding generation nor a global unique message-ID index is an automatic solution.
 
-### Common values and compatibility
+### Common values and no compatibility
 
 No universal phone field, parameter, column, helper, or template path belongs in
 these identities, targets, peer/directory projections, or account records. The
 `phone` contact-card entry label remains opaque payload data, not identity or a
 routing instruction. Existing setup/result cleanup remains P3, not completed P1.
 
-Templates use neutral peer values. Approved legacy template translation is scoped
-to the consuming bot and its compatible adapter (ADR 0018/0020). Missing paths
-remain errors. Internal renames do not authorize changing selectors, JSON/YAML,
-routes, event topics, or archives; each affected boundary needs its explicit
-compatibility decision before implementation (ADR 0054).
+Templates use neutral peer values only. There is no legacy template translation:
+the retired `contact.*` root fails as an unknown root, and missing paths remain
+errors (ADR 0018/0020). Internal renames do not authorize changing selectors,
+JSON/YAML, routes, event topics, or archives, and they do not introduce a
+compatibility shim; a superseded shape is removed by its owning phase (ADR 0054,
+PLAN.md "no backward compatibility").
+
+WhatsApp retains provider `whatsapp` and adapter-normalized PN subjects, which are
+provider-wide and need no local prefix. Its direct thread may equal the subject
+only because the adapter establishes that mapping. PN/LID resolution stays inside
+the adapter (ADR 0020); the core treats the resulting digits as an opaque subject.
 
 WhatsApp retains provider `whatsapp` and adapter-normalized PN subjects, which are
 provider-wide and need no local prefix. Its direct thread may equal the subject
@@ -195,10 +201,11 @@ the adapter (ADR 0020); the core treats the resulting digits as an opaque subjec
   pick one conversation; any peer-based listing must allow multiple chats.
 - Foreign keys and scoped store operations preserve the identity/conversation
   separation. P1 changes schema, indexes, and consumers together under the
-  explicit pre-release reset policy (ADR 0006), with no legacy database backfill.
-- Migration must prove provider and identity-space compatibility through the
-  adapters' documented spaces, not parsing opaque subjects or guessing from a
-  matching provider alone. Unknown compatibility is refused (ADR 0042).
+  explicit pre-release policy (ADR 0006), starting from a clean database with no
+  legacy backfill or migration.
+- History migration must prove provider and identity-space compatibility through
+  the adapters' documented spaces, not parsing opaque subjects or guessing from a
+  matching provider alone; unknown compatibility is refused (ADR 0042).
 - P1 is complete only after propagation, WhatsApp mapping, destination dedup tests,
   and a real close/reopen/restart without a sender cache. This ADR selects the
   design, not a passing gate or approval to implement P3/P5 early.

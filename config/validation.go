@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/felixzsh/botflota"
@@ -80,7 +79,6 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 	}
 	validateWebhooks(cfg.Webhooks, add)
 	validateLabels(cfg, addScope)
-	legacy := legacyTemplatesOf(catalog)
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		scoped := addScope(scopeName)
@@ -100,30 +98,17 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 			validateBot(cfg, catalog, scopeName, scope, name, scope.Bots[name], scoped)
 			checkSecretRefs(cfg, scoped, "bot", scopeName, name, scope.Bots[name])
 		}
-		validateScopeTemplates(cfg, scopeName, scope, legacy, scoped)
+		validateScopeTemplates(cfg, scopeName, scope, scoped)
 	}
 	return errs
-}
-
-// legacyTemplatesOf collects every legacy template path the installed
-// definitions still accept, so the scope pass can defer them to the per-bot
-// check (ADR 0018/0020).
-func legacyTemplatesOf(catalog *channels.Catalog) legacyTemplates {
-	legacy := legacyTemplates{paths: map[string]bool{}}
-	for _, def := range catalog.Definitions() {
-		for path := range def.TemplateAliases {
-			legacy.paths[path] = true
-		}
-	}
-	return legacy
 }
 
 // validateScopeTemplates runs the template checks and attributes each finding
 // to the file and entity that declared it (ADR 0018, ADR 0034).
 func validateScopeTemplates(
-	cfg *Config, scopeName string, scope spec.Scope, legacy legacyTemplates, add addError,
+	cfg *Config, scopeName string, scope spec.Scope, add addError,
 ) {
-	for _, issue := range validateTemplates(scope, legacy) {
+	for _, issue := range validateTemplates(scope) {
 		if issue.Graph != "" {
 			file := cfg.originOf("graph", scopeName, issue.Graph)
 			entity := fmt.Sprintf("graph %q (scope %q) node %q",
@@ -500,64 +485,6 @@ func validateBot(
 	}
 	validateBotAdapterSettings(file, entity, b, def, key, add)
 	validateBotCapabilities(scope, b, def, key, file, entity, add)
-	validateBotLegacyTemplates(scope, b, def, key, file, entity, add)
-}
-
-// validateBotLegacyTemplates checks every legacy reference the bot's graph can
-// reach against its own definition: the adapter that owns the alias translates
-// it to the neutral path, and every other adapter refuses it with the bot,
-// graph, node, and action that carry it (ADR 0018/0020).
-func validateBotLegacyTemplates(
-	scope spec.Scope, b spec.Bot, def channels.Definition,
-	key channels.Key, file, entity string, add addError,
-) {
-	graph, ok := scope.Graphs[b.Graph]
-	if !ok {
-		return
-	}
-	for _, nodeName := range SortedKeys(graph.Nodes) {
-		node := graph.Nodes[nodeName]
-		nodeVars, graphVars, requests := nodeTemplateVars(scope, graph, node)
-		check := func(actionName string) {
-			action, ok := scope.Actions[actionName]
-			if !ok {
-				return
-			}
-			for _, site := range templateSites(action) {
-				tmpl, err := botflota.ParseTemplateAny(site.text)
-				if err != nil {
-					continue
-				}
-				for _, path := range tmpl.References() {
-					if _, _, err := botflota.ParseTemplatePath(path); err == nil {
-						continue
-					}
-					context := fmt.Sprintf(
-						"graph %q node %q: action %q %s", b.Graph, nodeName, actionName, site.where)
-					translated, ok := def.TemplateAliases[path]
-					if !ok {
-						add(file, entity,
-							"%s: template %q is not supported by channel %s/%s",
-							context, path, key.Provider, key.Mode)
-						continue
-					}
-					if issue := checkReference(action, translated, site.where,
-						nodeVars, graphVars, requests); issue != nil {
-						add(file, entity, "%s: %v", context, issue.Err)
-					}
-				}
-			}
-		}
-		for _, ref := range node.OnEnter {
-			check(ref)
-		}
-		for _, ref := range node.OnExit {
-			check(ref)
-		}
-		for _, ref := range node.Tools {
-			check(ref)
-		}
-	}
 }
 
 // validateBotSettings checks the settings every channel shares; an
@@ -593,16 +520,8 @@ func validateBotAdapterSettings(
 			"external_reply_pause needs channel %s/%s to observe external replies",
 			key.Provider, key.Mode)
 	}
-	if b.Settings != nil {
-		for _, name := range SortedKeys(b.Settings.Adapter) {
-			if !slices.Contains(def.LegacySettings, name) {
-				add(file, entity, "setting %q is not supported by channel %s/%s",
-					name, key.Provider, key.Mode)
-			}
-		}
-	}
 	if def.Decode == nil {
-		if b.Channel != nil && !b.Channel.Options.IsZero() {
+		if !b.Channel.Options.IsZero() {
 			add(file, entity, "channel %s/%s accepts no options", key.Provider, key.Mode)
 		}
 		return

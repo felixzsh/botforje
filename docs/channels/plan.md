@@ -5,8 +5,18 @@ is sufficient to proceed with phase-local design and implementation
 once the affected decisions are approved; another broad investigation
 is not a prerequisite. This does not approve unresolved contracts or
 close runtime gates. P0 (documentation only) is complete and accepted;
-P1's implementation landed on 2026-10-11 (ADR 0051), with its per-bot
-WhatsApp template alias moved to P2; P2–P6 are pending.
+P1's implementation landed on 2026-10-11 (ADR 0051), and P2's landed on
+2026-10-12 (ADR 0052/0054), both with their checklists and gates closed;
+P3–P6 are pending.
+
+**Owner decision — this preparation is new design, with no backward
+compatibility (2026-10-12).** P1–P6 replace the old WhatsApp-shaped domain
+outright. Nothing here preserves legacy YAML, templates, selectors, events,
+exports, or database rows, and no phase ships a compatibility translation or
+dual-format period. Databases start clean: no migration or backfill is required
+anywhere in the preparation. A phase boundary keeps WhatsApp *running through
+its adapted implementation*, not its old configuration or wire shapes. See
+`../../PLAN.md`, "no backward compatibility, clean databases".
 Code baseline: `3544357`, inspected on 2026-10-08; this research review
 is not a new code audit.
 `../../PLAN.md` Phase 7 owns overall progress; this document states the
@@ -199,20 +209,21 @@ reopen a common boundary only when a concrete finding requires it.
 
 ## 4. Execution rules
 
-Deliver P1–P6 in order after the affected decision review, preserving
-WhatsApp operation at every phase boundary or applying an explicitly
-approved compatibility change. Each phase includes the affected
-consumers, executable tests, and compatibility translations needed to
-keep the tree working; do not leave public ports changed while their
-callers remain on the previous model.
+Deliver P1–P6 in order after the affected decision review, keeping the
+adapted WhatsApp implementation running at every phase boundary. A phase
+replaces a contract rather than carrying two models: land the affected
+consumers, executable tests, and the removal of the shape it supersedes in
+the same change. Do not leave public ports or configuration changed while
+their callers remain on the previous model, and do not add a compatibility
+translation to bridge them.
 
 - Check a task only when its code and tests exist; check a phase only
   when its gate passes.
 - Update the corresponding `../../PLAN.md` deliverable in the commit
   that completes the phase.
-- Transitional WhatsApp translations belong at named compatibility
-  boundaries, not throughout the engine, fleet, or stores. They must not
-  become a second independent account/setup implementation.
+- A removed configuration key, template root, selector, or result field
+  leaves no adapter-owned alias, fallback, or no-op behind; the old shape
+  simply fails validation with a precise error.
 - The owner steers toward a provider-neutral domain, not merely
   optional provider-specific fields; the candidate direction and its
   open questions live in [domain-cleanup.md](domain-cleanup.md) and
@@ -248,8 +259,9 @@ Summaries only; the checklists and gates live in
   (ADR 0053): neutral binding metadata and generation plus
   inspection/bind/unbind operations; WhatsApp pairing adapts to them.
 - **P4 — Common API and CLI** (ADR 0053, ADR 0054): neutral
-  lifecycle/discovery/bind operations over scoped routes; legacy
-  WhatsApp shapes survive only as explicit compatibility translations.
+  lifecycle/discovery/bind operations over scoped routes; WhatsApp
+  selectors and results are the neutral ones, with no legacy shape
+  retained.
 - **P5 — Delivery, replay, and optional operations** (ADR 0052):
   classified send outcomes, admission plus generation checks, and
   replay/cursor boundaries without protocol leakage.
@@ -260,8 +272,8 @@ Summaries only; the checklists and gates live in
 ## 6. Document map
 
 - [phases.md](phases.md): P1–P6 checklists and gates.
-- [domain-cleanup.md](domain-cleanup.md): candidate cleanup direction,
-  compatibility approach, closing evidence, ADR alignment.
+- [domain-cleanup.md](domain-cleanup.md): cleanup direction, closing
+  evidence, ADR alignment.
 - [open-decisions.md](open-decisions.md): reopened claims and gaps
   waiting on provider evidence or owner calls.
 - [domain-terminology.md](domain-terminology.md): current-to-target

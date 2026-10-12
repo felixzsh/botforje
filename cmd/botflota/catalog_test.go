@@ -37,18 +37,17 @@ func TestWhatsappSelectedFollowsTheSelector(t *testing.T) {
 		want bool
 	}{
 		{"no bots", cfgWith(), false},
-		{"missing selector", cfgWith(spec.Bot{Graph: "menu"}), true},
+		{"another adapter only", cfgWith(spec.Bot{
+			Graph:   "menu",
+			Channel: spec.Channel{Provider: "fake", Mode: "text"},
+		}), false},
 		{"explicit whatsapp native", cfgWith(spec.Bot{
 			Graph:   "menu",
-			Channel: &spec.Channel{Provider: "whatsapp", Mode: "native"},
+			Channel: spec.Channel{Provider: "whatsapp", Mode: "native"},
 		}), true},
-		{"other adapter only", cfgWith(spec.Bot{
-			Graph:   "menu",
-			Channel: &spec.Channel{Provider: "fake", Mode: "text"},
-		}), false},
 		{"mixed fleet", cfgWith(
-			spec.Bot{Graph: "menu", Channel: &spec.Channel{Provider: "fake", Mode: "text"}},
-			spec.Bot{Graph: "menu", Channel: &spec.Channel{Provider: "whatsapp", Mode: "native"}},
+			spec.Bot{Graph: "menu", Channel: spec.Channel{Provider: "fake", Mode: "text"}},
+			spec.Bot{Graph: "menu", Channel: spec.Channel{Provider: "whatsapp", Mode: "native"}},
 		), true},
 	}
 	for _, tc := range cases {

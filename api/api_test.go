@@ -493,11 +493,11 @@ func testServerWithOptions(
 					}}}},
 				},
 				Graphs: map[string]spec.Graph{"main": testGraph},
-				Bots:   map[string]spec.Bot{"demo": {Graph: "main"}},
+				Bots:   map[string]spec.Bot{"demo": {Graph: "main", Channel: testChannel()}},
 			},
 			"ventas": {
 				Graphs: map[string]spec.Graph{"main": testGraph},
-				Bots:   map[string]spec.Bot{"other": {Graph: "main"}},
+				Bots:   map[string]spec.Bot{"other": {Graph: "main", Channel: testChannel()}},
 			},
 		},
 	}

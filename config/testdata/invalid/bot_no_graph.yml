@@ -1,4 +1,7 @@
 scopes:
   default:
     bots:
-      b: {}
+      b:
+        channel:
+          provider: whatsapp
+          mode: native

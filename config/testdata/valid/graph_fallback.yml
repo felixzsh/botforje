@@ -26,5 +26,8 @@ scopes:
     bots:
       b:
         graph: g
+        channel:
+          provider: whatsapp
+          mode: native
         settings:
           queue_delay: 100

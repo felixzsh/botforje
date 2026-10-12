@@ -43,6 +43,9 @@ func writerTree(t *testing.T) string {
 			"    bots:",
 			"      demo:",
 			"        graph: main",
+			"        channel:",
+			"          provider: whatsapp",
+			"          mode: native",
 			"",
 		}, "\n"),
 		"scopes/support.yml": strings.Join([]string{
@@ -67,6 +70,9 @@ func writerTree(t *testing.T) string {
 			"    bots:",
 			"      other:",
 			"        graph: main",
+			"        channel:",
+			"          provider: whatsapp",
+			"          mode: native",
 			"",
 		}, "\n"),
 	}
@@ -123,8 +129,8 @@ func TestWriterKeepsEachDefinitionInItsFile(t *testing.T) {
 	// main file; the new one has no origin anywhere, so it needs a fragment.
 	next := copyScope(current.Scopes["support"])
 	next.Bots = map[string]spec.Bot{
-		"demo":   {Graph: "main"},
-		"backup": {Graph: "main"},
+		"demo":   {Graph: "main", Channel: spec.Channel{Provider: "whatsapp", Mode: "native"}},
+		"backup": {Graph: "main", Channel: spec.Channel{Provider: "whatsapp", Mode: "native"}},
 	}
 	outcomes, err := writer.Publish(context.Background(), Publication{
 		Scopes: map[string]ScopeWrite{

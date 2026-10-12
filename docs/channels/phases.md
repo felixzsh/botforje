@@ -29,9 +29,9 @@ Two policies were explicitly selected:
 - Directory snapshots preserve source account identity when compatible history
   moves; data ownership is not current membership. Different origins remain
   independent snapshots (ADR 0037/0042).
-- Legacy `contact.id/name/phone` templates use per-bot WhatsApp translation into
-  neutral peer paths, without a universal phone field, shared-graph mutation, or
-  silently empty unsupported aliases (ADR 0018/0020).
+- The retired `contact.id/name/phone` templates have no translation: the neutral
+  `peer` root is the only one, with no universal phone field, shared-graph
+  mutation, or silently empty unsupported aliases (ADR 0018/0020).
 
 Durable local-space normalization follows ADR 0051; a provider match alone does
 not prove migration compatibility. P3 association generations/freshness and P5
@@ -39,11 +39,10 @@ receive/message-space decisions remain outside this design closure. The durable
 message-ID/dedup key is scoped by the owning bot and by the destination in P1;
 its account/binding-generation scoping stays a P5 decision.
 
-One approved compatibility item moved to P2: the per-bot WhatsApp translation of
-legacy `contact.id/name/phone` template references needs the consuming bot's
-definition, which P2 introduces. P1 retires the `contact` root and propagates the
-neutral `peer` values; a legacy reference now fails as an unknown root instead of
-rendering an empty phone field.
+P1 retires the `contact` root and propagates the neutral `peer` values. No
+per-bot translation is added for it (owner decision 2026-10-12): the retired
+references now fail as an unknown root instead of rendering an empty phone field,
+and an adapter carries no alias for them.
 
 ### Implementation deliverables and gates
 
@@ -95,9 +94,9 @@ Decision owner: ADR 0051, with ADR 0006, 0018, 0020, 0021, 0026, 0027,
   ([domain-cleanup.md](domain-cleanup.md)).
 - [x] Propagate only neutral common template values, including the
   internal identity ID. Remove telephone seeding and validation;
-  preserve missing-path errors. Legacy WhatsApp references require a
-  named compatibility translation, not an empty phone field for every
-  channel; that per-bot translation is P2 work and is recorded above.
+  preserve missing-path errors. The retired WhatsApp references are not
+  translated: the `contact` root fails for every bot (owner decision
+  2026-10-12), and no phase reintroduces it as an alias.
 - [x] Persist the exact conversation target on outbound records and
   queued deliveries. Retain the triggering-chat history convention for
   alternate `to` while carrying the actual destination. This does not
@@ -133,7 +132,7 @@ Gate:
 Change: `spec/bot.go`, `spec/action.go`; config loader/validation/
 schema/writer/reload and template validation; `cmd/botflota/main.go`,
 `fleet_cmd.go`, `config_cmd.go`, and reload assembly; fleet
-construction; the WhatsApp definition and its option translation. For
+construction; the WhatsApp definition and its options. For
 the card slice: `message_content.go`, its codecs, `engine/steps.go`,
 and WhatsApp card mappings.
 Decision owner: ADR 0052 and 0054, with ADR 0007, 0009, 0018, 0034,
@@ -143,7 +142,7 @@ Landed 2026-10-12 on the accepted P1 baseline: `channels` holds the immutable
 catalog and the definition type (provider, adapter kind, modes, capabilities,
 pure option decode, optional builder); `spec.Bot` gains the typed selector and
 `BotSettings` keeps only the shared pacing/filter fields plus an inline map for
-adapter-owned legacy keys. The WhatsApp adapter declares its options, schema,
+adapter-owned options. The WhatsApp adapter declares its options, schema,
 capabilities, and builder; config validation, schema generation, startup, the
 watcher, and publication all consume the same pure catalog. Items 1-4 and
 7-10 landed across the P2 commits; the card and readiness halves followed in the
@@ -157,27 +156,25 @@ per-bot capability and alias checks.
   select one unambiguous installed implementation. New definitions must
   not require adding provider enums or conditionals throughout shared
   packages.
-- [x] Add the accepted channel selector to bot declarations, preserving
-  missing-selector WhatsApp compatibility. Reject explicit
-  unknown/unavailable selections, never silently fall back.
+- [x] Add the accepted channel selector to bot declarations as a required
+  field. Reject a missing, unknown, or unavailable selection; there is no
+  default provider and no silent fallback.
 - [x] Make adapter-owned option types and their strict
   validation/schema declarations extensible through registration. Do not
   add a field or a provider-specific union arm to bot declarations for
   every adapter; do not replace typed runtime values with unchecked
   option maps.
 - [x] Separate common pacing/filter settings from adapter-specific
-  capabilities and defaults. Preserve old WhatsApp YAML through its
-  compatibility translation, without enabling WhatsApp's
-  presence/history defaults on other channels or ignoring explicitly
-  unsupported settings. P1 retired `ignore_groups` (a shared conversation is
-  refused outright); the translation must not resurrect it as a no-op.
-- [x] Make template declarations and legacy selector/peer-card decoding
-  follow the consuming bot's definition
-  ([domain-cleanup.md](domain-cleanup.md)). Common `spec` types and
-  generated schema must not gain universal phone fields; a shared action
-  using a WhatsApp-only legacy alias cannot validate for another bot. The
-  template half landed on 2026-10-12 (definition alias table, per-bot config
-  check, engine translation at resolution); the peer-card half is the next
+  capabilities and defaults. Adapter settings live only in `channel.options`;
+  the old `settings:` keys are removed and fail validation instead of being
+  translated. WhatsApp's presence/history defaults apply only to its own
+  options and never to another channel. P1 retired `ignore_groups` (a shared
+  conversation is refused outright) and no phase resurrects it as a no-op.
+- [x] Keep template declarations and card decoding free of per-provider
+  aliases ([domain-cleanup.md](domain-cleanup.md)). Common `spec` types and the
+  generated schema carry no universal phone field; there is no legacy template
+  translation, so the retired `contact.*` root fails as an unknown root for
+  every bot. The peer-card shape and its per-adapter variants are the next
   item.
 - [x] Implement the agreed neutral peer-card declaration/content shape,
   stored codec, and existing WhatsApp send/ingest mapping in the same
@@ -198,7 +195,7 @@ per-bot capability and alias checks.
   platform-wide promise; default to rejection instead of silent
   downgrade.
 - [x] Replace WhatsApp-only fleet construction with registered builders.
-  Move settings translation and channel-specific dependency assembly
+  Move adapter option decoding and channel-specific dependency assembly
   into the adapter's integration boundary; initialize device stores or
   auxiliary resources only when the selected adapter/bind method needs
   them. Permit adapter-owned shared dependencies behind independent
@@ -215,9 +212,10 @@ per-bot capability and alias checks.
 
 Gate:
 
-- [x] Old YAML works; explicit unavailable selections and unknown option
-  fields fail with context. The generated editor schema and runtime
-  validator agree on installed option shapes.
+- [x] A bot without a selector, an unavailable selection, and an unknown
+  option field each fail with context; no superseded settings key loads. The
+  generated editor schema and runtime validator agree on installed option
+  shapes.
 - [x] A preconfigured text-only fake joins a mixed fleet through
   registration and runs without WhatsApp devices, QR setup, or
   adapter-specific settings. Common construction has no provider
@@ -247,8 +245,8 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
   separately from adapter credentials. Implement inspection, bind, and
   unbind operations; select by the bot's definition, never inspect every
   bot through the WhatsApp device store. Remove telephone-bearing
-  results and phone-specific errors; keep legacy pairing results at the
-  compatibility boundary ([domain-cleanup.md](domain-cleanup.md)).
+  results and phone-specific errors, with no legacy result shape retained
+  ([domain-cleanup.md](domain-cleanup.md)).
   Separate common binding persistence from adapter/auxiliary credential
   stores; do not impose a shared SQLite credential schema on every
   implementation.
@@ -271,7 +269,7 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
   activation failures separately, and handle provider success followed
   by local persistence failure with cleanup or an explicit recovery
   condition.
-- [ ] Adapt WhatsApp QR pairing and legacy results to the same
+- [ ] Adapt WhatsApp QR pairing and its results to the same neutral
   lifecycle/session machinery, preserving its credential store,
   confidentiality, and successful-pairing/history-wait protection.
   Import completion must not define generic account success.
@@ -315,8 +313,8 @@ Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
   live features; distinguish reading already stored history/address
   books from invoking a currently available channel operation.
 - [ ] Implement scoped channel/binding/method discovery and bind
-  begin/read/input/cancel operations. Align public routes and legacy
-  translations in ADR 0053 before changing endpoints; scope and bot
+  begin/read/input/cancel operations. Align public routes with
+  ADR 0053 before changing endpoints; scope and bot
   remain part of every operation's ownership
   ([open-decisions.md](open-decisions.md)).
 - [ ] Expose declared support, account authorization, and conversation
@@ -326,25 +324,22 @@ Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
   internal errors.
 - [ ] Use neutral peer/chat/binding references for reads, controls,
   sync, and sends. Resolve chat IDs under scope and bot, never by ID
-  alone. Retain approved WhatsApp selectors and old routes as explicit
-  compatibility translations over the same operations, not alternate
-  implementations. Legacy phone outputs come from a typed adapter-owned
-  projection, never from a universal domain field or by inspecting the
-  shape of a neutral subject. Neutral IDs and legacy selectors must be
-  unambiguous ([domain-cleanup.md](domain-cleanup.md)).
+  alone. WhatsApp selectors and routes are the neutral ones; no legacy
+  selector, old route, or phone output is retained, and shared code never
+  inspects the shape of a neutral subject ([domain-cleanup.md](domain-cleanup.md)).
 - [ ] Replace API-wide digit validation with the selected adapter's
   target rules and common admission checks. Preserve atomic API sends,
   `client_id` reconciliation, chat-control semantics, and the default
   reply path without assuming arbitrary-address outreach is permitted.
 - [ ] Make operational CLI commands consume neutral API views/selectors
   and common bind steps. Keep the locked offline operator path and
-  existing WhatsApp commands compatible; adding a new adapter with
-  existing step kinds must not require another CLI handler or provider
-  form.
+  existing WhatsApp commands working through the neutral operations; adding a
+  new adapter with existing step kinds must not require another CLI handler or
+  provider form.
 - [ ] Carry neutral identity/provenance through webhooks and CSV export,
-  preserving existing compatible fields only at named legacy boundaries.
-  Approve any incompatible envelope/archive change before coding; do not
-  put a universal phone field back into the event or store contract.
+  with no legacy field retained and no compatibility boundary. A serialized
+  envelope or archive change is breaking by default; do not put a universal
+  phone field back into the event or store contract.
   Enforce provider and identity-space compatibility between the two
   bots' bindings before history migration; never present unreadable
   local targets as valid for a replacement bot.
@@ -361,7 +356,7 @@ Gate:
   holds/releases it, and queues a text send through the same API.
 - [ ] Personal CLI operation uses those operations while the instance
   runs, with no database fallback; existing WhatsApp pairing, query,
-  and send callers remain compatible.
+  and send commands keep working through the neutral operations.
 - [ ] Cross-scope reads/inputs/cancellation, stale IDs, unsupported
   methods, and lost-response retries obey the accepted errors. Submitted
   tokens/passwords/codes are never echoed or exported.
@@ -494,7 +489,7 @@ implemented runtime rather than the accepted target.
   runtime/API admission, or per-bot discovery.
 - [ ] Review shared dependencies and hot paths: no SDK/wire identities,
   phone-only routing, QR-only readiness, unconditional WhatsApp stores,
-  or provider switches outside named compatibility and registration
+  or provider switches outside registration
   boundaries. Apply
   [domain-cleanup.md](domain-cleanup.md)'s stricter
   field/parameter/context audit: optional phone fields also fail the

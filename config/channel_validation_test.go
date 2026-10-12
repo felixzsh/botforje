@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,7 +33,7 @@ func strictOptions(allowed ...string) func(spec.Bot) (any, []string) {
 		known[key] = true
 	}
 	return func(bot spec.Bot) (any, []string) {
-		if bot.Channel == nil || bot.Channel.Options.IsZero() {
+		if bot.Channel.Options.IsZero() {
 			return nil, nil
 		}
 		var values map[string]any
@@ -77,13 +75,7 @@ func capabilityCatalog(t *testing.T) *channels.Catalog {
 					spec.ContactAddress, spec.ContactURL,
 				},
 			},
-			Decode:         strictOptions("read_receipts", "history_sync"),
-			LegacySettings: []string{"read_receipts", "history_sync"},
-			TemplateAliases: map[string]string{
-				"contact.id":    "peer.id",
-				"contact.name":  "peer.name",
-				"contact.phone": "peer.subject",
-			},
+			Decode: strictOptions("read_receipts", "history_sync"),
 		},
 		channels.Definition{
 			Provider: "fake", Kind: "fake", Modes: []string{"text"},
@@ -104,6 +96,12 @@ func capabilityCatalog(t *testing.T) *channels.Catalog {
 		t.Fatalf("catalog: %v", err)
 	}
 	return catalog
+}
+
+// defaultChannel is the selector a test bot uses when the case does not test
+// the selector itself.
+func defaultChannel() spec.Channel {
+	return spec.Channel{Provider: "whatsapp", Mode: "native"}
 }
 
 // botConfig builds one bot whose graph runs the given action steps.
@@ -136,18 +134,23 @@ func TestChannelSelectionAndCapabilityValidation(t *testing.T) {
 		want  []string
 	}{
 		{
-			name: "missing selector defaults to WhatsApp native",
+			name: "named implementation accepts text",
+			bot:  spec.Bot{Graph: "menu", Channel: defaultChannel()},
+		},
+		{
+			name: "missing selector fails",
 			bot:  spec.Bot{Graph: "menu"},
+			want: []string{"provider is required"},
 		},
 		{
 			name: "explicit text-only fake accepts text",
-			bot: spec.Bot{Graph: "menu", Channel: &spec.Channel{
+			bot: spec.Bot{Graph: "menu", Channel: spec.Channel{
 				Provider: "fake", Mode: "text",
 			}},
 		},
 		{
 			name: "text-only fake refuses media",
-			bot: spec.Bot{Graph: "menu", Channel: &spec.Channel{
+			bot: spec.Bot{Graph: "menu", Channel: spec.Channel{
 				Provider: "fake", Mode: "text",
 			}},
 			steps: imageStep,
@@ -155,38 +158,23 @@ func TestChannelSelectionAndCapabilityValidation(t *testing.T) {
 		},
 		{
 			name: "unavailable provider never falls back",
-			bot: spec.Bot{Graph: "menu", Channel: &spec.Channel{
+			bot: spec.Bot{Graph: "menu", Channel: spec.Channel{
 				Provider: "telegram", Mode: "bot",
 			}},
 			want: []string{"not installed"},
 		},
 		{
 			name: "unknown option field fails with context",
-			bot: spec.Bot{Graph: "menu", Channel: &spec.Channel{
+			bot: spec.Bot{Graph: "menu", Channel: spec.Channel{
 				Provider: "whatsapp", Mode: "native",
 				Options: channelOptions(t, "nope: true"),
 			}},
 			want: []string{`unknown option "nope"`},
 		},
 		{
-			name: "legacy setting stays valid for WhatsApp",
-			bot: spec.Bot{Graph: "menu", Settings: &spec.BotSettings{
-				Adapter: map[string]any{"read_receipts": true},
-			}},
-		},
-		{
-			name: "legacy setting fails for another channel",
-			bot: spec.Bot{Graph: "menu",
-				Channel: &spec.Channel{Provider: "fake", Mode: "text"},
-				Settings: &spec.BotSettings{
-					Adapter: map[string]any{"read_receipts": true},
-				}},
-			want: []string{`setting "read_receipts" is not supported by channel fake/text`},
-		},
-		{
 			name: "external reply pause needs the observation feature",
 			bot: spec.Bot{Graph: "menu",
-				Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+				Channel: spec.Channel{Provider: "fake", Mode: "text"},
 				Settings: &spec.BotSettings{
 					ExternalReplyPause: 1000,
 				}},
@@ -224,7 +212,6 @@ func TestChannelSchemaMatchesTheInstalledSelection(t *testing.T) {
 	for _, want := range []string{
 		`"const": "whatsapp"`, `"const": "native"`,
 		`"const": "fake"`, `"const": "text"`,
-		`"read_receipts"`, `"history_sync"`,
 	} {
 		if !strings.Contains(schema, want) {
 			t.Errorf("schema is missing %s", want)
@@ -246,17 +233,17 @@ func TestSharedActionCheckedPerConsumingBot(t *testing.T) {
 		cfg := botConfig(bot, imageStep)
 		cfg.Scopes["dev"].Bots["text"] = spec.Bot{
 			Graph:   "menu",
-			Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+			Channel: spec.Channel{Provider: "fake", Mode: "text"},
 		}
 		return cfg
 	}
 	rich := spec.Bot{
 		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "fake", Mode: "rich"},
+		Channel: spec.Channel{Provider: "fake", Mode: "rich"},
 	}
 	text := spec.Bot{
 		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+		Channel: spec.Channel{Provider: "fake", Mode: "text"},
 	}
 
 	t.Run("capable bot alone", func(t *testing.T) {
@@ -294,82 +281,11 @@ func mentions(errs []ValidationError, want string) bool {
 // TestOldWhatsappYamlStillLoads covers the compatibility half of the transition:
 // a document written before the selector existed keeps loading and validating,
 // with its adapter-owned keys preserved as authored (ADR 0054).
-func TestOldWhatsappYamlStillLoads(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yml")
-	content := `scopes:
-  dev:
-    actions:
-      greet:
-        steps:
-          - message:
-              body: hi
-    graphs:
-      menu:
-        root: root
-        nodes:
-          root:
-            on_enter: [greet]
-    bots:
-      demo:
-        graph: menu
-        settings:
-          read_receipts: true
-          reply_delay: 900
-          history_sync: false
-          import_contacts: true
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-	cfg, err := (Loader{}).Load(path)
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-	if errs := Validate(cfg, testCatalog(t)); len(errs) != 0 {
-		t.Fatalf("old YAML must validate, got %v", errs)
-	}
-	settings := cfg.Scopes["dev"].Bots["demo"].Settings
-	if settings == nil || settings.Adapter["read_receipts"] != true {
-		t.Fatalf("legacy settings not preserved: %#v", settings)
-	}
-}
 
 // TestLegacyTemplateAliasCheckedPerConsumingBot proves the P1 translation is
 // applied per consuming bot: the WhatsApp definition maps contact.phone to the
 // neutral peer path, and a channel that owns no such alias refuses it with the
 // bot, graph, node, and action that carry the reference (ADR 0018/0020).
-func TestLegacyTemplateAliasCheckedPerConsumingBot(t *testing.T) {
-	steps := []spec.Step{{Message: &spec.Message{
-		Body: spec.Text{"Phone: {{contact.phone}}"},
-	}}}
-	whatsapp := botConfig(spec.Bot{Graph: "menu"}, steps)
-	if errs := Validate(whatsapp, capabilityCatalog(t)); len(errs) != 0 {
-		t.Fatalf("WhatsApp must map the alias, got %v", errs)
-	}
-
-	fake := botConfig(spec.Bot{
-		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
-	}, steps)
-	errs := Validate(fake, capabilityCatalog(t))
-	want := `template "contact.phone" is not supported by channel fake/text`
-	if !mentions(errs, want) {
-		t.Fatalf("no problem mentions %q; got %v", want, errs)
-	}
-	if !mentions(errs, `graph "menu" node "root": action "greet" action step 0`) {
-		t.Fatalf("the problem lacks bot/action context: %v", errs)
-	}
-
-	// An alias no installed definition declares still fails at scope level, so
-	// an action no bot reaches cannot hide a broken reference.
-	orphan := botConfig(spec.Bot{Graph: "menu"}, []spec.Step{{Message: &spec.Message{
-		Body: spec.Text{"{{contact.fax}}"},
-	}}})
-	if !mentions(Validate(orphan, capabilityCatalog(t)), "unknown root") {
-		t.Fatal("an undeclared legacy path must fail validation")
-	}
-}
 
 // TestContactCardVariantCheckedPerConsumingBot proves a card variant an adapter
 // cannot compose fails validation for the bot that would send it, with the step
@@ -382,14 +298,14 @@ func TestContactCardVariantCheckedPerConsumingBot(t *testing.T) {
 			{Kind: "url", Value: "https://example.test/ana"},
 		},
 	}}}
-	whatsapp := botConfig(spec.Bot{Graph: "menu"}, steps)
+	whatsapp := botConfig(spec.Bot{Graph: "menu", Channel: defaultChannel()}, steps)
 	if errs := Validate(whatsapp, capabilityCatalog(t)); len(errs) != 0 {
 		t.Fatalf("WhatsApp composes every variant, got %v", errs)
 	}
 
 	fake := botConfig(spec.Bot{
 		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+		Channel: spec.Channel{Provider: "fake", Mode: "text"},
 	}, steps)
 	errs := Validate(fake, capabilityCatalog(t))
 	want := `action "greet" step 0: channel fake/text cannot compose contact entry kind "url"`
@@ -407,7 +323,7 @@ func TestUnsupportedContentFoundBehindToolsAndGuards(t *testing.T) {
 	}}}
 	textBot := spec.Bot{
 		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+		Channel: spec.Channel{Provider: "fake", Mode: "text"},
 	}
 
 	toolCase := botConfig(textBot, nil)

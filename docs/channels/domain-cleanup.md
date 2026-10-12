@@ -126,31 +126,22 @@ credential table, or SDK dependency in the domain. Fakes represent
 their differing identity semantics; real adapters remain future work in
 `../../ROADMAP.md`.
 
-## Compatibility without polluting the domain
+## New design, no compatibility layer
 
-Keeping WhatsApp operation does not require keeping its phone fields in
-common objects. Separate legacy input/output formats from the runtime
-contracts they translate to:
+Keeping WhatsApp running does not mean keeping its old shapes. The preparation
+replaces contracts outright and ships no translation (PLAN.md, "no backward
+compatibility"):
 
-- A legacy phone selector is accepted only where WhatsApp
-  compatibility is explicitly selected. The boundary normalizes it to a
-  peer identity or chat target via the adapter's rules. The neutral
-  operation never validates digits or guesses a provider from the value.
-- Existing phone outputs, if retained, come from a bounded typed
-  WhatsApp presentation projection. Do not make generic API handlers
-  query SDK stores, infer phone data from opaque subjects, or add an
-  extensible untyped attributes bag merely to preserve one old field.
-- A telephone template reference is not a universal optional path.
-  Translate old WhatsApp references to declared neutral paths before
-  engine assembly where semantics are equivalent; otherwise use a narrow
-  adapter-owned compatibility projection. Choose and record the actual
-  translation before coding. Apply it per consuming bot, never by
-  mutating a shared graph for every channel or by textual
-  search-and-replace. Unsupported aliases fail validation, not render
-  empty silently. The owner selected per-bot WhatsApp translation of
-  `contact.id/name` to `peer.id/name`, and `contact.phone` to `peer.subject`
-  only under PN semantics (ADR 0018/0020). This is design, not implemented
-  translation or approval of other legacy formats.
+- There is no legacy phone selector. A caller uses the neutral peer reference
+  or chat target; the adapter never validates digits or guesses a provider from
+  the value.
+- There is no retained phone output and no presentation projection for one. A
+  generic API handler never queries SDK stores, infers phone data from opaque
+  subjects, or adds an untyped attributes bag to preserve an old field.
+- There is no telephone template reference and no alias for it. The retired
+  `contact.*` root fails validation as an unknown root; a shared graph is never
+  rewritten per adapter, and unsupported aliases never render empty (ADR
+  0018/0020).
 - A peer card is shared content, not a directory entry or binding identity.
   The telephone-shaped declaration/content model is replaced by a neutral
   card: a display name plus reachability entries (`phone`, `email`,
@@ -160,18 +151,14 @@ contracts they translate to:
   cannot compose. WhatsApp composes and parses vCard 3.0 entirely inside
   its adapter. A future `invite` kind for connection links stays undecided;
   see [open-decisions.md](open-decisions.md).
-- If old telephone-based card YAML remains supported, its
-  adapter-owned compatibility decoder constructs the neutral card before
-  execution. The old `name`/`phone` declaration shape is retired; update
-  validation, schema generation, publication,
-  round-tripping, and stored content codecs consistently; compatibility
-  must not reintroduce a telephone property into common declarations.
-- Public phone paths, templates, signed webhook envelopes, and CSV
-  archives are separate contracts. Approve migration/versioning where a
-  clean neutral format cannot preserve their old meaning. Never rebuild
-  already queued webhook payload bytes or weaken signature/retry
-  guarantees. Development-database reset permission does not authorize
-  silent API/YAML/template breakage.
+- The retired telephone-shaped card YAML gets no compatibility decoder. Update
+  validation, schema generation, publication, round-tripping, and stored
+  content codecs together; the old shape simply fails to load.
+- Public phone paths, templates, signed webhook envelopes, and CSV archives are
+  separate contracts. A clean neutral format may break their old meaning
+  freely; never rebuild already queued webhook payload bytes or weaken
+  signature/retry guarantees. Development-database reset permission needs no
+  additional approval to break API/YAML/template shapes.
 
 ## Evidence to close the cleanup
 

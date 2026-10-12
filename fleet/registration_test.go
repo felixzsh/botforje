@@ -29,7 +29,7 @@ func textFakeConfig() *config.Config {
 				}},
 				Bots: map[string]spec.Bot{"demo": {
 					Graph:   "menu",
-					Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+					Channel: spec.Channel{Provider: "fake", Mode: "text"},
 				}},
 			},
 		},
@@ -120,7 +120,7 @@ func TestOneBackendServesTwoLogicalViews(t *testing.T) {
 	scope := cfg.Scopes["dev"]
 	scope.Bots["peer"] = spec.Bot{
 		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+		Channel: spec.Channel{Provider: "fake", Mode: "text"},
 	}
 	cfg.Scopes["dev"] = scope
 
@@ -279,7 +279,7 @@ func TestMixedFleetResolvesEachBotThroughItsDefinition(t *testing.T) {
 	scope := cfg.Scopes["dev"]
 	scope.Bots["wa"] = spec.Bot{
 		Graph:   "menu",
-		Channel: &spec.Channel{Provider: "whatsapp", Mode: "native"},
+		Channel: spec.Channel{Provider: "whatsapp", Mode: "native"},
 	}
 	cfg.Scopes["dev"] = scope
 

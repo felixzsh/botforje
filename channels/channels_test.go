@@ -16,18 +16,18 @@ func testCatalog(t *testing.T, defs ...Definition) *Catalog {
 	return catalog
 }
 
-func TestCatalogResolvesTheDocumentedDefault(t *testing.T) {
+func TestCatalogResolvesTheNamedImplementation(t *testing.T) {
 	catalog := testCatalog(t, Definition{
 		Provider: "whatsapp", Kind: "fake", Modes: []string{"native"},
 	})
-	def, key, err := catalog.Resolve(nil)
+	def, key, err := catalog.Resolve(spec.Channel{Provider: "whatsapp", Mode: "native"})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if key != (Key{Provider: DefaultProvider, Mode: DefaultMode}) {
-		t.Fatalf("key = %+v, want the default %s/%s", key, DefaultProvider, DefaultMode)
+	if key != (Key{Provider: "whatsapp", Mode: "native"}) {
+		t.Fatalf("key = %+v", key)
 	}
-	if def.Provider != "whatsapp" || def.Kind != "fake" {
+	if def.Kind != "fake" {
 		t.Fatalf("definition = %+v", def)
 	}
 }
@@ -38,18 +38,17 @@ func TestCatalogRefusesAnUninstalledSelection(t *testing.T) {
 	})
 	cases := []struct {
 		name string
-		sel  *spec.Channel
+		sel  spec.Channel
 		want string
 	}{
-		{"unknown provider", &spec.Channel{Provider: "telegram", Mode: "bot"},
+		{"unknown provider", spec.Channel{Provider: "telegram", Mode: "bot"},
 			"not installed"},
-		{"unknown mode", &spec.Channel{Provider: "fake", Mode: "voice"},
+		{"unknown mode", spec.Channel{Provider: "fake", Mode: "voice"},
 			"not installed"},
-		{"missing provider", &spec.Channel{Mode: "text"},
+		{"missing provider", spec.Channel{Mode: "text"},
 			"provider is required"},
-		{"missing mode", &spec.Channel{Provider: "fake"},
+		{"missing mode", spec.Channel{Provider: "fake"},
 			"mode is required"},
-		{"default not installed", nil, "no channel is installed"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

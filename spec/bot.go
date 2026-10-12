@@ -13,9 +13,9 @@ type Bot struct {
 	DisplayName string `yaml:"display_name,omitempty" json:"display_name,omitempty"`
 	Graph       string `yaml:"graph" json:"graph"`
 	LLM         string `yaml:"llm" json:"llm,omitempty"`
-	// Channel selects the installed implementation this bot runs on; absent
-	// means the documented WhatsApp native default.
-	Channel  *Channel     `yaml:"channel" json:"channel,omitempty"`
+	// Channel selects the installed implementation this bot runs on. Every bot
+	// names one; there is no implicit provider.
+	Channel  Channel      `yaml:"channel" json:"channel"`
 	Settings *BotSettings `yaml:"settings" json:"settings,omitempty"`
 }
 
@@ -36,8 +36,22 @@ type ChannelOptions struct {
 
 // UnmarshalYAML keeps the authored node for the definition to decode.
 func (o *ChannelOptions) UnmarshalYAML(node *yaml.Node) error {
-	o.node = node
+	o.set(node)
 	return nil
+}
+
+// set keeps the authored node and treats an explicit null as no options, so a
+// round-trip through JSON or YAML never changes a scope's version.
+func (o *ChannelOptions) set(node *yaml.Node) {
+	if node == nil || node.Kind == 0 || isNullNode(node) {
+		o.node = nil
+		return
+	}
+	o.node = node
+}
+
+func isNullNode(node *yaml.Node) bool {
+	return node.Kind == yaml.ScalarNode && node.Tag == "!!null"
 }
 
 // MarshalYAML writes the options back exactly as they were read, so a
@@ -72,7 +86,7 @@ func (o *ChannelOptions) UnmarshalJSON(data []byte) error {
 		o.node = nil
 		return nil
 	}
-	o.node = node.Content[0]
+	o.set(node.Content[0])
 	return nil
 }
 
@@ -89,8 +103,7 @@ func (ChannelOptions) JSONSchema() *jsonschema.Schema {
 }
 
 // BotSettings controls the settings every channel shares. Everything a
-// specific adapter owns lives in its channel options; a legacy key an adapter
-// still reads from this block stays in Adapter until the transition ends.
+// specific adapter owns is a declared channel option, never a shared field.
 type BotSettings struct {
 	QueueDelay      int      `yaml:"queue_delay" json:"queue_delay,omitempty"`
 	Jitter          int      `yaml:"jitter" json:"jitter,omitempty"`
@@ -103,8 +116,4 @@ type BotSettings struct {
 	// the channel's declared capability and a channel without it refuses the
 	// setting.
 	ExternalReplyPause int `yaml:"external_reply_pause" json:"external_reply_pause,omitempty"`
-	// Adapter captures settings keys the bot's channel definition owns, so an
-	// existing WhatsApp document keeps loading. The definition validates them;
-	// a definition that does not declare one rejects it.
-	Adapter map[string]any `yaml:",inline" json:"-"`
 }

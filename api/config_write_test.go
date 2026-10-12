@@ -114,8 +114,8 @@ func TestPublishRefusesADuplicateLabel(t *testing.T) {
 	t.Run("a rename onto another entry's label", func(t *testing.T) {
 		next := relabelled(t, current, "")
 		next.Bots = map[string]spec.Bot{
-			"demo":  {Graph: "main"},
-			"other": {DisplayName: "demo", Graph: "main"},
+			"demo":  {Graph: "main", Channel: testChannel()},
+			"other": {DisplayName: "demo", Graph: "main", Channel: testChannel()},
 		}
 		recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
 			"version": version, "config": next,
@@ -131,8 +131,8 @@ func TestPublishRefusesADuplicateLabel(t *testing.T) {
 	t.Run("a label equal to another entry's key", func(t *testing.T) {
 		next := relabelled(t, current, "")
 		next.Bots = map[string]spec.Bot{
-			"desk":  {Graph: "main"},
-			"other": {DisplayName: "  DESK ", Graph: "main"},
+			"desk":  {Graph: "main", Channel: testChannel()},
+			"other": {DisplayName: "  DESK ", Graph: "main", Channel: testChannel()},
 		}
 		recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
 			"version": version, "config": next,
@@ -154,8 +154,8 @@ func TestPublishAcceptsADistinctLabel(t *testing.T) {
 	version, _ := config.ScopeVersion(current)
 	next := relabelled(t, current, "Help desk")
 	next.Bots = map[string]spec.Bot{
-		"demo":  {Graph: "main"},
-		"other": {DisplayName: "Sales desk", Graph: "main"},
+		"demo":  {Graph: "main", Channel: testChannel()},
+		"other": {DisplayName: "Sales desk", Graph: "main", Channel: testChannel()},
 	}
 	recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
 		"version": version, "config": next,
@@ -303,7 +303,7 @@ func TestPublishRefusesAnInvalidCandidate(t *testing.T) {
 	before := savedScope(t, server.main, "support")
 
 	// A bot pointing at a graph the scope does not define.
-	next := spec.Scope{Bots: map[string]spec.Bot{"demo": {Graph: "missing"}}}
+	next := spec.Scope{Bots: map[string]spec.Bot{"demo": {Graph: "missing", Channel: testChannel()}}}
 	recorder := putScope(t, server.Server, "support", testOwnerToken, map[string]any{
 		"version": version, "config": next,
 	})
@@ -499,7 +499,7 @@ func TestPublishHidesProblemsOutsideTheCallersScopes(t *testing.T) {
 		// A manual edit left ventas broken; the caller holds support only.
 		cfg.Scopes["ventas"] = spec.Scope{
 			Graphs: map[string]spec.Graph{"main": testGraph},
-			Bots:   map[string]spec.Bot{"other": {Graph: "missing"}},
+			Bots:   map[string]spec.Bot{"other": {Graph: "missing", Channel: testChannel()}},
 		}
 	})
 	pub := publishServer{Server: server, main: server.writer.MainPath()}
@@ -538,7 +538,7 @@ func TestPublishHidesProblemsOutsideTheCallersScopes(t *testing.T) {
 
 	t.Run("its own scope is still explained", func(t *testing.T) {
 		next := relabelled(t, current, "Customer support")
-		next.Bots = map[string]spec.Bot{"demo": {Graph: "gone"}}
+		next.Bots = map[string]spec.Bot{"demo": {Graph: "gone", Channel: testChannel()}}
 		recorder := putScope(t, pub.Server, "support", testAccessToken, map[string]any{
 			"version": version, "config": next,
 		})

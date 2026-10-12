@@ -8,4 +8,7 @@ scopes:
             edges: []
     bots:
       b:
+        channel:
+          provider: whatsapp
+          mode: native
         graph: nope

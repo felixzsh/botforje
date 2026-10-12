@@ -34,33 +34,22 @@ func (r Root) Known() bool {
 }
 
 // ParseTemplatePath splits a reference into its root and segments of letters,
-// digits, `_`, or `-`; a numeric segment indexes slices at resolution. The root
-// must be one the runtime knows (ADR 0018).
+// digits, `_`, or `-`; a numeric segment indexes slices at resolution.
 func ParseTemplatePath(path string) (Root, []string, error) {
-	if err := validatePathSyntax(path); err != nil {
-		return "", nil, err
-	}
 	segments := strings.Split(path, ".")
+	if len(segments) < 2 {
+		return "", nil, fmt.Errorf("%w: %q", ErrInvalidPath, path)
+	}
+	for _, segment := range segments {
+		if !ValidSegment(segment) {
+			return "", nil, fmt.Errorf("%w: %q", ErrInvalidPath, path)
+		}
+	}
 	root := Root(segments[0])
 	if !root.Known() {
 		return "", nil, fmt.Errorf("%w: %q", ErrUnknownRoot, root)
 	}
 	return root, segments[1:], nil
-}
-
-// validatePathSyntax checks root.name[.name...] without deciding whether the
-// root is known, so an adapter-owned legacy alias can reach its own check.
-func validatePathSyntax(path string) error {
-	segments := strings.Split(path, ".")
-	if len(segments) < 2 {
-		return fmt.Errorf("%w: %q", ErrInvalidPath, path)
-	}
-	for _, segment := range segments {
-		if !ValidSegment(segment) {
-			return fmt.Errorf("%w: %q", ErrInvalidPath, path)
-		}
-	}
-	return nil
 }
 
 func ValidSegment(segment string) bool {
@@ -92,15 +81,8 @@ type part struct {
 
 // ParseTemplate compiles s. A reference is written {{graph.customer_name}};
 // spaces just inside the braces are ignored, a literal {{ is written \{{, and
-// \\ is one backslash. The root must be one the runtime knows.
-func ParseTemplate(s string) (Template, error) { return parseTemplate(s, true) }
-
-// ParseTemplateAny compiles s with the same rules but without requiring a known
-// root, so a caller that owns an adapter's legacy alias table can decide which
-// roots it accepts (ADR 0018/0020).
-func ParseTemplateAny(s string) (Template, error) { return parseTemplate(s, false) }
-
-func parseTemplate(s string, knownRoot bool) (Template, error) {
+// \\ is one backslash.
+func ParseTemplate(s string) (Template, error) {
 	var parts []part
 	var literal strings.Builder
 	flush := func() {
@@ -124,13 +106,7 @@ func parseTemplate(s string, knownRoot bool) (Template, error) {
 				return Template{}, fmt.Errorf("unterminated reference at %q", s[i:])
 			}
 			ref := strings.TrimSpace(s[i+2 : i+2+end])
-			var err error
-			if knownRoot {
-				_, _, err = ParseTemplatePath(ref)
-			} else {
-				err = validatePathSyntax(ref)
-			}
-			if err != nil {
+			if _, _, err := ParseTemplatePath(ref); err != nil {
 				return Template{}, fmt.Errorf("invalid reference %q: %w", ref, err)
 			}
 			parts = append(parts, part{ref: ref})
@@ -142,45 +118,6 @@ func parseTemplate(s string, knownRoot bool) (Template, error) {
 	}
 	flush()
 	return Template{parts: parts}, nil
-}
-
-// TranslateTemplate rewrites the references of s whose whole path is one of the
-// aliases, leaving every other reference and every escape exactly as authored.
-// It is the adapter-owned compatibility step: the table belongs to the
-// consuming bot's definition, and an alias no definition declares still fails
-// validation instead of rendering empty (ADR 0018/0020).
-func TranslateTemplate(s string, aliases map[string]string) (string, error) {
-	if len(aliases) == 0 || !strings.Contains(s, "{{") {
-		return s, nil
-	}
-	var out strings.Builder
-	for i := 0; i < len(s); {
-		switch {
-		case strings.HasPrefix(s[i:], `\\`):
-			out.WriteString(`\\`)
-			i += 2
-		case strings.HasPrefix(s[i:], `\{{`):
-			out.WriteString(`\{{`)
-			i += 3
-		case strings.HasPrefix(s[i:], "{{"):
-			end := strings.Index(s[i+2:], "}}")
-			if end < 0 {
-				return "", fmt.Errorf("unterminated reference at %q", s[i:])
-			}
-			ref := strings.TrimSpace(s[i+2 : i+2+end])
-			if replacement, ok := aliases[ref]; ok {
-				ref = replacement
-			}
-			out.WriteString("{{")
-			out.WriteString(ref)
-			out.WriteString("}}")
-			i += 2 + end + 2
-		default:
-			out.WriteByte(s[i])
-			i++
-		}
-	}
-	return out.String(), nil
 }
 
 // Render resolves every reference through resolve; a missing path is an

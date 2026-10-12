@@ -19,14 +19,6 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// The documented missing-selector default: a bot without a channel block is
-// WhatsApp native until every fixture and example makes the selector explicit
-// (ADR 0054).
-const (
-	DefaultProvider = "whatsapp"
-	DefaultMode     = "native"
-)
-
 // Capability feature names a definition advertises beyond content kinds. A name
 // states what this adapter implements, never what a provider's platform allows
 // (ADR 0052).
@@ -114,21 +106,10 @@ type Definition struct {
 	// OptionsSchema describes the adapter's options object for editors. It is
 	// replaced into the generated schema under the definition's selector.
 	OptionsSchema *jsonschema.Schema
-	// Decode strictly decodes one bot's channel options and the adapter-owned
-	// keys of its settings block into the adapter's typed value, or reports
-	// why the author's values cannot be accepted. It is pure: no store opens,
-	// no transport starts.
+	// Decode strictly decodes one bot's channel options into the adapter's
+	// typed value, or reports why the author's values cannot be accepted. It is
+	// pure: no store opens, no transport starts.
 	Decode func(bot spec.Bot) (any, []string)
-	// LegacySettings are the adapter-owned keys this definition still accepts
-	// inside a bot's settings block, the compatibility half of the transition
-	// to channel options (ADR 0054). Empty means the block holds only common
-	// settings.
-	LegacySettings []string
-	// TemplateAliases maps a legacy reference this adapter owns to the neutral
-	// path with the same meaning, applied per consuming bot and never to a
-	// shared graph (ADR 0018/0020). An alias no definition declares fails
-	// validation instead of rendering empty.
-	TemplateAliases map[string]string
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)
@@ -214,27 +195,18 @@ func (c *Catalog) Keys() []Key {
 	return append([]Key(nil), c.order...)
 }
 
-// Resolve returns the definition a bot's selector names. A missing selector
-// means the documented WhatsApp native default; an explicit selection that is
-// not installed is an error and never falls back (ADR 0054).
-func (c *Catalog) Resolve(sel *spec.Channel) (Definition, Key, error) {
-	key := Key{Provider: DefaultProvider, Mode: DefaultMode}
-	if sel != nil {
-		if sel.Provider == "" {
-			return Definition{}, Key{}, errors.New("channel provider is required")
-		}
-		if sel.Mode == "" {
-			return Definition{}, Key{}, errors.New("channel mode is required")
-		}
-		key = Key{Provider: sel.Provider, Mode: sel.Mode}
+// Resolve returns the definition a bot's selector names. A selection that is
+// incomplete or not installed is an error and never falls back (ADR 0054).
+func (c *Catalog) Resolve(sel spec.Channel) (Definition, Key, error) {
+	if sel.Provider == "" {
+		return Definition{}, Key{}, errors.New("channel provider is required")
 	}
+	if sel.Mode == "" {
+		return Definition{}, Key{}, errors.New("channel mode is required")
+	}
+	key := Key{Provider: sel.Provider, Mode: sel.Mode}
 	def, ok := c.Lookup(key.Provider, key.Mode)
 	if !ok {
-		if sel == nil {
-			return Definition{}, Key{}, fmt.Errorf(
-				"no channel is installed for the default %s/%s",
-				key.Provider, key.Mode)
-		}
 		return Definition{}, Key{}, fmt.Errorf(
 			"channel %s/%s is not installed", key.Provider, key.Mode)
 	}

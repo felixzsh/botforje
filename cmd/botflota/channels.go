@@ -30,15 +30,13 @@ func runtimeCatalog(deps channel.Deps) (*channels.Catalog, error) {
 }
 
 // whatsappSelected reports whether the config runs a bot on the WhatsApp
-// adapter, including one that relies on the documented default selector. Only a
-// selected adapter's dependencies are opened (ADR 0054).
+// adapter. Only a selected adapter's dependencies are opened (ADR 0054).
 func whatsappSelected(cfg *config.Config) bool {
 	for _, scopeName := range config.SortedKeys(cfg.Scopes) {
 		for _, botName := range config.SortedKeys(cfg.Scopes[scopeName].Bots) {
 			bot := cfg.Scopes[scopeName].Bots[botName]
-			if bot.Channel == nil ||
-				(bot.Channel.Provider == channel.Provider &&
-					bot.Channel.Mode == channel.Mode) {
+			if bot.Channel.Provider == channel.Provider &&
+				bot.Channel.Mode == channel.Mode {
 				return true
 			}
 		}

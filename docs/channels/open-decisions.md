@@ -92,10 +92,11 @@ silently harden the plan.
   lookups, valid live senders, optional explicit participants, normalized
   own account identity versus adapter device lookup, and actual outbound
   targets. ADR 0026/0029 separate graph execution and first-live-inbound.
-  The destination-dedup and close/reopen/restart gates pass. The per-bot
-  WhatsApp translation of legacy `contact.*` template references moves to P2,
-  which owns the consuming bot's definition; the account-scoped durable dedup
-  key stays a P5 decision.
+  The destination-dedup and close/reopen/restart gates pass. The retired
+  `contact.*` template references get no replacement: the neutral `peer` root
+  is the only one, and an old reference fails as an unknown root (owner
+  decision 2026-10-12). The account-scoped durable dedup key stays a P5
+  decision.
 - **P2, selector ambiguity.** Closed on 2026-10-12 (owner decision):
   two installed definitions that share a provider and mode are rejected when
   the catalog is built, and the adapter kind never participates in selection
@@ -114,20 +115,16 @@ silently harden the plan.
   config reload generation, and binding generation are separate. Specify
   how association provenance survives delete/rebind for directories and
   queued sends. Owner: ADR 0051, ADR 0053, ADR 0040.
-- **P2/P4, public compatibility.** P1 template policy is selected:
-  per-bot WhatsApp translation preserves `contact.id/name/phone` through
-  neutral peer paths without a universal phone value (ADR 0018/0020).
-  Implemented on 2026-10-12: the WhatsApp definition declares the alias
-  table, config checks a shared action in each consuming bot's context, and
-  the engine translates at resolution. Other adapters do not inherit those
-  aliases and refuse them with the bot, graph, node, and action. Still select
-  neutral HTTP resources and compatibility of other commands, paths,
-  filter/card keys, result fields, event topics, and archive sections.
-  The rename catalog owns names, not permission to change serialized
-  meaning. A first allowed inbound is not directory insertion; keep its
-  durable timing and signed retry bytes intact. Do not add a parallel
-  lifecycle facade under the old vocabulary. Owner: ADR 0018, ADR 0044,
-  ADR 0045, ADR 0053, ADR 0054.
+- **P2/P4, public compatibility.** Closed on 2026-10-12 (owner decision):
+  the preparation ships no backward compatibility. A superseded template root,
+  settings key, selector, route, event, or archive section is removed with its
+  owning phase and fails validation with a precise error; it is never
+  translated, aliased, or accepted as a no-op. `contact.*` is gone with no
+  replacement (ADR 0018/0020). Remaining work is to choose the neutral HTTP
+  resources and serialized shapes for commands, filter/card keys, result
+  fields, event topics, and archives, which may break freely. A first allowed
+  inbound is not directory insertion; keep its durable timing and signed retry
+  bytes intact. Owner: ADR 0018, ADR 0044, ADR 0045, ADR 0053, ADR 0054.
 - **P5, history and external observations.** Source retrieval,
   traversal/exhaustion, and persisted import outcome must remain
   distinct. An emission outside this runtime is not necessarily
@@ -135,9 +132,10 @@ silently harden the plan.
   with actual consumers before claiming support. Owner: ADR 0035,
   ADR 0043, ADR 0052.
 - **P4/P6, persistence and export boundary.** Domain history grouping
-  must not mirror SQL table names. Keep physical schema, archive
-  filenames, and legacy formats in their adapters; approve format
-  changes independently of Go renames. Owner: ADR 0035, ADR 0042.
+  must not mirror SQL table names. Keep physical schema and archive
+  filenames in their adapters. A format or archive change is breaking by
+  default: there is no legacy-format reader and no compatibility archive.
+  Owner: ADR 0035, ADR 0042.
 - **P5, unbound sends.** ADR 0044 currently accepts sends to an unpaired
   bot, but the new queue must be tied to the account authorized at
   acceptance. Decide whether no-binding admission is rejected or has
