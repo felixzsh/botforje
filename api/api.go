@@ -50,9 +50,17 @@ type Options struct {
 	Writer *config.Writer
 	// Applier is optional: with it, a saved change becomes live in the same
 	// request instead of waiting for the watcher.
-	Applier  ConfigApplier
-	Fleet    Fleet
+	Applier ConfigApplier
+	Fleet   Fleet
+	// Setups resolves one bot's neutral account lifecycle and setup runner
+	// through its installed channel definition (ADR 0053). It is required:
+	// binding and setup operations select the bot's implementation, never
+	// every bot through one device store.
+	Setups   SetupResolver
 	Bindings botflota.BindingStore
+	// Pairings, Pairing, Presence, and Unpairer are the retired
+	// WhatsApp-specific pairing path. They stay optional until their
+	// last consumers (bots view, CLI) move to the neutral contracts.
 	Pairings botflota.PairingStore
 	Pairing  botflota.PairingRunner
 	// Presence reports local pairing credentials for the bots view; fleet run
@@ -90,6 +98,7 @@ type Server struct {
 	writer    *config.Writer
 	applier   ConfigApplier
 	fleet     Fleet
+	setups    SetupResolver
 	bindings  botflota.BindingStore
 	pairings  botflota.PairingStore
 	pairing   botflota.PairingRunner
@@ -132,17 +141,11 @@ func New(opts Options) (*Server, error) {
 	if opts.Writer == nil {
 		return nil, errors.New("api: no config writer")
 	}
+	if opts.Setups == nil {
+		return nil, errors.New("api: no account setup resolver")
+	}
 	if opts.Bindings == nil {
 		return nil, errors.New("api: no linked-account store")
-	}
-	if opts.Pairings == nil {
-		return nil, errors.New("api: no pairing store")
-	}
-	if opts.Pairing == nil {
-		return nil, errors.New("api: no pairing runner")
-	}
-	if opts.Unpairer == nil {
-		return nil, errors.New("api: no account unpairer")
 	}
 	if opts.Peers == nil {
 		return nil, errors.New("api: no peer store")
@@ -178,6 +181,7 @@ func New(opts Options) (*Server, error) {
 	server := &Server{
 		cfg: opts.Config, saved: opts.Saved, writer: opts.Writer,
 		applier: opts.Applier, fleet: opts.Fleet,
+		setups:   opts.Setups,
 		bindings: opts.Bindings, pairings: opts.Pairings,
 		pairing: opts.Pairing, presence: opts.Presence,
 		unpairer: opts.Unpairer,
@@ -268,13 +272,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/scopes/{scope}/messages", s.handleMessages)
 	mux.HandleFunc("POST /api/v1/scopes/{scope}/messages", s.handleSendMessage)
 
-	pairing := "/api/v1/scopes/{scope}/bots/{bot}/pairing"
-	mux.HandleFunc("POST "+pairing, s.handlePairStart)
-	mux.HandleFunc("GET "+pairing, s.handlePairState)
-	mux.HandleFunc("DELETE "+pairing, s.handlePairCancel)
-
-	account := "/api/v1/scopes/{scope}/bots/{bot}/account"
-	mux.HandleFunc("DELETE "+account, s.handleAccountDelete)
+	binding := "/api/v1/scopes/{scope}/bots/{bot}/binding"
+	mux.HandleFunc("GET "+binding, s.handleBindingInspect)
+	mux.HandleFunc("DELETE "+binding, s.handleBindingDelete)
+	mux.HandleFunc("GET "+binding+"/methods", s.handleBindingMethods)
+	mux.HandleFunc("POST "+binding+"/setups", s.handleSetupBegin)
+	mux.HandleFunc("GET "+binding+"/setups/{id}", s.handleSetupRead)
+	mux.HandleFunc("POST "+binding+"/setups/{id}/inputs", s.handleSetupInput)
+	mux.HandleFunc("DELETE "+binding+"/setups/{id}", s.handleSetupCancel)
 
 	history := "/api/v1/scopes/{scope}/bots/{bot}/history"
 	mux.HandleFunc("GET "+history+"/export", s.handleHistoryExport)

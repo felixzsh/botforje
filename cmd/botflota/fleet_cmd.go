@@ -334,6 +334,7 @@ func serveAPI(
 		Writer:      tree,
 		Applier:     runner,
 		Fleet:       runner,
+		Setups:      runner,
 		Bindings:    db.Bindings(),
 		Pairings:    db.Pairings(),
 		Pairing:     pairings,

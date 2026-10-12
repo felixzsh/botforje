@@ -330,8 +330,8 @@ func (f *Fleet) SetupFor(
 	}
 	if def.Setup == nil {
 		return nil, nil, fmt.Errorf(
-			"fleet: bot %q channel %s/%s offers no account setup",
-			botName, bot.Channel.Provider, bot.Channel.Mode)
+			"fleet: bot %q channel %s/%s offers no account setup: %w",
+			botName, bot.Channel.Provider, bot.Channel.Mode, botflota.ErrNoSetup)
 	}
 	options, reasons := decodeOptions(def, bot)
 	if len(reasons) > 0 {

@@ -1,9 +1,14 @@
 package botflota
 
 import (
+	"errors"
 	"log/slog"
 	"time"
 )
+
+// ErrNoSetup reports a channel definition that offers no account setup;
+// the operation is unsupported, never a failure (ADR 0052, ADR 0053).
+var ErrNoSetup = errors.New("no account setup offered")
 
 // PairState is one live pairing session's lifecycle (ADR 0025).
 type PairState string

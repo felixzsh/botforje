@@ -575,10 +575,14 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 		},
 	}}
 	return Options{
-		Config:   config.NewSource(cfg),
-		Saved:    config.NewSource(cfg),
-		Writer:   writer,
-		Fleet:    live,
+		Config: config.NewSource(cfg),
+		Saved:  config.NewSource(cfg),
+		Writer: writer,
+		Fleet:  live,
+		Setups: &stubSetups{
+			lifecycle: &stubBindingLifecycle{},
+			runner:    &stubSetupRunner{sessions: map[string]*botflota.SetupSession{}},
+		},
 		Bindings: &accounts,
 		Pairings: pairings,
 		Peers: &fakePeers{contacts: map[string]botflota.Peer{
@@ -781,13 +785,11 @@ func TestNewRequiresDependencies(t *testing.T) {
 			Config: config.NewSource(&config.Config{}),
 			Saved:  config.NewSource(&config.Config{}),
 		}},
-		{"account unpairer", Options{
-			Config:   config.NewSource(&config.Config{}),
-			Fleet:    &fakeFleet{},
-			Bindings: &fakeAccounts{},
-			Pairings: fakePairings{},
-			Pairing:  &fakePairing{},
-		}},
+		{"setup resolver", func() Options {
+			opts := testOptions(t, &fakeFleet{}, &config.Config{})
+			opts.Setups = nil
+			return opts
+		}()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
