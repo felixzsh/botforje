@@ -169,11 +169,14 @@ WhatsApp stores for a fleet that has no WhatsApp bot.
   presence/history defaults on other channels or ignoring explicitly
   unsupported settings. P1 retired `ignore_groups` (a shared conversation is
   refused outright); the translation must not resurrect it as a no-op.
-- [ ] Make template declarations and legacy selector/peer-card decoding
+- [x] Make template declarations and legacy selector/peer-card decoding
   follow the consuming bot's definition
   ([domain-cleanup.md](domain-cleanup.md)). Common `spec` types and
   generated schema must not gain universal phone fields; a shared action
-  using a WhatsApp-only legacy alias cannot validate for another bot.
+  using a WhatsApp-only legacy alias cannot validate for another bot. The
+  template half landed on 2026-10-12 (definition alias table, per-bot config
+  check, engine translation at resolution); the peer-card half is the next
+  item.
 - [ ] Implement the agreed neutral peer-card declaration/content shape,
   stored codec, and existing WhatsApp send/ingest mapping in the same
   slice. Do not change declarations in P2 while leaving engine/content

@@ -200,10 +200,6 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 // start the outbox worker.
 func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	cfg := f.cfg
-	eng, filter, settings, err := f.buildRuntime(cfg, scopeName, botName)
-	if err != nil {
-		return nil, err
-	}
 	opts := f.opts
 	seeds := opts.Rand
 	botLog := opts.Log.With("scope", scopeName, "bot", botName)
@@ -218,6 +214,10 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	def, _, err := opts.Catalog.Resolve(bot.Channel)
 	if err != nil {
 		return nil, fmt.Errorf("fleet: bot %q: %w", botName, err)
+	}
+	eng, filter, settings, err := f.buildRuntime(cfg, scopeName, botName, def.TemplateAliases)
+	if err != nil {
+		return nil, err
 	}
 	options, reasons := decodeOptions(def, bot)
 	if len(reasons) > 0 {
@@ -270,11 +270,31 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	}, nil
 }
 
+// botAliases resolves one bot's definition from a config snapshot and returns
+// the legacy template aliases its channel owns (ADR 0018/0020).
+func (f *Fleet) botAliases(
+	cfg *config.Config, scopeName, botName string,
+) (map[string]string, error) {
+	scope, ok := cfg.Scopes[scopeName]
+	if !ok {
+		return nil, fmt.Errorf("fleet: unknown scope %q", scopeName)
+	}
+	bot, ok := scope.Bots[botName]
+	if !ok {
+		return nil, fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
+	}
+	def, _, err := f.opts.Catalog.Resolve(bot.Channel)
+	if err != nil {
+		return nil, fmt.Errorf("fleet: bot %q: %w", botName, err)
+	}
+	return def.TemplateAliases, nil
+}
+
 // buildRuntime resolves one bot's engine and filter against cfg: both adopt a
 // replaced config at the bot's next message, unlike the channel and outbox
 // (ADR 0009).
 func (f *Fleet) buildRuntime(
-	cfg *config.Config, scopeName, botName string,
+	cfg *config.Config, scopeName, botName string, aliases map[string]string,
 ) (*engine.Engine, Filter, spec.BotSettings, error) {
 	zero := spec.BotSettings{}
 	scope, ok := cfg.Scopes[scopeName]
@@ -301,9 +321,10 @@ func (f *Fleet) buildRuntime(
 		Turn:       opts.Turn,
 		Notify:     opts.Notify,
 		HTTPClient: opts.HTTPClient, Now: opts.Now,
-		Rand:           rand.New(rand.NewSource(opts.Rand.Int63())),
-		DefaultTimeout: opts.DefaultTimeout,
-		Log:            botLog,
+		Rand:            rand.New(rand.NewSource(opts.Rand.Int63())),
+		DefaultTimeout:  opts.DefaultTimeout,
+		TemplateAliases: aliases,
+		Log:             botLog,
 	})
 	filter := Filter{
 		Allowed: settings.AllowedPeers,
@@ -534,7 +555,11 @@ func (f *Fleet) refresh(bot *Bot) error {
 	cfg, gen := f.cfg, f.scopeGen[bot.scope]
 	f.mu.Unlock()
 
-	eng, filter, settings, err := f.buildRuntime(cfg, bot.scope, bot.name)
+	aliases, err := f.botAliases(cfg, bot.scope, bot.name)
+	if err != nil {
+		return err
+	}
+	eng, filter, settings, err := f.buildRuntime(cfg, bot.scope, bot.name, aliases)
 	if err != nil {
 		return err
 	}

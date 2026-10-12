@@ -1,13 +1,23 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
 )
+
+// legacyTemplates is the compatibility view of the installed definitions: the
+// exact legacy references some adapter still accepts. The scope pass leaves
+// those to the per-bot check, so one shared action can fit the adapter that owns
+// the alias and fail for every other (ADR 0018/0020).
+type legacyTemplates struct {
+	paths map[string]bool
+}
 
 // templateIssue is one template problem in a scope. Action names the action
 // that owns the site, or the referenced one for a Graph or Node check.
@@ -27,13 +37,11 @@ type templateSite struct {
 // validateTemplates checks every template string a scope declares: syntax,
 // known roots, and declared inputs, graph and node variables, and request
 // results (ADR 0018). The caller adds file and entity context.
-func validateTemplates(scope spec.Scope) []templateIssue {
+func validateTemplates(scope spec.Scope, legacy legacyTemplates) []templateIssue {
 	var issues []templateIssue
 	for _, name := range slices.Sorted(maps.Keys(scope.Actions)) {
 		for _, site := range templateSites(scope.Actions[name]) {
-			if _, err := botflota.ParseTemplate(site.text); err != nil {
-				issues = append(issues, templateIssue{Action: name, Site: site.where, Err: err})
-			}
+			issues = append(issues, checkTemplateSyntax(name, site, legacy)...)
 		}
 	}
 	for _, graphName := range slices.Sorted(maps.Keys(scope.Graphs)) {
@@ -45,23 +53,40 @@ func validateTemplates(scope spec.Scope) []templateIssue {
 	return issues
 }
 
+// checkTemplateSyntax reports the syntax errors of one template site. A
+// reference whose exact path some installed adapter still accepts is left to
+// the per-bot check; every other unknown root fails here, so an action no bot
+// reaches still reports it (ADR 0018/0020).
+func checkTemplateSyntax(
+	actionName string, site templateSite, legacy legacyTemplates,
+) []templateIssue {
+	tmpl, err := botflota.ParseTemplateAny(site.text)
+	if err != nil {
+		return []templateIssue{{Action: actionName, Site: site.where, Err: err}}
+	}
+	var issues []templateIssue
+	for _, path := range tmpl.References() {
+		if _, _, err := botflota.ParseTemplatePath(path); err == nil ||
+			!errors.Is(err, botflota.ErrUnknownRoot) {
+			continue
+		}
+		if legacy.paths[path] {
+			continue
+		}
+		root := strings.SplitN(path, ".", 2)[0]
+		issues = append(issues, templateIssue{
+			Action: actionName, Site: site.where,
+			Err: fmt.Errorf("%w: %q", botflota.ErrUnknownRoot, root),
+		})
+	}
+	return issues
+}
+
 func validateNodeTemplates(
 	scope spec.Scope, graphName, nodeName string, g spec.Graph,
 ) []templateIssue {
 	node := g.Nodes[nodeName]
-	graphVars := keySet(g.InitialContext)
-	nodeVars := keySet(node.InitialContext)
-	requests := map[string]bool{}
-	for _, ref := range append(append([]string{}, node.OnEnter...), node.OnExit...) {
-		if action, ok := scope.Actions[ref]; ok {
-			mergeKeys(requests, requestNames(action))
-		}
-	}
-	for _, tool := range node.Tools {
-		if action, ok := scope.Actions[tool]; ok {
-			mergeKeys(requests, requestNames(action))
-		}
-	}
+	nodeVars, graphVars, requests := nodeTemplateVars(scope, g, node)
 
 	var issues []templateIssue
 	check := func(ref string) {
@@ -196,6 +221,28 @@ func templateSites(a spec.Action) []templateSite {
 		collect("action rate_limit on_blocked", a.Guards.RateLimit.OnBlocked)
 	}
 	return sites
+}
+
+// nodeTemplateVars is the declaration set one node's templates are checked
+// against: the graph and node initial context plus the request results of every
+// action the node runs.
+func nodeTemplateVars(
+	scope spec.Scope, g spec.Graph, node spec.Node,
+) (nodeVars, graphVars, requests map[string]bool) {
+	graphVars = keySet(g.InitialContext)
+	nodeVars = keySet(node.InitialContext)
+	requests = map[string]bool{}
+	for _, ref := range append(append([]string{}, node.OnEnter...), node.OnExit...) {
+		if action, ok := scope.Actions[ref]; ok {
+			mergeKeys(requests, requestNames(action))
+		}
+	}
+	for _, tool := range node.Tools {
+		if action, ok := scope.Actions[tool]; ok {
+			mergeKeys(requests, requestNames(action))
+		}
+	}
+	return nodeVars, graphVars, requests
 }
 
 func requestNames(a spec.Action) map[string]bool {

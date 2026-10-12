@@ -149,3 +149,52 @@ func TestValidSegment(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTemplateAnyAcceptsAnUnregisteredRoot(t *testing.T) {
+	if _, err := ParseTemplate("{{contact.phone}}"); err == nil {
+		t.Fatal("ParseTemplate must keep rejecting a root the runtime does not know")
+	}
+	if _, err := ParseTemplateAny("{{contact.phone}}"); err != nil {
+		t.Fatalf("ParseTemplateAny: %v", err)
+	}
+	if _, err := ParseTemplateAny("{{contact..phone}}"); err == nil {
+		t.Fatal("ParseTemplateAny must still reject malformed syntax")
+	}
+}
+
+func TestTranslateTemplateRewritesOnlyDeclaredAliases(t *testing.T) {
+	aliases := map[string]string{
+		"contact.id":    "peer.id",
+		"contact.phone": "peer.subject",
+	}
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"declared alias", "{{contact.phone}}", "{{peer.subject}}"},
+		{"spaces inside braces", "{{ contact.id }}", "{{peer.id}}"},
+		{"undeclared alias stays", "{{contact.name}}", "{{contact.name}}"},
+		{"escaped literal stays", `x \{{contact.phone}} y`, `x \{{contact.phone}} y`},
+		{"mixed", "a {{contact.id}} b {{contact.name}}", "a {{peer.id}} b {{contact.name}}"},
+		{"no reference", "plain text", "plain text"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := TranslateTemplate(tc.in, aliases)
+			if err != nil {
+				t.Fatalf("TranslateTemplate: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+	if _, err := TranslateTemplate("{{contact.phone", aliases); err == nil {
+		t.Fatal("an unterminated reference must fail")
+	}
+	if got, err := TranslateTemplate("{{contact.phone}}", nil); err != nil ||
+		got != "{{contact.phone}}" {
+		t.Fatalf("no aliases must leave the text untouched: %q, %v", got, err)
+	}
+}

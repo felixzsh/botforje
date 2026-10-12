@@ -113,6 +113,11 @@ type Definition struct {
 	// to channel options (ADR 0054). Empty means the block holds only common
 	// settings.
 	LegacySettings []string
+	// TemplateAliases maps a legacy reference this adapter owns to the neutral
+	// path with the same meaning, applied per consuming bot and never to a
+	// shared graph (ADR 0018/0020). An alias no definition declares fails
+	// validation instead of rendering empty.
+	TemplateAliases map[string]string
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)

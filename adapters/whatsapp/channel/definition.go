@@ -86,9 +86,22 @@ func Definition() channels.Definition {
 				channels.FeatureExternalReply,
 			},
 		},
-		OptionsSchema:  optionsSchema(),
-		Decode:         decodeBot,
-		LegacySettings: legacySettings,
+		OptionsSchema:   optionsSchema(),
+		Decode:          decodeBot,
+		LegacySettings:  legacySettings,
+		TemplateAliases: templateAliases(),
+	}
+}
+
+// templateAliases is the WhatsApp PN compatibility table: an old reference maps
+// to the neutral peer path that means the same, and contact.phone maps to
+// peer.subject only because the native account mode addresses by PN
+// (ADR 0018/0020). Every other adapter does not inherit these aliases.
+func templateAliases() map[string]string {
+	return map[string]string{
+		"contact.id":    "peer.id",
+		"contact.name":  "peer.name",
+		"contact.phone": "peer.subject",
 	}
 }
 
@@ -164,44 +177,34 @@ func decodeLegacy(settings *spec.BotSettings) (rawOptions, []string) {
 // a key the author declared in both places.
 func mergeOptions(options, legacy rawOptions) (rawOptions, []string) {
 	var reasons []string
-	conflict := func(name string, inOptions, inLegacy bool) bool {
-		if inOptions && inLegacy {
-			reasons = append(reasons,
-				fmt.Sprintf("%s is declared in both channel.options and settings", name))
-			return true
-		}
-		return false
+	o, l := &options, &legacy
+	o.ReadReceipts = mergeOption("read_receipts", o.ReadReceipts, l.ReadReceipts, &reasons)
+	o.ReadReceiptDelay = mergeOption(
+		"read_receipt_delay", o.ReadReceiptDelay, l.ReadReceiptDelay, &reasons)
+	o.ReplyDelay = mergeOption("reply_delay", o.ReplyDelay, l.ReplyDelay, &reasons)
+	o.SimulateTyping = mergeOption(
+		"simulate_typing", o.SimulateTyping, l.SimulateTyping, &reasons)
+	o.HistorySync = mergeOption("history_sync", o.HistorySync, l.HistorySync, &reasons)
+	o.ImportContacts = mergeOption(
+		"import_contacts", o.ImportContacts, l.ImportContacts, &reasons)
+	o.ExternalReplyPause = mergeOption(
+		"external_reply_pause", o.ExternalReplyPause, l.ExternalReplyPause, &reasons)
+	return *o, reasons
+}
+
+// mergeOption keeps the authored options value, falls back to the legacy
+// settings key, and reports a key written in both places.
+func mergeOption[T any](name string, options, legacy *T, reasons *[]string) *T {
+	switch {
+	case options != nil && legacy != nil:
+		*reasons = append(*reasons,
+			name+" is declared in both channel.options and settings")
+		return options
+	case options != nil:
+		return options
+	default:
+		return legacy
 	}
-	if !conflict("read_receipts", options.ReadReceipts != nil, legacy.ReadReceipts != nil) &&
-		options.ReadReceipts == nil {
-		options.ReadReceipts = legacy.ReadReceipts
-	}
-	if !conflict("read_receipt_delay", options.ReadReceiptDelay != nil, legacy.ReadReceiptDelay != nil) &&
-		options.ReadReceiptDelay == nil {
-		options.ReadReceiptDelay = legacy.ReadReceiptDelay
-	}
-	if !conflict("reply_delay", options.ReplyDelay != nil, legacy.ReplyDelay != nil) &&
-		options.ReplyDelay == nil {
-		options.ReplyDelay = legacy.ReplyDelay
-	}
-	if !conflict("simulate_typing", options.SimulateTyping != nil, legacy.SimulateTyping != nil) &&
-		options.SimulateTyping == nil {
-		options.SimulateTyping = legacy.SimulateTyping
-	}
-	if !conflict("history_sync", options.HistorySync != nil, legacy.HistorySync != nil) &&
-		options.HistorySync == nil {
-		options.HistorySync = legacy.HistorySync
-	}
-	if !conflict("import_contacts", options.ImportContacts != nil, legacy.ImportContacts != nil) &&
-		options.ImportContacts == nil {
-		options.ImportContacts = legacy.ImportContacts
-	}
-	if !conflict("external_reply_pause",
-		options.ExternalReplyPause != nil, legacy.ExternalReplyPause != nil) &&
-		options.ExternalReplyPause == nil {
-		options.ExternalReplyPause = legacy.ExternalReplyPause
-	}
-	return options, reasons
 }
 
 func checkRanges(raw rawOptions) []string {

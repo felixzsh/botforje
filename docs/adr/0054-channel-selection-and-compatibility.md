@@ -24,7 +24,10 @@ channel:
 
 `provider` and `mode` are core-typed. `options` is validated by the channel
 definition's pure validator (ADR 0052), decoded strictly (unknown fields
-rejected), and preserved as authored on publication. A missing selector means
+rejected), and preserved as authored on publication. Two installed definitions
+that share a provider and a mode are rejected when the catalog is built: the
+adapter kind is an implementation label, never a third selection key or a
+precedence rule a caller has to reason about. A missing selector means
 WhatsApp native during a documented transition, so every existing file loads
 unchanged. An unavailable provider or mode fails load, even when its name
 appears among the preparation plan's reference cases; a provider that is named

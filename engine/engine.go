@@ -37,6 +37,9 @@ type Options struct {
 	Rand           *rand.Rand
 	DefaultTimeout time.Duration
 	Log            *slog.Logger
+	// TemplateAliases maps a legacy reference this bot's channel definition
+	// owns to its neutral path, such as contact.id to peer.id (ADR 0018/0020).
+	TemplateAliases map[string]string
 }
 
 // Engine is not safe for concurrent use; one bot actor owns it
@@ -59,6 +62,7 @@ type Engine struct {
 	rand           *rand.Rand
 	defaultTimeout time.Duration
 	log            *slog.Logger
+	aliases        map[string]string
 }
 
 func New(opts Options) *Engine {
@@ -80,6 +84,7 @@ func New(opts Options) *Engine {
 		rand:           opts.Rand,
 		defaultTimeout: opts.DefaultTimeout,
 		log:            opts.Log,
+		aliases:        opts.TemplateAliases,
 	}
 	if e.log == nil {
 		e.log = botflota.DiscardLogger()
@@ -466,6 +471,17 @@ func (e *Engine) contextOf(
 		"scope": e.scope,
 	})
 	return tctx
+}
+
+func (r *run) render(text string) (string, error) {
+	if len(r.engine.aliases) == 0 {
+		return botflota.RenderTemplate(text, r.tctx.Get)
+	}
+	translated, err := botflota.TranslateTemplate(text, r.engine.aliases)
+	if err != nil {
+		return "", err
+	}
+	return botflota.RenderTemplate(translated, r.tctx.Get)
 }
 
 type run struct {

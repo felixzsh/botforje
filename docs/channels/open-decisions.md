@@ -95,11 +95,12 @@ silently harden the plan.
   WhatsApp translation of legacy `contact.*` template references moves to P2,
   which owns the consuming bot's definition; the account-scoped durable dedup
   key stays a P5 decision.
-- **P2, selector ambiguity.** ADR 0054's provider/mode selector must
-  resolve the adapter kind unambiguously. Decide how indistinguishable
-  installed implementations are rejected or selected before supporting
-  them; do not invent precedence or turn adapter kind into an account
-  mode.
+- **P2, selector ambiguity.** Closed on 2026-10-12 (owner decision):
+  two installed definitions that share a provider and mode are rejected when
+  the catalog is built, and the adapter kind never participates in selection
+  or precedence. Recorded in ADR 0054 and implemented in `channels.New`;
+  verified by the catalog tests. The neutral HTTP/CLI form of the selector
+  stays a P4 item.
 - **P1 directory provenance closed; P3/P4 work remains.** The owner chose
   historical snapshots with explicit source account identity (ADR 0037/0042).
   A compatible migration moves data ownership without rewriting origin or
@@ -115,9 +116,12 @@ silently harden the plan.
 - **P2/P4, public compatibility.** P1 template policy is selected:
   per-bot WhatsApp translation preserves `contact.id/name/phone` through
   neutral peer paths without a universal phone value (ADR 0018/0020).
-  Other adapters do not inherit those aliases. Still select neutral HTTP
-  resources and compatibility of other commands, paths, filter/card keys,
-  result fields, event topics, and archive sections.
+  Implemented on 2026-10-12: the WhatsApp definition declares the alias
+  table, config checks a shared action in each consuming bot's context, and
+  the engine translates at resolution. Other adapters do not inherit those
+  aliases and refuse them with the bot, graph, node, and action. Still select
+  neutral HTTP resources and compatibility of other commands, paths,
+  filter/card keys, result fields, event topics, and archive sections.
   The rename catalog owns names, not permission to change serialized
   meaning. A first allowed inbound is not directory insertion; keep its
   durable timing and signed retry bytes intact. Do not add a parallel
