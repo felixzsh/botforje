@@ -85,6 +85,19 @@ Prefer the Make targets; they wrap the underlying Go commands.
 - `make validate CONFIG=<file>` — validate a config.
 - `make help` — list every target.
 
+These targets compile and run tests, so they can take minutes. Run them with
+`bg_shell`, never plain `bash`:
+
+- `make check`, `make build`, `make schema`, `make validate`.
+- Direct Go commands: `go test`, `go build`, `go vet`, `go generate`, `go run`,
+  and `go test ./...`.
+- `gofmt -w` is instant on its own, but `gofmt -w ... && go test ...` is a build
+  and goes to `bg_shell`.
+
+`bash` has no default timeout, and an unfinished Go test can block until Go's
+10-minute panic. If a long command truly must stay in `bash`, pass an explicit
+`timeout` in seconds. Reserve `bash` for reads, greps, and other sub-second work.
+
 `config`, `bot`, and `fleet` subcommands arrive with their phases.
 
 ## Structure
