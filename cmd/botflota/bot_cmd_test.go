@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/spec"
 )
 
 // TestListBotsReadsTheAPI covers `bot list` as an instance query: it never
@@ -320,5 +324,242 @@ func TestUnbindThroughAPIReportsTheFailure(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Fatalf("output = %q, want nothing on stdout", out.String())
+	}
+}
+
+// TestBindReauthorizesWithoutDetaching covers the readiness path: a binding
+// that needs its owner enters a new setup session while the committed
+// association stays put — no detach, no replacement (ADR 0053).
+func TestBindReauthorizesWithoutDetaching(t *testing.T) {
+	deletes := 0
+	inspects := 0
+	reauth := `{"binding":{"provider":"whatsapp","mode":"native",` +
+		`"generation":1,"identity":{"provider":"whatsapp","subject":"opaque-1"}},` +
+		`"condition":"action_required","method":"qr"}`
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				inspects++
+				if inspects == 1 {
+					writeJSON(w, http.StatusOK, reauth)
+				} else {
+					writeJSON(w, http.StatusOK, bindBound)
+				}
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr"]}`)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
+				writeJSON(w, http.StatusAccepted, bindSucceededSession)
+			case r.Method == http.MethodDelete &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				deletes++
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha", bindOptions{}, strings.NewReader(""), &out)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if deletes != 0 {
+		t.Fatalf("deletes = %d, want reauthorization without detach", deletes)
+	}
+	for _, want := range []string{
+		"reauthorizing without detaching",
+		`is bound as whatsapp/opaque-1`,
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output %q is missing %q", out.String(), want)
+		}
+	}
+}
+
+// TestBindForceAmbiguousMethodKeepsBinding covers the ordering rule: the
+// method resolves before any detach, so an argument error never alters
+// durable state (ADR 0053).
+func TestBindForceAmbiguousMethodKeepsBinding(t *testing.T) {
+	deletes := 0
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				writeJSON(w, http.StatusOK, bindBound)
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr","token"]}`)
+			case r.Method == http.MethodDelete &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				deletes++
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha", bindOptions{force: true}, strings.NewReader(""), &out)
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if deletes != 0 {
+		t.Fatalf("deletes = %d, want the binding kept on argument error", deletes)
+	}
+}
+
+type stubOfflineLifecycle struct {
+	status   botflota.BindingStatus
+	detached int
+}
+
+func (s *stubOfflineLifecycle) InspectBinding(
+	_ context.Context, _, _ string,
+) (botflota.BindingStatus, error) {
+	return s.status, nil
+}
+
+func (s *stubOfflineLifecycle) DetachBinding(
+	_ context.Context, _, _ string,
+) error {
+	s.detached++
+	s.status.Binding = nil
+	return nil
+}
+
+type stubOfflineRunner struct {
+	session *botflota.SetupSession
+	began   int
+}
+
+func (s *stubOfflineRunner) SetupMethods(
+	_ context.Context, _, _ string,
+) ([]string, error) {
+	return []string{"token"}, nil
+}
+
+func (s *stubOfflineRunner) BeginSetup(
+	_ context.Context, _, _ string, req botflota.SetupBegin,
+) (*botflota.SetupSession, error) {
+	s.began++
+	s.session.Method = req.Method
+	return s.session, nil
+}
+
+func (s *stubOfflineRunner) ReadSetup(
+	_ context.Context, _, _, _ string,
+) (*botflota.SetupSession, error) {
+	return s.session, nil
+}
+
+func (s *stubOfflineRunner) InputSetup(
+	_ context.Context, _, _, _ string, _ botflota.SetupInput,
+) (*botflota.SetupSession, error) {
+	return s.session, nil
+}
+
+func (s *stubOfflineRunner) CancelSetup(
+	_ context.Context, _, _, _ string,
+) error {
+	return nil
+}
+
+// TestResolveOfflineSetupUsesTheInstalledDefinition covers the offline path
+// without any device store: a non-WhatsApp definition resolves through the
+// catalog and drives the same session contract (ADR 0052, ADR 0053).
+func TestResolveOfflineSetupUsesTheInstalledDefinition(t *testing.T) {
+	lifecycle := &stubOfflineLifecycle{}
+	runner := &stubOfflineRunner{session: &botflota.SetupSession{
+		Bot:      botflota.BotRef{Scope: "dev", Bot: "alpha"},
+		ID:       "s1",
+		State:    botflota.SetupSucceeded,
+		Revision: 1,
+	}}
+	catalog, err := channels.New(channels.Definition{
+		Provider: "fake",
+		Kind:     "fake",
+		Modes:    []string{"test"},
+		Decode: func(spec.Bot) (any, []string) {
+			return nil, nil
+		},
+		Setup: func(channels.Bind) (botflota.AccountLifecycle, botflota.SetupRunner, error) {
+			return lifecycle, runner, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
+	gotLifecycle, gotRunner, err := resolveOfflineSetup(
+		catalog, "dev", "alpha", botSpec, botflota.DiscardLogger())
+	if err != nil {
+		t.Fatalf("resolveOfflineSetup: %v", err)
+	}
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		directBind{lifecycle: gotLifecycle, runner: gotRunner},
+		"dev", "alpha", bindOptions{}, strings.NewReader(""), &out)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if runner.began != 1 {
+		t.Fatalf("began = %d, want the fake runner's session", runner.began)
+	}
+	if !strings.Contains(out.String(), "setup succeeded") {
+		t.Fatalf("output %q is missing the success report", out.String())
+	}
+}
+
+// TestSecretFieldKind pins which input kinds read without terminal echo:
+// write-only values stay off the screen, identifiers stay visible.
+func TestSecretFieldKind(t *testing.T) {
+	for _, kind := range []string{
+		botflota.SetupFieldCredential, botflota.SetupFieldPassword, botflota.SetupFieldCode,
+	} {
+		if !secretFieldKind(kind) {
+			t.Fatalf("kind %q reads with echo, want no-echo", kind)
+		}
+	}
+	for _, kind := range []string{botflota.SetupFieldIdentifier, "", "other"} {
+		if secretFieldKind(kind) {
+			t.Fatalf("kind %q reads without echo, want visible input", kind)
+		}
+	}
+}
+
+// TestPromptValueFallsBackOffTerminal covers the pipe path: without a
+// terminal on stdin the value still reads from the plain reader, secrets
+// included, so automation and tests keep working.
+func TestPromptValueFallsBackOffTerminal(t *testing.T) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	go func() {
+		_, _ = writer.WriteString("piped-secret\n")
+	}()
+	var out bytes.Buffer
+	value, ok := promptValue("Token", botflota.SetupFieldCredential,
+		bufio.NewReader(reader), reader, &out)
+	if !ok {
+		t.Fatal("promptValue failed on a pipe")
+	}
+	if value != "piped-secret" {
+		t.Fatalf("value = %q, want the piped input", value)
 	}
 }

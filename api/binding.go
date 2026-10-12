@@ -27,12 +27,16 @@ type bindingIdentityView struct {
 }
 
 type bindingView struct {
+	Scope      string              `json:"scope"`
+	Bot        string              `json:"bot"`
 	Provider   string              `json:"provider"`
 	Adapter    string              `json:"adapter"`
 	Mode       string              `json:"mode"`
 	Namespace  string              `json:"namespace,omitempty"`
 	Identity   bindingIdentityView `json:"identity"`
 	Generation int64               `json:"generation"`
+	CreatedAt  time.Time           `json:"created_at"`
+	UpdatedAt  time.Time           `json:"updated_at"`
 }
 
 type bindingStatusView struct {
@@ -47,6 +51,7 @@ func bindingViewOf(binding *botflota.Binding) *bindingView {
 		return nil
 	}
 	return &bindingView{
+		Scope: binding.Scope, Bot: binding.Bot,
 		Provider:  binding.Provider,
 		Adapter:   binding.Adapter,
 		Mode:      binding.Mode,
@@ -56,6 +61,8 @@ func bindingViewOf(binding *botflota.Binding) *bindingView {
 			Subject:  binding.Identity.Subject,
 		},
 		Generation: binding.Generation,
+		CreatedAt:  binding.CreatedAt,
+		UpdatedAt:  binding.UpdatedAt,
 	}
 }
 
@@ -101,7 +108,13 @@ type setupStepView struct {
 	Profile  *setupProfileView  `json:"profile,omitempty"`
 }
 
+type setupBotView struct {
+	Scope string `json:"scope"`
+	Bot   string `json:"bot"`
+}
+
 type setupSessionView struct {
+	Bot             setupBotView   `json:"bot"`
 	ID              string         `json:"id"`
 	Method          string         `json:"method"`
 	Mode            string         `json:"mode,omitempty"`
@@ -119,7 +132,8 @@ type setupSessionView struct {
 // names, kinds, and labels only, never submitted secret values (ADR 0053).
 func setupSessionViewOf(session *botflota.SetupSession) setupSessionView {
 	view := setupSessionView{
-		ID: session.ID, Method: session.Method, Mode: session.Mode,
+		Bot: setupBotView{Scope: session.Bot.Scope, Bot: session.Bot.Bot},
+		ID:  session.ID, Method: session.Method, Mode: session.Mode,
 		State: string(session.State), Revision: session.Revision,
 		StartedAt: session.StartedAt, UpdatedAt: session.UpdatedAt,
 		ExpiresAt:       session.ExpiresAt,
@@ -304,6 +318,9 @@ func (s *Server) handleSetupBegin(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, botflota.ErrUnsupportedKind):
 		writeError(w, http.StatusUnprocessableEntity, "unsupported_operation",
 			"that setup method is not supported")
+	case errors.Is(err, botflota.ErrInvalidParam):
+		writeError(w, http.StatusBadRequest, "invalid_request",
+			"a setup parameter value is not accepted")
 	case err != nil:
 		s.fail(w, "begin setup", err)
 	default:

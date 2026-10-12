@@ -16,12 +16,16 @@ import (
 	"time"
 
 	"github.com/mdp/qrterminal"
+	"golang.org/x/term"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/instance"
+	"github.com/felixzsh/botflota/spec"
 )
 
 // bindCmd binds a bot to its channel account through the neutral setup
@@ -133,6 +137,7 @@ type bindingStatus struct {
 		} `json:"identity"`
 	} `json:"binding"`
 	Condition string `json:"condition"`
+	Method    string `json:"method"`
 }
 
 // bindEndpoints is the neutral lifecycle over either transport: the running
@@ -169,38 +174,32 @@ func driveBind(
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if status.Binding != nil && !opts.force {
+	// The method resolves before any detach: an argument error must never
+	// alter durable state (ADR 0053).
+	if status.Binding != nil && !opts.force &&
+		status.Condition != string(botflota.ReadinessActionRequired) {
 		fmt.Fprintf(stdout, "bot %q (scope %q) is already bound as %s/%s; "+
 			"use --force to replace the binding\n",
 			bot, scope, status.Binding.Identity.Provider,
 			dash(status.Binding.Identity.Subject))
 		return 0
 	}
-	if status.Binding != nil {
+	method, ok := resolveSetupMethod(ctx, ep, scope, bot, opts.method, status.Method)
+	if !ok {
+		return 1
+	}
+	if status.Binding != nil && opts.force {
 		if err := ep.detach(ctx, scope, bot); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 	}
-	method := opts.method
-	if method == "" {
-		advertised, err := ep.methods(ctx, scope, bot)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		switch len(advertised) {
-		case 0:
-			fmt.Fprintln(os.Stderr, "that channel offers no account setup")
-			return 1
-		case 1:
-			method = advertised[0]
-		default:
-			fmt.Fprintf(os.Stderr,
-				"that channel offers several setup methods (%s); choose one with --method\n",
-				strings.Join(advertised, ", "))
-			return 1
-		}
+	if status.Binding != nil && !opts.force {
+		// Reauthorization keeps the committed association: a binding that
+		// needs its owner enters a new setup session instead of a
+		// replacement (ADR 0053).
+		fmt.Fprintf(stdout, "bot %q (scope %q) requires action; "+
+			"reauthorizing without detaching\n", bot, scope)
 	}
 	key := opts.requestKey
 	if key == "" {
@@ -251,7 +250,7 @@ func driveBind(
 				}
 				time.Sleep(bindPollInterval)
 			case "input", "profile":
-				values, ok := answerSetupStep(session.Step, reader, stdout)
+				values, ok := answerSetupStep(session.Step, reader, stdin, stdout)
 				if !ok {
 					return 1
 				}
@@ -275,6 +274,38 @@ func driveBind(
 		}
 		session = updated
 	}
+}
+
+// resolveSetupMethod picks the setup method without touching durable
+// state: an explicit flag wins, then the only advertised method, then the
+// readiness-appropriate method the inspection named (ADR 0053).
+func resolveSetupMethod(
+	ctx context.Context, ep bindEndpoints, scope, bot, flag, readiness string,
+) (string, bool) {
+	if flag != "" {
+		return flag, true
+	}
+	advertised, err := ep.methods(ctx, scope, bot)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return "", false
+	}
+	if len(advertised) == 1 {
+		return advertised[0], true
+	}
+	for _, method := range advertised {
+		if method == readiness && method != "" {
+			return method, true
+		}
+	}
+	if len(advertised) == 0 {
+		fmt.Fprintln(os.Stderr, "that channel offers no account setup")
+		return "", false
+	}
+	fmt.Fprintf(os.Stderr,
+		"that channel offers several setup methods (%s); choose one with --method\n",
+		strings.Join(advertised, ", "))
+	return "", false
 }
 
 func reportBound(
@@ -301,13 +332,50 @@ func reportBound(
 	return 0
 }
 
+// secretFieldKind reports whether a setup input kind is write-only: its
+// value is never echoed by the terminal it is typed on, matching the wire
+// rule that submitted secrets never come back on a read (ADR 0053).
+func secretFieldKind(kind string) bool {
+	switch kind {
+	case botflota.SetupFieldCredential, botflota.SetupFieldPassword,
+		botflota.SetupFieldCode:
+		return true
+	}
+	return false
+}
+
+// promptValue reads one typed value: secret kinds use no-echo terminal
+// input when stdin is a terminal, and the plain reader otherwise, so pipes
+// and tests keep working unchanged.
+func promptValue(
+	label, kind string, reader *bufio.Reader, stdin io.Reader, stdout io.Writer,
+) (string, bool) {
+	fmt.Fprintf(stdout, "%s: ", label)
+	if file, ok := stdin.(*os.File); ok && secretFieldKind(kind) &&
+		term.IsTerminal(int(file.Fd())) {
+		raw, err := term.ReadPassword(int(file.Fd()))
+		fmt.Fprintln(stdout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return "", false
+		}
+		return string(raw), true
+	}
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		fmt.Fprintln(os.Stderr, err)
+		return "", false
+	}
+	return strings.TrimSpace(line), true
+}
+
 // answerSetupStep prompts for a step's typed values on stdout; secrets travel
 // only toward the instance, never back into a response the CLI would print.
 func answerSetupStep(
-	step *setupStep, reader *bufio.Reader, stdout io.Writer,
+	step *setupStep, reader *bufio.Reader, stdin io.Reader, stdout io.Writer,
 ) (map[string]string, bool) {
 	if step.Kind == "profile" && step.Profile != nil {
-		return answerProfileStep(step, reader, stdout)
+		return answerProfileStep(step, reader, stdin, stdout)
 	}
 	values := map[string]string{}
 	for _, field := range step.Fields {
@@ -315,19 +383,17 @@ func answerSetupStep(
 		if label == "" {
 			label = field.Name
 		}
-		fmt.Fprintf(stdout, "%s: ", label)
-		line, err := reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			fmt.Fprintln(os.Stderr, err)
+		value, ok := promptValue(label, field.Kind, reader, stdin, stdout)
+		if !ok {
 			return nil, false
 		}
-		values[field.Name] = strings.TrimSpace(line)
+		values[field.Name] = value
 	}
 	return values, true
 }
 
 func answerProfileStep(
-	step *setupStep, reader *bufio.Reader, stdout io.Writer,
+	step *setupStep, reader *bufio.Reader, stdin io.Reader, stdout io.Writer,
 ) (map[string]string, bool) {
 	profile := step.Profile
 	for i, option := range profile.Options {
@@ -354,13 +420,11 @@ func answerProfileStep(
 			if label == "" {
 				label = param.Name
 			}
-			fmt.Fprintf(stdout, "%s: ", label)
-			line, err := reader.ReadString('\n')
-			if err != nil && !errors.Is(err, io.EOF) {
-				fmt.Fprintln(os.Stderr, err)
+			value, ok := promptValue(label, param.Kind, reader, stdin, stdout)
+			if !ok {
 				return nil, false
 			}
-			values[param.Name] = strings.TrimSpace(line)
+			values[param.Name] = value
 		}
 		return values, true
 	}
@@ -417,7 +481,7 @@ func runBind(args []string) int {
 	if code != 0 {
 		return code
 	}
-	scopeName, _, err := findBot(cfg, name, *cmd.scope)
+	scopeName, botSpec, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
 		if owned {
 			releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
@@ -443,7 +507,7 @@ func runBind(args []string) int {
 		return bindThroughAPI(os.Stdout, os.Stdin, cfg, scopeName, name, opts)
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
-	return bindOffline(os.Stdout, os.Stdin, cfg, scopeName, name, opts,
+	return bindOffline(os.Stdout, os.Stdin, cfg, scopeName, name, botSpec, opts,
 		*cmd.verbose)
 }
 
@@ -474,7 +538,7 @@ func runUnbind(args []string) int {
 		return code
 	}
 	name := cmd.fs.Arg(0)
-	scopeName, _, err := findBot(cfg, name, *cmd.scope)
+	scopeName, botSpec, err := findBot(cfg, name, *cmd.scope)
 	if err != nil {
 		if owned {
 			releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
@@ -487,7 +551,7 @@ func runUnbind(args []string) int {
 		return unbindThroughAPI(os.Stdout, cfg, scopeName, name)
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
-	return unbindOffline(os.Stdout, cfg, scopeName, name)
+	return unbindOffline(os.Stdout, cfg, scopeName, name, botSpec)
 }
 
 // unbindTimeout bounds the call: the instance stops the bot, draining its
@@ -607,12 +671,86 @@ func bindLogger(cfg *config.Config, verbose bool) *slog.Logger {
 	return botflota.NewLogger(cfg.LogLevel, os.Stderr)
 }
 
+// offlineChannelCatalog opens only the dependencies the bot's selected
+// adapter needs: a WhatsApp bot gets the device store and a runtime catalog
+// whose definition serves setup; any other selection resolves against the
+// pure catalog without opening a store (ADR 0052, ADR 0054). Cleanup stops
+// setup workers before the stores they write go away (ADR 0053).
+func offlineChannelCatalog(
+	cfg *config.Config, db *sqlite.DB, botSpec spec.Bot, logger *slog.Logger,
+) (*channels.Catalog, func(), error) {
+	nop := func() {}
+	if botSpec.Channel.Provider != channel.Provider ||
+		botSpec.Channel.Mode != channel.Mode {
+		catalog, err := pureCatalog()
+		return catalog, nop, err
+	}
+	ctx := context.Background()
+	devices, err := openDevices(ctx, db, logger, cfg.LogLevelDeps)
+	if err != nil {
+		return nil, nop, err
+	}
+	manager := whatsapp.NewPairManager(whatsapp.PairManagerOptions{
+		Build: offlinePairBuild(cfg, db, devices),
+		OnPaired: func(context.Context, string, string) error {
+			return errors.New("fleet is not running")
+		},
+		Log: logger,
+	})
+	catalog, err := runtimeCatalog(channel.Deps{
+		Devices:      devices,
+		Bindings:     db.Bindings(),
+		Pairings:     db.Pairings(),
+		Peers:        db.Peers(),
+		Chats:        db.Chats(),
+		Messages:     db.Messages(),
+		Directory:    db.Directory(),
+		Outbox:       db.Outbox(),
+		Pairs:        manager,
+		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
+	})
+	if err != nil {
+		manager.Close()
+		return nil, nop, err
+	}
+	return catalog, manager.Close, nil
+}
+
+// resolveOfflineSetup selects the bot's installed definition through the
+// catalog and returns its neutral lifecycle and setup runner, decoding the
+// bot's options without opening anything further (ADR 0052, ADR 0053).
+func resolveOfflineSetup(
+	catalog *channels.Catalog, scope, bot string, botSpec spec.Bot, log *slog.Logger,
+) (botflota.AccountLifecycle, botflota.SetupRunner, error) {
+	def, _, err := catalog.Resolve(botSpec.Channel)
+	if err != nil {
+		return nil, nil, err
+	}
+	if def.Setup == nil {
+		return nil, nil, fmt.Errorf(
+			"bot %q channel %s/%s offers no account setup: %w",
+			bot, botSpec.Channel.Provider, botSpec.Channel.Mode, botflota.ErrNoSetup)
+	}
+	var options any
+	if def.Decode != nil {
+		var reasons []string
+		options, reasons = def.Decode(botSpec)
+		if len(reasons) > 0 {
+			return nil, nil, fmt.Errorf("bot %q channel: %s",
+				bot, strings.Join(reasons, "; "))
+		}
+	}
+	return def.Setup(channels.Bind{
+		Scope: scope, Bot: bot, Options: options, Log: log,
+	})
+}
+
 // bindOffline binds under the instance lock through the bot's installed
 // setup runner directly: the same neutral operations the API drives, with
 // no provider-specific form (ADR 0053).
 func bindOffline(
 	stdout io.Writer, stdin io.Reader, cfg *config.Config,
-	scopeName, botName string, opts bindOptions, verbose bool,
+	scopeName, botName string, botSpec spec.Bot, opts bindOptions, verbose bool,
 ) int {
 	ctx := context.Background()
 	db, err := openDatabase(cfg)
@@ -622,32 +760,25 @@ func bindOffline(
 	}
 	defer db.Close()
 	logger := bindLogger(cfg, verbose)
-	var deps *slog.Logger
-	if verbose {
-		deps = logger
-	}
-	devices, err := openDevices(ctx, db, deps, cfg.LogLevelDeps)
+	catalog, cleanup, err := offlineChannelCatalog(cfg, db, botSpec, logger)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	manager := whatsapp.NewPairManager(whatsapp.PairManagerOptions{
-		Build: offlinePairBuild(cfg, db, devices),
-		OnPaired: func(context.Context, string, string) error {
-			return errors.New("fleet is not running")
-		},
-		Log: logger,
-	})
-	defer manager.Close()
-	owner := whatsapp.AccountOwner{
-		Devices: devices, Bindings: db.Bindings(),
-		Pairings: db.Pairings(), Outbox: db.Outbox(), Pairs: manager,
+	defer cleanup()
+	lifecycle, runner, err := resolveOfflineSetup(
+		catalog, scopeName, botName, botSpec, logger)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
-	return driveBind(ctx, directBind{lifecycle: owner, runner: manager},
+	return driveBind(ctx, directBind{lifecycle: lifecycle, runner: runner},
 		scopeName, botName, opts, stdin, stdout)
 }
 
-func unbindOffline(w io.Writer, cfg *config.Config, scopeName, botName string) int {
+func unbindOffline(
+	w io.Writer, cfg *config.Config, scopeName, botName string, botSpec spec.Bot,
+) int {
 	ctx := context.Background()
 	db, err := openDatabase(cfg)
 	if err != nil {
@@ -655,16 +786,24 @@ func unbindOffline(w io.Writer, cfg *config.Config, scopeName, botName string) i
 		return 1
 	}
 	defer db.Close()
-	devices, err := openDevices(ctx, db, nil, cfg.LogLevelDeps)
+	logger := bindLogger(cfg, false)
+	catalog, cleanup, err := offlineChannelCatalog(cfg, db, botSpec, logger)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	owner := whatsapp.AccountOwner{
-		Devices: devices, Bindings: db.Bindings(),
-		Pairings: db.Pairings(), Outbox: db.Outbox(),
+	defer cleanup()
+	lifecycle, _, err := resolveOfflineSetup(
+		catalog, scopeName, botName, botSpec, logger)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
-	status, err := owner.InspectBinding(ctx, scopeName, botName)
+	if lifecycle == nil {
+		fmt.Fprintln(os.Stderr, "that channel offers no account lifecycle")
+		return 1
+	}
+	status, err := lifecycle.InspectBinding(ctx, scopeName, botName)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -673,7 +812,7 @@ func unbindOffline(w io.Writer, cfg *config.Config, scopeName, botName string) i
 		fmt.Fprintln(os.Stderr, "no committed binding for that bot")
 		return 1
 	}
-	if err := owner.DetachBinding(ctx, scopeName, botName); err != nil {
+	if err := lifecycle.DetachBinding(ctx, scopeName, botName); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

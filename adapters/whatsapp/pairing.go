@@ -200,14 +200,25 @@ func (m *PairManager) BeginSetup(
 		return nil, errors.New("whatsapp: no pairing manager")
 	}
 	if req.Method != "" && req.Method != SetupMethodQR {
-		return nil, fmt.Errorf("whatsapp: unsupported setup method %q", req.Method)
+		return nil, fmt.Errorf("whatsapp: unsupported setup method %q: %w",
+			req.Method, botflota.ErrUnsupportedKind)
 	}
 	fullHistory := false
 	for name, value := range req.Params {
 		if name != "full_history" {
-			return nil, fmt.Errorf("whatsapp: qr setup takes no parameter %q", name)
+			return nil, fmt.Errorf("whatsapp: qr setup takes no parameter %q: %w",
+				name, botflota.ErrUnsupportedKind)
 		}
-		fullHistory = value == "true"
+		switch value {
+		case "true":
+			fullHistory = true
+		case "false":
+			fullHistory = false
+		default:
+			return nil, fmt.Errorf(
+				"whatsapp: full_history must be \"true\" or \"false\": %w",
+				botflota.ErrInvalidParam)
+		}
 	}
 	key := req.RequestKey
 	if key == "" {

@@ -885,3 +885,46 @@ func TestBeginBehindDetachKeepsItsLifetime(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+// TestBeginSetupClassifiesRequests covers the adapter's error contract at
+// the source: an unsupported method and an unknown parameter report
+// ErrUnsupportedKind, and a rejected parameter value reports
+// ErrInvalidParam — so the API answers 422/400 instead of 500 (ADR 0053).
+func TestBeginSetupClassifiesRequests(t *testing.T) {
+	manager, _ := testSetupManager(t, PairManagerOptions{})
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		begin  botflota.SetupBegin
+		target error
+	}{
+		{
+			"unsupported method",
+			botflota.SetupBegin{Method: "courier", RequestKey: "k1"},
+			botflota.ErrUnsupportedKind,
+		},
+		{
+			"unknown parameter",
+			botflota.SetupBegin{
+				RequestKey: "k2", Params: map[string]string{"carrier": "pigeon"},
+			},
+			botflota.ErrUnsupportedKind,
+		},
+		{
+			"rejected value",
+			botflota.SetupBegin{
+				RequestKey: "k3",
+				Params:     map[string]string{"full_history": "eventually"},
+			},
+			botflota.ErrInvalidParam,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := manager.BeginSetup(ctx, "dev", "alpha", tc.begin)
+			if !errors.Is(err, tc.target) {
+				t.Fatalf("BeginSetup = %v, want %v", err, tc.target)
+			}
+		})
+	}
+}

@@ -10,6 +10,10 @@ import (
 // the operation is unsupported, never a failure (ADR 0052, ADR 0053).
 var ErrNoSetup = errors.New("no account setup offered")
 
+// ErrInvalidParam reports a setup parameter value the method rejects;
+// the request is malformed, never an adapter failure (ADR 0053).
+var ErrInvalidParam = errors.New("invalid setup parameter")
+
 // PairState is one live pairing session's lifecycle (ADR 0025).
 type PairState string
 

@@ -178,6 +178,8 @@ func committedLifecycle() *stubBindingLifecycle {
 			Provider: "whatsapp", Adapter: "native", Mode: "native",
 			Identity:   botflota.IdentityKey{Provider: "whatsapp", Subject: "opaque-subject"},
 			Generation: 1,
+			CreatedAt:  testTime,
+			UpdatedAt:  testTime,
 		},
 		Condition: botflota.ReadinessConfigured,
 		Reasons:   []string{"transport_unknown"},
@@ -226,6 +228,9 @@ func TestBindingInspect(t *testing.T) {
 	for _, want := range []string{
 		`"condition":"configured"`, `"provider":"whatsapp"`,
 		`"subject":"opaque-subject"`, `"generation":1`,
+		`"scope":"support"`, `"bot":"demo"`,
+		`"created_at":"2026-09-19T12:00:00Z"`,
+		`"updated_at":"2026-09-19T12:00:00Z"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body %s does not contain %s", body, want)
@@ -291,6 +296,56 @@ func TestBindingUnsupportedSetup(t *testing.T) {
 	}
 }
 
+// TestSetupBeginClassifiesAdapterErrors covers the error contract a real
+// adapter reports through: unsupported methods and parameters answer 422
+// unsupported_operation, and rejected parameter values answer 400
+// invalid_request — never 500 (ADR 0053).
+func TestSetupBeginClassifiesAdapterErrors(t *testing.T) {
+	runner := &stubSetupRunner{sessions: map[string]*botflota.SetupSession{}}
+	server := testServerWithOptions(t, &fakeFleet{},
+		func(opts *Options) {
+			opts.Setups = testBindingSetup(&stubBindingLifecycle{}, runner)
+		}, nil)
+	handler := server.Handler()
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{
+			"unsupported method", fmt.Errorf("fake: no such method: %w",
+				botflota.ErrUnsupportedKind),
+			http.StatusUnprocessableEntity, "unsupported_operation",
+		},
+		{
+			"unknown parameter", fmt.Errorf("fake: no such parameter: %w",
+				botflota.ErrUnsupportedKind),
+			http.StatusUnprocessableEntity, "unsupported_operation",
+		},
+		{
+			"rejected value", fmt.Errorf("fake: bad value: %w",
+				botflota.ErrInvalidParam),
+			http.StatusBadRequest, "invalid_request",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner.beginErr = tc.err
+			recorder := doJSON(t, handler, "POST",
+				"/api/v1/scopes/support/bots/demo/binding/setups",
+				testOwnerToken, `{"method":"qr","request_key":"k9"}`)
+			if recorder.Code != tc.status {
+				t.Fatalf("status = %d, want %d: %s",
+					recorder.Code, tc.status, recorder.Body.String())
+			}
+			if body := recorder.Body.String(); !strings.Contains(body, tc.code) {
+				t.Fatalf("body %s does not report %s", body, tc.code)
+			}
+		})
+	}
+}
+
 // TestSetupLifecycle drives begin, read, input, and cancel through the same
 // routes, checking stale revisions, unknown IDs, and secret redaction.
 func TestSetupLifecycle(t *testing.T) {
@@ -311,12 +366,19 @@ func TestSetupLifecycle(t *testing.T) {
 		t.Fatalf("Cache-Control = %q, want no-store", cache)
 	}
 	var begun struct {
+		Bot struct {
+			Scope string `json:"scope"`
+			Bot   string `json:"bot"`
+		} `json:"bot"`
 		ID       string `json:"id"`
 		Revision int64  `json:"revision"`
 	}
 	decodeSetupResponse(t, recorder.Body.Bytes(), &begun)
 	if begun.ID == "" || begun.Revision != 1 {
 		t.Fatalf("begun = %+v, want an id at revision 1", begun)
+	}
+	if begun.Bot.Scope != "support" || begun.Bot.Bot != "demo" {
+		t.Fatalf("begun bot = %+v, want the scoped bot ref", begun.Bot)
 	}
 
 	recorder = get(t, handler,
