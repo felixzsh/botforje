@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/spec"
@@ -561,5 +563,161 @@ func TestPromptValueFallsBackOffTerminal(t *testing.T) {
 	}
 	if value != "piped-secret" {
 		t.Fatalf("value = %q, want the piped input", value)
+	}
+}
+
+// TestBindForceUnsupportedMethodKeepsBinding covers the validation order:
+// an explicit method the channel does not offer fails before any detach,
+// so --force can never drop a binding a rejected begin would not replace
+// (ADR 0053).
+func TestBindForceUnsupportedMethodKeepsBinding(t *testing.T) {
+	deletes, begins := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				writeJSON(w, http.StatusOK, bindBound)
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr"]}`)
+			case r.Method == http.MethodDelete &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				deletes++
+				w.WriteHeader(http.StatusNoContent)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
+				begins++
+				writeJSON(w, http.StatusAccepted, bindSucceededSession)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha",
+		bindOptions{force: true, method: "carrier-pigeon"},
+		strings.NewReader(""), &out)
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if deletes != 0 {
+		t.Fatalf("deletes = %d, want no detach on argument error", deletes)
+	}
+	if begins != 0 {
+		t.Fatalf("begins = %d, want no begin on argument error", begins)
+	}
+}
+
+func fakeOfflineAssemblies(
+	lifecycle *stubOfflineLifecycle, runner *stubOfflineRunner, opened *bool,
+) []offlineAssembly {
+	return []offlineAssembly{{
+		provider: "fake", mode: "test",
+		open: func(_ *config.Config, _ *sqlite.DB, _ spec.Bot,
+			_ *slog.Logger,
+		) (*channels.Catalog, func(), error) {
+			*opened = true
+			catalog, err := channels.New(channels.Definition{
+				Provider: "fake",
+				Kind:     "fake",
+				Modes:    []string{"test"},
+				Decode: func(spec.Bot) (any, []string) {
+					return nil, nil
+				},
+				Setup: func(channels.Bind) (
+					botflota.AccountLifecycle, botflota.SetupRunner, error,
+				) {
+					return lifecycle, runner, nil
+				},
+			})
+			return catalog, func() {}, err
+		},
+	}}
+}
+
+// TestBindOfflineUsesTheRegisteredAssembly drives the real offline bind
+// through the assembly registry: a non-WhatsApp channel assembles and
+// binds with no device store anywhere in the path (ADR 0052, ADR 0053).
+func TestBindOfflineUsesTheRegisteredAssembly(t *testing.T) {
+	lifecycle := &stubOfflineLifecycle{}
+	runner := &stubOfflineRunner{session: &botflota.SetupSession{
+		Bot:      botflota.BotRef{Scope: "dev", Bot: "alpha"},
+		ID:       "s1",
+		State:    botflota.SetupSucceeded,
+		Revision: 1,
+	}}
+	var opened bool
+	cfg := &config.Config{DataDir: t.TempDir()}
+	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
+	var out bytes.Buffer
+	code := bindOffline(&out, strings.NewReader(""), cfg,
+		"dev", "alpha", botSpec, bindOptions{}, false,
+		fakeOfflineAssemblies(lifecycle, runner, &opened))
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !opened {
+		t.Fatal("the registered fake assembly was not selected")
+	}
+	if runner.began != 1 {
+		t.Fatalf("began = %d, want the fake runner's session", runner.began)
+	}
+	if lifecycle.detached != 0 {
+		t.Fatalf("detached = %d, want a fresh bind without detach", lifecycle.detached)
+	}
+	if !strings.Contains(out.String(), "setup succeeded") {
+		t.Fatalf("output %q is missing the success report", out.String())
+	}
+}
+
+// TestUnbindOfflineUsesTheRegisteredAssembly drives the real offline
+// unbind through the assembly registry: detachment settles through the
+// installed lifecycle, never a hardcoded adapter (ADR 0053).
+func TestUnbindOfflineUsesTheRegisteredAssembly(t *testing.T) {
+	lifecycle := &stubOfflineLifecycle{status: botflota.BindingStatus{
+		Binding: &botflota.Binding{
+			Scope: "dev", Bot: "alpha",
+			Provider: "fake", Adapter: "fake", Mode: "test",
+			Identity: botflota.IdentityKey{Provider: "fake", Subject: "s"},
+		},
+		Condition: botflota.ReadinessConfigured,
+	}}
+	runner := &stubOfflineRunner{}
+	var opened bool
+	cfg := &config.Config{DataDir: t.TempDir()}
+	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
+	var out bytes.Buffer
+	code := unbindOffline(&out, cfg, "dev", "alpha", botSpec,
+		fakeOfflineAssemblies(lifecycle, runner, &opened))
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if !opened {
+		t.Fatal("the registered fake assembly was not selected")
+	}
+	if lifecycle.detached != 1 {
+		t.Fatalf("detached = %d, want one detach", lifecycle.detached)
+	}
+	if !strings.Contains(out.String(), `unbound`) {
+		t.Fatalf("output %q is missing the unbound report", out.String())
+	}
+}
+
+// TestBindOfflineRejectsAnUninstalledChannel covers the fallback: without a
+// registered assembly nothing opens, and resolution names the missing
+// installation instead of inventing state (ADR 0052).
+func TestBindOfflineRejectsAnUninstalledChannel(t *testing.T) {
+	cfg := &config.Config{DataDir: t.TempDir()}
+	botSpec := spec.Bot{Channel: spec.Channel{Provider: "ghost", Mode: "test"}}
+	var out bytes.Buffer
+	code := bindOffline(&out, strings.NewReader(""), cfg,
+		"dev", "alpha", botSpec, bindOptions{}, false, nil)
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
 	}
 }

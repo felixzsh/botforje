@@ -282,12 +282,23 @@ func driveBind(
 func resolveSetupMethod(
 	ctx context.Context, ep bindEndpoints, scope, bot, flag, readiness string,
 ) (string, bool) {
-	if flag != "" {
-		return flag, true
-	}
 	advertised, err := ep.methods(ctx, scope, bot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		return "", false
+	}
+	if flag != "" {
+		// An explicit method is checked against what the channel
+		// offers before any detach: a rejected begin must never
+		// follow a detach it did not need (ADR 0053).
+		for _, method := range advertised {
+			if method == flag {
+				return flag, true
+			}
+		}
+		fmt.Fprintf(os.Stderr,
+			"unsupported setup method %q (offered: %s)\n",
+			flag, strings.Join(advertised, ", "))
 		return "", false
 	}
 	if len(advertised) == 1 {
@@ -508,7 +519,7 @@ func runBind(args []string) int {
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	return bindOffline(os.Stdout, os.Stdin, cfg, scopeName, name, botSpec, opts,
-		*cmd.verbose)
+		*cmd.verbose, installedOfflineAssemblies())
 }
 
 func runUnbind(args []string) int {
@@ -551,7 +562,8 @@ func runUnbind(args []string) int {
 		return unbindThroughAPI(os.Stdout, cfg, scopeName, name)
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
-	return unbindOffline(os.Stdout, cfg, scopeName, name, botSpec)
+	return unbindOffline(os.Stdout, cfg, scopeName, name, botSpec,
+		installedOfflineAssemblies())
 }
 
 // unbindTimeout bounds the call: the instance stops the bot, draining its
@@ -671,20 +683,48 @@ func bindLogger(cfg *config.Config, verbose bool) *slog.Logger {
 	return botflota.NewLogger(cfg.LogLevel, os.Stderr)
 }
 
-// offlineChannelCatalog opens only the dependencies the bot's selected
-// adapter needs: a WhatsApp bot gets the device store and a runtime catalog
-// whose definition serves setup; any other selection resolves against the
-// pure catalog without opening a store (ADR 0052, ADR 0054). Cleanup stops
-// setup workers before the stores they write go away (ADR 0053).
+// offlineAssembly opens one installed adapter's runtime dependencies and
+// returns its catalog with setup wired. The offline flow selects by channel,
+// so shipping another adapter registers one entry here instead of adding a
+// branch to the bind/unbind flow (ADR 0052, ADR 0053).
+type offlineAssembly struct {
+	provider, mode string
+	open           func(cfg *config.Config, db *sqlite.DB, bot spec.Bot,
+		log *slog.Logger) (*channels.Catalog, func(), error)
+}
+
+// installedOfflineAssemblies lists the shipped adapters' offline assembly.
+// Tests register fakes through the same list.
+func installedOfflineAssemblies() []offlineAssembly {
+	return []offlineAssembly{{
+		provider: channel.Provider, mode: channel.Mode,
+		open: openWhatsappOfflineCatalog,
+	}}
+}
+
 func offlineChannelCatalog(
 	cfg *config.Config, db *sqlite.DB, botSpec spec.Bot, logger *slog.Logger,
+	assemblies []offlineAssembly,
+) (*channels.Catalog, func(), error) {
+	for _, asm := range assemblies {
+		if botSpec.Channel.Provider == asm.provider &&
+			botSpec.Channel.Mode == asm.mode {
+			return asm.open(cfg, db, botSpec, logger)
+		}
+	}
+	// Nothing installed serves this channel: resolve against the pure
+	// catalog without opening any store, so the failure names the
+	// missing installation instead of inventing state.
+	catalog, err := pureCatalog()
+	return catalog, func() {}, err
+}
+
+// openWhatsappOfflineCatalog opens the device store and wires the WhatsApp
+// runtime catalog for one bot; no other channel touches these dependencies.
+func openWhatsappOfflineCatalog(
+	cfg *config.Config, db *sqlite.DB, _ spec.Bot, logger *slog.Logger,
 ) (*channels.Catalog, func(), error) {
 	nop := func() {}
-	if botSpec.Channel.Provider != channel.Provider ||
-		botSpec.Channel.Mode != channel.Mode {
-		catalog, err := pureCatalog()
-		return catalog, nop, err
-	}
 	ctx := context.Background()
 	devices, err := openDevices(ctx, db, logger, cfg.LogLevelDeps)
 	if err != nil {
@@ -751,6 +791,7 @@ func resolveOfflineSetup(
 func bindOffline(
 	stdout io.Writer, stdin io.Reader, cfg *config.Config,
 	scopeName, botName string, botSpec spec.Bot, opts bindOptions, verbose bool,
+	assemblies []offlineAssembly,
 ) int {
 	ctx := context.Background()
 	db, err := openDatabase(cfg)
@@ -760,7 +801,8 @@ func bindOffline(
 	}
 	defer db.Close()
 	logger := bindLogger(cfg, verbose)
-	catalog, cleanup, err := offlineChannelCatalog(cfg, db, botSpec, logger)
+	catalog, cleanup, err := offlineChannelCatalog(
+		cfg, db, botSpec, logger, assemblies)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -778,6 +820,7 @@ func bindOffline(
 
 func unbindOffline(
 	w io.Writer, cfg *config.Config, scopeName, botName string, botSpec spec.Bot,
+	assemblies []offlineAssembly,
 ) int {
 	ctx := context.Background()
 	db, err := openDatabase(cfg)
@@ -787,7 +830,8 @@ func unbindOffline(
 	}
 	defer db.Close()
 	logger := bindLogger(cfg, false)
-	catalog, cleanup, err := offlineChannelCatalog(cfg, db, botSpec, logger)
+	catalog, cleanup, err := offlineChannelCatalog(
+		cfg, db, botSpec, logger, assemblies)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
