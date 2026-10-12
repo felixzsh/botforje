@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -278,15 +279,6 @@ func mentions(errs []ValidationError, want string) bool {
 	return false
 }
 
-// TestOldWhatsappYamlStillLoads covers the compatibility half of the transition:
-// a document written before the selector existed keeps loading and validating,
-// with its adapter-owned keys preserved as authored (ADR 0054).
-
-// TestLegacyTemplateAliasCheckedPerConsumingBot proves the P1 translation is
-// applied per consuming bot: the WhatsApp definition maps contact.phone to the
-// neutral peer path, and a channel that owns no such alias refuses it with the
-// bot, graph, node, and action that carry the reference (ADR 0018/0020).
-
 // TestContactCardVariantCheckedPerConsumingBot proves a card variant an adapter
 // cannot compose fails validation for the bot that would send it, with the step
 // and entry in context, instead of being dropped at delivery (ADR 0036, 0052).
@@ -352,5 +344,86 @@ func TestUnsupportedContentFoundBehindToolsAndGuards(t *testing.T) {
 	if !mentions(Validate(guardCase, capabilityCatalog(t)),
 		`action "greet" cooldown.on_blocked step 0: channel fake/text cannot send image`) {
 		t.Fatal("an unsupported kind behind a guard was not reported")
+	}
+}
+
+// TestChannelSchemaHasOneBranchPerSelector guards the multi-mode case: one
+// definition installed on two account modes yields exactly one applicable
+// branch per selector, so `oneOf` stays exclusive (ADR 0054).
+func TestChannelSchemaHasOneBranchPerSelector(t *testing.T) {
+	catalog, err := channels.New(channels.Definition{
+		Provider: "fake", Kind: "fake", Modes: []string{"a", "b"},
+		Capabilities: channels.Capabilities{
+			Send: []botflota.MessageKind{botflota.KindText},
+		},
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	data, err := JSONSchema(catalog)
+	if err != nil {
+		t.Fatalf("JSONSchema: %v", err)
+	}
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	defs, _ := root["$defs"].(map[string]any)
+	channel, _ := defs["Channel"].(map[string]any)
+	branches, _ := channel["oneOf"].([]any)
+	seen := map[string]bool{}
+	for _, branch := range branches {
+		props, _ := branch.(map[string]any)["properties"].(map[string]any)
+		provider, _ := props["provider"].(map[string]any)["const"].(string)
+		mode, _ := props["mode"].(map[string]any)["const"].(string)
+		if seen[provider+"/"+mode] {
+			t.Fatalf("duplicate branch %s/%s", provider, mode)
+		}
+		seen[provider+"/"+mode] = true
+	}
+	if len(branches) != 2 || !seen["fake/a"] || !seen["fake/b"] {
+		t.Fatalf("branches = %v", seen)
+	}
+}
+
+// TestDefinitionContentValidatorIsUsedPerBot proves the extension point: a
+// definition enforces its own provider-correct limits and config reports them
+// with the consuming bot's context (ADR 0052). A definition without the hook
+// falls back to its declared capabilities, covered above.
+func TestDefinitionContentValidatorIsUsedPerBot(t *testing.T) {
+	catalog, err := channels.New(channels.Definition{
+		Provider: "fake", Kind: "fake", Modes: []string{"text"},
+		Capabilities: channels.Capabilities{
+			Send: []botflota.MessageKind{botflota.KindText},
+		},
+		ValidateContent: func(
+			key channels.Key, actionName string, action spec.Action,
+		) []string {
+			var reasons []string
+			for _, step := range action.Steps {
+				if step.Message == nil {
+					continue
+				}
+				for _, body := range step.Message.Body {
+					if len(body) > 3 {
+						reasons = append(reasons, fmt.Sprintf(
+							"action %q: channel %s/%s limits a body to 3 characters",
+							actionName, key.Provider, key.Mode))
+					}
+				}
+			}
+			return reasons
+		},
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	cfg := botConfig(spec.Bot{
+		Graph:   "menu",
+		Channel: spec.Channel{Provider: "fake", Mode: "text"},
+	}, []spec.Step{{Message: &spec.Message{Body: spec.Text{"toolong"}}}})
+	errs := Validate(cfg, catalog)
+	if !mentions(errs, "limits a body to 3 characters") {
+		t.Fatalf("the definition's own limit was not enforced: %v", errs)
 	}
 }

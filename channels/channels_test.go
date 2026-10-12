@@ -90,7 +90,6 @@ func TestCapabilitiesReportDeclaredSupport(t *testing.T) {
 		Receive:      []botflota.MessageKind{botflota.KindText, botflota.KindImage},
 		Features:     []string{FeatureHistoryImport},
 		CardVariants: []spec.ContactEntryKind{spec.ContactPhone},
-		Limits:       map[string]int{"text_characters": 4096},
 	}
 	if !caps.SupportsSend(botflota.KindText) {
 		t.Error("text should be sendable")
@@ -108,12 +107,6 @@ func TestCapabilitiesReportDeclaredSupport(t *testing.T) {
 		caps.SupportsCardVariant(spec.ContactURL) {
 		t.Error("card variant lookup is wrong")
 	}
-	if limit, ok := caps.Limit("text_characters"); !ok || limit != 4096 {
-		t.Errorf("limit = %d, %v", limit, ok)
-	}
-	if _, ok := caps.Limit("unknown"); ok {
-		t.Error("an undeclared limit must report false")
-	}
 }
 
 func TestDefinitionsListsEachProviderAndModeOnce(t *testing.T) {
@@ -127,5 +120,58 @@ func TestDefinitionsListsEachProviderAndModeOnce(t *testing.T) {
 	}
 	if defs[0].Provider != "fake" || defs[1].Provider != "whatsapp" {
 		t.Fatalf("definitions are not ordered: %+v", defs)
+	}
+}
+
+// TestCatalogDoesNotShareMutableDefinitions proves the catalog is immutable: a
+// slice or map a caller still holds cannot change what the catalog answers
+// (ADR 0052).
+func TestCatalogDoesNotShareMutableDefinitions(t *testing.T) {
+	caps := Capabilities{
+		Send:         []botflota.MessageKind{botflota.KindText},
+		CardVariants: []spec.ContactEntryKind{spec.ContactPhone},
+	}
+	modes := []string{"native"}
+	catalog := testCatalog(t, Definition{
+		Provider: "fake", Kind: "fake", Modes: modes, Capabilities: caps,
+	})
+
+	caps.Send[0] = botflota.KindImage
+	caps.CardVariants[0] = spec.ContactURL
+	modes[0] = "changed"
+
+	got, ok := catalog.Lookup("fake", "native")
+	if !ok {
+		t.Fatal("mutating the caller's slices changed the registered key")
+	}
+	if !got.Capabilities.SupportsSend(botflota.KindText) ||
+		got.Capabilities.SupportsSend(botflota.KindImage) {
+		t.Fatal("the catalog shares the caller's Send slice")
+	}
+	if !got.Capabilities.SupportsCardVariant(spec.ContactPhone) {
+		t.Fatal("the catalog shares the caller's CardVariants slice")
+	}
+
+	got.Capabilities.Send[0] = botflota.KindVideo
+	got.Capabilities.CardVariants[0] = spec.ContactURL
+	got.Modes[0] = "changed"
+	again, _ := catalog.Lookup("fake", "native")
+	if !again.Capabilities.SupportsSend(botflota.KindText) {
+		t.Fatal("Lookup leaked the internal Send slice")
+	}
+	if !again.Capabilities.SupportsCardVariant(spec.ContactPhone) {
+		t.Fatal("Lookup leaked the internal CardVariants slice")
+	}
+	if again.Modes[0] != "native" {
+		t.Fatal("Lookup leaked the internal Modes slice")
+	}
+
+	for _, def := range catalog.Definitions() {
+		def.Capabilities.Send[0] = botflota.KindImage
+		def.Modes[0] = "changed"
+	}
+	again, _ = catalog.Lookup("fake", "native")
+	if !again.Capabilities.SupportsSend(botflota.KindText) || again.Modes[0] != "native" {
+		t.Fatal("Definitions leaked the internal definition")
 	}
 }

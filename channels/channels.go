@@ -39,8 +39,6 @@ type Capabilities struct {
 	// CardVariants are the contact-card entry kinds this definition can
 	// compose onto its own native card object (ADR 0036).
 	CardVariants []spec.ContactEntryKind
-	// Limits are provider-correct numeric bounds keyed by name.
-	Limits map[string]int
 }
 
 // SupportsSend reports whether the definition can deliver kind.
@@ -69,10 +67,14 @@ func (c Capabilities) SupportsCardVariant(kind spec.ContactEntryKind) bool {
 	return slices.Contains(c.CardVariants, kind)
 }
 
-// Limit returns one declared numeric bound and whether the definition set it.
-func (c Capabilities) Limit(name string) (int, bool) {
-	value, ok := c.Limits[name]
-	return value, ok
+// clone copies the slices so the catalog's copy cannot be changed through one a
+// caller received (ADR 0052).
+func (c Capabilities) clone() Capabilities {
+	c.Send = slices.Clone(c.Send)
+	c.Receive = slices.Clone(c.Receive)
+	c.Features = slices.Clone(c.Features)
+	c.CardVariants = slices.Clone(c.CardVariants)
+	return c
 }
 
 func containsKind(kinds []botflota.MessageKind, kind botflota.MessageKind) bool {
@@ -82,6 +84,81 @@ func containsKind(kinds []botflota.MessageKind, kind botflota.MessageKind) bool 
 		}
 	}
 	return false
+}
+
+// ContentValidator reports what one action cannot send on this implementation,
+// as complete reasons the author can act on. It is pure: no store opens and no
+// transport starts. A definition uses it for the limits and variants that its
+// capabilities alone do not express (ADR 0052).
+type ContentValidator func(key Key, actionName string, action spec.Action) []string
+
+// ValidateDeclaredContent is the default ContentValidator: it checks every
+// step's content kind and contact-card variant against caps. An adapter supplies
+// its own ContentValidator to add provider-correct limits on top.
+func ValidateDeclaredContent(caps Capabilities) ContentValidator {
+	return func(key Key, actionName string, action spec.Action) []string {
+		var reasons []string
+		check := func(steps []spec.Step, where string) {
+			prefix := ""
+			if where != "" {
+				prefix = where + " "
+			}
+			for i, step := range steps {
+				report := func(what string) {
+					reasons = append(reasons, fmt.Sprintf(
+						"action %q %sstep %d: channel %s/%s cannot %s",
+						actionName, prefix, i, key.Provider, key.Mode, what))
+				}
+				if step.Contact != nil {
+					for _, entry := range step.Contact.Entries {
+						variant := spec.ContactEntryKind(entry.Kind)
+						if variant.Valid() && !caps.SupportsCardVariant(variant) {
+							report(fmt.Sprintf("compose contact entry kind %q", entry.Kind))
+						}
+					}
+				}
+				kind, ok := stepKind(step)
+				if !ok {
+					continue
+				}
+				if !caps.SupportsSend(kind) {
+					report("send " + string(kind))
+				}
+			}
+		}
+		check(action.Steps, "")
+		if action.Guards != nil {
+			if action.Guards.Cooldown != nil {
+				check(action.Guards.Cooldown.OnBlocked, "cooldown.on_blocked")
+			}
+			if action.Guards.RateLimit != nil {
+				check(action.Guards.RateLimit.OnBlocked, "rate_limit.on_blocked")
+			}
+		}
+		return reasons
+	}
+}
+
+// stepKind is the content kind one step sends, or false for a step that emits
+// no channel content or whose kind is checked elsewhere.
+func stepKind(step spec.Step) (botflota.MessageKind, bool) {
+	switch {
+	case step.Message != nil:
+		return botflota.KindText, true
+	case step.Media != nil:
+		kind := botflota.MessageKind(step.Media.Kind)
+		if !botflota.MediaType(kind).Valid() {
+			return "", false
+		}
+		return kind, true
+	case step.Location != nil:
+		return botflota.KindLocation, true
+	case step.Contact != nil:
+		return botflota.KindContact, true
+	case step.Poll != nil:
+		return botflota.KindPoll, true
+	}
+	return "", false
 }
 
 // Bind is one bot's request to build its channel: the neutral per-bot values
@@ -103,13 +180,19 @@ type Definition struct {
 	Modes    []string
 	// Capabilities states what this implementation can do.
 	Capabilities Capabilities
-	// OptionsSchema describes the adapter's options object for editors. It is
-	// replaced into the generated schema under the definition's selector.
-	OptionsSchema *jsonschema.Schema
+	// OptionsSchema returns a fresh editor schema of the adapter's options
+	// object, or nil when it declares none. It is a function so the catalog
+	// never shares a mutable schema value (ADR 0052).
+	OptionsSchema func() *jsonschema.Schema
 	// Decode strictly decodes one bot's channel options into the adapter's
 	// typed value, or reports why the author's values cannot be accepted. It is
 	// pure: no store opens, no transport starts.
 	Decode func(bot spec.Bot) (any, []string)
+	// ValidateContent reports what one action cannot send on this
+	// implementation. A nil hook falls back to the declared capabilities
+	// (ValidateDeclaredContent), so content kind support is always checked and
+	// an adapter only adds the limits and variants it alone knows (ADR 0052).
+	ValidateContent ContentValidator
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)
@@ -152,7 +235,7 @@ func New(defs ...Definition) (*Catalog, error) {
 					"channels: provider %q mode %q is installed twice",
 					key.Provider, key.Mode)
 			}
-			catalog.defs[key] = def
+			catalog.defs[key] = def.clone()
 			catalog.order = append(catalog.order, key)
 		}
 	}
@@ -171,7 +254,7 @@ func (c *Catalog) Lookup(provider, mode string) (Definition, bool) {
 		return Definition{}, false
 	}
 	def, ok := c.defs[Key{Provider: provider, Mode: mode}]
-	return def, ok
+	return def.clone(), ok
 }
 
 // Definitions lists the installed definitions in provider and mode order, one
@@ -182,9 +265,17 @@ func (c *Catalog) Definitions() []Definition {
 	}
 	defs := make([]Definition, 0, len(c.order))
 	for _, key := range c.order {
-		defs = append(defs, c.defs[key])
+		defs = append(defs, c.defs[key].clone())
 	}
 	return defs
+}
+
+// clone copies the mutable parts of a definition, so a caller can never change
+// what the catalog holds through a slice or map it received (ADR 0052).
+func (d Definition) clone() Definition {
+	d.Modes = slices.Clone(d.Modes)
+	d.Capabilities = d.Capabilities.clone()
+	return d
 }
 
 // Keys lists the installed provider and mode pairs in order.

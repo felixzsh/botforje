@@ -55,7 +55,6 @@ channel:
     simulate_typing: true
     history_sync: false
     import_contacts: true
-    external_reply_pause: 1000
 settings:
   jitter: 250
 `)
@@ -76,9 +75,6 @@ settings:
 	}
 	if !options.ImportContacts {
 		t.Error("import_contacts: true must turn the import on")
-	}
-	if options.ExternalReplyPause != time.Second {
-		t.Errorf("external pause = %s", options.ExternalReplyPause)
 	}
 }
 
@@ -154,5 +150,24 @@ func TestDefinitionDeclaresItsCapabilities(t *testing.T) {
 	}
 	if def.OptionsSchema == nil {
 		t.Fatal("options schema is missing")
+	}
+}
+
+// TestDecodeBotRejectsTheRetiredHandOverOption: the hand-over window is a shared
+// fleet policy in `settings`, so the adapter no longer declares it as an option.
+// Accepting it in two places would let one of them be silently ignored.
+func TestDecodeBotRejectsTheRetiredHandOverOption(t *testing.T) {
+	_, reasons := decodeYAML(t, `graph: menu
+channel:
+  provider: whatsapp
+  mode: native
+  options:
+    external_reply_pause: 60000
+`)
+	if len(reasons) == 0 {
+		t.Fatal("external_reply_pause must no longer be accepted as a channel option")
+	}
+	if !strings.Contains(strings.Join(reasons, "; "), "external_reply_pause") {
+		t.Fatalf("reasons = %v", reasons)
 	}
 }

@@ -113,9 +113,6 @@
             "options": {
               "additionalProperties": false,
               "properties": {
-                "external_reply_pause": {
-                  "type": "integer"
-                },
                 "history_sync": {
                   "type": "boolean"
                 },

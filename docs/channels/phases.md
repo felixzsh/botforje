@@ -140,16 +140,16 @@ and 0036.
 
 Landed 2026-10-12 on the accepted P1 baseline: `channels` holds the immutable
 catalog and the definition type (provider, adapter kind, modes, capabilities,
-pure option decode, optional builder); `spec.Bot` gains the typed selector and
-`BotSettings` keeps only the shared pacing/filter fields plus an inline map for
-adapter-owned options. The WhatsApp adapter declares its options, schema,
-capabilities, and builder; config validation, schema generation, startup, the
-watcher, and publication all consume the same pure catalog. Items 1-4 and
+pure option decode, content validator, optional builder); `spec.Bot` names its
+channel explicitly and `BotSettings` keeps only the shared pacing/filter fields.
+The WhatsApp adapter declares its options, schema, capabilities, and builder;
+config validation, schema generation, startup, the watcher, and publication all
+consume the same pure catalog. Items 1-4 and
 7-10 landed across the P2 commits; the card and readiness halves followed in the
 same pass. Every P2 item and gate is checked as of 2026-10-12, with the tests in
 `channels`, `config`, `engine`, `fleet`, and `cmd` covering the selector, the
 schema/validator agreement, the mixed fleet, shared-resource views, and the
-per-bot capability and alias checks.
+per-bot capability and content-limit checks.
 
 - [x] Introduce the immutable injected catalog of installed
   definitions. Distinguish provider, adapter kind, and account mode;
@@ -191,7 +191,8 @@ per-bot capability and alias checks.
   login.
 - [x] Validate each consuming bot's graph, entry/exit actions, tools,
   and guard `on_blocked` steps against its installed adapter. Declare
-  implemented content/features and provider-correct limits, not a
+  implemented content and features, and enforce provider-correct limits
+  through the definition's own pure `ValidateContent` hook rather than a
   platform-wide promise; default to rejection instead of silent
   downgrade.
 - [x] Replace WhatsApp-only fleet construction with registered builders.

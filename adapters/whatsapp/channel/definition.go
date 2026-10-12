@@ -25,65 +25,62 @@ const (
 )
 
 // BotOptions is the decoded adapter-owned configuration of one WhatsApp bot:
-// the presence the channel applies and the import and hand-over switches that
-// used to live in the common settings block (ADR 0054).
+// the presence the channel applies and its import switches (ADR 0054).
 type BotOptions struct {
 	Settings       Settings
 	History        bool
 	ImportContacts bool
-	// ExternalReplyPause is the per-chat hand-over window; zero uses the
-	// fleet's default.
-	ExternalReplyPause time.Duration
 }
 
 // rawOptions is the authored shape of channel.options. A pointer distinguishes
 // an absent switch from an explicit false, so the adapter's own defaults apply
 // only where the author said nothing (ADR 0054).
 type rawOptions struct {
-	ReadReceipts       *bool `yaml:"read_receipts" json:"read_receipts,omitempty"`
-	ReadReceiptDelay   int   `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
-	ReplyDelay         int   `yaml:"reply_delay" json:"reply_delay,omitempty"`
-	SimulateTyping     *bool `yaml:"simulate_typing" json:"simulate_typing,omitempty"`
-	HistorySync        *bool `yaml:"history_sync" json:"history_sync,omitempty"`
-	ImportContacts     *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
-	ExternalReplyPause int   `yaml:"external_reply_pause" json:"external_reply_pause,omitempty"`
+	ReadReceipts     *bool `yaml:"read_receipts" json:"read_receipts,omitempty"`
+	ReadReceiptDelay int   `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
+	ReplyDelay       int   `yaml:"reply_delay" json:"reply_delay,omitempty"`
+	SimulateTyping   *bool `yaml:"simulate_typing" json:"simulate_typing,omitempty"`
+	HistorySync      *bool `yaml:"history_sync" json:"history_sync,omitempty"`
+	ImportContacts   *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
 }
 
 // Definition is the pure declaration of this adapter: no device store opens
 // and no transport starts while config commands validate against it (ADR 0052).
 func Definition() channels.Definition {
-	return channels.Definition{
-		Provider: Provider,
-		Kind:     "whatsmeow",
-		Modes:    []string{Mode},
-		Capabilities: channels.Capabilities{
-			Send: []botflota.MessageKind{
-				botflota.KindText,
-				botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
-				botflota.KindDocument, botflota.KindSticker,
-				botflota.KindLocation, botflota.KindContact, botflota.KindPoll,
-			},
-			Receive: []botflota.MessageKind{
-				botflota.KindText,
-				botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
-				botflota.KindDocument, botflota.KindSticker,
-				botflota.KindLocation, botflota.KindContact, botflota.KindPoll,
-				botflota.KindEvent, botflota.KindInteractive,
-				botflota.KindCommerce, botflota.KindCall, botflota.KindUnknown,
-			},
-			Features: []string{
-				channels.FeaturePresence,
-				channels.FeatureHistoryImport,
-				channels.FeatureAddressBookImport,
-				channels.FeatureExternalReply,
-			},
-			CardVariants: []spec.ContactEntryKind{
-				spec.ContactPhone, spec.ContactEmail,
-				spec.ContactAddress, spec.ContactURL,
-			},
+	caps := channels.Capabilities{
+		Send: []botflota.MessageKind{
+			botflota.KindText,
+			botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
+			botflota.KindDocument, botflota.KindSticker,
+			botflota.KindLocation, botflota.KindContact, botflota.KindPoll,
 		},
-		OptionsSchema: optionsSchema(),
-		Decode:        decodeBot,
+		Receive: []botflota.MessageKind{
+			botflota.KindText,
+			botflota.KindImage, botflota.KindVideo, botflota.KindAudio,
+			botflota.KindDocument, botflota.KindSticker,
+			botflota.KindLocation, botflota.KindContact, botflota.KindPoll,
+			botflota.KindEvent, botflota.KindInteractive,
+			botflota.KindCommerce, botflota.KindCall, botflota.KindUnknown,
+		},
+		Features: []string{
+			channels.FeaturePresence,
+			channels.FeatureHistoryImport,
+			channels.FeatureAddressBookImport,
+			channels.FeatureExternalReply,
+		},
+		CardVariants: []spec.ContactEntryKind{
+			spec.ContactPhone, spec.ContactEmail,
+			spec.ContactAddress, spec.ContactURL,
+		},
+	}
+	return channels.Definition{
+		Provider:        Provider,
+		Kind:            "whatsmeow",
+		Modes:           []string{Mode},
+		Capabilities:    caps,
+		OptionsSchema:   optionsSchema,
+		Decode:          decodeBot,
+		ValidateContent: channels.ValidateDeclaredContent(caps),
 	}
 }
 
@@ -137,7 +134,6 @@ func checkRanges(raw rawOptions) []string {
 	}{
 		{"read_receipt_delay", raw.ReadReceiptDelay},
 		{"reply_delay", raw.ReplyDelay},
-		{"external_reply_pause", raw.ExternalReplyPause},
 	} {
 		if value.at < 0 {
 			reasons = append(reasons, value.name+" must be >= 0")
@@ -167,8 +163,6 @@ func builtOptions(raw rawOptions, common spec.BotSettings) BotOptions {
 	if raw.ImportContacts != nil {
 		options.ImportContacts = *raw.ImportContacts
 	}
-	options.ExternalReplyPause =
-		time.Duration(raw.ExternalReplyPause) * time.Millisecond
 	return options
 }
 

@@ -545,6 +545,10 @@ func validateBotCapabilities(
 	if !ok {
 		return
 	}
+	validate := def.ValidateContent
+	if validate == nil {
+		validate = channels.ValidateDeclaredContent(def.Capabilities)
+	}
 	seen := map[string]bool{}
 	check := func(actionName string) {
 		if actionName == "" || seen[actionName] {
@@ -555,9 +559,8 @@ func validateBotCapabilities(
 		if !ok {
 			return
 		}
-		for _, unsupported := range unsupportedSteps(actionName, action, def) {
-			add(file, entity, "%s: channel %s/%s cannot %s",
-				unsupported.where, key.Provider, key.Mode, unsupported.what)
+		for _, reason := range validate(key, actionName, action) {
+			add(file, entity, "%s", reason)
 		}
 	}
 	for _, nodeName := range SortedKeys(graph.Nodes) {
@@ -572,78 +575,6 @@ func validateBotCapabilities(
 			check(name)
 		}
 	}
-}
-
-type unsupportedStep struct {
-	where string
-	what  string
-}
-
-func unsupportedSteps(
-	actionName string, action spec.Action, def channels.Definition,
-) []unsupportedStep {
-	var unsupported []unsupportedStep
-	check := func(steps []spec.Step, where string) {
-		prefix := ""
-		if where != "" {
-			prefix = where + " "
-		}
-		for i, step := range steps {
-			report := func(what string) {
-				unsupported = append(unsupported, unsupportedStep{
-					where: fmt.Sprintf("action %q %sstep %d", actionName, prefix, i),
-					what:  what,
-				})
-			}
-			if step.Contact != nil {
-				for _, entry := range step.Contact.Entries {
-					kind := spec.ContactEntryKind(entry.Kind)
-					if kind.Valid() && !def.Capabilities.SupportsCardVariant(kind) {
-						report(fmt.Sprintf("compose contact entry kind %q", entry.Kind))
-					}
-				}
-			}
-			kind, ok := stepKind(step)
-			if !ok {
-				continue
-			}
-			if !def.Capabilities.SupportsSend(kind) {
-				report("send " + string(kind))
-			}
-		}
-	}
-	check(action.Steps, "")
-	if action.Guards != nil {
-		if action.Guards.Cooldown != nil {
-			check(action.Guards.Cooldown.OnBlocked, "cooldown.on_blocked")
-		}
-		if action.Guards.RateLimit != nil {
-			check(action.Guards.RateLimit.OnBlocked, "rate_limit.on_blocked")
-		}
-	}
-	return unsupported
-}
-
-// stepKind is the content kind one step sends, or false for a step that emits
-// no channel content or whose kind is checked elsewhere.
-func stepKind(step spec.Step) (botflota.MessageKind, bool) {
-	switch {
-	case step.Message != nil:
-		return botflota.KindText, true
-	case step.Media != nil:
-		kind := botflota.MessageKind(step.Media.Kind)
-		if !botflota.MediaType(kind).Valid() {
-			return "", false
-		}
-		return kind, true
-	case step.Location != nil:
-		return botflota.KindLocation, true
-	case step.Contact != nil:
-		return botflota.KindContact, true
-	case step.Poll != nil:
-		return botflota.KindPoll, true
-	}
-	return "", false
 }
 
 func lookupAction(scope spec.Scope, name string) (spec.Action, string) {

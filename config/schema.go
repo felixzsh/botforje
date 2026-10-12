@@ -68,27 +68,33 @@ func applyChannelCatalog(root map[string]any, catalog *channels.Catalog) error {
 		return errors.New("config: generated schema has no $defs")
 	}
 	var branches []any
-	for _, def := range catalog.Definitions() {
-		options, err := schemaMap(def.OptionsSchema)
-		if err != nil {
-			return fmt.Errorf("config: channel %s options schema: %w", def.Provider, err)
+	for _, key := range catalog.Keys() {
+		def, ok := catalog.Lookup(key.Provider, key.Mode)
+		if !ok {
+			continue
 		}
-		if options == nil {
-			options = map[string]any{"type": "object"}
+		options := map[string]any{"type": "object"}
+		if def.OptionsSchema != nil {
+			built, err := schemaMap(def.OptionsSchema())
+			if err != nil {
+				return fmt.Errorf("config: channel %s/%s options schema: %w",
+					key.Provider, key.Mode, err)
+			}
+			if built != nil {
+				options = built
+			}
 		}
 		delete(options, "$schema")
-		for _, mode := range def.Modes {
-			branches = append(branches, map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"provider": map[string]any{"const": def.Provider},
-					"mode":     map[string]any{"const": mode},
-					"options":  options,
-				},
-				"required":             []any{"provider", "mode"},
-				"additionalProperties": false,
-			})
-		}
+		branches = append(branches, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"provider": map[string]any{"const": key.Provider},
+				"mode":     map[string]any{"const": key.Mode},
+				"options":  options,
+			},
+			"required":             []any{"provider", "mode"},
+			"additionalProperties": false,
+		})
 	}
 	if len(branches) == 0 {
 		return errors.New("config: no channel definition is installed")
