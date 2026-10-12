@@ -2,7 +2,9 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,6 +63,26 @@ func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	runDone := make(chan error, 1)
+	var stopOnce sync.Once
+	var stopErr error
+	stop := func() error {
+		stopOnce.Do(func() {
+			cancel()
+			select {
+			case stopErr = <-runDone:
+			case <-time.After(2 * time.Second):
+				stopErr = errors.New("fleet did not stop within 2 seconds")
+			}
+		})
+		return stopErr
+	}
+	// Cleanup runs in reverse order: join the fleet before closing SQLite,
+	// including when a connection or delivery assertion fails.
+	t.Cleanup(func() {
+		if err := stop(); err != nil {
+			t.Errorf("stop fleet: %v", err)
+		}
+	})
 	go func() { runDone <- runner.Run(ctx) }()
 	waitConnected(t, runner)
 
@@ -74,15 +96,17 @@ func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 	}
 	// Stop before reading the outcome: the worker records the send after the
 	// channel returns, so only a finished run proves the queue moved on.
-	cancel()
-	if err := <-runDone; err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := stop(); err != nil {
+		t.Fatalf("stop fleet: %v", err)
 	}
 	read := context.Background()
-	if pending, err := reopened.Outbox().IsPending(read, queued.OutboxID); err != nil {
-		t.Fatalf("IsPending: %v", err)
-	} else if pending {
-		t.Fatal("the delivered reply is still queued")
+	var state string
+	if err := reopened.QueryRowContext(read,
+		"SELECT state FROM outbox WHERE id = ?", queued.OutboxID).Scan(&state); err != nil {
+		t.Fatalf("read outbox state: %v", err)
+	}
+	if state != "sent" {
+		t.Fatalf("outbox state = %q, want sent", state)
 	}
 	chat, err := reopened.Chats().ForTarget(read, "dev", "alpha", target)
 	if err != nil {
