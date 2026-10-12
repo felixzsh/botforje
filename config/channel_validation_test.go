@@ -72,6 +72,10 @@ func capabilityCatalog(t *testing.T) *channels.Catalog {
 					channels.FeatureAddressBookImport,
 					channels.FeatureExternalReply,
 				},
+				CardVariants: []spec.ContactEntryKind{
+					spec.ContactPhone, spec.ContactEmail,
+					spec.ContactAddress, spec.ContactURL,
+				},
 			},
 			Decode:         strictOptions("read_receipts", "history_sync"),
 			LegacySettings: []string{"read_receipts", "history_sync"},
@@ -364,5 +368,32 @@ func TestLegacyTemplateAliasCheckedPerConsumingBot(t *testing.T) {
 	}}})
 	if !mentions(Validate(orphan, capabilityCatalog(t)), "unknown root") {
 		t.Fatal("an undeclared legacy path must fail validation")
+	}
+}
+
+// TestContactCardVariantCheckedPerConsumingBot proves a card variant an adapter
+// cannot compose fails validation for the bot that would send it, with the step
+// and entry in context, instead of being dropped at delivery (ADR 0036, 0052).
+func TestContactCardVariantCheckedPerConsumingBot(t *testing.T) {
+	steps := []spec.Step{{Contact: &spec.Contact{
+		Name: "Ana",
+		Entries: []spec.ContactEntry{
+			{Kind: "phone", Value: "+5215500000000"},
+			{Kind: "url", Value: "https://example.test/ana"},
+		},
+	}}}
+	whatsapp := botConfig(spec.Bot{Graph: "menu"}, steps)
+	if errs := Validate(whatsapp, capabilityCatalog(t)); len(errs) != 0 {
+		t.Fatalf("WhatsApp composes every variant, got %v", errs)
+	}
+
+	fake := botConfig(spec.Bot{
+		Graph:   "menu",
+		Channel: &spec.Channel{Provider: "fake", Mode: "text"},
+	}, steps)
+	errs := Validate(fake, capabilityCatalog(t))
+	want := `action "greet" step 0: channel fake/text cannot compose contact entry kind "url"`
+	if !mentions(errs, want) {
+		t.Fatalf("no problem mentions %q; got %v", want, errs)
 	}
 }

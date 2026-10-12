@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 
 	"github.com/invopop/jsonschema"
@@ -42,6 +43,9 @@ type Capabilities struct {
 	Send     []botflota.MessageKind
 	Receive  []botflota.MessageKind
 	Features []string
+	// CardVariants are the contact-card entry kinds this definition can
+	// compose onto its own native card object (ADR 0036).
+	CardVariants []spec.ContactEntryKind
 	// Limits are provider-correct numeric bounds keyed by name.
 	Limits map[string]int
 }
@@ -64,6 +68,12 @@ func (c Capabilities) HasFeature(feature string) bool {
 		}
 	}
 	return false
+}
+
+// SupportsCardVariant reports whether the definition can compose one contact
+// card entry kind (ADR 0036).
+func (c Capabilities) SupportsCardVariant(kind spec.ContactEntryKind) bool {
+	return slices.Contains(c.CardVariants, kind)
 }
 
 // Limit returns one declared numeric bound and whether the definition set it.

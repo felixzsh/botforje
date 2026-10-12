@@ -637,8 +637,8 @@ func validateBotCapabilities(
 			return
 		}
 		for _, unsupported := range unsupportedSteps(actionName, action, def) {
-			add(file, entity, "%s: channel %s/%s cannot send %s",
-				unsupported.where, key.Provider, key.Mode, unsupported.kind)
+			add(file, entity, "%s: channel %s/%s cannot %s",
+				unsupported.where, key.Provider, key.Mode, unsupported.what)
 		}
 	}
 	for _, nodeName := range SortedKeys(graph.Nodes) {
@@ -657,7 +657,7 @@ func validateBotCapabilities(
 
 type unsupportedStep struct {
 	where string
-	kind  botflota.MessageKind
+	what  string
 }
 
 func unsupportedSteps(
@@ -670,15 +670,26 @@ func unsupportedSteps(
 			prefix = where + " "
 		}
 		for i, step := range steps {
+			report := func(what string) {
+				unsupported = append(unsupported, unsupportedStep{
+					where: fmt.Sprintf("action %q %sstep %d", actionName, prefix, i),
+					what:  what,
+				})
+			}
+			if step.Contact != nil {
+				for _, entry := range step.Contact.Entries {
+					kind := spec.ContactEntryKind(entry.Kind)
+					if kind.Valid() && !def.Capabilities.SupportsCardVariant(kind) {
+						report(fmt.Sprintf("compose contact entry kind %q", entry.Kind))
+					}
+				}
+			}
 			kind, ok := stepKind(step)
 			if !ok {
 				continue
 			}
 			if !def.Capabilities.SupportsSend(kind) {
-				unsupported = append(unsupported, unsupportedStep{
-					where: fmt.Sprintf("action %q %sstep %d", actionName, prefix, i),
-					kind:  kind,
-				})
+				report("send " + string(kind))
 			}
 		}
 	}

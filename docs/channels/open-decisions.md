@@ -31,8 +31,9 @@ silently harden the plan.
   `email`, `address`, `url`; `botflota.ContactContent` mirrors it and
   the stored codec round-trips it. vCard composition and parsing live
   entirely in the WhatsApp adapter; the core never imports vCard
-  concepts. Still to align: ADR 0036 (card-format transition), and the
-  P2 per-bot capability validation of card variants.
+  concepts. Aligned on 2026-10-12: ADR 0036 describes the neutral card and
+  its per-adapter variants, `Capabilities.CardVariants` drives the per-bot
+  check, and the WhatsApp definition declares all four kinds.
 - **No separate phone/email steps.** No provider exposes "send a phone
   number" or "send an email" as a message object; every card object
   bundles a person's attributes. A bare number or address as text is
@@ -47,8 +48,8 @@ silently harden the plan.
   implementation and later setup/result work remain phase-tracked.
 - **Peer-card replacement format.** Closed on 2026-10-10, see the
   Closed section above: neutral entries shape with adapter-owned vCard
-  handling. Remaining: ADR 0036 alignment and per-bot variant
-  validation in P2.
+  handling. Closing evidence added 2026-10-12: ADR 0036 aligned and the
+  per-bot card-variant capability check implemented.
 - **Capability granularity.** Declaring support per channel *and*
   account mode (not per provider) is the working assumption, motivated
   by WhatsApp native versus Cloud and Telegram bot versus user login.

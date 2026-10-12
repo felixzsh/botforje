@@ -87,10 +87,11 @@ func TestNewRejectsAmbiguousOrIncompleteDefinitions(t *testing.T) {
 
 func TestCapabilitiesReportDeclaredSupport(t *testing.T) {
 	caps := Capabilities{
-		Send:     []botflota.MessageKind{botflota.KindText},
-		Receive:  []botflota.MessageKind{botflota.KindText, botflota.KindImage},
-		Features: []string{FeatureHistoryImport},
-		Limits:   map[string]int{"text_characters": 4096},
+		Send:         []botflota.MessageKind{botflota.KindText},
+		Receive:      []botflota.MessageKind{botflota.KindText, botflota.KindImage},
+		Features:     []string{FeatureHistoryImport},
+		CardVariants: []spec.ContactEntryKind{spec.ContactPhone},
+		Limits:       map[string]int{"text_characters": 4096},
 	}
 	if !caps.SupportsSend(botflota.KindText) {
 		t.Error("text should be sendable")
@@ -103,6 +104,10 @@ func TestCapabilitiesReportDeclaredSupport(t *testing.T) {
 	}
 	if !caps.HasFeature(FeatureHistoryImport) || caps.HasFeature(FeaturePresence) {
 		t.Error("feature lookup is wrong")
+	}
+	if !caps.SupportsCardVariant(spec.ContactPhone) ||
+		caps.SupportsCardVariant(spec.ContactURL) {
+		t.Error("card variant lookup is wrong")
 	}
 	if limit, ok := caps.Limit("text_characters"); !ok || limit != 4096 {
 		t.Errorf("limit = %d, %v", limit, ok)

@@ -55,6 +55,12 @@ payload as typed content, and let each channel implement the subset it can.
   `contact`, and `poll`. A media step names exactly one source; the channel
   reads the bytes, so a large file or a secret stays out of the runtime
   context.
+- A `contact` step carries a neutral card: a display name plus reachability
+  entries whose `kind` (`phone`, `email`, `address`, `url`) is a payload label
+  shared code never parses. Each definition declares which entry kinds it can
+  compose, config validation refuses the rest for the consuming bot, and the
+  adapter builds its own native card object (vCard for WhatsApp) inside the
+  adapter (ADR 0052).
 - A stored message keeps its kind and visible text as derived columns for
   filtering and search, and its structured payload as `content` JSON, so a
   poll's options or a pin's coordinates survive the store.
@@ -74,6 +80,9 @@ payload as typed content, and let each channel implement the subset it can.
   the outbound record stay channel-free.
 - A second channel implements the content types it supports and rejects the
   rest with one sentinel error; no core type names a wire field.
+- A card variant one adapter cannot compose fails validation for the bots that
+  would send it and passes for the adapters that declare it, so no shared type
+  gains a telephone field to keep a card working (ADR 0052, ADR 0054).
 - Adding a kind means adding one content type, not one more optional field on
   every message.
 - Rows written before the `content` column existed decode from their kind and

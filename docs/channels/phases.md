@@ -177,11 +177,14 @@ WhatsApp stores for a fleet that has no WhatsApp bot.
   template half landed on 2026-10-12 (definition alias table, per-bot config
   check, engine translation at resolution); the peer-card half is the next
   item.
-- [ ] Implement the agreed neutral peer-card declaration/content shape,
+- [x] Implement the agreed neutral peer-card declaration/content shape,
   stored codec, and existing WhatsApp send/ingest mapping in the same
   slice. Do not change declarations in P2 while leaving engine/content
   consumers broken until P5; preserve supported cards and declare
-  limits.
+  limits. The neutral shape, codec, and WhatsApp vCard mapping already
+  existed; 2026-10-12 added the declared per-adapter variants and their
+  per-bot validation, and aligned ADR 0036. The retired telephone-shaped
+  declaration keeps no compatibility decoder.
 - [x] Inject the same pure declarations into CLI validation, startup,
   watcher loads, schema generation, and publication. Preserve origins,
   secret policy, round-tripping, logical versions, and atomic writes.

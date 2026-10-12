@@ -85,6 +85,10 @@ func Definition() channels.Definition {
 				channels.FeatureAddressBookImport,
 				channels.FeatureExternalReply,
 			},
+			CardVariants: []spec.ContactEntryKind{
+				spec.ContactPhone, spec.ContactEmail,
+				spec.ContactAddress, spec.ContactURL,
+			},
 		},
 		OptionsSchema:   optionsSchema(),
 		Decode:          decodeBot,

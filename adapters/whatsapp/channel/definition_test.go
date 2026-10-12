@@ -174,6 +174,13 @@ func TestDefinitionDeclaresItsCapabilities(t *testing.T) {
 			t.Errorf("feature %s is not declared", feature)
 		}
 	}
+	for _, kind := range []spec.ContactEntryKind{
+		spec.ContactPhone, spec.ContactEmail, spec.ContactAddress, spec.ContactURL,
+	} {
+		if !def.Capabilities.SupportsCardVariant(kind) {
+			t.Errorf("card variant %s is not declared", kind)
+		}
+	}
 	if def.OptionsSchema == nil {
 		t.Fatal("options schema is missing")
 	}
