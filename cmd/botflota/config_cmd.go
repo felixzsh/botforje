@@ -70,7 +70,11 @@ func initConfig(path string, force bool) error {
 			}
 		}
 	}
-	schema, err := config.JSONSchema()
+	catalog, err := pureCatalog()
+	if err != nil {
+		return fmt.Errorf("build channel catalog: %w", err)
+	}
+	schema, err := config.JSONSchema(catalog)
 	if err != nil {
 		return fmt.Errorf("generate schema: %w", err)
 	}
@@ -142,7 +146,12 @@ func runValidate(args []string) int {
 		return 1
 	}
 
-	if errs := config.Validate(cfg); len(errs) > 0 {
+	catalog, err := pureCatalog()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if errs := config.Validate(cfg, catalog); len(errs) > 0 {
 		if *cmd.json {
 			printJSON(errs)
 		} else {
@@ -167,7 +176,12 @@ func runSchema(args []string) int {
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
-	data, err := config.JSONSchema()
+	catalog, err := pureCatalog()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	data, err := config.JSONSchema(catalog)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -15,7 +15,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 			Scopes: map[string]spec.Scope{
 				"support": {Bots: map[string]spec.Bot{
 					"demo": {Graph: "menu", Settings: &spec.BotSettings{
-						ReplyDelay: 900,
+						QueueDelay: 900,
 					}},
 				}},
 			},
@@ -53,7 +53,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 			})
 		}, nil},
 		{"channel settings", func(c *Config) {
-			botSettings(c, func(s *spec.BotSettings) { s.ReplyDelay = 100 })
+			botSettings(c, func(s *spec.BotSettings) { s.QueueDelay = 100 })
 		}, []string{
 			`channel settings of bot "demo" in scope "support"`,
 		}},

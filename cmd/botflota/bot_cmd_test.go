@@ -11,28 +11,27 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"github.com/felixzsh/botflota/config"
-	"github.com/felixzsh/botflota/spec"
 )
 
 // TestPrintPairImport covers the result `bot pair` answers with (ADR 0038):
 // a switch that is off prints no line at all.
 func TestPrintPairImport(t *testing.T) {
-	on, off := true, false
-	settings := func(history, contacts *bool) *spec.BotSettings {
-		return &spec.BotSettings{HistorySync: history, ImportContacts: contacts}
+	options := func(history, contacts bool) channel.BotOptions {
+		return channel.BotOptions{History: history, ImportContacts: contacts}
 	}
 	cases := []struct {
-		name     string
-		settings *spec.BotSettings
-		result   whatsapp.PairResult
-		want     []string
-		absent   []string
+		name    string
+		options channel.BotOptions
+		result  whatsapp.PairResult
+		want    []string
+		absent  []string
 	}{
 		{
-			name:     "history and contacts",
-			settings: settings(&on, &on),
+			name:    "history and contacts",
+			options: options(true, true),
 			result: whatsapp.PairResult{
 				History: ingest.ImportTotals{
 					Chunks: 706, Conversations: 184, Imported: 2727,
@@ -47,24 +46,24 @@ func TestPrintPairImport(t *testing.T) {
 			},
 		},
 		{
-			name:     "nothing arrived",
-			settings: settings(nil, nil),
-			result:   whatsapp.PairResult{},
-			want:     []string{"history: nothing arrived"},
-			absent:   []string{"address book:"},
+			name:    "nothing arrived",
+			options: options(true, false),
+			result:  whatsapp.PairResult{},
+			want:    []string{"history: nothing arrived"},
+			absent:  []string{"address book:"},
 		},
 		{
-			name:     "history disabled",
-			settings: settings(&off, &on),
-			result:   whatsapp.PairResult{AddressBook: 5},
-			want:     []string{"address book: 5 imported"},
-			absent:   []string{"history:"},
+			name:    "history disabled",
+			options: options(false, true),
+			result:  whatsapp.PairResult{AddressBook: 5},
+			want:    []string{"address book: 5 imported"},
+			absent:  []string{"history:"},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buffer bytes.Buffer
-			printPairImport(&buffer, tc.settings, tc.result)
+			printPairImport(&buffer, tc.options, tc.result)
 			out := buffer.String()
 			for _, want := range tc.want {
 				if !strings.Contains(out, want) {
@@ -151,9 +150,8 @@ func TestPairThroughAPI(t *testing.T) {
 	cfg := &config.Config{DataDir: t.TempDir()}
 
 	var out bytes.Buffer
-	importContacts := true
-	settings := &spec.BotSettings{ImportContacts: &importContacts}
-	code := pairThroughAPI(&out, cfg, "dev", "alpha", settings, true, false)
+	options := channel.BotOptions{History: true, ImportContacts: true}
+	code := pairThroughAPI(&out, cfg, "dev", "alpha", options, true, false)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -189,7 +187,7 @@ func TestPairThroughAPIReportsAPairedBot(t *testing.T) {
 
 	var out bytes.Buffer
 	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", nil, false, false)
+		"dev", "alpha", channel.BotOptions{}, false, false)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -289,7 +287,7 @@ func TestPairThroughAPIForceReplacesTheLink(t *testing.T) {
 
 	var out bytes.Buffer
 	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", nil, false, true)
+		"dev", "alpha", channel.BotOptions{}, false, true)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -334,7 +332,7 @@ func TestPairThroughAPIForceRemovesResidualLink(t *testing.T) {
 
 	var out bytes.Buffer
 	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", nil, false, true)
+		"dev", "alpha", channel.BotOptions{}, false, true)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -374,7 +372,7 @@ func TestPairThroughAPIForceWithoutAnAccountSkipsTheDelete(t *testing.T) {
 
 	var out bytes.Buffer
 	code := pairThroughAPI(&out, &config.Config{DataDir: t.TempDir()},
-		"dev", "alpha", nil, false, true)
+		"dev", "alpha", channel.BotOptions{}, false, true)
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}

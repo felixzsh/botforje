@@ -675,15 +675,15 @@ func buildFleetWithStore(
 		DefaultTimeout: time.Minute,
 		Now:            func() time.Time { return t0 },
 		Log:            log,
-		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(_, bot string, _ any) (botflota.MessageChannel, error) {
 			channel := newFakeChannel()
-			if spec.Name == blocking {
+			if bot == blocking {
 				channel.release = make(chan struct{})
 				channel.entered = make(chan struct{})
 			}
-			channels[spec.Name] = channel
+			channels[bot] = channel
 			return channel, nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -697,7 +697,7 @@ func loadFleetConfig(t *testing.T) *config.Config {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if errs := config.Validate(cfg); len(errs) != 0 {
+	if errs := config.Validate(cfg, fakeCatalog(nil)); len(errs) != 0 {
 		t.Fatalf("config invalid: %v", errs)
 	}
 	return cfg
@@ -727,8 +727,10 @@ func TestHistorySyncRoutesToTheChannelThatSupportsIt(t *testing.T) {
 	channel := &syncChannel{fakeChannel: *newFakeChannel()}
 	runner, err := New(cfg, Options{
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
-		Outbox:     store,
-		NewChannel: func(BotSpec) (botflota.MessageChannel, error) { return channel, nil },
+		Outbox: store,
+		Catalog: fakeCatalog(func(string, string, any) (botflota.MessageChannel, error) {
+			return channel, nil
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -764,7 +766,7 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	if errs := config.Validate(cfg); len(errs) != 0 {
+	if errs := config.Validate(cfg, fakeCatalog(nil)); len(errs) != 0 {
 		t.Fatalf("config invalid: %v", errs)
 	}
 	var created []string
@@ -777,10 +779,10 @@ func TestSkipOmitsBotBeforeChannelCreation(t *testing.T) {
 		Turn:     store,
 		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
-		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
-			created = append(created, spec.Name)
+		Catalog: fakeCatalog(func(_, bot string, _ any) (botflota.MessageChannel, error) {
+			created = append(created, bot)
 			return newFakeChannel(), nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -810,9 +812,9 @@ func TestStartBotJoinsTheRunningFleet(t *testing.T) {
 		Turn:     store,
 		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
-		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(string, string, any) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -871,9 +873,9 @@ func TestEmptyFleetLivesUntilTheInstanceStops(t *testing.T) {
 		Turn:     store,
 		Outbox:   store,
 		Skip:     func(_, _ string) bool { return true },
-		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(string, string, any) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -925,9 +927,9 @@ func TestStoppingTheLastBotKeepsTheFleetRunning(t *testing.T) {
 		Turn:     store,
 		Outbox:   store,
 		Skip:     func(_, bot string) bool { return bot == "beta" },
-		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(string, string, any) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -1056,11 +1058,11 @@ func TestApplyConfigLeavesOtherScopeRuntimeUntouched(t *testing.T) {
 		Store: store, Chats: store, Peers: store, Messages: store,
 		Turn: store, Outbox: store, DefaultTimeout: time.Minute,
 		Now: func() time.Time { return t0 },
-		NewChannel: func(bot BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(scope, bot string, _ any) (botflota.MessageChannel, error) {
 			channel := newFakeChannel()
-			channels[bot.Scope+"/"+bot.Name] = channel
+			channels[scope+"/"+bot] = channel
 			return channel, nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -1128,9 +1130,9 @@ func TestNewSkipsBotWithSessionAtRemovedNode(t *testing.T) {
 	runner, err := New(cfg, Options{
 		Store: store, Chats: store, Peers: store, Messages: store,
 		Turn: store, Outbox: store,
-		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(string, string, any) (botflota.MessageChannel, error) {
 			return newFakeChannel(), nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

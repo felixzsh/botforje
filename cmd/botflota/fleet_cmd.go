@@ -19,7 +19,6 @@ import (
 	"github.com/felixzsh/botflota/api"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
-	"github.com/felixzsh/botflota/spec"
 	"github.com/felixzsh/botflota/webhook"
 )
 
@@ -72,8 +71,15 @@ func runFleet(args []string) int {
 	// change is valid but not yet active (ADR 0009).
 	saved := config.NewSource(cfg)
 	// tree writes scope configuration back into the files, and holds them still
-	// while they are read, so the watcher and a publication never overlap.
-	tree, err := config.NewWriter(cfg.SourcePath())
+	// while they are read, so the watcher and a publication never overlap. The
+	// writer validates candidates against the pure catalog: publications are
+	// config-only and perform no channel I/O (ADR 0054).
+	pure, err := pureCatalog()
+	if err != nil {
+		logger.Error("build channel catalog", "error", err)
+		return 1
+	}
+	tree, err := config.NewWriter(cfg.SourcePath(), pure)
 	if err != nil {
 		logger.Error("open config writer", "error", err)
 		return 1
@@ -94,6 +100,20 @@ func runFleet(args []string) int {
 	if err := whatsapp.ValidateAccounts(ctx, devices, db.Bindings(),
 		db.Pairings()); err != nil {
 		logger.Error("validate pairings", "error", err)
+		return 1
+	}
+	catalog, err := runtimeCatalog(channel.Deps{
+		Devices:      devices,
+		Bindings:     db.Bindings(),
+		Pairings:     db.Pairings(),
+		Peers:        db.Peers(),
+		Chats:        db.Chats(),
+		Messages:     db.Messages(),
+		Directory:    db.Directory(),
+		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
+	})
+	if err != nil {
+		logger.Error("build channel catalog", "error", err)
 		return 1
 	}
 	skipped := make(map[string]map[string]bool)
@@ -133,24 +153,7 @@ func runFleet(args []string) int {
 		},
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,
-		NewChannel: func(botSpec fleet.BotSpec) (botflota.MessageChannel, error) {
-			return channel.New(channel.Options{
-				Scope:          botSpec.Scope,
-				Bot:            botSpec.Name,
-				Devices:        devices,
-				Bindings:       db.Bindings(),
-				Pairings:       db.Pairings(),
-				Peers:          db.Peers(),
-				Chats:          db.Chats(),
-				Messages:       db.Messages(),
-				History:        historyEnabled(&botSpec.Settings),
-				Directory:      db.Directory(),
-				ImportContacts: contactsEnabled(&botSpec.Settings),
-				Settings:       whatsappSettings(botSpec.Settings),
-				Log:            logger.With("scope", botSpec.Scope, "bot", botSpec.Name),
-				DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
-			})
-		},
+		Catalog:        catalog,
 	})
 	if err != nil {
 		logger.Error("build fleet", "error", err)
@@ -181,7 +184,7 @@ func runFleet(args []string) int {
 	}()
 	// The watcher reads the same tree the writer replaces, so both see one
 	// document rather than two paths that could drift.
-	go watchConfig(ctx, tree.MainPath(), source, saved, tree, runner, logger)
+	go watchConfig(ctx, tree.MainPath(), source, saved, tree, runner, catalog, logger)
 
 	if cfg.Port == 0 {
 		if *cmd.newOwnerToken {
@@ -365,16 +368,6 @@ func serveAPI(
 	}, nil
 }
 
-func whatsappSettings(settings spec.BotSettings) channel.Settings {
-	return channel.Settings{
-		ReadReceipts:     settings.ReadReceipts != nil && *settings.ReadReceipts,
-		ReadReceiptDelay: time.Duration(settings.ReadReceiptDelay) * time.Millisecond,
-		ReplyDelay:       time.Duration(settings.ReplyDelay) * time.Millisecond,
-		SimulateTyping:   settings.SimulateTyping != nil && *settings.SimulateTyping,
-		Jitter:           time.Duration(settings.Jitter) * time.Millisecond,
-	}
-}
-
 // pairingManager is the API path of `bot pair`: the session it runs resolves
 // the bot's settings against the current config snapshot, so a reload reaches
 // it too, and starts the bot when WhatsApp accepts the scan (ADR 0025).
@@ -394,6 +387,10 @@ func pairingManager(
 				return whatsapp.PairOptions{}, fmt.Errorf(
 					"bot %q not found in scope %q", botName, scope)
 			}
+			options, err := whatsappOptions(bot)
+			if err != nil {
+				return whatsapp.PairOptions{}, err
+			}
 			return whatsapp.PairOptions{
 				Scope:          scope,
 				Bot:            botName,
@@ -403,10 +400,10 @@ func pairingManager(
 				Peers:          db.Peers(),
 				Chats:          db.Chats(),
 				Messages:       db.Messages(),
-				History:        historyEnabled(bot.Settings),
+				History:        options.History,
 				FullHistory:    fullHistory,
 				Directory:      db.Directory(),
-				ImportContacts: contactsEnabled(bot.Settings),
+				ImportContacts: options.ImportContacts,
 				Outbox:         db.Outbox(),
 				Log:            logger,
 				DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),

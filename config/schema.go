@@ -13,11 +13,14 @@ import (
 	"strings"
 
 	"github.com/invopop/jsonschema"
+
+	"github.com/felixzsh/botflota/channels"
 )
 
-// JSONSchema generates the editor schema from the Go types (ADR 0007). The
-// output is written to config.schema.json and must not be hand-edited.
-func JSONSchema() ([]byte, error) {
+// JSONSchema generates the editor schema from the Go types and the installed
+// channel definitions (ADR 0007, ADR 0054). The output is written to
+// config.schema.json and must not be hand-edited.
+func JSONSchema(catalog *channels.Catalog) ([]byte, error) {
 	reflector := &jsonschema.Reflector{
 		Anonymous:                 true,
 		AllowAdditionalProperties: false,
@@ -26,13 +29,86 @@ func JSONSchema() ([]byte, error) {
 	schema := reflector.Reflect(&Config{})
 	schema.Version = "https://json-schema.org/draft/2020-12/schema"
 
+	root, err := schemaMap(schema)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyChannelCatalog(root, catalog); err != nil {
+		return nil, err
+	}
+
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(schema); err != nil {
+	if err := enc.Encode(root); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func schemaMap(schema *jsonschema.Schema) (map[string]any, error) {
+	encoded, err := json.Marshal(schema)
+	if err != nil {
+		return nil, err
+	}
+	var root map[string]any
+	if err := json.Unmarshal(encoded, &root); err != nil {
+		return nil, err
+	}
+	return root, nil
+}
+
+// applyChannelCatalog replaces the channel selector's schema with one branch
+// per installed provider and account mode, so an editor validates options
+// against the implementation they belong to and rejects a selection that is
+// not installed (ADR 0054).
+func applyChannelCatalog(root map[string]any, catalog *channels.Catalog) error {
+	defs, _ := root["$defs"].(map[string]any)
+	if defs == nil {
+		return errors.New("config: generated schema has no $defs")
+	}
+	var branches []any
+	var legacy []string
+	for _, def := range catalog.Definitions() {
+		legacy = append(legacy, def.LegacySettings...)
+		options, err := schemaMap(def.OptionsSchema)
+		if err != nil {
+			return fmt.Errorf("config: channel %s options schema: %w", def.Provider, err)
+		}
+		if options == nil {
+			options = map[string]any{"type": "object"}
+		}
+		delete(options, "$schema")
+		for _, mode := range def.Modes {
+			branches = append(branches, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"provider": map[string]any{"const": def.Provider},
+					"mode":     map[string]any{"const": mode},
+					"options":  options,
+				},
+				"required":             []any{"provider", "mode"},
+				"additionalProperties": false,
+			})
+		}
+	}
+	if len(branches) == 0 {
+		return errors.New("config: no channel definition is installed")
+	}
+	defs["Channel"] = map[string]any{"oneOf": branches}
+
+	// Legacy adapter settings stay valid for the editor while the transition
+	// lasts; the runtime validator still rejects one a bot's own definition
+	// does not declare (ADR 0054).
+	settings, _ := defs["BotSettings"].(map[string]any)
+	if properties, ok := settings["properties"].(map[string]any); ok {
+		for _, key := range legacy {
+			if _, exists := properties[key]; !exists {
+				properties[key] = map[string]any{}
+			}
+		}
+	}
+	return nil
 }
 
 // addGoComments loads the doc comments of this package and spec. The

@@ -22,9 +22,9 @@ func buildFleetWithChannel(
 		Store: store, Chats: store, Peers: store, Messages: store,
 		Turn: store, Outbox: store,
 		Skip: func(_, bot string) bool { return bot == "beta" },
-		NewChannel: func(BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(string, string, any) (botflota.MessageChannel, error) {
 			return channel, nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

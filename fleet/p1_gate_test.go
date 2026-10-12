@@ -53,11 +53,11 @@ func TestReopenedFleetSendsToThePersistedConversation(t *testing.T) {
 		Store: reopened.Sessions(), Chats: reopened.Chats(), Peers: reopened.Peers(),
 		Messages: reopened.Messages(), Turn: reopened.Turns(), Outbox: reopened.Outbox(),
 		DefaultTimeout: time.Minute, Now: func() time.Time { return t0 },
-		NewChannel: func(spec BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(_, bot string, _ any) (botflota.MessageChannel, error) {
 			channel := newFakeChannel()
-			channels[spec.Name] = channel
+			channels[bot] = channel
 			return channel, nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

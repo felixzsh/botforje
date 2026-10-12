@@ -113,7 +113,7 @@ func copyScope(scope spec.Scope) spec.Scope {
 
 func TestWriterKeepsEachDefinitionInItsFile(t *testing.T) {
 	main := writerTree(t)
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestWriterKeepsEachDefinitionInItsFile(t *testing.T) {
 
 func TestWriterDeletesWhatTheScopeNoLongerHas(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	next := copyScope(current.Scopes["support"])
@@ -190,7 +190,7 @@ func TestWriterDeletesWhatTheScopeNoLongerHas(t *testing.T) {
 
 func TestWriterEditsADisplayNameInPlace(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	next := copyScope(current.Scopes["support"])
@@ -214,7 +214,7 @@ func TestWriterEditsADisplayNameInPlace(t *testing.T) {
 
 func TestWriterPublishesSeveralScopesAtOnce(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	support := current.Scopes["support"]
@@ -243,7 +243,7 @@ func TestWriterPublishesSeveralScopesAtOnce(t *testing.T) {
 
 func TestWriterRejectsAStaleVersion(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	next := copyScope(current.Scopes["support"])
@@ -268,7 +268,7 @@ func TestWriterRejectsAStaleVersion(t *testing.T) {
 
 func TestWriterRefusesToCreateAScope(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	_, err := writer.Publish(context.Background(), Publication{
 		Scopes: map[string]ScopeWrite{
 			"nuevo": {Version: "v-any", Scope: spec.Scope{}},
@@ -281,7 +281,7 @@ func TestWriterRefusesToCreateAScope(t *testing.T) {
 
 func TestWriterValidatesBeforeWriting(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 	before := string(readFile(t, main))
 
@@ -308,7 +308,7 @@ func TestWriterValidatesBeforeWriting(t *testing.T) {
 
 func TestWriterChangesNothingForAnIdenticalScope(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 	before := string(readFile(t, main))
 
@@ -333,7 +333,7 @@ func TestWriterChangesNothingForAnIdenticalScope(t *testing.T) {
 
 func TestWriterRecoversAnInterruptedPublication(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	next := copyScope(current.Scopes["support"])
@@ -391,7 +391,7 @@ func interruptedPublication(
 	t *testing.T, main, scope string, next spec.Scope,
 ) (*journal, map[string]string) {
 	t.Helper()
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
@@ -465,7 +465,7 @@ func TestRecoverRefusesAMissingBackup(t *testing.T) {
 
 func TestWriterDeletesADefinitionWhoseFileHoldsNothingElse(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	// scopes/support.yml holds the scope's action and nothing else, so an
@@ -490,7 +490,7 @@ func TestWriterDeletesADefinitionWhoseFileHoldsNothingElse(t *testing.T) {
 
 func TestWriterClearsAScopeItEmpties(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	if _, err := writer.Publish(context.Background(), Publication{
@@ -522,7 +522,7 @@ func TestWriterRoundTripKeepsTheDocumentTheSame(t *testing.T) {
 	// the one that went in. If it is not, a reload sees a change nobody made:
 	// an empty collection written where the file had none loads as a non-nil
 	// map, and the scope no longer compares equal to the running one.
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
@@ -552,7 +552,7 @@ func TestWriterRoundTripKeepsTheDocumentTheSame(t *testing.T) {
 
 func TestWriterKeepsASavedCredentialIntact(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 	current := loadWriterTree(t, main)
 
 	next := copyScope(current.Scopes["support"])
@@ -576,7 +576,7 @@ func TestWriterKeepsASavedCredentialIntact(t *testing.T) {
 
 func TestWriterSyncHoldsTheFilesStill(t *testing.T) {
 	main := writerTree(t)
-	writer, _ := NewWriter(main)
+	writer, _ := NewWriter(main, testCatalog(t))
 
 	unlock, err := writer.Sync(context.Background())
 	if err != nil {

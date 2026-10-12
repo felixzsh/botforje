@@ -44,7 +44,7 @@ func mustLoad(t *testing.T, path string) *config.Config {
 
 func TestReloadOutcomeAppliesAndListsItsFiles(t *testing.T) {
 	path := writeConfig(t, reloadConfig)
-	next, reasons, err := reloadOutcome(path, mustLoad(t, path))
+	next, reasons, err := reloadOutcome(path, mustLoad(t, path), testCatalog(t))
 	if err != nil || len(reasons) > 0 {
 		t.Fatalf("outcome = %v, %v, want an applied config", reasons, err)
 	}
@@ -64,7 +64,7 @@ func TestReloadOutcomeKeepsCurrentOnInvalidConfig(t *testing.T) {
 	if err := os.WriteFile(path, []byte(invalid), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	next, reasons, err := reloadOutcome(path, current)
+	next, reasons, err := reloadOutcome(path, current, testCatalog(t))
 	if err == nil {
 		t.Fatal("an unknown graph must fail validation")
 	}
@@ -80,7 +80,7 @@ func TestReloadOutcomeReportsRestartRequired(t *testing.T) {
 	if err := os.WriteFile(path, []byte(restarted), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	next, reasons, err := reloadOutcome(path, current)
+	next, reasons, err := reloadOutcome(path, current, testCatalog(t))
 	if err != nil {
 		t.Fatalf("outcome: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestReloadOutcomeAppliesASafeChange(t *testing.T) {
 	if err := os.WriteFile(path, []byte(safe), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	next, reasons, err := reloadOutcome(path, current)
+	next, reasons, err := reloadOutcome(path, current, testCatalog(t))
 	if err != nil {
 		t.Fatalf("outcome: %v", err)
 	}

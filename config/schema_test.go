@@ -10,7 +10,7 @@ func TestSchema(t *testing.T) {
 	// Regeneration ignores the working directory: the doc comments must
 	// resolve from anywhere, not only from the module root.
 	t.Chdir(t.TempDir())
-	data, err := JSONSchema()
+	data, err := JSONSchema(testCatalog(t))
 	if err != nil {
 		t.Fatalf("schema: %v", err)
 	}

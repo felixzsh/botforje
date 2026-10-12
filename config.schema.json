@@ -1,21 +1,21 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$ref": "#/$defs/Config",
   "$defs": {
     "Action": {
+      "additionalProperties": false,
+      "description": "Action is a reusable pipeline of steps, optionally exposed as a tool.",
       "properties": {
         "display_name": {
-          "type": "string",
-          "description": "DisplayName is an optional label for people-facing interfaces."
+          "description": "DisplayName is an optional label for people-facing interfaces.",
+          "type": "string"
+        },
+        "guards": {
+          "$ref": "#/$defs/Guards"
         },
         "inputs": {
           "additionalProperties": {
             "$ref": "#/$defs/Input"
           },
           "type": "object"
-        },
-        "guards": {
-          "$ref": "#/$defs/Guards"
         },
         "steps": {
           "items": {
@@ -24,18 +24,22 @@
           "type": "array"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "steps"
       ],
-      "description": "Action is a reusable pipeline of steps, optionally exposed as a tool."
+      "type": "object"
     },
     "Bot": {
+      "additionalProperties": false,
+      "description": "Bot binds one channel account to a graph, an optional llm, and settings.",
       "properties": {
+        "channel": {
+          "$ref": "#/$defs/Channel",
+          "description": "Channel selects the installed implementation this bot runs on; absent\nmeans the documented WhatsApp native default."
+        },
         "display_name": {
-          "type": "string",
-          "description": "DisplayName is an optional label for people-facing interfaces."
+          "description": "DisplayName is an optional label for people-facing interfaces.",
+          "type": "string"
         },
         "graph": {
           "type": "string"
@@ -47,66 +51,52 @@
           "$ref": "#/$defs/BotSettings"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "graph"
       ],
-      "description": "Bot binds one WhatsApp account to a graph, an optional llm, and settings."
+      "type": "object"
     },
     "BotSettings": {
+      "additionalProperties": false,
+      "description": "BotSettings controls the settings every channel shares.",
       "properties": {
-        "read_receipts": {
-          "type": "boolean"
-        },
-        "read_receipt_delay": {
-          "type": "integer"
-        },
-        "reply_delay": {
-          "type": "integer"
-        },
-        "simulate_typing": {
-          "type": "boolean"
-        },
-        "queue_delay": {
-          "type": "integer"
-        },
-        "jitter": {
-          "type": "integer"
-        },
-        "max_messages_per_minute": {
-          "type": "integer"
-        },
         "allowed_peers": {
           "items": {
             "type": "string"
           },
           "type": "array"
         },
+        "external_reply_pause": {
+          "description": "ExternalReplyPause is the milliseconds one chat stays handed to a human\nafter a message leaves the account without Botflota sending it. It is a\nfleet policy, so it stays shared; observing the external reply at all is\nthe channel's declared capability and a channel without it refuses the\nsetting.",
+          "type": "integer"
+        },
+        "history_sync": {},
         "ignored_peers": {
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "history_sync": {
-          "type": "boolean",
-          "description": "HistorySync imports the messages WhatsApp delivers when the account is\nlinked. It defaults to true; false stores none of that backlog."
+        "import_contacts": {},
+        "jitter": {
+          "type": "integer"
         },
-        "import_contacts": {
-          "type": "boolean",
-          "description": "ImportContacts copies the linked account's address book into the\ninstance's own directory, keyed by (scope, bot, peer identity). It\ndefaults to false: the book may hold people this account never wrote to,\nand it can overlap with the address book of a personal account on the\nsame phone."
+        "max_messages_per_minute": {
+          "type": "integer"
         },
-        "external_reply_pause": {
-          "type": "integer",
-          "description": "ExternalReplyPause is the milliseconds one chat stays handed to a human\nafter a message leaves the linked account without Botflota sending it.\nZero or absent uses the 15-minute default; every chat of the bot shares\nthe value."
-        }
+        "queue_delay": {
+          "type": "integer"
+        },
+        "read_receipt_delay": {},
+        "read_receipts": {},
+        "reply_delay": {},
+        "simulate_typing": {}
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "BotSettings controls pacing, presence, filtering, and history import."
+      "type": "object"
     },
     "Bounds": {
+      "additionalProperties": false,
+      "description": "Bounds limits how many tools a message may call and how long they may take.",
       "properties": {
         "max_tools_per_message": {
           "type": "integer"
@@ -115,11 +105,61 @@
           "type": "integer"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Bounds limits how many tools a message may call and how long they may take."
+      "type": "object"
+    },
+    "Channel": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "native"
+            },
+            "options": {
+              "additionalProperties": false,
+              "properties": {
+                "external_reply_pause": {
+                  "type": "integer"
+                },
+                "history_sync": {
+                  "type": "boolean"
+                },
+                "import_contacts": {
+                  "type": "boolean"
+                },
+                "read_receipt_delay": {
+                  "type": "integer"
+                },
+                "read_receipts": {
+                  "type": "boolean"
+                },
+                "reply_delay": {
+                  "type": "integer"
+                },
+                "simulate_typing": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "provider": {
+              "const": "whatsapp"
+            }
+          },
+          "required": [
+            "provider",
+            "mode"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ChannelOptions": {
+      "type": "object"
     },
     "Config": {
+      "additionalProperties": false,
+      "description": "Config is the root document: instance settings plus the scopes it runs.",
       "properties": {
         "$schema": {
           "type": "string"
@@ -127,39 +167,19 @@
         "address": {
           "type": "string"
         },
-        "port": {
-          "type": "integer"
-        },
-        "log_level": {
-          "type": "string"
-        },
-        "log_level_deps": {
+        "data_dir": {
           "type": "string"
         },
         "default_timeout": {
           "type": "integer"
         },
-        "data_dir": {
+        "device_name": {
+          "description": "DeviceName is the companion name WhatsApp shows in Linked devices. It is\nsent only when a bot registers a new pairing; an existing link keeps the\nname it was registered with. Empty uses the built-in default.",
           "type": "string"
         },
-        "device_name": {
-          "type": "string",
-          "description": "DeviceName is the companion name WhatsApp shows in Linked devices. It is\nsent only when a bot registers a new pairing; an existing link keeps the\nname it was registered with. Empty uses the built-in default."
-        },
-        "rate_limit": {
-          "$ref": "#/$defs/RateLimitSettings",
-          "description": "RateLimit bounds the API per fixed minute; an omitted block uses the\nbuilt-in budgets, and changing it requires a restart."
-        },
         "exclusive_scopes": {
-          "type": "boolean",
-          "description": "ExclusiveScopes makes a scope grant exclusive: minting an access token\nthen refuses a scope another active token already holds, and startup\nrefuses to run while a scope is already granted to several active\ntokens, so a scope belongs to at most one active token. The default\nfalse lets any number of tokens share a scope; the owner token covers\nevery scope either way. Changing it requires a restart."
-        },
-        "webhooks": {
-          "items": {
-            "$ref": "#/$defs/WebhookSettings"
-          },
-          "type": "array",
-          "description": "Webhooks are the outbound event deliveries this instance sends; see\nWebhookSettings."
+          "description": "ExclusiveScopes makes a scope grant exclusive: minting an access token\nthen refuses a scope another active token already holds, and startup\nrefuses to run while a scope is already granted to several active\ntokens, so a scope belongs to at most one active token. The default\nfalse lets any number of tokens share a scope; the owner token covers\nevery scope either way. Changing it requires a restart.",
+          "type": "boolean"
         },
         "include": {
           "items": {
@@ -167,30 +187,50 @@
           },
           "type": "array"
         },
+        "log_level": {
+          "type": "string"
+        },
+        "log_level_deps": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "rate_limit": {
+          "$ref": "#/$defs/RateLimitSettings",
+          "description": "RateLimit bounds the API per fixed minute; an omitted block uses the\nbuilt-in budgets, and changing it requires a restart."
+        },
         "scopes": {
           "additionalProperties": {
             "$ref": "#/$defs/Scope"
           },
           "type": "object"
+        },
+        "webhooks": {
+          "description": "Webhooks are the outbound event deliveries this instance sends; see\nWebhookSettings.",
+          "items": {
+            "$ref": "#/$defs/WebhookSettings"
+          },
+          "type": "array"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "scopes"
       ],
-      "description": "Config is the root document: instance settings plus the scopes it runs."
+      "type": "object"
     },
     "Contact": {
+      "additionalProperties": false,
+      "description": "Contact shares one contact card: a display name plus reachability entries.",
       "properties": {
-        "name": {
-          "type": "string"
-        },
         "entries": {
           "items": {
             "$ref": "#/$defs/ContactEntry"
           },
           "type": "array"
+        },
+        "name": {
+          "type": "string"
         },
         "note": {
           "type": "string"
@@ -199,35 +239,35 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "name",
         "entries"
       ],
-      "description": "Contact shares one contact card: a display name plus reachability entries."
+      "type": "object"
     },
     "ContactEntry": {
+      "additionalProperties": false,
+      "description": "ContactEntry is one reachability entry on a shared card.",
       "properties": {
         "kind": {
           "type": "string"
         },
-        "value": {
+        "label": {
           "type": "string"
         },
-        "label": {
+        "value": {
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "kind",
         "value"
       ],
-      "description": "ContactEntry is one reachability entry on a shared card."
+      "type": "object"
     },
     "Cooldown": {
+      "additionalProperties": false,
+      "description": "Cooldown blocks the same contact for `duration` seconds, then runs the `on_blocked` steps.",
       "properties": {
         "duration": {
           "type": "integer"
@@ -239,15 +279,18 @@
           "type": "array"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "duration"
       ],
-      "description": "Cooldown blocks the same contact for `duration` seconds, then runs the `on_blocked` steps."
+      "type": "object"
     },
     "Edge": {
+      "additionalProperties": false,
+      "description": "Edge is a transition.",
       "properties": {
+        "goto": {
+          "type": "string"
+        },
         "intent": {
           "type": "string"
         },
@@ -256,34 +299,22 @@
             "type": "string"
           },
           "type": "array"
-        },
-        "goto": {
-          "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "goto"
       ],
-      "description": "Edge is a transition."
+      "type": "object"
     },
     "Graph": {
+      "additionalProperties": false,
+      "description": "Graph is a conversation state machine.",
       "properties": {
         "display_name": {
-          "type": "string",
-          "description": "DisplayName is an optional label for people-facing interfaces."
-        },
-        "root": {
+          "description": "DisplayName is an optional label for people-facing interfaces.",
           "type": "string"
-        },
-        "timeout": {
-          "type": "integer"
         },
         "fallback": {
-          "type": "string"
-        },
-        "routing": {
           "type": "string"
         },
         "initial_context": {
@@ -294,17 +325,26 @@
             "$ref": "#/$defs/Node"
           },
           "type": "object"
+        },
+        "root": {
+          "type": "string"
+        },
+        "routing": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "root",
         "nodes"
       ],
-      "description": "Graph is a conversation state machine."
+      "type": "object"
     },
     "Guards": {
+      "additionalProperties": false,
+      "description": "Guards limit how often an action runs.",
       "properties": {
         "cooldown": {
           "$ref": "#/$defs/Cooldown"
@@ -313,68 +353,74 @@
           "$ref": "#/$defs/RateLimit"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Guards limit how often an action runs."
+      "type": "object"
     },
     "Input": {
+      "additionalProperties": false,
+      "description": "Input is a named, typed argument of a tool.",
       "properties": {
-        "type": {
+        "bind": {
           "type": "string"
-        },
-        "required": {
-          "type": "boolean"
         },
         "default": true,
         "description": {
           "type": "string"
         },
-        "bind": {
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Input is a named, typed argument of a tool."
+      "type": "object"
     },
     "LLM": {
+      "additionalProperties": false,
+      "description": "LLM is a named, scoped model profile a bot can reference.",
       "properties": {
-        "display_name": {
-          "type": "string",
-          "description": "DisplayName is an optional label for people-facing interfaces."
-        },
-        "provider": {
-          "type": "string"
-        },
-        "model": {
-          "type": "string"
-        },
         "api_key": {
           "$ref": "#/$defs/Secret"
         },
         "base_url": {
           "type": "string"
         },
-        "routing": {
+        "bounds": {
+          "$ref": "#/$defs/Bounds"
+        },
+        "display_name": {
+          "description": "DisplayName is an optional label for people-facing interfaces.",
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
           "type": "string"
         },
         "realization": {
           "type": "string"
         },
-        "bounds": {
-          "$ref": "#/$defs/Bounds"
+        "routing": {
+          "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "provider",
         "model"
       ],
-      "description": "LLM is a named, scoped model profile a bot can reference."
+      "type": "object"
     },
     "Location": {
+      "additionalProperties": false,
+      "description": "Location is a map pin.",
       "properties": {
+        "address": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
         "latitude": {
           "type": "number"
         },
@@ -384,56 +430,50 @@
         "name": {
           "type": "string"
         },
-        "address": {
-          "type": "string"
-        },
         "url": {
-          "type": "string"
-        },
-        "description": {
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "latitude",
         "longitude"
       ],
-      "description": "Location is a map pin."
+      "type": "object"
     },
     "Media": {
+      "additionalProperties": false,
+      "description": "Media declares an outbound attachment.",
       "properties": {
-        "kind": {
-          "type": "string"
-        },
-        "url": {
-          "type": "string"
-        },
-        "path": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
         "caption": {
+          "type": "string"
+        },
+        "kind": {
           "type": "string"
         },
         "mime": {
           "type": "string"
         },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
         "to": {
+          "type": "string"
+        },
+        "url": {
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "kind"
       ],
-      "description": "Media declares an outbound attachment."
+      "type": "object"
     },
     "Message": {
+      "additionalProperties": false,
+      "description": "Message is a reply: a fixed body, an LLM-realized reply, or both.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Text"
@@ -448,21 +488,27 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Message is a reply: a fixed body, an LLM-realized reply, or both."
+      "type": "object"
     },
     "Node": {
+      "additionalProperties": false,
+      "description": "Node is one state of a graph.",
       "properties": {
         "display_name": {
-          "type": "string",
-          "description": "DisplayName is an optional label for people-facing interfaces."
+          "description": "DisplayName is an optional label for people-facing interfaces.",
+          "type": "string"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/Edge"
+          },
+          "type": "array"
         },
         "goal": {
           "type": "string"
         },
-        "policy": {
-          "type": "string"
+        "initial_context": {
+          "type": "object"
         },
         "on_enter": {
           "items": {
@@ -476,36 +522,30 @@
           },
           "type": "array"
         },
-        "initial_context": {
-          "type": "object"
+        "policy": {
+          "type": "string"
         },
         "tools": {
           "items": {
             "type": "string"
           },
           "type": "array"
-        },
-        "edges": {
-          "items": {
-            "$ref": "#/$defs/Edge"
-          },
-          "type": "array"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Node is one state of a graph."
+      "type": "object"
     },
     "Poll": {
+      "additionalProperties": false,
+      "description": "Poll creates a poll.",
       "properties": {
-        "question": {
-          "type": "string"
-        },
         "options": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "question": {
+          "type": "string"
         },
         "selectable": {
           "type": "integer"
@@ -514,20 +554,17 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "question",
         "options"
       ],
-      "description": "Poll creates a poll."
+      "type": "object"
     },
     "RateLimit": {
+      "additionalProperties": false,
+      "description": "RateLimit allows at most `limit` runs per contact in `window` seconds and runs the `on_blocked` steps when the contact exceeds it.",
       "properties": {
         "limit": {
-          "type": "integer"
-        },
-        "window": {
           "type": "integer"
         },
         "on_blocked": {
@@ -535,17 +572,20 @@
             "$ref": "#/$defs/Step"
           },
           "type": "array"
+        },
+        "window": {
+          "type": "integer"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "limit",
         "window"
       ],
-      "description": "RateLimit allows at most `limit` runs per contact in `window` seconds and runs the `on_blocked` steps when the contact exceeds it."
+      "type": "object"
     },
     "RateLimitSettings": {
+      "additionalProperties": false,
+      "description": "RateLimitSettings are the API's per-minute request budgets.",
       "properties": {
         "credential_per_minute": {
           "type": "integer"
@@ -554,19 +594,13 @@
           "type": "integer"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "RateLimitSettings are the API's per-minute request budgets."
+      "type": "object"
     },
     "Request": {
+      "additionalProperties": false,
+      "description": "Request is an HTTP call whose result is addressable by its `name`.",
       "properties": {
-        "name": {
-          "type": "string"
-        },
-        "url": {
-          "type": "string"
-        },
-        "method": {
+        "body": {
           "type": "string"
         },
         "headers": {
@@ -575,45 +609,35 @@
           },
           "type": "object"
         },
-        "body": {
+        "method": {
           "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "retry": {
+          "type": "integer"
         },
         "timeout": {
           "type": "integer"
         },
-        "retry": {
-          "type": "integer"
+        "url": {
+          "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "name",
         "url"
       ],
-      "description": "Request is an HTTP call whose result is addressable by its `name`."
+      "type": "object"
     },
     "Scope": {
+      "additionalProperties": false,
+      "description": "Scope is an isolation namespace holding its own entities.",
       "properties": {
-        "display_name": {
-          "type": "string",
-          "description": "DisplayName is an optional label for people-facing interfaces."
-        },
-        "llms": {
-          "additionalProperties": {
-            "$ref": "#/$defs/LLM"
-          },
-          "type": "object"
-        },
         "actions": {
           "additionalProperties": {
             "$ref": "#/$defs/Action"
-          },
-          "type": "object"
-        },
-        "graphs": {
-          "additionalProperties": {
-            "$ref": "#/$defs/Graph"
           },
           "type": "object"
         },
@@ -622,22 +646,35 @@
             "$ref": "#/$defs/Bot"
           },
           "type": "object"
+        },
+        "display_name": {
+          "description": "DisplayName is an optional label for people-facing interfaces.",
+          "type": "string"
+        },
+        "graphs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Graph"
+          },
+          "type": "object"
+        },
+        "llms": {
+          "additionalProperties": {
+            "$ref": "#/$defs/LLM"
+          },
+          "type": "object"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Scope is an isolation namespace holding its own entities."
+      "type": "object"
     },
     "Secret": {
       "type": "string"
     },
     "Step": {
+      "additionalProperties": false,
+      "description": "Step is exactly one of message, request, location, media, contact, or poll.",
       "properties": {
-        "message": {
-          "$ref": "#/$defs/Message"
-        },
-        "request": {
-          "$ref": "#/$defs/Request"
+        "contact": {
+          "$ref": "#/$defs/Contact"
         },
         "location": {
           "$ref": "#/$defs/Location"
@@ -645,16 +682,17 @@
         "media": {
           "$ref": "#/$defs/Media"
         },
-        "contact": {
-          "$ref": "#/$defs/Contact"
+        "message": {
+          "$ref": "#/$defs/Message"
         },
         "poll": {
           "$ref": "#/$defs/Poll"
+        },
+        "request": {
+          "$ref": "#/$defs/Request"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
-      "description": "Step is exactly one of message, request, location, media, contact, or poll."
+      "type": "object"
     },
     "Text": {
       "oneOf": [
@@ -670,28 +708,30 @@
       ]
     },
     "WebhookSettings": {
+      "additionalProperties": false,
+      "description": "WebhookSettings is one instance-level webhook target: where deliveries go, the secret their bodies are signed with, and the events it subscribes to.",
       "properties": {
-        "url": {
-          "type": "string"
-        },
-        "secret": {
-          "$ref": "#/$defs/Secret"
-        },
         "events": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "secret": {
+          "$ref": "#/$defs/Secret"
+        },
+        "url": {
+          "type": "string"
         }
       },
-      "additionalProperties": false,
-      "type": "object",
       "required": [
         "url",
         "secret",
         "events"
       ],
-      "description": "WebhookSettings is one instance-level webhook target: where deliveries go, the secret their bodies are signed with, and the events it subscribes to."
+      "type": "object"
     }
-  }
+  },
+  "$ref": "#/$defs/Config",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

@@ -37,7 +37,7 @@ func buildFleetWithClock(
 ) (*Fleet, map[string]*fakeChannel, *memStore) {
 	t.Helper()
 	cfg := twoScopeCandidate(t)
-	if errs := config.Validate(cfg); len(errs) != 0 {
+	if errs := config.Validate(cfg, fakeCatalog(nil)); len(errs) != 0 {
 		t.Fatalf("config invalid: %v", errs)
 	}
 	channels := map[string]*fakeChannel{}
@@ -46,11 +46,11 @@ func buildFleetWithClock(
 		Store: store, Chats: store, Peers: store, Messages: store,
 		Turn: store, Outbox: store, DefaultTimeout: time.Minute,
 		Now: now,
-		NewChannel: func(bot BotSpec) (botflota.MessageChannel, error) {
+		Catalog: fakeCatalog(func(scope, bot string, _ any) (botflota.MessageChannel, error) {
 			channel := newFakeChannel()
-			channels[bot.Scope+"/"+bot.Name] = channel
+			channels[scope+"/"+bot] = channel
 			return channel, nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

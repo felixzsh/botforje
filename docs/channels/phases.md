@@ -139,20 +139,31 @@ and WhatsApp card mappings.
 Decision owner: ADR 0052 and 0054, with ADR 0007, 0009, 0018, 0034,
 and 0036.
 
-- [ ] Introduce the immutable injected catalog of installed
+Landed 2026-10-12 on the accepted P1 baseline: `channels` holds the immutable
+catalog and the definition type (provider, adapter kind, modes, capabilities,
+pure option decode, optional builder); `spec.Bot` gains the typed selector and
+`BotSettings` keeps only the shared pacing/filter fields plus an inline map for
+adapter-owned legacy keys. The WhatsApp adapter declares its options, schema,
+capabilities, and builder; config validation, schema generation, startup, the
+watcher, and publication all consume the same pure catalog. Still open below:
+the per-bot legacy template/peer-card decoding, the neutral card slice, and the
+adapter-owned readiness/dependency assembly that keeps `cmd` from opening
+WhatsApp stores for a fleet that has no WhatsApp bot.
+
+- [x] Introduce the immutable injected catalog of installed
   definitions. Distinguish provider, adapter kind, and account mode;
   select one unambiguous installed implementation. New definitions must
   not require adding provider enums or conditionals throughout shared
   packages.
-- [ ] Add the accepted channel selector to bot declarations, preserving
+- [x] Add the accepted channel selector to bot declarations, preserving
   missing-selector WhatsApp compatibility. Reject explicit
   unknown/unavailable selections, never silently fall back.
-- [ ] Make adapter-owned option types and their strict
+- [x] Make adapter-owned option types and their strict
   validation/schema declarations extensible through registration. Do not
   add a field or a provider-specific union arm to bot declarations for
   every adapter; do not replace typed runtime values with unchecked
   option maps.
-- [ ] Separate common pacing/filter settings from adapter-specific
+- [x] Separate common pacing/filter settings from adapter-specific
   capabilities and defaults. Preserve old WhatsApp YAML through its
   compatibility translation, without enabling WhatsApp's
   presence/history defaults on other channels or ignoring explicitly
@@ -168,12 +179,12 @@ and 0036.
   slice. Do not change declarations in P2 while leaving engine/content
   consumers broken until P5; preserve supported cards and declare
   limits.
-- [ ] Inject the same pure declarations into CLI validation, startup,
+- [x] Inject the same pure declarations into CLI validation, startup,
   watcher loads, schema generation, and publication. Preserve origins,
   secret policy, round-tripping, logical versions, and atomic writes.
   Validation must not open SDK stores, start transports, or perform
   login.
-- [ ] Validate each consuming bot's graph, entry/exit actions, tools,
+- [x] Validate each consuming bot's graph, entry/exit actions, tools,
   and guard `on_blocked` steps against its installed adapter. Declare
   implemented content/features and provider-correct limits, not a
   platform-wide promise; default to rejection instead of silent
@@ -185,7 +196,7 @@ and 0036.
   them. Permit adapter-owned shared dependencies behind independent
   per-binding channel views; config-only operations still perform no
   channel I/O.
-- [ ] Compare selectors, account modes, options, and binding-relevant
+- [x] Compare selectors, account modes, options, and binding-relevant
   references on reload. Preserve restart-required transport changes,
   saved/active differences, and isolation of peers. Config publication
   must not replace runtime credentials or silently migrate account

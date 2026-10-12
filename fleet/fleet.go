@@ -12,23 +12,19 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/engine"
 	"github.com/felixzsh/botflota/spec"
 )
 
-type BotSpec struct {
-	Scope    string
-	Name     string
-	Settings spec.BotSettings
-}
-
-// Store, Chats, Peers, Messages, Turn, Outbox, and NewChannel are required.
+// Store, Chats, Peers, Messages, Turn, Outbox, and Catalog are required.
 type Options struct {
 	Store    botflota.SessionStore
 	Chats    botflota.ChatStore
@@ -38,8 +34,11 @@ type Options struct {
 	Outbox   botflota.OutboxStore
 	// Notify receives each bot's first-contact hook; nil means no consumer
 	// (ADR 0045).
-	Notify     botflota.PeerFirstSeenNotifier
-	NewChannel func(spec BotSpec) (botflota.MessageChannel, error)
+	Notify botflota.PeerFirstSeenNotifier
+	// Catalog holds the installed channel definitions; the fleet resolves each
+	// bot's selector against it and asks the adapter's own builder for the
+	// channel (ADR 0052, ADR 0054).
+	Catalog *channels.Catalog
 	// Skip is for recoverable runtime conditions such as a missing local
 	// pairing; a skipped bot never gets a channel.
 	Skip           func(scope, bot string) bool
@@ -148,8 +147,8 @@ func New(cfg *config.Config, opts Options) (*Fleet, error) {
 	if opts.Outbox == nil {
 		return nil, errors.New("fleet: no outbox store")
 	}
-	if opts.NewChannel == nil {
-		return nil, errors.New("fleet: no channel factory")
+	if opts.Catalog == nil {
+		return nil, errors.New("fleet: no channel catalog")
 	}
 	if opts.Rand == nil {
 		opts.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -208,8 +207,29 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	opts := f.opts
 	seeds := opts.Rand
 	botLog := opts.Log.With("scope", scopeName, "bot", botName)
-	channel, err := opts.NewChannel(BotSpec{
-		Scope: scopeName, Name: botName, Settings: settings,
+	scope, ok := cfg.Scopes[scopeName]
+	if !ok {
+		return nil, fmt.Errorf("fleet: unknown scope %q", scopeName)
+	}
+	bot, ok := scope.Bots[botName]
+	if !ok {
+		return nil, fmt.Errorf("fleet: unknown bot %s/%s", scopeName, botName)
+	}
+	def, _, err := opts.Catalog.Resolve(bot.Channel)
+	if err != nil {
+		return nil, fmt.Errorf("fleet: bot %q: %w", botName, err)
+	}
+	options, reasons := decodeOptions(def, bot)
+	if len(reasons) > 0 {
+		return nil, fmt.Errorf("fleet: bot %q channel: %s", botName, strings.Join(reasons, "; "))
+	}
+	if def.Build == nil {
+		return nil, fmt.Errorf(
+			"fleet: channel %s/%s has no builder in this installation",
+			def.Provider, def.Kind)
+	}
+	channel, err := def.Build(channels.Bind{
+		Scope: scopeName, Bot: botName, Options: options, Log: botLog,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)
@@ -848,4 +868,13 @@ func settingsOf(settings *spec.BotSettings) spec.BotSettings {
 		return spec.BotSettings{}
 	}
 	return *settings
+}
+
+// decodeOptions asks the definition for one bot's typed options. A definition
+// without options decodes nothing (ADR 0052).
+func decodeOptions(def channels.Definition, bot spec.Bot) (any, []string) {
+	if def.Decode == nil {
+		return nil, nil
+	}
+	return def.Decode(bot)
 }

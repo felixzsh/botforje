@@ -14,6 +14,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -99,6 +100,10 @@ type Outcome struct {
 // content would not change is never rewritten.
 type Writer struct {
 	main string
+	// catalog holds the installed channel definitions a candidate tree is
+	// validated against, so a publication refuses an unknown channel exactly
+	// like a manual edit (ADR 0052, ADR 0054).
+	catalog *channels.Catalog
 	// tree guards the files themselves. A publication replaces several of them
 	// one after another, and a reader that loaded the tree in between would see
 	// a scope split across an old and a new file. It is a channel rather than a
@@ -106,13 +111,17 @@ type Writer struct {
 	tree chan struct{}
 }
 
-// NewWriter returns a writer for the tree the main file loads.
-func NewWriter(main string) (*Writer, error) {
+// NewWriter returns a writer for the tree the main file loads; catalog holds
+// the installed channel definitions its candidates are checked against.
+func NewWriter(main string, catalog *channels.Catalog) (*Writer, error) {
 	abs, err := filepath.Abs(main)
 	if err != nil {
 		return nil, err
 	}
-	return &Writer{main: filepath.Clean(abs), tree: make(chan struct{}, 1)}, nil
+	return &Writer{
+		main: filepath.Clean(abs), catalog: catalog,
+		tree: make(chan struct{}, 1),
+	}, nil
 }
 
 // acquire holds the files, waiting only while the caller's context lasts. A
@@ -204,7 +213,7 @@ func (w *Writer) Publish(
 	if err != nil {
 		return nil, err
 	}
-	if problems := Validate(candidate); len(problems) > 0 {
+	if problems := Validate(candidate, w.catalog); len(problems) > 0 {
 		return nil, InvalidCandidate{problems}
 	}
 	if err := ctx.Err(); err != nil {

@@ -47,7 +47,7 @@ scopes:
 
 func TestWriterSerializesConcurrentScopesInOneFile(t *testing.T) {
 	main := writerTreeWithTwoScopesInOneFile(t)
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestWriterSerializesConcurrentScopesInOneFile(t *testing.T) {
 
 func TestWriterConflictsOnTwoStaleWrites(t *testing.T) {
 	main := writerTreeWithTwoScopesInOneFile(t)
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestWriterConflictsOnTwoStaleWrites(t *testing.T) {
 
 func TestWriterGivesUpOnACanceledWait(t *testing.T) {
 	main := writerTreeWithTwoScopesInOneFile(t)
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestWriterGivesUpOnACanceledWait(t *testing.T) {
 
 func TestRecoverIsIdempotentAndSafeAfterCompletion(t *testing.T) {
 	main := writerTreeWithTwoScopesInOneFile(t)
-	writer, err := NewWriter(main)
+	writer, err := NewWriter(main, testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}

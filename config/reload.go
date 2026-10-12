@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
@@ -65,13 +66,28 @@ func scopeRuntimeChanges(was, now spec.Scope, name string) []string {
 	}
 	for _, bot := range SortedKeys(now.Bots) {
 		old, ok := was.Bots[bot]
-		if !ok || channelSettingsEqual(old.Settings, now.Bots[bot].Settings) {
+		if !ok || channelOf(old) == channelOf(now.Bots[bot]) &&
+			channelSettingsEqual(old.Settings, now.Bots[bot].Settings) {
 			continue
 		}
 		reasons = append(reasons,
 			fmt.Sprintf("channel settings of bot %q in scope %q", bot, name))
 	}
 	return reasons
+}
+
+// channelOf describes a bot's installed implementation and its adapter-owned
+// options as the file authored them; a provider, mode, or option change is a
+// binding-relevant change, not an ordinary setting edit (ADR 0054).
+func channelOf(bot spec.Bot) string {
+	if bot.Channel == nil {
+		return "<default>"
+	}
+	encoded, err := json.Marshal(bot.Channel)
+	if err != nil {
+		return bot.Channel.Provider + "/" + bot.Channel.Mode
+	}
+	return bot.Channel.Provider + "/" + bot.Channel.Mode + ":" + string(encoded)
 }
 
 func globalChanges(current, next *Config) []string {
@@ -102,15 +118,12 @@ func globalChanges(current, next *Config) []string {
 
 func channelSettingsEqual(was, now *spec.BotSettings) bool {
 	old, current := botSettingsOf(was), botSettingsOf(now)
-	return optionalBoolEqual(old.ReadReceipts, current.ReadReceipts) &&
-		old.ReadReceiptDelay == current.ReadReceiptDelay &&
-		old.ReplyDelay == current.ReplyDelay &&
-		optionalBoolEqual(old.SimulateTyping, current.SimulateTyping) &&
-		old.QueueDelay == current.QueueDelay &&
+	// Only the settings that shape the channel and outbox at build time force a
+	// restart; contact filtering and the hand-over window are adopted live.
+	return old.QueueDelay == current.QueueDelay &&
 		old.Jitter == current.Jitter &&
 		old.MaxMsgPerMinute == current.MaxMsgPerMinute &&
-		optionalBoolEqual(old.HistorySync, current.HistorySync) &&
-		optionalBoolEqual(old.ImportContacts, current.ImportContacts)
+		reflect.DeepEqual(old.Adapter, current.Adapter)
 }
 
 func botSettingsOf(settings *spec.BotSettings) spec.BotSettings {

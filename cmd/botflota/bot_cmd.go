@@ -14,10 +14,10 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
+	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/instance"
-	"github.com/felixzsh/botflota/spec"
 )
 
 type pairCmd struct {
@@ -121,9 +121,14 @@ func runPair(args []string) int {
 		printHelp(os.Stderr, "bot", "pair")
 		return 1
 	}
+	options, err := whatsappOptions(botSpec)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if !owned {
 		return pairThroughAPI(os.Stdout, cfg, scopeName, name,
-			botSpec.Settings, *cmd.importHistory, *cmd.force)
+			options, *cmd.importHistory, *cmd.force)
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	db, err := openDatabase(cfg)
@@ -160,10 +165,10 @@ func runPair(args []string) int {
 		Peers:          db.Peers(),
 		Chats:          db.Chats(),
 		Messages:       db.Messages(),
-		History:        historyEnabled(botSpec.Settings),
+		History:        options.History,
 		FullHistory:    *cmd.importHistory,
 		Directory:      db.Directory(),
-		ImportContacts: contactsEnabled(botSpec.Settings),
+		ImportContacts: options.ImportContacts,
 		Outbox:         db.Outbox(),
 		Log:            logger,
 		DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
@@ -176,7 +181,7 @@ func runPair(args []string) int {
 	}
 	fmt.Printf("bot %q (scope %q) is paired as %s\n", name, scopeName,
 		result.Identity.Subject)
-	printPairImport(os.Stdout, botSpec.Settings, result)
+	printPairImport(os.Stdout, options, result)
 	return 0
 }
 
@@ -191,8 +196,8 @@ func pairLogger(cfg *config.Config, verbose bool) *slog.Logger {
 
 // printPairImport is the command's result, not a log line, so it never
 // depends on the log level.
-func printPairImport(w io.Writer, settings *spec.BotSettings, result whatsapp.PairResult) {
-	if historyEnabled(settings) {
+func printPairImport(w io.Writer, options channel.BotOptions, result whatsapp.PairResult) {
+	if options.History {
 		if result.History.Chunks == 0 {
 			fmt.Fprintln(w, "history: nothing arrived")
 		} else {
@@ -202,7 +207,7 @@ func printPairImport(w io.Writer, settings *spec.BotSettings, result whatsapp.Pa
 				result.Elapsed.Round(time.Second))
 		}
 	}
-	if contactsEnabled(settings) {
+	if options.ImportContacts {
 		fmt.Fprintf(w, "address book: %d imported\n", result.AddressBook)
 	}
 }
@@ -217,7 +222,7 @@ const pairPollInterval = 500 * time.Millisecond
 // stopped fleet: unpair stops the bot, and the new session starts it again.
 func pairThroughAPI(
 	w io.Writer, cfg *config.Config, scopeName, botName string,
-	settings *spec.BotSettings, fullHistory, force bool,
+	options channel.BotOptions, fullHistory, force bool,
 ) int {
 	client, err := newAPIClient(cfg)
 	if err != nil {
@@ -268,7 +273,7 @@ func pairThroughAPI(
 		case string(botflota.PairSucceeded):
 			fmt.Fprintf(w, "bot %q (scope %q) is paired as %s\n",
 				botName, scopeName, dash(session.Result.Phone))
-			printPairImport(w, settings, importTotalsOf(session))
+			printPairImport(w, options, importTotalsOf(session))
 			return 0
 		case string(botflota.PairFailed):
 			fmt.Fprintln(os.Stderr, "pairing failed: "+session.Error)

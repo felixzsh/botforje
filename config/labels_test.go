@@ -9,7 +9,7 @@ import (
 
 func labelsOf(t *testing.T, cfg *Config) []string {
 	t.Helper()
-	problems := Validate(cfg)
+	problems := Validate(cfg, testCatalog(t))
 	labels := make([]string, 0, len(problems))
 	for _, problem := range problems {
 		if strings.Contains(problem.Reason, "already used") {
@@ -195,7 +195,7 @@ func TestScopeLabelCollisionNamesNoOtherScope(t *testing.T) {
 		"second": {DisplayName: "shared"},
 	}}
 	var found []ValidationError
-	for _, problem := range Validate(cfg) {
+	for _, problem := range Validate(cfg, testCatalog(t)) {
 		if strings.Contains(problem.Reason, "already used") {
 			found = append(found, problem)
 		}

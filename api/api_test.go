@@ -519,7 +519,7 @@ func testServerWithOptions(
 // test can call New itself when it wants to observe a refused startup.
 func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 	t.Helper()
-	writer, err := config.NewWriter(writeTestConfig(t, cfg))
+	writer, err := config.NewWriter(writeTestConfig(t, cfg), testCatalog(t))
 	if err != nil {
 		t.Fatalf("NewWriter: %v", err)
 	}

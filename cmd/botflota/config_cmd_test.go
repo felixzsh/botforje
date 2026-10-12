@@ -20,7 +20,7 @@ func TestInitWritesConfigAndSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load the generated config: %v", err)
 	}
-	if errs := config.Validate(cfg); len(errs) != 0 {
+	if errs := config.Validate(cfg, testCatalog(t)); len(errs) != 0 {
 		t.Fatalf("the generated config does not validate: %v", errs)
 	}
 	configData, err := os.ReadFile(path)

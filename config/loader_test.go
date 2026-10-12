@@ -34,7 +34,7 @@ func TestLoadExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if errs := Validate(cfg); len(errs) != 0 {
+	if errs := Validate(cfg, testCatalog(t)); len(errs) != 0 {
 		t.Fatalf("validate returned errors: %v", errs)
 	}
 	if llm := cfg.Scopes["support"].LLMs["primary"]; llm.APIKey.Reveal() != "sk-test" {
@@ -147,7 +147,7 @@ func TestSameNameAcrossScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if errs := Validate(cfg); len(errs) != 0 {
+	if errs := Validate(cfg, testCatalog(t)); len(errs) != 0 {
 		t.Fatalf("same name in different scopes must be valid: %v", errs)
 	}
 }
@@ -265,7 +265,7 @@ func TestSecretRefKeepsPlaceholder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if errs := Validate(cfg); len(errs) != 0 {
+	if errs := Validate(cfg, testCatalog(t)); len(errs) != 0 {
 		t.Fatalf("validate returned errors: %v", errs)
 	}
 	llm := cfg.Scopes["default"].LLMs["primary"]
@@ -330,7 +330,7 @@ func TestSecretRefOutsideSecretFieldRejected(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load: %v", err)
 			}
-			errs := Validate(cfg)
+			errs := Validate(cfg, testCatalog(t))
 			if len(errs) == 0 {
 				t.Fatal("want a validation error for the secret reference")
 			}

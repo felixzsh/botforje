@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/fleet"
 )
@@ -31,14 +32,14 @@ func configPath(explicit string) (string, error) {
 // reloadOutcome loads path and says what a running fleet should do with it:
 // an error keeps the current config, reasons mean restart-required, and a
 // next config is one that applies live (ADR 0009).
-func reloadOutcome(path string, current *config.Config) (
+func reloadOutcome(path string, current *config.Config, catalog *channels.Catalog) (
 	*config.Config, []string, error,
 ) {
 	next, err := (config.Loader{}).Load(path)
 	if err != nil {
 		return nil, nil, err
 	}
-	if problems := config.Validate(next); len(problems) > 0 {
+	if problems := config.Validate(next, catalog); len(problems) > 0 {
 		messages := make([]string, 0, len(problems))
 		for _, problem := range problems {
 			messages = append(messages, problem.Error())
@@ -60,11 +61,12 @@ func reloadOutcome(path string, current *config.Config) (
 // mtime polling keeps the watcher dependency-free (ADR 0009).
 func watchConfig(
 	ctx context.Context, path string, source, saved *config.Source,
-	tree *config.Writer, runner *fleet.Fleet, logger *slog.Logger,
+	tree *config.Writer, runner *fleet.Fleet, catalog *channels.Catalog,
+	logger *slog.Logger,
 ) {
 	poll := &configPoll{
 		path: path, source: source, saved: saved, tree: tree,
-		runner: runner, logger: logger,
+		runner: runner, catalog: catalog, logger: logger,
 	}
 	poll.stamp = filesStamp(source.Current().WatchPaths())
 	ticker := time.NewTicker(configWatchInterval)
@@ -83,12 +85,13 @@ func watchConfig(
 // while it reads and activates, so it never loads a publication's files while
 // they are being replaced.
 type configPoll struct {
-	path   string
-	source *config.Source
-	saved  *config.Source
-	tree   *config.Writer
-	runner *fleet.Fleet
-	logger *slog.Logger
+	path    string
+	source  *config.Source
+	saved   *config.Source
+	tree    *config.Writer
+	runner  *fleet.Fleet
+	catalog *channels.Catalog
+	logger  *slog.Logger
 
 	stamp         string
 	candidate     *config.Config
@@ -112,7 +115,7 @@ func (p *configPoll) tick(ctx context.Context) {
 		p.stamp = stamp
 	}
 	if changed || (p.candidate == nil && p.retryLoad) {
-		loaded, err := loadCandidate(p.path)
+		loaded, err := loadCandidate(p.path, p.catalog)
 		if err != nil {
 			p.candidate = nil
 			p.retryLoad = true
@@ -167,12 +170,12 @@ func (p *configPoll) tick(ctx context.Context) {
 	}
 }
 
-func loadCandidate(path string) (*config.Config, error) {
+func loadCandidate(path string, catalog *channels.Catalog) (*config.Config, error) {
 	next, err := (config.Loader{}).Load(path)
 	if err != nil {
 		return nil, err
 	}
-	if problems := config.Validate(next); len(problems) > 0 {
+	if problems := config.Validate(next, catalog); len(problems) > 0 {
 		messages := make([]string, 0, len(problems))
 		for _, problem := range problems {
 			messages = append(messages, problem.Error())

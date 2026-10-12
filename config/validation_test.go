@@ -82,7 +82,7 @@ func TestInvalidFixtures(t *testing.T) {
 				}
 				return
 			}
-			errs := Validate(cfg)
+			errs := Validate(cfg, testCatalog(t))
 			for _, e := range errs {
 				if strings.Contains(e.Error(), tc.want) {
 					return
@@ -123,7 +123,7 @@ func TestValidFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load: %v", err)
 			}
-			if errs := Validate(cfg); len(errs) != 0 {
+			if errs := Validate(cfg, testCatalog(t)); len(errs) != 0 {
 				t.Fatalf("want valid, got %v", errs)
 			}
 		})

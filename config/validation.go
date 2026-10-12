@@ -3,9 +3,11 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -33,10 +35,15 @@ func (e ValidationError) Error() string {
 }
 
 // Validate runs the semantic checks that a JSON Schema cannot express
-// (ADR 0007, ADR 0033, ADR 0010, ADR 0030, ADR 0016).
-func Validate(cfg *Config) []ValidationError {
+// (ADR 0007, ADR 0033, ADR 0010, ADR 0030, ADR 0016, ADR 0052, ADR 0054). The
+// catalog holds the installed channel definitions every bot is checked
+// against; it is pure, so validation opens no store and starts no transport.
+func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 	if cfg == nil {
 		return []ValidationError{{Reason: "nil config"}}
+	}
+	if catalog == nil {
+		return []ValidationError{{Reason: "no channel catalog"}}
 	}
 	var errs []ValidationError
 	// addScope reports one scope's problems; add reports instance-level ones,
@@ -89,7 +96,7 @@ func Validate(cfg *Config) []ValidationError {
 			checkSecretRefs(cfg, scoped, "graph", scopeName, name, scope.Graphs[name])
 		}
 		for _, name := range SortedKeys(scope.Bots) {
-			validateBot(cfg, scopeName, scope, name, scope.Bots[name], scoped)
+			validateBot(cfg, catalog, scopeName, scope, name, scope.Bots[name], scoped)
 			checkSecretRefs(cfg, scoped, "bot", scopeName, name, scope.Bots[name])
 		}
 		validateScopeTemplates(cfg, scopeName, scope, scoped)
@@ -453,7 +460,8 @@ func validateNodeRefs(
 }
 
 func validateBot(
-	cfg *Config, scopeName string, scope spec.Scope, name string, b spec.Bot, add addError,
+	cfg *Config, catalog *channels.Catalog, scopeName string, scope spec.Scope,
+	name string, b spec.Bot, add addError,
 ) {
 	file := cfg.originOf("bot", scopeName, name)
 	entity := fmt.Sprintf("bot %q (scope %q)", name, scopeName)
@@ -467,23 +475,171 @@ func validateBot(
 			add(file, entity, "llm %q: %s", b.LLM, reason)
 		}
 	}
-	if s := b.Settings; s != nil {
-		for _, v := range []struct {
-			field string
-			value int
-		}{
-			{"read_receipt_delay", s.ReadReceiptDelay},
-			{"reply_delay", s.ReplyDelay},
-			{"queue_delay", s.QueueDelay},
-			{"jitter", s.Jitter},
-			{"max_messages_per_minute", s.MaxMsgPerMinute},
-			{"external_reply_pause", s.ExternalReplyPause},
-		} {
-			if v.value < 0 {
-				add(file, entity, "%s must be >= 0", v.field)
+	validateBotSettings(file, entity, b.Settings, add)
+
+	def, key, err := catalog.Resolve(b.Channel)
+	if err != nil {
+		add(file, entity, "%v", err)
+		return
+	}
+	validateBotAdapterSettings(file, entity, b, def, key, add)
+	validateBotCapabilities(scope, b, def, key, file, entity, add)
+}
+
+// validateBotSettings checks the settings every channel shares; an
+// adapter-owned key is reported by validateBotAdapterSettings.
+func validateBotSettings(file, entity string, s *spec.BotSettings, add addError) {
+	if s == nil {
+		return
+	}
+	for _, v := range []struct {
+		field string
+		value int
+	}{
+		{"queue_delay", s.QueueDelay},
+		{"jitter", s.Jitter},
+		{"max_messages_per_minute", s.MaxMsgPerMinute},
+		{"external_reply_pause", s.ExternalReplyPause},
+	} {
+		if v.value < 0 {
+			add(file, entity, "%s must be >= 0", v.field)
+		}
+	}
+}
+
+// validateBotAdapterSettings hands the bot to its definition: the selector's
+// options and the adapter-owned keys of the settings block are decoded and
+// validated purely, with the file and entity the author can act on (ADR 0052).
+func validateBotAdapterSettings(
+	file, entity string, b spec.Bot, def channels.Definition, key channels.Key, add addError,
+) {
+	if b.Settings != nil && b.Settings.ExternalReplyPause != 0 &&
+		!def.Capabilities.HasFeature(channels.FeatureExternalReply) {
+		add(file, entity,
+			"external_reply_pause needs channel %s/%s to observe external replies",
+			key.Provider, key.Mode)
+	}
+	if b.Settings != nil {
+		for _, name := range SortedKeys(b.Settings.Adapter) {
+			if !slices.Contains(def.LegacySettings, name) {
+				add(file, entity, "setting %q is not supported by channel %s/%s",
+					name, key.Provider, key.Mode)
 			}
 		}
 	}
+	if def.Decode == nil {
+		if b.Channel != nil && !b.Channel.Options.IsZero() {
+			add(file, entity, "channel %s/%s accepts no options", key.Provider, key.Mode)
+		}
+		return
+	}
+	if _, reasons := def.Decode(b); len(reasons) > 0 {
+		for _, reason := range reasons {
+			add(file, entity, "%s", reason)
+		}
+	}
+}
+
+// validateBotCapabilities checks every action the bot's graph can reach
+// against what its installed definition declares, in the context of this bot:
+// one shared action may fit a capable channel and not a text-only one
+// (ADR 0052).
+func validateBotCapabilities(
+	scope spec.Scope, b spec.Bot, def channels.Definition, key channels.Key,
+	file, entity string, add addError,
+) {
+	graph, ok := scope.Graphs[b.Graph]
+	if !ok {
+		return
+	}
+	seen := map[string]bool{}
+	check := func(actionName string) {
+		if actionName == "" || seen[actionName] {
+			return
+		}
+		seen[actionName] = true
+		action, ok := scope.Actions[actionName]
+		if !ok {
+			return
+		}
+		for _, unsupported := range unsupportedSteps(actionName, action, def) {
+			add(file, entity, "%s: channel %s/%s cannot send %s",
+				unsupported.where, key.Provider, key.Mode, unsupported.kind)
+		}
+	}
+	for _, nodeName := range SortedKeys(graph.Nodes) {
+		node := graph.Nodes[nodeName]
+		for _, name := range node.OnEnter {
+			check(name)
+		}
+		for _, name := range node.OnExit {
+			check(name)
+		}
+		for _, name := range node.Tools {
+			check(name)
+		}
+	}
+}
+
+type unsupportedStep struct {
+	where string
+	kind  botflota.MessageKind
+}
+
+func unsupportedSteps(
+	actionName string, action spec.Action, def channels.Definition,
+) []unsupportedStep {
+	var unsupported []unsupportedStep
+	check := func(steps []spec.Step, where string) {
+		prefix := ""
+		if where != "" {
+			prefix = where + " "
+		}
+		for i, step := range steps {
+			kind, ok := stepKind(step)
+			if !ok {
+				continue
+			}
+			if !def.Capabilities.SupportsSend(kind) {
+				unsupported = append(unsupported, unsupportedStep{
+					where: fmt.Sprintf("action %q %sstep %d", actionName, prefix, i),
+					kind:  kind,
+				})
+			}
+		}
+	}
+	check(action.Steps, "")
+	if action.Guards != nil {
+		if action.Guards.Cooldown != nil {
+			check(action.Guards.Cooldown.OnBlocked, "cooldown.on_blocked")
+		}
+		if action.Guards.RateLimit != nil {
+			check(action.Guards.RateLimit.OnBlocked, "rate_limit.on_blocked")
+		}
+	}
+	return unsupported
+}
+
+// stepKind is the content kind one step sends, or false for a step that emits
+// no channel content or whose kind is checked elsewhere.
+func stepKind(step spec.Step) (botflota.MessageKind, bool) {
+	switch {
+	case step.Message != nil:
+		return botflota.KindText, true
+	case step.Media != nil:
+		kind := botflota.MessageKind(step.Media.Kind)
+		if !botflota.MediaType(kind).Valid() {
+			return "", false
+		}
+		return kind, true
+	case step.Location != nil:
+		return botflota.KindLocation, true
+	case step.Contact != nil:
+		return botflota.KindContact, true
+	case step.Poll != nil:
+		return botflota.KindPoll, true
+	}
+	return "", false
 }
 
 func lookupAction(scope spec.Scope, name string) (spec.Action, string) {

@@ -359,7 +359,7 @@ func loadScope(t *testing.T) spec.Scope {
 	if err != nil {
 		t.Fatalf("load fixture: %v", err)
 	}
-	if errs := config.Validate(cfg); len(errs) != 0 {
+	if errs := config.Validate(cfg, testCatalog(t)); len(errs) != 0 {
 		t.Fatalf("fixture is invalid: %v", errs)
 	}
 	return cfg.Scopes["support"]

@@ -82,7 +82,12 @@ func loadConfig(path string) (*config.Config, int) {
 		fmt.Fprintln(os.Stderr, err)
 		return nil, 1
 	}
-	if errs := config.Validate(cfg); len(errs) > 0 {
+	catalog, err := pureCatalog()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil, 1
+	}
+	if errs := config.Validate(cfg, catalog); len(errs) > 0 {
 		for _, e := range errs {
 			fmt.Fprintln(os.Stderr, e.Error())
 		}
@@ -149,17 +154,6 @@ func reportOwned(err error, before string) {
 		return
 	}
 	fmt.Fprintln(os.Stderr, err)
-}
-
-// historyEnabled: an absent history_sync switch means on (ADR 0035).
-func historyEnabled(settings *spec.BotSettings) bool {
-	return settings == nil || settings.HistorySync == nil || *settings.HistorySync
-}
-
-// contactsEnabled: an absent import_contacts switch means off, because the
-// address book may hold people the account never wrote to (ADR 0037).
-func contactsEnabled(settings *spec.BotSettings) bool {
-	return settings != nil && settings.ImportContacts != nil && *settings.ImportContacts
 }
 
 func findBot(cfg *config.Config, name, scope string) (string, spec.Bot, error) {
