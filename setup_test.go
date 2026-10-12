@@ -160,13 +160,17 @@ func (r *fakeRunner) BeginSetup(
 		}
 	case "token":
 		entry.session.Step = &botflota.SetupStep{
-			Kind:   botflota.SetupStepInput,
-			Fields: []botflota.SetupField{{Name: "token", Kind: botflota.SetupFieldCredential, Label: "API token"}},
+			Kind: botflota.SetupStepInput,
+			Fields: []botflota.SetupField{{
+				Name: "token", Kind: botflota.SetupFieldCredential, Label: "API token",
+			}},
 		}
 	case "approval":
 		entry.session.Step = &botflota.SetupStep{
-			Kind:   botflota.SetupStepInput,
-			Fields: []botflota.SetupField{{Name: "login", Kind: botflota.SetupFieldIdentifier, Label: "login name"}},
+			Kind: botflota.SetupStepInput,
+			Fields: []botflota.SetupField{{
+				Name: "login", Kind: botflota.SetupFieldIdentifier, Label: "login name",
+			}},
 		}
 	case "profile":
 		entry.session.Step = &botflota.SetupStep{
@@ -175,7 +179,10 @@ func (r *fakeRunner) BeginSetup(
 				Methods:     []string{"managed"},
 				Options:     []string{"main"},
 				AllowCreate: true,
-				Params:      []botflota.SetupField{{Name: "name", Kind: botflota.SetupFieldIdentifier, Label: "profile name"}},
+				Params: []botflota.SetupField{{
+					Name: "name", Kind: botflota.SetupFieldIdentifier,
+					Label: "profile name",
+				}},
 			},
 		}
 	}
@@ -243,8 +250,10 @@ func (r *fakeRunner) InputSetup(
 			mark()
 			entry.session.State = botflota.SetupAwaitingApproval
 			entry.session.Step = &botflota.SetupStep{
-				Kind:     botflota.SetupStepApproval,
-				Approval: &botflota.SetupApproval{Destination: "fake-app", Instruction: "approve-" + entry.session.ID},
+				Kind: botflota.SetupStepApproval,
+				Approval: &botflota.SetupApproval{
+					Destination: "fake-app", Instruction: "approve-" + entry.session.ID,
+				},
 			}
 			entry.session.Revision++
 			entry.session.UpdatedAt = r.now
@@ -716,8 +725,13 @@ func TestSetupReauthAndReplacement(t *testing.T) {
 	}
 	if _, err := lifecycle.InspectBinding(ctx, "dev", "alpha"); err != nil {
 		t.Fatalf("InspectBinding after detach: %v", err)
-	} else if status, _ := lifecycle.InspectBinding(ctx, "dev", "alpha"); status.Condition != botflota.ReadinessUnconfigured {
-		t.Fatalf("status = %#v, want unconfigured after detach", status)
+	}
+	afterDetach, err := lifecycle.InspectBinding(ctx, "dev", "alpha")
+	if err != nil {
+		t.Fatalf("InspectBinding after detach: %v", err)
+	}
+	if afterDetach.Condition != botflota.ReadinessUnconfigured {
+		t.Fatalf("status = %#v, want unconfigured after detach", afterDetach)
 	}
 	if r.history[botflota.BotRef{Scope: "dev", Bot: "alpha"}] != 7 {
 		t.Fatal("detachment dropped the bot's history")

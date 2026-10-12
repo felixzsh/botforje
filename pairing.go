@@ -199,7 +199,12 @@ type SetupSession struct {
 	// ErrorCode is sanitized and safe to show: it names the failure, never
 	// the credential, identity, or provider detail behind it.
 	ErrorCode string
-	Step      *SetupStep
+	// ActivationError reports that the committed binding could not be
+	// activated (the bot did not start on it) while the setup itself
+	// succeeded. It carries a start failure, never a secret; the binding
+	// stays usable and a new activation can be attempted.
+	ActivationError string
+	Step            *SetupStep
 }
 
 // Final reports whether the session reached an outcome.
@@ -219,6 +224,7 @@ func (s SetupSession) LogValue() slog.Value {
 		slog.Time("updated_at", s.UpdatedAt),
 		slog.Time("expires_at", s.ExpiresAt),
 		slog.String("error", s.ErrorCode),
+		slog.String("activation_error", s.ActivationError),
 	}
 	if s.Step != nil {
 		attrs = append(attrs, slog.String("step", s.Step.Kind))

@@ -87,10 +87,14 @@ type PairResult struct {
 	Elapsed     time.Duration
 }
 
-// Pair runs the QR login and records the account. An already-paired bot
-// returns its stored JID unless Force asks for a new pairing, and a QR session
-// WhatsApp resets is retried with a new code until the context is canceled or
-// a non-retryable error occurs.
+// Pair runs the QR login and records the account. A bot whose binding is
+// committed and whose local credentials are present returns its stored
+// identity without a new ceremony, unless Force asks for one. A binding
+// without credentials is renewed, not reported as usable: the ceremony runs
+// and the commit keeps the identity and generation when the same account
+// returns, or advances past them when another replaces it. A QR session
+// WhatsApp resets is retried with a new code until the context is canceled
+// or a non-retryable error occurs.
 func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	if opts.Devices == nil {
 		return PairResult{}, errors.New("whatsapp: no device store")
@@ -99,10 +103,19 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 		return PairResult{}, err
 	}
 	account, err := opts.Bindings.Get(ctx, opts.Scope, opts.Bot)
-	if err == nil && !opts.Force {
-		return PairResult{Identity: account.Identity}, nil
-	} else if err != nil && !errors.Is(err, botflota.ErrNotFound) {
+	if err != nil && !errors.Is(err, botflota.ErrNotFound) {
 		return PairResult{}, err
+	}
+	if account != nil && !opts.Force {
+		usable, uerr := usableBinding(ctx, opts, account)
+		if uerr != nil {
+			return PairResult{}, uerr
+		}
+		if usable {
+			return PairResult{Identity: account.Identity}, nil
+		}
+		// The binding is committed but its credentials are gone: renew
+		// them below instead of reporting a link that cannot send.
 	}
 	logger := opts.Logger
 	if logger == nil {
@@ -127,8 +140,11 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 	applyDeviceName(opts.DeviceName)
 	configureHistorySync(opts.FullHistory)
 	if account != nil {
-		if err := removePairing(ctx, opts.Devices, opts.Bindings, opts.Pairings,
-			opts.Outbox, account, PairingNow(opts.Now)); err != nil {
+		// Settle what the old link owes and drop its local credentials,
+		// but keep the binding row: the commit tells a renewal of the
+		// same identity from a replacement by another one (ADR 0053).
+		if err := retireStaleLink(ctx, opts.Devices, opts.Outbox, account,
+			PairingNow(opts.Now)); err != nil {
 			return PairResult{}, err
 		}
 	}
@@ -244,6 +260,45 @@ func waitForPairingRetry(ctx context.Context) error {
 	}
 }
 
+// usableBinding reports whether one bot's committed binding still has its
+// local credentials. An existing row alone never proves a usable account:
+// a binding without credentials must be renewed, never reported as linked.
+func usableBinding(
+	ctx context.Context, opts PairOptions, account *botflota.Binding,
+) (bool, error) {
+	if account == nil {
+		return false, nil
+	}
+	return HasLocalDevice(ctx, opts.Devices, account)
+}
+
+// retireStaleLink settles what the old link still owes and drops its local
+// credentials, keeping the binding row so the next commit tells a renewal
+// of the same identity from a replacement by another one (ADR 0053).
+// removePairing remains the full detach path, which forgets the row too.
+func retireStaleLink(
+	ctx context.Context,
+	devices *Devices,
+	outbox botflota.OutboxStore,
+	account *botflota.Binding,
+	changedAt time.Time,
+) error {
+	if devices == nil {
+		return errors.New("whatsapp: no device store")
+	}
+	if outbox == nil {
+		return errors.New("whatsapp: no outbox store")
+	}
+	if _, err := outbox.FailPending(ctx, account.Scope, account.Bot,
+		unlinkedReason, changedAt); err != nil {
+		return fmt.Errorf("whatsapp: fail queued replies: %w", err)
+	}
+	if err := devices.delete(ctx, account); err != nil {
+		return err
+	}
+	return nil
+}
+
 // removePairing drops the queued replies the old link still owes, then the
 // device, the account record, and the pairing status: the replies end
 // failed before the link goes, so none of them can leave from the account
@@ -312,6 +367,15 @@ func confirmLink(client *whatsmeow.Client, logger walog.Logger) {
 	}
 }
 
+// accountLog is the pairing log for account bookkeeping that must never
+// fail a committed link; a nil Log discards it.
+func accountLog(opts PairOptions) *slog.Logger {
+	if opts.Log == nil {
+		return botflota.DiscardLogger()
+	}
+	return opts.Log
+}
+
 func waitUntilDisconnected(client *whatsmeow.Client, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -355,9 +419,19 @@ func saveAccount(
 		}
 		return botflota.IdentityKey{}, err
 	}
+	// The binding is durable now: mark the session before anything else
+	// runs, so a cancel or expiry racing this return cannot pretend the
+	// association never existed (ADR 0053).
+	if opts.OnSaved != nil {
+		opts.OnSaved()
+	}
 	if err := UpdatePairingStatus(ctx, opts.Pairings, opts.Scope, opts.Bot,
 		botflota.PairingPaired, PairingNow(opts.Now)); err != nil {
-		return botflota.IdentityKey{}, err
+		// The link is committed; a stale status row must not fail the
+		// setup. The translator keeps serving readiness from the binding
+		// and the device store, never from this row.
+		accountLog(opts).Warn("pairing status not recorded",
+			"scope", opts.Scope, "bot", opts.Bot, "error", err)
 	}
 	return identity, nil
 }

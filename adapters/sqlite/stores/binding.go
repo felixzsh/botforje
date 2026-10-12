@@ -83,9 +83,11 @@ func (s *BindingStore) List(ctx context.Context) ([]botflota.Binding, error) {
 // definition metadata (provider, adapter kind, account mode), the stable
 // identity-space context, and the normalized own identity (ADR 0051,
 // ADR 0053). The first commit of a bot starts generation one; renewing the
-// same identity space keeps it, and an unrelated replacement advances it
-// past the stored one. The SDK device locator and the credentials stay in
-// adapter-owned storage; this row never carries them.
+// same identity space keeps it, and an unrelated replacement advances past
+// the stored one. Generations are monotonic per bot even across detach:
+// the last committed generation survives the row's deletion, so a later
+// association never reuses an earlier one. The SDK device locator and the
+// credentials stay in adapter-owned storage; this row never carries them.
 func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) error {
 	if account.Scope == "" || account.Bot == "" {
 		return errors.New("sqlite: linked account needs scope and bot")
@@ -118,9 +120,18 @@ func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) er
 		account.Scope, account.Bot).Scan(
 		&stored.provider, &stored.namespace, &stored.subject,
 		&stored.generation, &stored.created)
+	var remembered int64
+	if rerr := tx.QueryRowContext(ctx,
+		`SELECT generation FROM binding_generations WHERE scope = ? AND bot = ?`,
+		account.Scope, account.Bot).Scan(&remembered); rerr != nil &&
+		!errors.Is(rerr, sql.ErrNoRows) {
+		return fmt.Errorf("sqlite: read binding generation: %w", rerr)
+	}
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		account.Generation = 1
+		// No live association: continue past whatever generation the bot
+		// reached before, or start at one on a first commit.
+		account.Generation = remembered + 1
 		account.CreatedAt, _ = time.Parse(time.RFC3339Nano, now)
 	case err != nil:
 		return fmt.Errorf("sqlite: read linked account: %w", err)
@@ -130,7 +141,11 @@ func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) er
 		account.Generation = stored.generation
 		account.CreatedAt, _ = time.Parse(time.RFC3339Nano, stored.created)
 	default:
-		account.Generation = stored.generation + 1
+		if stored.generation > remembered {
+			account.Generation = stored.generation + 1
+		} else {
+			account.Generation = remembered + 1
+		}
 		account.CreatedAt, _ = time.Parse(time.RFC3339Nano, stored.created)
 	}
 	account.UpdatedAt, _ = time.Parse(time.RFC3339Nano, now)
@@ -147,6 +162,14 @@ func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) er
 		account.Mode, account.Namespace, account.Identity.Subject,
 		account.Generation, account.CreatedAt.Format(time.RFC3339Nano), now); err != nil {
 		return fmt.Errorf("sqlite: commit linked account: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO binding_generations (scope, bot, generation, updated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT (scope, bot) DO UPDATE SET
+		   generation = excluded.generation, updated_at = excluded.updated_at`,
+		account.Scope, account.Bot, account.Generation, now); err != nil {
+		return fmt.Errorf("sqlite: remember binding generation: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("sqlite: commit linked account: %w", err)

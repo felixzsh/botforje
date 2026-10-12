@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/felixzsh/botflota"
 )
 
 func pairCall(
@@ -73,5 +75,39 @@ func TestPairingEndpoints(t *testing.T) {
 	cancelled := pairCall(t, server, http.MethodDelete, path, "")
 	if cancelled.Code != http.StatusNoContent {
 		t.Fatalf("cancel = %d, want 204", cancelled.Code)
+	}
+}
+
+// TestPairingViewReportsActivationSeparately: a committed binding whose bot
+// did not start reads succeeded with its activation failure beside it,
+// never hidden inside the setup outcome (ADR 0053).
+func TestPairingViewReportsActivationSeparately(t *testing.T) {
+	view := pairingViewOf(&botflota.PairingSession{
+		Scope: "dev", Bot: "alpha", Method: "qr", State: botflota.PairSucceeded,
+		ActivationError: "channel failed to start",
+		Result:          botflota.PairingResult{},
+	})
+	if view.State != "paired" || view.ActivationError == "" {
+		t.Fatalf("view = %#v, want succeeded with its activation failure", view)
+	}
+	raw, err := json.Marshal(view)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"activation_error"`) {
+		t.Fatalf("view %s carries no activation_error field", raw)
+	}
+	plain := pairingViewOf(&botflota.PairingSession{
+		Scope: "dev", Bot: "alpha", Method: "qr", State: botflota.PairSucceeded,
+	})
+	if plain.ActivationError != "" {
+		t.Fatalf("view = %#v, want no activation field when it started", plain)
+	}
+	raw, err = json.Marshal(plain)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(raw), "activation_error") {
+		t.Fatalf("view %s leaks an empty activation field", raw)
 	}
 }

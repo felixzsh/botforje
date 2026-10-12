@@ -237,3 +237,74 @@ func TestBindingSurvivesReopen(t *testing.T) {
 		t.Fatalf("binding = %#v, want the replacement at generation 2", got)
 	}
 }
+
+// TestBindingGenerationsNeverRepeat: detach forgets the binding row but
+// never its generation provenance, so the next association continues past
+// every earlier one instead of reusing it (ADR 0053).
+func TestBindingGenerationsNeverRepeat(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	first := testBinding("support", "support-bot", "5215500000000")
+	if err := db.Bindings().Commit(ctx, first); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if first.Generation != 1 {
+		t.Fatalf("generation = %d, want 1", first.Generation)
+	}
+	if err := db.Bindings().Delete(ctx, "support", "support-bot"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	other := testBinding("support", "support-bot", "5215599999999")
+	if err := db.Bindings().Commit(ctx, other); err != nil {
+		t.Fatalf("Commit after detach: %v", err)
+	}
+	if other.Generation != 2 {
+		t.Fatalf("generation = %d, want 2 past the detached one", other.Generation)
+	}
+	// Even the same identity returning after a detach advances: the
+	// continuity the row carried is gone, so the store stays conservative
+	// and never repeats a generation.
+	if err := db.Bindings().Delete(ctx, "support", "support-bot"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	back := testBinding("support", "support-bot", "5215599999999")
+	if err := db.Bindings().Commit(ctx, back); err != nil {
+		t.Fatalf("Commit again: %v", err)
+	}
+	if back.Generation != 3 {
+		t.Fatalf("generation = %d, want 3", back.Generation)
+	}
+	got, err := db.Bindings().Get(ctx, "support", "support-bot")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Generation != 3 {
+		t.Fatalf("stored generation = %d, want 3", got.Generation)
+	}
+}
+
+// TestBindingGenerationsSurviveReopen: the provenance outlives a restart,
+// so a replacement after a detach and a reopen still advances.
+func TestBindingGenerationsSurviveReopen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "app.db")
+	db := open(t, path)
+	account := testBinding("support", "support-bot", "5215500000000")
+	if err := db.Bindings().Commit(ctx, account); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if err := db.Bindings().Delete(ctx, "support", "support-bot"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	reopened := open(t, path)
+	next := testBinding("support", "support-bot", "5215599999999")
+	if err := reopened.Bindings().Commit(ctx, next); err != nil {
+		t.Fatalf("Commit after reopen: %v", err)
+	}
+	if next.Generation != 2 {
+		t.Fatalf("generation = %d, want 2", next.Generation)
+	}
+}

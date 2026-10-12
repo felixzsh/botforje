@@ -52,6 +52,51 @@ type PairManager struct {
 	sessions map[botflota.BotRef]*pairingSession
 	// closed stops new sessions.
 	closed bool
+	// botMu guards the per-bot locks: one exclusion per bot covers begin
+	// and detach together, so a new session can never slip between a
+	// detach's wait and its removal (ADR 0053). Bots are config-bounded,
+	// so the entries live as long as the manager.
+	botMu    sync.Mutex
+	botLocks map[botflota.BotRef]*sync.Mutex
+}
+
+// botLock returns one bot's setup exclusion. Callers hold it across the
+// map mutation that starts a session and across the wait plus removal
+// that detaches one; workers never need it, so ending a live session
+// cannot deadlock. Lock order is always bot lock before mu.
+func (m *PairManager) botLock(ref botflota.BotRef) *sync.Mutex {
+	m.botMu.Lock()
+	defer m.botMu.Unlock()
+	if m.botLocks == nil {
+		m.botLocks = make(map[botflota.BotRef]*sync.Mutex)
+	}
+	lock, ok := m.botLocks[ref]
+	if !ok {
+		lock = &sync.Mutex{}
+		m.botLocks[ref] = lock
+	}
+	return lock
+}
+
+// Detach ends one bot's in-flight setup and runs remove while no new
+// session for the bot can start: the wait and the removal hold the same
+// exclusion a begin needs. A nil manager holds no session, so remove runs
+// directly. The context bounds the setup wait; the removal always runs
+// once the wait is over.
+func (m *PairManager) Detach(
+	ctx context.Context, scope, bot string, remove func(context.Context) error,
+) error {
+	if m == nil {
+		return remove(ctx)
+	}
+	ref := botflota.BotRef{Scope: scope, Bot: bot}
+	lock := m.botLock(ref)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := m.EndPair(ctx, scope, bot); err != nil {
+		return fmt.Errorf("whatsapp: end setup before detach: %w", err)
+	}
+	return remove(ctx)
 }
 
 // errPairingClosed reports StartPair after Close.
@@ -69,9 +114,6 @@ type pairingSession struct {
 	// legacyError is the full failure text the pairing translation keeps;
 	// the neutral view carries only the sanitized ErrorCode.
 	legacyError string
-	// activationError reports a runtime activation failure separately from
-	// the committed setup outcome (ADR 0053).
-	activationError string
 	// requestKey is the start idempotency key that created this session.
 	requestKey string
 	// fullHistory asks for the full history window at registration when the
@@ -178,6 +220,8 @@ func (m *PairManager) BeginSetup(
 	now := m.opts.Now().UTC()
 	pairCtx, cancel := context.WithCancel(context.Background())
 	botRef := botflota.BotRef{Scope: scope, Bot: bot}
+	// The begin exclusion also covers detach: no new session slips
+	// between a detach's wait and its removal.
 	session := &pairingSession{
 		neutral: botflota.SetupSession{
 			Bot: botRef, ID: m.opts.ID(), Method: SetupMethodQR, Mode: AccountMode,
@@ -196,6 +240,9 @@ func (m *PairManager) BeginSetup(
 		m.expire(botRef, session)
 	})
 
+	botLock := m.botLock(botRef)
+	botLock.Lock()
+	defer botLock.Unlock()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -422,7 +469,7 @@ func (m *PairManager) legacyOf(session *pairingSession) *botflota.PairingSession
 		ExpiresAt:       session.neutral.ExpiresAt,
 		Error:           session.legacyError,
 		Result:          session.result,
-		ActivationError: session.activationError,
+		ActivationError: session.neutral.ActivationError,
 	}
 	if !session.neutral.Final() {
 		projected.Code = session.code
@@ -460,6 +507,9 @@ func (m *PairManager) StartPair(
 	session.timer = time.AfterFunc(m.opts.Lifetime, func() {
 		m.expire(key, session)
 	})
+	botLock := m.botLock(key)
+	botLock.Lock()
+	defer botLock.Unlock()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -674,10 +724,19 @@ func (m *PairManager) finish(
 ) {
 	session.timer.Stop()
 	m.mu.Lock()
-	if m.sessions[key] != session || session.ended != "" {
+	if m.sessions[key] != session {
 		m.mu.Unlock()
 		return
 	}
+	if session.ended != "" && !session.saved {
+		// Cancelled or expired before anything durable landed: the
+		// outcome stands and the late result is dropped.
+		m.mu.Unlock()
+		return
+	}
+	// A commit reached the store even though cancel or expiry won the
+	// race first: the durable association exists, so the session reports
+	// the success that already happened instead of hiding it.
 	teardown := session.teardown
 	// An error after the account is stored only ends the wait (shutdown or
 	// cancellation); the pairing itself happened and still reports success.
@@ -697,6 +756,12 @@ func (m *PairManager) finish(
 	// already-paired shortcut), so a cancel in the window below cannot
 	// rewrite the outcome.
 	session.saved = true
+	// A reconciled race keeps no error text: the cancel or expiry that
+	// arrived after the commit describes timing, not the association.
+	if session.ended != "" {
+		session.ended = ""
+		session.neutral.ErrorCode = ""
+	}
 	interrupted := err
 	m.mu.Unlock()
 	if interrupted != nil {
@@ -717,7 +782,11 @@ func (m *PairManager) finish(
 				"bot", bot, "error", startErr)
 			m.mu.Lock()
 			if current, ok := m.sessions[key]; ok && current == session {
-				session.activationError = startErr.Error()
+				// The binding is committed; only its activation failed.
+				// Both views report the failure separately from the
+				// setup outcome.
+				session.neutral.ActivationError = startErr.Error()
+				m.bumpLocked(session)
 			}
 			m.mu.Unlock()
 		}
@@ -725,7 +794,7 @@ func (m *PairManager) finish(
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.sessions[key] != session || session.ended != "" {
+	if m.sessions[key] != session || (session.ended != "" && !session.saved) {
 		return
 	}
 	session.neutral.State = botflota.SetupSucceeded

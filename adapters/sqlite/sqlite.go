@@ -117,6 +117,17 @@ var schema = []string{
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
+	// binding_generations remembers the last generation committed per bot
+	// after its binding row is gone, so a later association never reuses
+	// an earlier generation (ADR 0053). Detach forgets the binding, never
+	// this provenance.
+	`CREATE TABLE IF NOT EXISTS binding_generations (
+		scope      TEXT NOT NULL,
+		bot        TEXT NOT NULL,
+		generation INTEGER NOT NULL,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY (scope, bot)
+	)`,
 	`CREATE TABLE IF NOT EXISTS pairing_status (
 		scope       TEXT NOT NULL,
 		bot         TEXT NOT NULL,

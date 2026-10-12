@@ -23,16 +23,19 @@ type pairingResultView struct {
 }
 
 type pairingView struct {
-	Scope     string             `json:"scope"`
-	Bot       string             `json:"bot"`
-	Method    string             `json:"method"`
-	State     string             `json:"state"`
-	Code      string             `json:"code,omitempty"`
-	StartedAt time.Time          `json:"started_at"`
-	UpdatedAt time.Time          `json:"updated_at"`
-	ExpiresAt time.Time          `json:"expires_at"`
-	Error     string             `json:"error,omitempty"`
-	Result    *pairingResultView `json:"result,omitempty"`
+	Scope     string    `json:"scope"`
+	Bot       string    `json:"bot"`
+	Method    string    `json:"method"`
+	State     string    `json:"state"`
+	Code      string    `json:"code,omitempty"`
+	StartedAt time.Time `json:"started_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Error     string    `json:"error,omitempty"`
+	// ActivationError reports that the binding committed but the bot did
+	// not start on it; the setup itself succeeded (ADR 0053).
+	ActivationError string             `json:"activation_error,omitempty"`
+	Result          *pairingResultView `json:"result,omitempty"`
 }
 
 type pairRequest struct {
@@ -45,6 +48,7 @@ func pairingViewOf(session *botflota.PairingSession) pairingView {
 		State: string(session.State), Code: session.Code,
 		StartedAt: session.StartedAt, UpdatedAt: session.UpdatedAt,
 		ExpiresAt: session.ExpiresAt, Error: session.Error,
+		ActivationError: session.ActivationError,
 	}
 	if session.State == botflota.PairSucceeded {
 		view.Result = &pairingResultView{

@@ -410,18 +410,20 @@ func (o AccountOwner) InspectBinding(
 }
 
 // DetachBinding forgets one bot's local binding through the same serialized
-// path as an unpair: it waits for the in-flight setup when one runs,
-// settles the queued replies, and leaves chats, directory, and history
-// alone. It never destroys the provider account (ADR 0053).
+// path as an unpair: it ends the in-flight setup and removes the binding
+// under one per-bot exclusion, so no new session slips between the wait and
+// the removal; it settles the queued replies and leaves chats, directory,
+// and history alone. It never destroys the provider account (ADR 0053).
 func (o AccountOwner) DetachBinding(ctx context.Context, scope, bot string) error {
-	if o.Pairs != nil {
-		wait, cancel := context.WithTimeout(ctx, pairActivationBudget)
-		defer cancel()
-		if err := o.Pairs.EndPair(wait, scope, bot); err != nil {
-			return fmt.Errorf("whatsapp: end setup before detach: %w", err)
-		}
+	remove := func(ctx context.Context) error {
+		return o.UnpairAccount(ctx, scope, bot)
 	}
-	return o.UnpairAccount(ctx, scope, bot)
+	if o.Pairs == nil {
+		return remove(ctx)
+	}
+	wait, cancel := context.WithTimeout(ctx, pairActivationBudget)
+	defer cancel()
+	return o.Pairs.Detach(wait, scope, bot, remove)
 }
 
 // UnpairAccount removes the local credentials, the account record, and the

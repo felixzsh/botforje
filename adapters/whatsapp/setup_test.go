@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waAdv"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/felixzsh/botflota"
@@ -259,6 +261,9 @@ func TestSetupActivationFailureIsReportedSeparately(t *testing.T) {
 	for {
 		session := readNeutral(t, manager, "dev", "alpha", started.ID)
 		if session.State == botflota.SetupSucceeded {
+			if session.ActivationError == "" {
+				t.Fatalf("neutral session = %#v, want the activation failure", session)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -502,5 +507,294 @@ func TestDetachDuringImport(t *testing.T) {
 		err, botflota.ErrNotFound,
 	) {
 		t.Fatalf("binding after detach = %v, want it forgotten", err)
+	}
+}
+
+// TestUsableBindingNeedsCredentials: a committed row alone never proves a
+// usable account. Renewal must run the ceremony again instead of reporting
+// a link that cannot send.
+func TestUsableBindingNeedsCredentials(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := &botflota.Binding{
+		Scope: "dev", Bot: "alpha", Provider: ProviderName,
+		Adapter: AdapterKind, Mode: AccountMode, Identity: waKey("5215500000001"),
+	}
+	if err := db.Bindings().Commit(ctx, account); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	opts := PairOptions{
+		Scope: "dev", Bot: "alpha", Devices: devices, Bindings: db.Bindings(),
+	}
+	if usable, err := usableBinding(ctx, opts, account); err != nil || usable {
+		t.Fatalf("usable = %v, err = %v; want false without credentials", usable, err)
+	}
+	saveTestDevice(t, devices, ctx, "5215500000001")
+	if usable, err := usableBinding(ctx, opts, account); err != nil || !usable {
+		t.Fatalf("usable = %v, err = %v; want true with credentials", usable, err)
+	}
+	if usable, err := usableBinding(ctx, opts, nil); err != nil || usable {
+		t.Fatalf("usable = %v, err = %v; want false without a binding", usable, err)
+	}
+}
+
+// TestRetireStaleLinkKeepsBindingRow: settling the old link drops its queue
+// and credentials but keeps the row, so the next commit tells a renewal of
+// the same identity from a replacement by another one.
+func TestRetireStaleLinkKeepsBindingRow(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := &botflota.Binding{
+		Scope: "dev", Bot: "alpha", Provider: ProviderName,
+		Adapter: AdapterKind, Mode: AccountMode, Identity: waKey("5215500000001"),
+	}
+	if err := db.Bindings().Commit(ctx, account); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if err := retireStaleLink(ctx, devices, db.Outbox(), account, time.Now()); err != nil {
+		t.Fatalf("retireStaleLink: %v", err)
+	}
+	kept, err := db.Bindings().Get(ctx, "dev", "alpha")
+	if err != nil {
+		t.Fatalf("Get after retire: %v", err)
+	}
+	if kept.Generation != 1 {
+		t.Fatalf("generation = %d, want the row kept at 1", kept.Generation)
+	}
+	renewal := &botflota.Binding{
+		Scope: "dev", Bot: "alpha", Provider: ProviderName,
+		Adapter: AdapterKind, Mode: AccountMode, Identity: waKey("5215500000001"),
+	}
+	if err := db.Bindings().Commit(ctx, renewal); err != nil {
+		t.Fatalf("Commit renewal: %v", err)
+	}
+	if renewal.Generation != 1 {
+		t.Fatalf("generation = %d, want the renewal to keep 1", renewal.Generation)
+	}
+	replacement := &botflota.Binding{
+		Scope: "dev", Bot: "alpha", Provider: ProviderName,
+		Adapter: AdapterKind, Mode: AccountMode, Identity: waKey("5215500000002"),
+	}
+	if err := db.Bindings().Commit(ctx, replacement); err != nil {
+		t.Fatalf("Commit replacement: %v", err)
+	}
+	if replacement.Generation != 2 {
+		t.Fatalf("generation = %d, want the replacement at 2", replacement.Generation)
+	}
+}
+
+// TestSetupCommitWinsOverRacingCancel: a commit that lands after cancel
+// or expiry won the race still reports the success that already happened,
+// instead of hiding a durable association behind a cancelled outcome.
+func TestSetupCommitWinsOverRacingCancel(t *testing.T) {
+	release := make(chan struct{})
+	manager, _ := testSetupManager(t, PairManagerOptions{})
+	manager.pair = func(_ context.Context, opts PairOptions) (PairResult, error) {
+		opts.RenderQR("code")
+		<-release
+		return PairResult{Identity: waKey("5215500000001")}, nil
+	}
+	ctx := context.Background()
+	ref := botflota.BotRef{Scope: "dev", Bot: "alpha"}
+	started, err := manager.BeginSetup(ctx, "dev", "alpha",
+		botflota.SetupBegin{Method: "qr", RequestKey: "key-1"})
+	if err != nil {
+		t.Fatalf("BeginSetup: %v", err)
+	}
+	// The cancel wins the race first; the commit lands after, while the
+	// worker still runs.
+	if err := manager.CancelSetup(ctx, "dev", "alpha", started.ID); err != nil {
+		t.Fatalf("CancelSetup: %v", err)
+	}
+	manager.mu.Lock()
+	late, ok := manager.sessions[ref]
+	manager.mu.Unlock()
+	if !ok {
+		t.Fatal("the cancelled session left the manager")
+	}
+	manager.markSaved(ref, late)
+	close(release)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		session := readNeutral(t, manager, "dev", "alpha", started.ID)
+		if session.State == botflota.SetupSucceeded {
+			if session.ErrorCode != "" {
+				t.Fatalf("session = %#v, want no error on the reconciled race",
+					session)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session = %#v, want the commit reported", session)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+type failingPairings struct{ botflota.PairingStore }
+
+func (failingPairings) Get(
+	_ context.Context, _, _ string,
+) (*botflota.PairingStatus, error) {
+	return nil, botflota.ErrNotFound
+}
+
+func (failingPairings) Set(
+	_ context.Context, _ *botflota.PairingStatus,
+) error {
+	return errors.New("status store is down")
+}
+
+// TestSaveAccountToleratesStatusFailure: once the binding is committed, a
+// later auxiliary write cannot fail the setup or hide the link.
+func TestSaveAccountToleratesStatusFailure(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jid := types.NewADJID("5215500000005", 0, 1)
+	device := devices.newDevice()
+	device.ID = &jid
+	client := newOfflineClient(device)
+	committed := make(chan struct{}, 1)
+	opts := PairOptions{
+		Scope: "dev", Bot: "alpha", Devices: devices,
+		Bindings: db.Bindings(), Pairings: failingPairings{},
+		Outbox: db.Outbox(), Log: botflota.DiscardLogger(), Now: time.Now,
+		OnSaved: func() { committed <- struct{}{} },
+	}
+	identity, err := saveAccount(ctx, opts, client)
+	if err != nil {
+		t.Fatalf("saveAccount: %v", err)
+	}
+	if identity != waKey("5215500000005") {
+		t.Fatalf("identity = %#v, want the committed one", identity)
+	}
+	select {
+	case <-committed:
+	default:
+		t.Fatal("OnSaved did not run before the status write")
+	}
+	stored, err := db.Bindings().Get(ctx, "dev", "alpha")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if stored.Identity != identity || stored.Generation != 1 {
+		t.Fatalf("binding = %#v, want the committed association", stored)
+	}
+}
+
+// TestDetachExcludesNewBegin: the detach wait and the removal hold one
+// per-bot exclusion, so a new session can neither slip between them nor
+// lose its binding to a detach that started first.
+func TestDetachExcludesNewBegin(t *testing.T) {
+	manager, _ := testSetupManager(t, PairManagerOptions{})
+	manager.pair = func(ctx context.Context, _ PairOptions) (PairResult, error) {
+		<-ctx.Done()
+		return PairResult{}, ctx.Err()
+	}
+	ctx := context.Background()
+	live, err := manager.BeginSetup(ctx, "dev", "alpha",
+		botflota.SetupBegin{Method: "qr", RequestKey: "key-1"})
+	if err != nil {
+		t.Fatalf("BeginSetup: %v", err)
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	detached := make(chan error, 1)
+	go func() {
+		detached <- manager.Detach(ctx, "dev", "alpha",
+			func(context.Context) error {
+				close(entered)
+				<-release
+				return nil
+			})
+	}()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the detach never reached the removal")
+	}
+	nextDone := make(chan *botflota.SetupSession, 1)
+	nextErr := make(chan error, 1)
+	go func() {
+		next, err := manager.BeginSetup(ctx, "dev", "alpha",
+			botflota.SetupBegin{Method: "qr", RequestKey: "key-2"})
+		if err != nil {
+			nextErr <- err
+			return
+		}
+		nextDone <- next
+	}()
+	select {
+	case next := <-nextDone:
+		t.Fatalf("a new session %s slipped between the wait and the removal", next.ID)
+	case err := <-nextErr:
+		t.Fatalf("a new session failed while detached: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// While the detach still holds the exclusion, the old session stays
+	// readable: the detach ended the live setup before removing the
+	// binding, and the blocked begin cannot have replaced it yet.
+	old, err := manager.ReadSetup(ctx, "dev", "alpha", live.ID)
+	if err != nil {
+		t.Fatalf("ReadSetup old: %v", err)
+	}
+	if old.State != botflota.SetupCancelled {
+		t.Fatalf("old session = %s, want the detach to have ended it", old.State)
+	}
+	close(release)
+	if err := <-detached; err != nil {
+		t.Fatalf("Detach: %v", err)
+	}
+	select {
+	case next := <-nextDone:
+		if next.ID == live.ID {
+			t.Fatal("the new session reused the detached one")
+		}
+		// The replacement evicts the ended slot: a stale id stays
+		// inert and can never touch the new session.
+		if _, err := manager.ReadSetup(ctx, "dev", "alpha", live.ID); !errors.Is(
+			err, botflota.ErrNotFound,
+		) {
+			t.Fatalf("old id after replacement = %v, want ErrNotFound", err)
+		}
+	case err := <-nextErr:
+		t.Fatalf("BeginSetup after detach: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the new session never started after the detach")
+	}
+}
+
+// newOfflineClient builds a WhatsApp client that never dials: the device
+// carries the linked identity, so account bookkeeping runs without a
+// transport.
+func newOfflineClient(device *store.Device) *whatsmeow.Client {
+	return whatsmeow.NewClient(device,
+		NewWaLog(botflota.DiscardLogger(), slog.LevelError))
+}
+
+// TestDetachWithoutSessionRemovesDirectly: with no live setup there is no
+// wait, only the removal.
+func TestDetachWithoutSessionRemovesDirectly(t *testing.T) {
+	manager, _ := testSetupManager(t, PairManagerOptions{})
+	removed := false
+	err := manager.Detach(context.Background(), "dev", "alpha",
+		func(context.Context) error { removed = true; return nil })
+	if err != nil {
+		t.Fatalf("Detach: %v", err)
+	}
+	if !removed {
+		t.Fatal("the removal never ran")
 	}
 }
