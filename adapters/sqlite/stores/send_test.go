@@ -181,3 +181,34 @@ func TestCommitSendKeepsTheExistingContactAndChat(t *testing.T) {
 		t.Fatalf("chat = %#v, want id %d at %v", again, chat.ID, t1)
 	}
 }
+
+func TestFindSendReconcilesAnAcceptedKey(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	committed, err := db.Sends().CommitSend(ctx, botflota.SendRecord{
+		Scope: "support", Bot: "support-bot",
+		Target:    waTarget("5215599999999"),
+		Recipient: waPeerPtr("5215599999999"),
+		Content:   botflota.TextContent{Body: "aviso"}, ClientID: "notice-7", At: t0,
+	})
+	if err != nil {
+		t.Fatalf("CommitSend: %v", err)
+	}
+	found, err := db.Sends().FindSend(ctx, "support", "support-bot", "notice-7")
+	if err != nil {
+		t.Fatalf("FindSend: %v", err)
+	}
+	if found != committed {
+		t.Fatalf("found = %#v, want the accepted %#v", found, committed)
+	}
+	if _, err := db.Sends().FindSend(ctx, "support", "support-bot", "other"); !errors.Is(
+		err, botflota.ErrNotFound,
+	) {
+		t.Fatalf("FindSend unknown = %v, want ErrNotFound", err)
+	}
+	if _, err := db.Sends().FindSend(ctx, "support", "support-bot", ""); !errors.Is(
+		err, botflota.ErrNotFound,
+	) {
+		t.Fatalf("FindSend empty = %v, want ErrNotFound", err)
+	}
+}

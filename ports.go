@@ -126,6 +126,10 @@ type ChatStore interface {
 		at time.Time,
 	) (*Chat, error)
 	ForTarget(ctx context.Context, scope, bot string, target ChatTarget) (*Chat, error)
+	// ByID reads one chat by its internal id. Callers resolve the id under
+	// scope and bot themselves: a chat owned by another bot is
+	// indistinguishable from an unknown one (ADR 0044).
+	ByID(ctx context.Context, id int64) (*Chat, error)
 	// Recent returns the most recently active chats first. A zero limit means
 	// every chat, which is how `chat sync --all` walks them (ADR 0035).
 	Recent(ctx context.Context, scope, bot string, limit int) ([]ChatSummary, error)
@@ -310,6 +314,10 @@ type SendResult struct {
 // a caller that lost the response can reconcile (ADR 0044).
 type SendStore interface {
 	CommitSend(ctx context.Context, send SendRecord) (SendResult, error)
+	// FindSend returns the send this bot already accepted under a client id,
+	// so a lost-response retry reconciles without creating a new send.
+	// An unknown key reports ErrNotFound (ADR 0044).
+	FindSend(ctx context.Context, scope, bot, clientID string) (SendResult, error)
 }
 
 // TurnRecord is one message turn's writes: the session it advanced, the

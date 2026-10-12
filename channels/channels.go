@@ -196,6 +196,13 @@ type Definition struct {
 	// against Capabilities first, so a hook never disables that base check. A nil
 	// hook adds nothing (ADR 0052).
 	ValidateContent ContentValidator
+	// ValidateTarget reports why an explicit conversation target cannot be
+	// addressed on this implementation, as reasons the caller can act on.
+	// It is pure: no store opens and no transport starts. A nil hook allows
+	// every well-formed target; API admission always checks the common shape
+	// and the provider match first, so a hook never replaces those base
+	// checks (ADR 0044, ADR 0052).
+	ValidateTarget func(target botflota.ChatTarget) []string
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)

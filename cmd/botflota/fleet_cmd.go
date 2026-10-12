@@ -196,7 +196,7 @@ func runFleet(args []string) int {
 		}
 	} else {
 		stopAPI, err := serveAPI(ctx, stop, cfg, source, saved, tree, runner, db,
-			devices, manager, logger, *cmd.newOwnerToken)
+			devices, manager, catalog, logger, *cmd.newOwnerToken)
 		if err != nil {
 			logger.Error("start api", "error", err)
 			return 1
@@ -292,7 +292,7 @@ func serveAPI(
 	ctx context.Context, stop context.CancelFunc, cfg *config.Config,
 	source, saved *config.Source, tree *config.Writer, runner *fleet.Fleet,
 	db *sqlite.DB, devices *whatsapp.Devices, manager *whatsapp.PairManager,
-	logger *slog.Logger, rotate bool,
+	catalog *channels.Catalog, logger *slog.Logger, rotate bool,
 ) (func(), error) {
 	dataDir, err := cfg.DataDirPath()
 	if err != nil {
@@ -346,6 +346,7 @@ func serveAPI(
 		Sessions:    db.Sessions(),
 		Messages:    db.Messages(),
 		Sends:       db.Sends(),
+		Channels:    catalog,
 		History:     db.History(),
 		Pauser:      runner,
 		Tokens:      db.AccessTokens(),

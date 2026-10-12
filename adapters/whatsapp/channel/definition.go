@@ -74,13 +74,14 @@ func Definition() channels.Definition {
 		},
 	}
 	return channels.Definition{
-		Provider:      Provider,
-		Kind:          "whatsmeow",
-		Modes:         []string{Mode},
-		Capabilities:  caps,
-		OptionsSchema: optionsSchema,
-		Decode:        decodeBot,
-		SetupMethods:  []string{whatsapp.SetupMethodQR},
+		Provider:       Provider,
+		Kind:           "whatsmeow",
+		Modes:          []string{Mode},
+		Capabilities:   caps,
+		OptionsSchema:  optionsSchema,
+		Decode:         decodeBot,
+		ValidateTarget: validateTarget,
+		SetupMethods:   []string{whatsapp.SetupMethodQR},
 	}
 }
 
@@ -105,6 +106,26 @@ func decodeBot(bot spec.Bot) (any, []string) {
 		common = *bot.Settings
 	}
 	return builtOptions(raw, common), reasons
+}
+
+// validateTarget states what this implementation can address: its own
+// provider, direct conversations only, and no topic. A shared conversation
+// or a topic is refused rather than sent somewhere the target does not name
+// (ADR 0044, ADR 0051). It mirrors the delivery-time thread rules so
+// admission and delivery agree.
+func validateTarget(target botflota.ChatTarget) []string {
+	if target.Provider != Provider {
+		return []string{fmt.Sprintf(
+			"target provider %q is not %s", target.Provider, Provider)}
+	}
+	if target.Kind != botflota.ChatDirect {
+		return []string{"shared conversations are not supported"}
+	}
+	if target.Topic != "" {
+		return []string{fmt.Sprintf(
+			"direct target carries topic %q", target.Topic)}
+	}
+	return nil
 }
 
 // decodeNode strictly decodes an authored node, so a misspelled option is

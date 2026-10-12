@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 )
 
@@ -78,6 +79,11 @@ type Options struct {
 	// Sends commits an API-origin outbound message outside a turn; it is
 	// optional so a server without it answers 501 on the send route (ADR 0044).
 	Sends botflota.SendStore
+	// Channels is the installed set the bot's definition is resolved
+	// against for send admission: target rules and declared content support
+	// (ADR 0044, ADR 0052). It is optional; without it only the common
+	// shape checks apply.
+	Channels *channels.Catalog
 	// History reads, deletes, and moves one bot's stored history. It is
 	// optional: a server without it answers 501 on the history routes.
 	History botflota.HistoryStore
@@ -110,6 +116,7 @@ type Server struct {
 	sessions  botflota.SessionStore
 	messages  botflota.MessageStore
 	sends     botflota.SendStore
+	channels  *channels.Catalog
 	history   botflota.HistoryStore
 	pauser    BotPauser
 	tokens    botflota.AccessTokenStore
@@ -187,9 +194,10 @@ func New(opts Options) (*Server, error) {
 		unpairer: opts.Unpairer,
 		peers:    opts.Peers, directory: opts.Directory, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages, sends: opts.Sends,
-		history: opts.History,
-		pauser:  opts.Pauser,
-		tokens:  opts.Tokens, resolver: opts.Resolver, log: logger,
+		channels: opts.Channels,
+		history:  opts.History,
+		pauser:   opts.Pauser,
+		tokens:   opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
 		ops: map[botflota.BotRef]*sync.Mutex{},
 	}

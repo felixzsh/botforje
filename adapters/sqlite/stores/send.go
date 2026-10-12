@@ -16,6 +16,29 @@ type SendStore struct{ db *sql.DB }
 
 func NewSendStore(db *sql.DB) *SendStore { return &SendStore{db: db} }
 
+// FindSend returns the send this bot already accepted under a client id.
+// An unknown key reports ErrNotFound, and an empty key is rejected: only a
+// real admission key reconciles (ADR 0044).
+func (s *SendStore) FindSend(
+	ctx context.Context, scope, bot, clientID string,
+) (botflota.SendResult, error) {
+	if clientID == "" {
+		return botflota.SendResult{}, botflota.ErrNotFound
+	}
+	var result botflota.SendResult
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, message_id FROM outbox
+		 WHERE scope = ? AND bot = ? AND client_id = ?`,
+		scope, bot, clientID).Scan(&result.OutboxID, &result.MessageID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return botflota.SendResult{}, botflota.ErrNotFound
+	}
+	if err != nil {
+		return botflota.SendResult{}, fmt.Errorf("sqlite: find accepted send: %w", err)
+	}
+	return result, nil
+}
+
 func (s *SendStore) CommitSend(
 	ctx context.Context, send botflota.SendRecord,
 ) (botflota.SendResult, error) {

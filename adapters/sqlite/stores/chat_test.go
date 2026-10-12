@@ -188,3 +188,20 @@ func TestOneContactManyChats(t *testing.T) {
 		t.Fatal("two bots must have two chats with the same contact")
 	}
 }
+
+func TestChatByIDReadsAnyOwnersChat(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	chat := ensureChat(t, db)
+	got, err := db.Chats().ByID(ctx, chat.ID)
+	if err != nil {
+		t.Fatalf("ByID: %v", err)
+	}
+	if got.Scope != "support" || got.Bot != "support-bot" ||
+		got.Target != waChatTarget || got.PeerID != chat.PeerID {
+		t.Fatalf("chat = %#v, want the ensured one", got)
+	}
+	if _, err := db.Chats().ByID(ctx, chat.ID+1000); !errors.Is(err, botflota.ErrNotFound) {
+		t.Fatalf("ByID unknown = %v, want ErrNotFound", err)
+	}
+}

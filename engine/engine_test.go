@@ -118,6 +118,15 @@ func (s *memStore) ForTarget(
 	return chat, nil
 }
 
+func (s *memStore) ByID(_ context.Context, id int64) (*botflota.Chat, error) {
+	for _, chat := range s.chats {
+		if chat.ID == id {
+			return chat, nil
+		}
+	}
+	return nil, botflota.ErrNotFound
+}
+
 func (s *memStore) Recent(
 	_ context.Context, scope, bot string, limit int,
 ) ([]botflota.ChatSummary, error) {

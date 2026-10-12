@@ -323,6 +323,16 @@ func (f fakeChats) ForTarget(
 	return nil, botflota.ErrNotFound
 }
 
+func (f fakeChats) ByID(_ context.Context, id int64) (*botflota.Chat, error) {
+	for _, summary := range f.chats {
+		if summary.ID == id {
+			chat := summary.Chat
+			return &chat, nil
+		}
+	}
+	return nil, botflota.ErrNotFound
+}
+
 func (f fakeChats) Recent(
 	_ context.Context, scope, bot string, _ int,
 ) ([]botflota.ChatSummary, error) {

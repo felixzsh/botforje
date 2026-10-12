@@ -98,6 +98,21 @@ func (s *ChatStore) ForTarget(
 	return chat, nil
 }
 
+// ByID reads one chat by its internal id; scope and bot checks stay with
+// the caller (ADR 0044).
+func (s *ChatStore) ByID(ctx context.Context, id int64) (*botflota.Chat, error) {
+	row := s.db.QueryRowContext(ctx,
+		"SELECT "+chatColumns+" FROM chats WHERE id = ?", id)
+	chat, err := scanChat(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, botflota.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get chat: %w", err)
+	}
+	return chat, nil
+}
+
 // Recent returns up to limit chats of a scope, newest first. An empty bot
 // means every bot in the scope; a zero limit means every chat: SQLite reads a
 // negative LIMIT as no bound, which is what `chat sync --all` walks.

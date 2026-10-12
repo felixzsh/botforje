@@ -171,3 +171,38 @@ channel:
 		t.Fatalf("reasons = %v", reasons)
 	}
 }
+
+func TestDefinitionValidatesTargets(t *testing.T) {
+	def := Definition()
+	if def.ValidateTarget == nil {
+		t.Fatal("ValidateTarget is nil, want the adapter's target rules")
+	}
+	direct := botflota.ChatTarget{
+		Provider: Provider, Kind: botflota.ChatDirect, Thread: "5215500000000",
+	}
+	if reasons := def.ValidateTarget(direct); len(reasons) != 0 {
+		t.Fatalf("direct target reasons = %v, want none", reasons)
+	}
+	cases := []struct {
+		name   string
+		target botflota.ChatTarget
+	}{
+		{"foreign provider", botflota.ChatTarget{
+			Provider: "telegram", Kind: botflota.ChatDirect, Thread: "1",
+		}},
+		{"shared conversation", botflota.ChatTarget{
+			Provider: Provider, Kind: botflota.ChatGroup, Thread: "g1",
+		}},
+		{"topic on a direct target", botflota.ChatTarget{
+			Provider: Provider, Kind: botflota.ChatDirect,
+			Thread: "5215500000000", Topic: "t",
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if reasons := def.ValidateTarget(tc.target); len(reasons) == 0 {
+				t.Fatalf("target %#v admitted, want reasons", tc.target)
+			}
+		})
+	}
+}
