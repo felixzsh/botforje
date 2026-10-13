@@ -187,7 +187,7 @@ func (s *Server) botRunning(scope, bot string) bool {
 // countsView is what a history operation reports it removed or moved.
 func countsView(counts botflota.HistoryCounts) map[string]int64 {
 	return map[string]int64{
-		"chats": counts.Chats, "sessions": counts.Sessions,
+		"chats": counts.Chats, "graph_runs": counts.GraphRuns,
 		"messages": counts.Messages, "directory": counts.Directory,
 	}
 }

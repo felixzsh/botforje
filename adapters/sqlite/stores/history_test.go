@@ -106,7 +106,7 @@ func TestHistoryReadsOneBotsRowsInStoredOrder(t *testing.T) {
 	}
 	// Every table is announced, in the order a sink writes its files, including
 	// the one the bot never filled.
-	want := []botflota.HistoryTable{botflota.TableChats, botflota.TableSessions,
+	want := []botflota.HistoryTable{botflota.TableChats, botflota.TableGraphRuns,
 		botflota.TableMessages, botflota.TableDirectory}
 	if !slices.Equal(got.tables, want) {
 		t.Fatalf("tables = %v, want %v", got.tables, want)

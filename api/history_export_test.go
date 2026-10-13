@@ -38,7 +38,7 @@ func (f *fakeHistory) DeleteBot(
 		return botflota.HistoryCounts{}, f.writeErr
 	}
 	f.deleted = append(f.deleted, scope+"/"+bot)
-	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Directory: 4}, nil
+	return botflota.HistoryCounts{Chats: 2, GraphRuns: 1, Messages: 3, Directory: 4}, nil
 }
 
 func (f *fakeHistory) MoveBot(
@@ -52,7 +52,7 @@ func (f *fakeHistory) MoveBot(
 	}
 	f.moved = append(f.moved, scope+"/"+from+"->"+to)
 	f.at = at
-	return botflota.HistoryCounts{Chats: 2, Sessions: 1, Messages: 3, Directory: 4}, nil
+	return botflota.HistoryCounts{Chats: 2, GraphRuns: 1, Messages: 3, Directory: 4}, nil
 }
 
 func (f *fakeHistory) ReadHistory(
@@ -70,7 +70,7 @@ func (f *fakeHistory) ReadHistory(
 			return err
 		}
 	}
-	if err := sink.BeginTable(botflota.TableSessions); err != nil {
+	if err := sink.BeginTable(botflota.TableGraphRuns); err != nil {
 		return err
 	}
 	for _, session := range f.sessions {
@@ -182,7 +182,7 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	}
 
 	files := readArchive(t, recorder)
-	for _, name := range []string{"chats.csv", "sessions.csv", "messages.csv",
+	for _, name := range []string{"chats.csv", "graph_runs.csv", "messages.csv",
 		"directory.csv"} {
 		if _, ok := files[name]; !ok {
 			t.Fatalf("%s is missing: %v", name, files)
@@ -192,8 +192,8 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 	// Each file carries a header and its values, and the body keeps its comma
 	// because encoding/csv quotes it.
 	header := csvRows(t, files["messages.csv"])[0]
-	for _, column := range []string{"id", "chat_id", "session_id", "direction",
-		"kind", "body", "content", "sent_at", "provider_message_id"} {
+	for _, column := range []string{"id", "chat_id", "graph_run_id", "direction",
+		"kind", "body", "content", "at", "provider_message_id"} {
 		if !slices.Contains(header, column) {
 			t.Fatalf("messages header %v is missing %q", header, column)
 		}
@@ -228,10 +228,10 @@ func TestHistoryExportWritesAHeaderForEveryTable(t *testing.T) {
 	// A table with no rows still gets its file and its header, so a reader can
 	// tell "nothing here" from "not exported".
 	for name, wantHeader := range map[string]string{
-		"chats.csv":     "peer_subject",
-		"sessions.csv":  "graph_context",
-		"messages.csv":  "provider_message_id",
-		"directory.csv": "source_subject",
+		"chats.csv":      "peer_subject",
+		"graph_runs.csv": "graph_context",
+		"messages.csv":   "provider_message_id",
+		"directory.csv":  "source_subject",
 	} {
 		content, ok := files[name]
 		if !ok {

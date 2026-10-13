@@ -152,7 +152,7 @@ func countHistory(
 				(SELECT id FROM chats WHERE scope = ? AND bot = ?)),
 			(SELECT COUNT(*) FROM directory_entries WHERE scope = ? AND bot = ?)`,
 		scope, bot, scope, bot, scope, bot, scope, bot,
-	).Scan(&counts.Chats, &counts.Sessions, &counts.Messages, &counts.Directory)
+	).Scan(&counts.Chats, &counts.GraphRuns, &counts.Messages, &counts.Directory)
 	if err != nil {
 		return botflota.HistoryCounts{}, fmt.Errorf("sqlite: count history: %w", err)
 	}

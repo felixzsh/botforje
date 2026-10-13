@@ -25,18 +25,18 @@ var historyExportFiles = map[botflota.HistoryTable]struct {
 		"target_topic", "peer_id", "peer_provider", "peer_subject", "peer_name",
 		"started_at", "updated_at", "message_count", "guards",
 	}},
-	botflota.TableSessions: {"sessions.csv", []string{
+	botflota.TableGraphRuns: {"graph_runs.csv", []string{
 		"id", "chat_id", "node", "visited_nodes", "graph_context", "node_context",
 		"created_at", "updated_at", "expires_at",
 	}},
 	botflota.TableMessages: {"messages.csv", []string{
-		"id", "chat_id", "session_id", "target_provider", "target_kind",
+		"id", "chat_id", "graph_run_id", "target_provider", "target_kind",
 		"target_thread", "target_topic", "direction", "kind", "body", "content",
-		"sent_at", "provider_message_id", "ingest_kind", "origin", "routing",
+		"at", "provider_message_id", "ingest", "origin", "routing",
 	}},
 	botflota.TableDirectory: {"directory.csv", []string{
-		"scope", "bot", "provider", "subject", "source_provider", "source_subject",
-		"display_name", "updated_at",
+		"scope", "bot", "peer_provider", "peer_subject", "source_provider",
+		"source_subject", "display_name", "updated_at",
 	}},
 }
 

@@ -226,7 +226,7 @@ type HistoryTable string
 
 const (
 	TableChats     HistoryTable = "chats"
-	TableSessions  HistoryTable = "sessions"
+	TableGraphRuns HistoryTable = "graph_runs"
 	TableMessages  HistoryTable = "messages"
 	TableDirectory HistoryTable = "directory"
 )

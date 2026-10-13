@@ -29,7 +29,7 @@ func (s *HistoryStore) ReadHistory(
 		read func(context.Context, *sql.Tx, string, string, botflota.HistorySink) error
 	}{
 		{botflota.TableChats, readHistoryChats},
-		{botflota.TableSessions, readHistorySessions},
+		{botflota.TableGraphRuns, readHistorySessions},
 		{botflota.TableMessages, readHistoryMessages},
 		{botflota.TableDirectory, readHistoryDirectory},
 	} {

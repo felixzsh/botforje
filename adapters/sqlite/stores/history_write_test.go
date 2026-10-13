@@ -65,7 +65,7 @@ func TestDeleteBotRemovesItsHistoryAndKeepsTheScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteBot: %v", err)
 	}
-	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 ||
+	if counts.Chats != 1 || counts.Messages != 1 || counts.GraphRuns != 1 ||
 		counts.Directory != 1 {
 		t.Fatalf("counts = %+v, want one of each", counts)
 	}
@@ -120,7 +120,7 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MoveBot: %v", err)
 	}
-	if counts.Chats != 1 || counts.Messages != 1 || counts.Sessions != 1 ||
+	if counts.Chats != 1 || counts.Messages != 1 || counts.GraphRuns != 1 ||
 		counts.Directory != 1 {
 		t.Fatalf("counts = %+v, want the source's history", counts)
 	}

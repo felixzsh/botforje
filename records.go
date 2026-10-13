@@ -170,7 +170,7 @@ type Message struct {
 // part of it, and docs/access-policy.md owns the resource policy (ADR 0042).
 type HistoryCounts struct {
 	Chats     int64
-	Sessions  int64
+	GraphRuns int64
 	Messages  int64
 	Directory int64
 }
