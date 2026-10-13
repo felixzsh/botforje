@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
@@ -43,41 +41,6 @@ func whatsappSelected(cfg *config.Config) bool {
 		}
 	}
 	return false
-}
-
-// noRemoteSetup is the pairing surface of an instance whose selected channels
-// need no remote account setup. Every operation reports the absence explicitly
-// instead of inventing permission (ADR 0052, ADR 0054).
-type noRemoteSetup struct{}
-
-func (noRemoteSetup) StartPair(
-	context.Context, string, string, botflota.PairRequest,
-) (*botflota.PairingSession, error) {
-	return nil, errors.New("no selected channel needs remote account setup")
-}
-
-func (noRemoteSetup) CurrentPair(
-	context.Context, string, string,
-) (*botflota.PairingSession, error) {
-	return nil, botflota.ErrNotFound
-}
-
-// CancelPair and EndPair are idempotent no-ops: no session exists to cancel.
-func (noRemoteSetup) CancelPair(context.Context, string, string) error { return nil }
-func (noRemoteSetup) EndPair(context.Context, string, string) error    { return nil }
-
-// noLocalAccount is the local-credential surface of an instance whose selected
-// channels keep no local account: absent credentials are not an error.
-type noLocalAccount struct{}
-
-func (noLocalAccount) HasCredentials(
-	context.Context, *botflota.Binding,
-) (bool, error) {
-	return false, nil
-}
-
-func (noLocalAccount) UnpairAccount(context.Context, string, string) error {
-	return botflota.ErrNotFound
 }
 
 // whatsappOptions decodes one bot's adapter-owned options from the running

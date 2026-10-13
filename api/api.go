@@ -39,8 +39,10 @@ type ConfigApplier interface {
 	) ([]string, map[string][]string, error)
 }
 
-// Options are the dependencies fleet run injects; every field is required
-// except Log and Presence. Config is the shared snapshot a reload replaces
+// Options are the dependencies fleet run injects. Config, Saved, Writer,
+// Fleet, Setups, Bindings, Peers, Directory, Chats, Sessions, Messages,
+// Tokens, and Resolver are required; Applier, Sends, Channels, History,
+// Pauser, and Log are optional. Config is the shared snapshot a reload replaces
 // (ADR 0009). Saved is that snapshot's counterpart: the configuration as it
 // stands in the files, which may already differ from the running one.
 type Options struct {
@@ -57,20 +59,8 @@ type Options struct {
 	// through its installed channel definition (ADR 0053). It is required:
 	// binding and setup operations select the bot's implementation, never
 	// every bot through one device store.
-	Setups   SetupResolver
-	Bindings botflota.BindingStore
-	// Pairings, Pairing, Presence, and Unpairer are the retired
-	// WhatsApp-specific pairing path. They stay optional until their
-	// last consumers (bots view, CLI) move to the neutral contracts.
-	Pairings botflota.PairingStore
-	Pairing  botflota.PairingRunner
-	// Presence reports local pairing credentials for the bots view; fleet run
-	// injects it, and a server without it answers from the stored pairing
-	// state (ADR 0039).
-	Presence botflota.DevicePresence
-	// Unpairer drops a bot's link; the handler stops the running bot before
-	// asking for it (ADR 0021, ADR 0039).
-	Unpairer  botflota.AccountUnpairer
+	Setups    SetupResolver
+	Bindings  botflota.BindingStore
 	Peers     botflota.PeerStore
 	Directory botflota.DirectoryStore
 	Chats     botflota.ChatStore
@@ -106,10 +96,6 @@ type Server struct {
 	fleet     Fleet
 	setups    SetupResolver
 	bindings  botflota.BindingStore
-	pairings  botflota.PairingStore
-	pairing   botflota.PairingRunner
-	presence  botflota.DevicePresence
-	unpairer  botflota.AccountUnpairer
 	peers     botflota.PeerStore
 	directory botflota.DirectoryStore
 	chats     botflota.ChatStore
@@ -189,9 +175,7 @@ func New(opts Options) (*Server, error) {
 		cfg: opts.Config, saved: opts.Saved, writer: opts.Writer,
 		applier: opts.Applier, fleet: opts.Fleet,
 		setups:   opts.Setups,
-		bindings: opts.Bindings, pairings: opts.Pairings,
-		pairing: opts.Pairing, presence: opts.Presence,
-		unpairer: opts.Unpairer,
+		bindings: opts.Bindings,
 		peers:    opts.Peers, directory: opts.Directory, chats: opts.Chats,
 		sessions: opts.Sessions, messages: opts.Messages, sends: opts.Sends,
 		channels: opts.Channels,

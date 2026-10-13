@@ -6,9 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
-
-	"github.com/felixzsh/botflota"
 )
 
 type botListCmd struct {
@@ -28,11 +25,10 @@ func newBotListCmd() *botListCmd {
 }
 
 type botListEntry struct {
-	Bot        string     `json:"bot"`
-	Scope      string     `json:"scope"`
-	Phone      string     `json:"phone,omitempty"`
-	Status     string     `json:"status"`
-	LastChange *time.Time `json:"last_change,omitempty"`
+	Bot     string `json:"bot"`
+	Scope   string `json:"scope"`
+	Binding string `json:"binding,omitempty"`
+	State   string `json:"state,omitempty"`
 }
 
 // listBots asks the running instance for its bots; `bot list` is an instance
@@ -40,11 +36,15 @@ type botListEntry struct {
 func listBots(ctx context.Context, client *apiClient) ([]botListEntry, error) {
 	var body struct {
 		Bots []struct {
-			Scope      string     `json:"scope"`
-			Bot        string     `json:"bot"`
-			Phone      string     `json:"phone"`
-			Pairing    string     `json:"pairing"`
-			LastChange *time.Time `json:"last_change"`
+			Scope   string `json:"scope"`
+			Bot     string `json:"bot"`
+			State   string `json:"state"`
+			Binding *struct {
+				Provider string `json:"provider"`
+				Identity struct {
+					Subject string `json:"subject"`
+				} `json:"identity"`
+			} `json:"binding"`
 		} `json:"bots"`
 	}
 	if err := client.get(ctx, "/api/v1/bots", &body); err != nil {
@@ -52,13 +52,16 @@ func listBots(ctx context.Context, client *apiClient) ([]botListEntry, error) {
 	}
 	entries := make([]botListEntry, 0, len(body.Bots))
 	for _, bot := range body.Bots {
-		status := bot.Pairing
-		if status == "" {
-			status = string(botflota.PairingNotPaired)
+		binding := "-"
+		if bot.Binding != nil {
+			binding = bot.Binding.Provider + "/" + dash(bot.Binding.Identity.Subject)
+		}
+		state := bot.State
+		if state == "" {
+			state = "-"
 		}
 		entries = append(entries, botListEntry{
-			Bot: bot.Bot, Scope: bot.Scope, Phone: bot.Phone,
-			Status: status, LastChange: bot.LastChange,
+			Bot: bot.Bot, Scope: bot.Scope, Binding: binding, State: state,
 		})
 	}
 	return entries, nil
@@ -92,8 +95,8 @@ func runBotList(args []string) int {
 		}
 		return 0
 	}
-	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
-		"BOT", "SCOPE", "PHONE", "STATUS", "LAST CHANGE")
+	fmt.Printf("%-24s %-12s %-32s %s\n",
+		"BOT", "SCOPE", "BINDING", "STATE")
 	for _, entry := range entries {
 		printStatusRow(entry)
 	}
@@ -101,21 +104,6 @@ func runBotList(args []string) int {
 }
 
 func printStatusRow(entry botListEntry) {
-	phone := entry.Phone
-	if phone == "" {
-		phone = "-"
-	}
-	lastChange := time.Time{}
-	if entry.LastChange != nil {
-		lastChange = *entry.LastChange
-	}
-	fmt.Printf("%-24s %-12s %-16s %-12s %s\n",
-		entry.Bot, entry.Scope, phone, entry.Status, formatLastChange(lastChange))
-}
-
-func formatLastChange(lastChange time.Time) string {
-	if lastChange.IsZero() {
-		return "-"
-	}
-	return lastChange.Local().Format("2006-01-02 15:04:05")
+	fmt.Printf("%-24s %-12s %-32s %s\n",
+		entry.Bot, entry.Scope, entry.Binding, entry.State)
 }

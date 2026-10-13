@@ -10,16 +10,15 @@ import (
 )
 
 type botView struct {
-	Scope   string `json:"scope"`
-	Bot     string `json:"bot"`
-	Phone   string `json:"phone,omitempty"`
-	Pairing string `json:"pairing,omitempty"`
-	// LastChange is when the pairing state last changed; it is shown only
-	// while it matches the state reported above (ADR 0011).
-	LastChange *time.Time `json:"last_change,omitempty"`
-	State      string     `json:"state,omitempty"`
-	Outbox     int        `json:"outbox"`
-	Sessions   int        `json:"sessions"`
+	Scope    string `json:"scope"`
+	Bot      string `json:"bot"`
+	State    string `json:"state,omitempty"`
+	Outbox   int    `json:"outbox"`
+	Sessions int    `json:"sessions"`
+	// Binding is the committed account association, null when the bot has
+	// none. Readiness, capabilities, and setup stay on their own routes
+	// (ADR 0052, ADR 0053).
+	Binding *bindingView `json:"binding"`
 }
 
 // peerView is the peer a chat or message is with. Phone is the legacy
@@ -141,30 +140,10 @@ func (s *Server) botView(
 	account, err := s.bindings.Get(ctx, scope, bot)
 	switch {
 	case err == nil:
+		view.Binding = bindingViewOf(account)
 	case errors.Is(err, botflota.ErrNotFound):
-		account = nil
 	default:
 		return botView{}, err
-	}
-	stored, err := s.pairings.Get(ctx, scope, bot)
-	switch {
-	case err == nil:
-	case errors.Is(err, botflota.ErrNotFound):
-		stored = nil
-	default:
-		return botView{}, err
-	}
-	state, err := s.pairingState(ctx, account, stored)
-	if err != nil {
-		return botView{}, err
-	}
-	view.Pairing = string(state)
-	if state == botflota.PairingPaired && account != nil {
-		view.Phone = account.Identity.Subject
-	}
-	if stored != nil && stored.State == state && !stored.LastChange.IsZero() {
-		changed := stored.LastChange
-		view.LastChange = &changed
 	}
 	return view, nil
 }
@@ -179,33 +158,6 @@ func (s *Server) scopeBotView(ctx context.Context, scope, bot string) (botView, 
 		}
 	}
 	return s.botView(ctx, scope, bot, live)
-}
-
-// pairingState prefers the live credential check when fleet run injected one;
-// without it the stored pairing state is the instance's view. The phone number
-// of a bot is shown only while it is paired, so an unpaired link reports no
-// number (ADR 0011, ADR 0039).
-func (s *Server) pairingState(
-	ctx context.Context, account *botflota.Binding,
-	stored *botflota.PairingStatus,
-) (botflota.PairingState, error) {
-	if account == nil {
-		return botflota.PairingNotPaired, nil
-	}
-	if s.presence != nil {
-		ready, err := s.presence.HasCredentials(ctx, account)
-		if err != nil {
-			return "", err
-		}
-		if !ready {
-			return botflota.PairingUnpaired, nil
-		}
-		return botflota.PairingPaired, nil
-	}
-	if stored == nil {
-		return botflota.PairingNotPaired, nil
-	}
-	return stored.State, nil
 }
 
 func (s *Server) activeSessions(ctx context.Context, scope, bot string) (int, error) {

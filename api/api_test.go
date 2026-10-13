@@ -55,29 +55,6 @@ func (f *fakeFleet) StopBotForUnpair(scope, bot string) error {
 	return nil
 }
 
-// fakeUnpairer records the links the handler dropped; with the account store
-// it also removes the record, the way the real unpairer does.
-type fakeUnpairer struct {
-	calls    []string
-	err      error
-	accounts *fakeAccounts
-}
-
-func (f *fakeUnpairer) UnpairAccount(
-	ctx context.Context, scope, bot string,
-) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.calls = append(f.calls, scope+"/"+bot)
-	if f.accounts != nil {
-		if err := f.accounts.Delete(ctx, scope, bot); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 type fakeAccounts struct {
 	accounts map[string]botflota.Binding
 }
@@ -102,71 +79,6 @@ func (f *fakeAccounts) Commit(context.Context, *botflota.Binding) error {
 
 func (f *fakeAccounts) Delete(_ context.Context, scope, bot string) error {
 	delete(f.accounts, scope+"/"+bot)
-	return nil
-}
-
-type fakePairings struct {
-	states map[string]botflota.PairingState
-	// changed is optional: a state without a timestamp reports none.
-	changed map[string]time.Time
-}
-
-func (f fakePairings) Get(
-	_ context.Context, scope, bot string,
-) (*botflota.PairingStatus, error) {
-	state, ok := f.states[scope+"/"+bot]
-	if !ok {
-		return nil, botflota.ErrNotFound
-	}
-	return &botflota.PairingStatus{
-		Scope: scope, Bot: bot, State: state,
-		LastChange: f.changed[scope+"/"+bot],
-	}, nil
-}
-
-func (f fakePairings) Set(context.Context, *botflota.PairingStatus) error { return nil }
-
-type fakePairing struct {
-	session   botflota.PairingSession
-	present   bool
-	cancelled bool
-	ended     bool
-	started   botflota.PairRequest
-}
-
-func (f *fakePairing) StartPair(
-	_ context.Context, scope, bot string, req botflota.PairRequest,
-) (*botflota.PairingSession, error) {
-	if !f.present {
-		return nil, botflota.ErrBusy
-	}
-	f.started = req
-	session := f.session
-	session.Scope, session.Bot = scope, bot
-	return &session, nil
-}
-
-func (f *fakePairing) CurrentPair(
-	_ context.Context, scope, bot string,
-) (*botflota.PairingSession, error) {
-	if !f.present {
-		return nil, botflota.ErrNotFound
-	}
-	session := f.session
-	session.Scope, session.Bot = scope, bot
-	return &session, nil
-}
-
-func (f *fakePairing) CancelPair(context.Context, string, string) error {
-	if !f.present {
-		return botflota.ErrNotFound
-	}
-	f.cancelled = true
-	return nil
-}
-
-func (f *fakePairing) EndPair(context.Context, string, string) error {
-	f.ended = true
 	return nil
 }
 
@@ -536,15 +448,11 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 	accounts := fakeAccounts{accounts: map[string]botflota.Binding{
 		"support/demo": {
 			Scope: "support", Bot: "demo",
-			Identity: waKey("5215500000000"),
+			Provider: "whatsapp", Adapter: "whatsmeow", Mode: "native",
+			Identity:   waKey("5215500000000"),
+			Generation: 1,
 		},
 	}}
-	pairings := fakePairings{
-		states: map[string]botflota.PairingState{
-			"support/demo": botflota.PairingPaired,
-		},
-		changed: map[string]time.Time{"support/demo": testTime},
-	}
 	contact := botflota.Peer{
 		ID: 7, Scope: "support", Key: waKey("5215500000000"), DisplayName: "Ana",
 	}
@@ -594,7 +502,6 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 			runner:    &stubSetupRunner{sessions: map[string]*botflota.SetupSession{}},
 		},
 		Bindings: &accounts,
-		Pairings: pairings,
 		Peers: &fakePeers{contacts: map[string]botflota.Peer{
 			"support/" + contact.Key.Subject: contact,
 			"support/" + quiet.Key.Subject:   quiet,
@@ -647,16 +554,7 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 				},
 			},
 		}},
-		Tokens: tokens,
-		Pairing: &fakePairing{
-			present: true,
-			session: botflota.PairingSession{
-				Method: "qr", State: botflota.PairWaiting, Code: "qr-code",
-				StartedAt: testTime, UpdatedAt: testTime,
-				ExpiresAt: testTime.Add(time.Hour),
-			},
-		},
-		Unpairer: &fakeUnpairer{accounts: &accounts},
+		Tokens:   tokens,
 		Sends:    &fakeSends{},
 		Resolver: NewAuth(hashOf(testOwnerToken), tokens),
 	}

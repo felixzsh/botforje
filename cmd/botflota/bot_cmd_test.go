@@ -10,7 +10,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
@@ -29,9 +28,10 @@ func TestListBotsReadsTheAPI(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			_, _ = w.Write([]byte(`{"bots":[
-				{"scope":"support","bot":"demo","phone":"5215500000000",
-				 "pairing":"paired","last_change":"2026-09-19T12:00:00Z"},
-				{"scope":"ventas","bot":"other","pairing":"not paired"}
+				{"scope":"support","bot":"demo","state":"connected",
+				 "binding":{"provider":"whatsapp",
+				  "identity":{"provider":"whatsapp","subject":"opaque-1"}}},
+				{"scope":"ventas","bot":"other","binding":null}
 			]}`))
 		}))
 	defer server.Close()
@@ -46,20 +46,14 @@ func TestListBotsReadsTheAPI(t *testing.T) {
 	}
 	first := entries[0]
 	if first.Scope != "support" || first.Bot != "demo" ||
-		first.Phone != "5215500000000" || first.Status != "paired" {
+		first.Binding != "whatsapp/opaque-1" || first.State != "connected" {
 		t.Fatalf("first = %#v", first)
 	}
-	if first.LastChange == nil || !first.LastChange.Equal(testBotListTime) {
-		t.Fatalf("last change = %v, want %v", first.LastChange, testBotListTime)
-	}
 	second := entries[1]
-	if second.Status != string(botflota.PairingNotPaired) ||
-		second.Phone != "" || second.LastChange != nil {
+	if second.Binding != "-" || second.State != "-" {
 		t.Fatalf("second = %#v", second)
 	}
 }
-
-var testBotListTime = time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 
 const (
 	bindUnconfigured = `{"binding":null,"condition":"unconfigured"}`

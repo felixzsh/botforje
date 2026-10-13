@@ -313,18 +313,8 @@ func serveAPI(
 		logger.Warn("owner token rotated",
 			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
-	var (
-		pairings      botflota.PairingRunner   = noRemoteSetup{}
-		presence      botflota.DevicePresence  = noLocalAccount{}
-		unpairer      botflota.AccountUnpairer = noLocalAccount{}
-		closePairings func()
-	)
+	var closePairings func()
 	if devices != nil {
-		owner := whatsapp.AccountOwner{
-			Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
-			Outbox: db.Outbox(), Pairs: manager,
-		}
-		pairings, presence, unpairer = manager, owner, owner
 		closePairings = manager.Close
 	}
 	budgets := cfg.RateBudgets()
@@ -336,10 +326,6 @@ func serveAPI(
 		Fleet:       runner,
 		Setups:      runner,
 		Bindings:    db.Bindings(),
-		Pairings:    db.Pairings(),
-		Pairing:     pairings,
-		Presence:    presence,
-		Unpairer:    unpairer,
 		Peers:       db.Peers(),
 		Directory:   db.Directory(),
 		Chats:       db.Chats(),

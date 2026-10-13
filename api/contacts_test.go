@@ -135,7 +135,8 @@ func TestScopeBotRead(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if view.Scope != "support" || view.Bot != "demo" ||
-		view.Phone != "5215500000000" || view.Pairing != "paired" {
+		view.Binding == nil ||
+		view.Binding.Identity.Subject != "5215500000000" {
 		t.Fatalf("view = %#v", view)
 	}
 
