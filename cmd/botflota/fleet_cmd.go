@@ -261,11 +261,11 @@ func runFleetStatus(args []string) int {
 	var status struct {
 		UptimeSeconds int `json:"uptime_seconds"`
 		Bots          []struct {
-			Bot      string `json:"bot"`
-			Scope    string `json:"scope"`
-			State    string `json:"state"`
-			Outbox   int    `json:"outbox"`
-			Sessions int    `json:"sessions"`
+			Bot       string `json:"bot"`
+			Scope     string `json:"scope"`
+			State     string `json:"state"`
+			Outbox    int    `json:"outbox"`
+			GraphRuns int    `json:"graph_runs"`
 		} `json:"bots"`
 	}
 	if err := client.get(ctx, "/api/v1/status", &status); err != nil {
@@ -275,10 +275,10 @@ func runFleetStatus(args []string) int {
 	uptime := time.Duration(status.UptimeSeconds) * time.Second
 	fmt.Printf("uptime %s\n", uptime)
 	fmt.Printf("%-24s %-12s %-12s %6s %8s\n",
-		"BOT", "SCOPE", "STATE", "OUTBOX", "SESSIONS")
+		"BOT", "SCOPE", "STATE", "OUTBOX", "GRAPH RUNS")
 	for _, bot := range status.Bots {
 		fmt.Printf("%-24s %-12s %-12s %6d %8d\n",
-			bot.Bot, bot.Scope, bot.State, bot.Outbox, bot.Sessions)
+			bot.Bot, bot.Scope, bot.State, bot.Outbox, bot.GraphRuns)
 	}
 	return 0
 }

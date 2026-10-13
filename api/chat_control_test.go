@@ -55,7 +55,7 @@ func setChatControl(
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	path := "/api/v1/scopes/" + scope + "/chats/control?bot=demo&chat_id=" +
+	path := "/api/v1/scopes/" + scope + "/bots/demo/chats/control?chat_id=" +
 		strconv.FormatInt(chatID, 10)
 	request := httptest.NewRequest(http.MethodPut, path, bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer "+token)
@@ -190,7 +190,7 @@ func TestChatListReportsControlOfAHeldChat(t *testing.T) {
 	}}
 	server := newControlServer(t, fleet)
 
-	recorder := get(t, server.Handler(), "/api/v1/scopes/support/chats", testOwnerToken)
+	recorder := get(t, server.Handler(), "/api/v1/scopes/support/bots/demo/chats", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -222,7 +222,7 @@ func TestChatListReportsControlOfAHeldChat(t *testing.T) {
 
 func TestChatListOmitsControlWithoutACapableFleet(t *testing.T) {
 	recorder := get(t, testServer(t).Handler(),
-		"/api/v1/scopes/support/chats", testOwnerToken)
+		"/api/v1/scopes/support/bots/demo/chats", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}

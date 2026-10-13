@@ -18,11 +18,11 @@ func TestStatusEndpoint(t *testing.T) {
 	var body struct {
 		UptimeSeconds int `json:"uptime_seconds"`
 		Bots          []struct {
-			Scope    string `json:"scope"`
-			Bot      string `json:"bot"`
-			State    string `json:"state"`
-			Outbox   int    `json:"outbox"`
-			Sessions int    `json:"sessions"`
+			Scope     string `json:"scope"`
+			Bot       string `json:"bot"`
+			State     string `json:"state"`
+			Outbox    int    `json:"outbox"`
+			GraphRuns int    `json:"graph_runs"`
 		} `json:"bots"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
@@ -33,7 +33,7 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 	bot := body.Bots[0]
 	if bot.Scope != "support" || bot.Bot != "demo" ||
-		bot.State != "connected" || bot.Outbox != 2 || bot.Sessions != 1 {
+		bot.State != "connected" || bot.Outbox != 2 || bot.GraphRuns != 1 {
 		t.Fatalf("bot = %#v", bot)
 	}
 	if body.UptimeSeconds < 0 {
@@ -133,24 +133,24 @@ func TestMessagesEndpoint(t *testing.T) {
 	}
 }
 
-func TestSessionsEndpoint(t *testing.T) {
+func TestGraphRunsEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/sessions?bot=demo&chat_id=3", testOwnerToken)
+		"/api/v1/scopes/support/bots/demo/graph-runs?chat_id=3", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
 	var body struct {
-		Session struct {
+		GraphRun struct {
 			ID   int64  `json:"id"`
 			Node string `json:"node"`
-		} `json:"session"`
+		} `json:"graph_run"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Session.ID != 9 || body.Session.Node != "menu" {
-		t.Fatalf("session = %#v", body.Session)
+	if body.GraphRun.ID != 9 || body.GraphRun.Node != "menu" {
+		t.Fatalf("graph run = %#v", body.GraphRun)
 	}
 }
 

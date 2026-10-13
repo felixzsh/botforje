@@ -724,13 +724,13 @@ func TestScopedTokenIsolation(t *testing.T) {
 	server := testServer(t)
 	handler := server.Handler()
 
-	recorder := get(t, handler, "/api/v1/scopes/support/chats", testAccessToken)
+	recorder := get(t, handler, "/api/v1/scopes/support/bots/demo/chats", testAccessToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("own scope status = %d, want 200", recorder.Code)
 	}
 	// Another configured scope answers 404, never 403, so a scoped principal
 	// cannot infer that it exists.
-	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", testAccessToken)
+	recorder = get(t, handler, "/api/v1/scopes/ventas/bots/other/chats", testAccessToken)
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("other scope status = %d, want 404", recorder.Code)
 	}
@@ -792,11 +792,11 @@ func TestTokensEndpoints(t *testing.T) {
 		t.Fatalf("created = %#v", created)
 	}
 
-	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Token)
+	recorder = get(t, handler, "/api/v1/scopes/support/bots/demo/chats", created.Token)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("minted token status = %d, want 200", recorder.Code)
 	}
-	recorder = get(t, handler, "/api/v1/scopes/ventas/chats", created.Token)
+	recorder = get(t, handler, "/api/v1/scopes/ventas/bots/other/chats", created.Token)
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("minted token other scope = %d, want 404", recorder.Code)
 	}
@@ -817,7 +817,7 @@ func TestTokensEndpoints(t *testing.T) {
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("revoke status = %d, want 204", recorder.Code)
 	}
-	recorder = get(t, handler, "/api/v1/scopes/support/chats", created.Token)
+	recorder = get(t, handler, "/api/v1/scopes/support/bots/demo/chats", created.Token)
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked token status = %d, want 401", recorder.Code)
 	}

@@ -212,12 +212,12 @@ func requestChatSync(
 	count, timeoutSeconds int,
 ) (chatSyncResult, error) {
 	values := url.Values{
-		"bot":     {bot},
 		"chat_id": {strconv.FormatInt(chatID, 10)},
 		"count":   {strconv.Itoa(count)},
 		"timeout": {strconv.Itoa(timeoutSeconds)},
 	}
-	path := "/api/v1/scopes/" + url.PathEscape(scope) + "/chats/sync?" + values.Encode()
+	path := "/api/v1/scopes/" + url.PathEscape(scope) + "/bots/" +
+		url.PathEscape(bot) + "/chats/sync?" + values.Encode()
 	var result chatSyncResult
 	timeout := time.Duration(timeoutSeconds) * time.Second
 	if err := client.post(ctx, path, &result, syncHTTPTimeout(count, timeout)); err != nil {
@@ -276,11 +276,9 @@ type chatsQuery struct {
 }
 
 func (q chatsQuery) path() string {
-	values := url.Values{
-		"bot":   {q.bot},
-		"limit": {strconv.Itoa(q.limit)},
-	}
-	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/chats?" + values.Encode()
+	values := url.Values{"limit": {strconv.Itoa(q.limit)}}
+	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/bots/" +
+		url.PathEscape(q.bot) + "/chats?" + values.Encode()
 }
 
 func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuery) error {

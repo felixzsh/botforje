@@ -18,17 +18,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		if !principal.Allows(status.Scope) {
 			continue
 		}
-		sessions, err := s.activeSessions(r.Context(), status.Scope, status.Bot)
+		graphRuns, err := s.activeGraphRuns(r.Context(), status.Scope, status.Bot)
 		if err != nil {
-			s.fail(w, "count sessions", err)
+			s.fail(w, "count graph runs", err)
 			return
 		}
 		bots = append(bots, botView{
-			Scope:    status.Scope,
-			Bot:      status.Bot,
-			State:    status.State,
-			Outbox:   status.OutboxDepth,
-			Sessions: sessions,
+			Scope:     status.Scope,
+			Bot:       status.Bot,
+			State:     status.State,
+			Outbox:    status.OutboxDepth,
+			GraphRuns: graphRuns,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -86,14 +86,13 @@ func (s *Server) handleScopeBot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
-// handleChats lists the chats of a scope, newest first. An empty bot lists
-// every bot in the scope.
+// handleChats lists one bot's chats, newest first (ADR 0054).
 func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.scopeParam(w, r)
 	if !ok {
 		return
 	}
-	bot, ok := s.botParam(w, r, scope)
+	bot, ok := s.botPathParam(w, r, scope)
 	if !ok {
 		return
 	}
@@ -191,25 +190,25 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGraphRuns(w http.ResponseWriter, r *http.Request) {
 	scope, bot, chat, ok := s.chatParams(w, r)
 	if !ok {
 		return
 	}
 	session, err := s.sessions.Latest(r.Context(), chat.ID)
 	if errors.Is(err, botflota.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "no session for that chat")
+		writeError(w, http.StatusNotFound, "not_found", "no graph run for that chat")
 		return
 	}
 	if err != nil {
-		s.fail(w, "read session", err)
+		s.fail(w, "read graph run", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"scope":   scope,
 		"bot":     bot,
 		"chat_id": chat.ID,
-		"session": sessionView{
+		"graph_run": graphRunView{
 			ID:           session.ID,
 			ChatID:       session.ChatID,
 			Node:         session.Node,
@@ -222,7 +221,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
-	scope, bot, chat, ok := s.chatParams(w, r)
+	scope, bot, chat, ok := s.queryChatParams(w, r)
 	if !ok {
 		return
 	}
@@ -246,7 +245,7 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		views = append(views, messageView{
 			ID:         message.ID,
 			ChatID:     message.ChatID,
-			SessionID:  message.SessionID,
+			GraphRunID: message.SessionID,
 			Direction:  message.Direction,
 			Kind:       botflota.ContentKind(message.Content),
 			Body:       botflota.ContentText(message.Content),

@@ -19,7 +19,7 @@ type chatsServer struct {
 func (c *chatsServer) handler(t *testing.T) http.Handler {
 	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/scopes/support/chats" {
+		if r.URL.Path != "/api/v1/scopes/support/bots/demo/chats" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		c.mu.Lock()
@@ -76,11 +76,8 @@ func TestPrintChatsListsPeers(t *testing.T) {
 	if strings.Contains(text, "phone") || strings.Contains(text, "PHONE") {
 		t.Fatalf("output %q retains the retired phone projection", text)
 	}
-	raw := page.lastQuery(t)
-	for _, want := range []string{"bot=demo", "limit=50"} {
-		if !strings.Contains(raw, want) {
-			t.Fatalf("query %q is missing %q", raw, want)
-		}
+	if raw := page.lastQuery(t); !strings.Contains(raw, "limit=50") {
+		t.Fatalf("query %q is missing the limit", raw)
 	}
 }
 
@@ -104,10 +101,10 @@ func TestRunChatSyncNeedsABotAndChatID(t *testing.T) {
 // it like the messages command does.
 func TestChatsQueryPath(t *testing.T) {
 	got := chatsQuery{scope: "dev scope", bot: "demo", limit: 5}.path()
-	if !strings.Contains(got, "/api/v1/scopes/dev%20scope/chats?") {
+	if !strings.Contains(got, "/api/v1/scopes/dev%20scope/bots/demo/chats?") {
 		t.Fatalf("path = %q, want the escaped scope", got)
 	}
-	if !strings.Contains(got, "bot=demo") || !strings.Contains(got, "limit=5") {
+	if !strings.Contains(got, "limit=5") {
 		t.Fatalf("path = %q, want the filters", got)
 	}
 }
@@ -122,12 +119,12 @@ func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		switch r.URL.Path {
-		case "/api/v1/scopes/support/chats":
+		case "/api/v1/scopes/support/bots/demo/chats":
 			if got := r.URL.Query().Get("limit"); got != "0" {
 				t.Errorf("chats limit = %q, want 0 for every chat", got)
 			}
 			_, _ = w.Write([]byte(twoChats))
-		case "/api/v1/scopes/support/chats/sync":
+		case "/api/v1/scopes/support/bots/demo/chats/sync":
 			mu.Lock()
 			synced = append(synced, r.URL.Query().Get("chat_id"))
 			mu.Unlock()
@@ -168,9 +165,9 @@ func TestSyncEveryChatKeepsGoingAfterAFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		switch r.URL.Path {
-		case "/api/v1/scopes/support/chats":
+		case "/api/v1/scopes/support/bots/demo/chats":
 			_, _ = w.Write([]byte(twoChats))
-		case "/api/v1/scopes/support/chats/sync":
+		case "/api/v1/scopes/support/bots/demo/chats/sync":
 			if r.URL.Query().Get("chat_id") == "3" {
 				w.WriteHeader(http.StatusBadGateway)
 				_, _ = w.Write([]byte(

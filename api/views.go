@@ -10,11 +10,11 @@ import (
 )
 
 type botView struct {
-	Scope    string `json:"scope"`
-	Bot      string `json:"bot"`
-	State    string `json:"state,omitempty"`
-	Outbox   int    `json:"outbox"`
-	Sessions int    `json:"sessions"`
+	Scope     string `json:"scope"`
+	Bot       string `json:"bot"`
+	State     string `json:"state,omitempty"`
+	Outbox    int    `json:"outbox"`
+	GraphRuns int    `json:"graph_runs"`
 	// Binding is the committed account association, null when the bot has
 	// none. Readiness, capabilities, and setup stay on their own routes
 	// (ADR 0052, ADR 0053).
@@ -80,11 +80,13 @@ type directoryEntryView struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// Kind and Body are the derived summary of Content.
+// Kind and Body are the derived summary of Content. GraphRunID is the graph
+// execution that produced an outbound reply, zero for a message with none
+// (ADR 0054).
 type messageView struct {
 	ID         int64                   `json:"id"`
 	ChatID     int64                   `json:"chat_id"`
-	SessionID  int64                   `json:"session_id,omitempty"`
+	GraphRunID int64                   `json:"graph_run_id,omitempty"`
 	Direction  botflota.Direction      `json:"direction"`
 	Kind       botflota.MessageKind    `json:"kind"`
 	IngestKind botflota.Ingest         `json:"ingest_kind"`
@@ -95,7 +97,7 @@ type messageView struct {
 	At         time.Time               `json:"at"`
 }
 
-type sessionView struct {
+type graphRunView struct {
 	ID           int64     `json:"id"`
 	ChatID       int64     `json:"chat_id"`
 	Node         string    `json:"node"`
@@ -131,11 +133,11 @@ func (s *Server) botView(
 	view := live
 	view.Scope = scope
 	view.Bot = bot
-	sessions, err := s.activeSessions(ctx, scope, bot)
+	graphRuns, err := s.activeGraphRuns(ctx, scope, bot)
 	if err != nil {
 		return botView{}, err
 	}
-	view.Sessions = sessions
+	view.GraphRuns = graphRuns
 	account, err := s.bindings.Get(ctx, scope, bot)
 	switch {
 	case err == nil:
@@ -159,6 +161,6 @@ func (s *Server) scopeBotView(ctx context.Context, scope, bot string) (botView, 
 	return s.botView(ctx, scope, bot, live)
 }
 
-func (s *Server) activeSessions(ctx context.Context, scope, bot string) (int, error) {
+func (s *Server) activeGraphRuns(ctx context.Context, scope, bot string) (int, error) {
 	return s.sessions.CountActive(ctx, scope, bot, time.Now())
 }

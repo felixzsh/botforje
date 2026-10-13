@@ -40,7 +40,7 @@ func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
 	live := &fakeSyncFleet{}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&chat_id=3&count=75&timeout=30",
+		"/api/v1/scopes/support/bots/demo/chats/sync?chat_id=3&count=75&timeout=30",
 		testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
@@ -69,7 +69,7 @@ func TestChatSyncAsksTheLiveFleetForHistory(t *testing.T) {
 func TestChatSyncReportsAFleetWithoutHistory(t *testing.T) {
 	server := testServer(t)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&chat_id=3",
+		"/api/v1/scopes/support/bots/demo/chats/sync?chat_id=3",
 		testOwnerToken)
 	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 }
@@ -78,7 +78,7 @@ func TestChatSyncRejectsAnUnknownChat(t *testing.T) {
 	live := &fakeSyncFleet{}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&chat_id=999", testOwnerToken)
+		"/api/v1/scopes/support/bots/demo/chats/sync?chat_id=999", testOwnerToken)
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", recorder.Code)
 	}
@@ -93,7 +93,7 @@ func TestChatSyncHidesUpstreamFailure(t *testing.T) {
 	}
 	server := testServerWithFleet(t, live)
 	recorder := post(t, server.Handler(),
-		"/api/v1/scopes/support/chats/sync?bot=demo&chat_id=3",
+		"/api/v1/scopes/support/bots/demo/chats/sync?chat_id=3",
 		testOwnerToken)
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", recorder.Code)
@@ -130,7 +130,7 @@ func TestConfigEndpointMasksSecrets(t *testing.T) {
 
 func TestChatsEndpoint(t *testing.T) {
 	server := testServer(t)
-	recorder := get(t, server.Handler(), "/api/v1/scopes/support/chats?bot=demo", testOwnerToken)
+	recorder := get(t, server.Handler(), "/api/v1/scopes/support/bots/demo/chats", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -164,7 +164,7 @@ func TestChatsEndpoint(t *testing.T) {
 	}
 	// A zero limit asks for every chat, which `chat sync --all` walks.
 	all := get(t, server.Handler(),
-		"/api/v1/scopes/support/chats?bot=demo&limit=0", testOwnerToken)
+		"/api/v1/scopes/support/bots/demo/chats?limit=0", testOwnerToken)
 	if all.Code != http.StatusOK {
 		t.Fatalf("limit=0 status = %d, want 200", all.Code)
 	}

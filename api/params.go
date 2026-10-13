@@ -15,10 +15,25 @@ const (
 	maxLimit     = 500
 )
 
-// chatParams resolves one chat under the authorized scope and bot: the chat
-// id selects a stored conversation, and a foreign or unknown id is 404, so
-// an id alone never probes another scope's chats (ADR 0044).
+// chatParams resolves one chat of a bot-owned route, where the bot is a path
+// segment, and reads the chat id from the query.
 func (s *Server) chatParams(
+	w http.ResponseWriter, r *http.Request,
+) (scope, bot string, chat *botflota.Chat, ok bool) {
+	scope, ok = s.scopeParam(w, r)
+	if !ok {
+		return "", "", nil, false
+	}
+	bot, ok = s.botPathParam(w, r, scope)
+	if !ok {
+		return "", "", nil, false
+	}
+	return s.resolveChat(w, r, scope, bot)
+}
+
+// queryChatParams resolves one chat of a scope-level route, where the bot is
+// the query parameter the send selector uses (ADR 0044).
+func (s *Server) queryChatParams(
 	w http.ResponseWriter, r *http.Request,
 ) (scope, bot string, chat *botflota.Chat, ok bool) {
 	scope, ok = s.scopeParam(w, r)
@@ -33,13 +48,22 @@ func (s *Server) chatParams(
 		writeError(w, http.StatusBadRequest, "invalid_request", "bot is required")
 		return "", "", nil, false
 	}
+	return s.resolveChat(w, r, scope, bot)
+}
+
+// resolveChat reads the requested chat id under the authorized scope and bot:
+// a foreign or unknown id is 404, so an id alone never probes another scope's
+// chats (ADR 0044).
+func (s *Server) resolveChat(
+	w http.ResponseWriter, r *http.Request, scope, bot string,
+) (string, string, *botflota.Chat, bool) {
 	id, err := strconv.ParseInt(r.URL.Query().Get("chat_id"), 10, 64)
 	if err != nil || id <= 0 {
 		writeError(w, http.StatusBadRequest, "invalid_request",
 			"chat_id is required")
 		return "", "", nil, false
 	}
-	chat, err = s.chats.ByID(r.Context(), id)
+	chat, err := s.chats.ByID(r.Context(), id)
 	if err == nil && (chat.Scope != scope || chat.Bot != bot) {
 		writeError(w, http.StatusNotFound, "not_found", "no chat with that id")
 		return "", "", nil, false

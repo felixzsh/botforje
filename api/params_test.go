@@ -12,9 +12,9 @@ func TestQueryErrors(t *testing.T) {
 		path string
 		want int
 	}{
-		{"unknown scope", "/api/v1/scopes/nope/chats", http.StatusNotFound},
-		{"unknown bot", "/api/v1/scopes/support/chats?bot=nope", http.StatusNotFound},
-		{"bad limit", "/api/v1/scopes/support/chats?limit=zero", http.StatusBadRequest},
+		{"unknown scope", "/api/v1/scopes/nope/bots/demo/chats", http.StatusNotFound},
+		{"unknown bot", "/api/v1/scopes/support/bots/nope/chats", http.StatusNotFound},
+		{"bad limit", "/api/v1/scopes/support/bots/demo/chats?limit=zero", http.StatusBadRequest},
 		{"bad after_id",
 			"/api/v1/scopes/support/messages?bot=demo&chat_id=3&after_id=abc",
 			http.StatusBadRequest},
@@ -25,7 +25,7 @@ func TestQueryErrors(t *testing.T) {
 		{"foreign chat",
 			"/api/v1/scopes/support/messages?bot=demo&chat_id=4", http.StatusOK},
 		{"no session",
-			"/api/v1/scopes/support/sessions?bot=demo&chat_id=4",
+			"/api/v1/scopes/support/bots/demo/graph-runs?chat_id=4",
 			http.StatusNotFound},
 	}
 	for _, tc := range cases {
