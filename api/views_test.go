@@ -90,7 +90,7 @@ func TestBotsEndpoint(t *testing.T) {
 func TestMessagesEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/messages?bot=demo&contact=5215500000000&limit=1",
+		"/api/v1/scopes/support/messages?bot=demo&chat_id=3&limit=1",
 		testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
@@ -136,7 +136,7 @@ func TestMessagesEndpoint(t *testing.T) {
 func TestSessionsEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/sessions?bot=demo&contact=5215500000000", testOwnerToken)
+		"/api/v1/scopes/support/sessions?bot=demo&chat_id=3", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
@@ -154,24 +154,29 @@ func TestSessionsEndpoint(t *testing.T) {
 	}
 }
 
-func TestAddressBookEndpoint(t *testing.T) {
+func TestDirectoryEndpoint(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/bots/demo/contacts", testOwnerToken)
+		"/api/v1/scopes/support/bots/demo/directory", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
 	}
 	var body struct {
-		Contacts []struct {
-			Phone    string `json:"phone"`
-			Name     string `json:"name"`
-			PushName string `json:"push_name"`
-		} `json:"contacts"`
+		Directory []struct {
+			Provider       string `json:"provider"`
+			Subject        string `json:"subject"`
+			SourceProvider string `json:"source_provider"`
+			SourceSubject  string `json:"source_subject"`
+			DisplayName    string `json:"display_name"`
+		} `json:"directory"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Contacts) != 2 {
-		t.Fatalf("contacts = %+v, want the bot's two", body.Contacts)
+	if len(body.Directory) != 2 {
+		t.Fatalf("directory = %+v, want the bot's two", body.Directory)
+	}
+	if raw := recorder.Body.String(); strings.Contains(raw, "phone") {
+		t.Fatalf("directory entry retains a phone field: %s", raw)
 	}
 }

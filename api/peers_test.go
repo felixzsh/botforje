@@ -11,8 +11,8 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-func TestContactsListPages(t *testing.T) {
-	contacts := &fakePeers{listPage: botflota.PeerPage{
+func TestPeersListPages(t *testing.T) {
+	peers := &fakePeers{listPage: botflota.PeerPage{
 		Peers: []botflota.Peer{{
 			ID: 7, Scope: "support", Key: waKey("5215500000000"),
 			DisplayName: "Ana", FirstSeen: testTime,
@@ -22,18 +22,18 @@ func TestContactsListPages(t *testing.T) {
 		NextCursor: "next-page",
 	}}
 	server := testServerWithOptions(t, &fakeFleet{},
-		func(opts *Options) { opts.Peers = contacts }, nil)
+		func(opts *Options) { opts.Peers = peers }, nil)
 	since := testTime.UnixMilli() + 1234
 	path := fmt.Sprintf(
-		"/api/v1/scopes/support/contacts?since=%d&limit=1&cursor=abc", since)
+		"/api/v1/scopes/support/peers?since=%d&limit=1&cursor=abc", since)
 	recorder := get(t, server.Handler(), path, testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
 	}
 	var body struct {
-		Scope      string               `json:"scope"`
-		Contacts   []contactProfileView `json:"contacts"`
-		NextCursor string               `json:"next_cursor"`
+		Scope      string     `json:"scope"`
+		Peers      []peerView `json:"peers"`
+		NextCursor string     `json:"next_cursor"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response: %v", err)
@@ -41,29 +41,35 @@ func TestContactsListPages(t *testing.T) {
 	if body.Scope != "support" || body.NextCursor != "next-page" {
 		t.Fatalf("body = %s", recorder.Body)
 	}
-	if len(body.Contacts) != 1 || body.Contacts[0].Phone != "5215500000000" ||
-		body.Contacts[0].DisplayName != "Ana" ||
-		!body.Contacts[0].AddressBookImported || !body.Contacts[0].HasChat ||
-		!body.Contacts[0].HasHistory {
-		t.Fatalf("contacts = %#v", body.Contacts)
+	if len(body.Peers) != 1 {
+		t.Fatalf("peers = %#v", body.Peers)
 	}
-	if !contacts.lastSince.Equal(time.UnixMilli(since)) {
-		t.Fatalf("since = %v, want %v", contacts.lastSince, time.UnixMilli(since))
+	peer := body.Peers[0]
+	if peer.ID != 7 || peer.Provider != "whatsapp" ||
+		peer.Subject != "5215500000000" || peer.DisplayName != "Ana" ||
+		!peer.DirectoryImported || !peer.HasChat || !peer.HasHistory {
+		t.Fatalf("peer = %#v", peer)
 	}
-	if contacts.lastLimit != 1 || contacts.lastCursor != "abc" {
-		t.Fatalf("limit/cursor = %d/%q", contacts.lastLimit, contacts.lastCursor)
+	if raw := recorder.Body.String(); strings.Contains(raw, "phone") {
+		t.Fatalf("peer view retains a phone field: %s", raw)
+	}
+	if !peers.lastSince.Equal(time.UnixMilli(since)) {
+		t.Fatalf("since = %v, want %v", peers.lastSince, time.UnixMilli(since))
+	}
+	if peers.lastLimit != 1 || peers.lastCursor != "abc" {
+		t.Fatalf("limit/cursor = %d/%q", peers.lastLimit, peers.lastCursor)
 	}
 }
 
-func TestContactsListOmitsTheCursorOnTheLastPage(t *testing.T) {
-	contacts := &fakePeers{listPage: botflota.PeerPage{
+func TestPeersListOmitsTheCursorOnTheLastPage(t *testing.T) {
+	peers := &fakePeers{listPage: botflota.PeerPage{
 		Peers: []botflota.Peer{{
 			ID: 7, Scope: "support", Key: waKey("5215500000000"), FirstSeen: testTime,
 		}},
 	}}
 	server := testServerWithOptions(t, &fakeFleet{},
-		func(opts *Options) { opts.Peers = contacts }, nil)
-	recorder := get(t, server.Handler(), "/api/v1/scopes/support/contacts", testOwnerToken)
+		func(opts *Options) { opts.Peers = peers }, nil)
+	recorder := get(t, server.Handler(), "/api/v1/scopes/support/peers", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
 	}
@@ -72,14 +78,14 @@ func TestContactsListOmitsTheCursorOnTheLastPage(t *testing.T) {
 	}
 }
 
-func TestContactsListRejectsBadParameters(t *testing.T) {
+func TestPeersListRejectsBadParameters(t *testing.T) {
 	cases := []struct {
 		name  string
 		path  string
 		store *fakePeers
 	}{
-		{"bad since", "/api/v1/scopes/support/contacts?since=yesterday", &fakePeers{}},
-		{"bad cursor", "/api/v1/scopes/support/contacts?cursor=zzz",
+		{"bad since", "/api/v1/scopes/support/peers?since=yesterday", &fakePeers{}},
+		{"bad cursor", "/api/v1/scopes/support/peers?cursor=zzz",
 			&fakePeers{listErr: botflota.ErrInvalidCursor}},
 	}
 	for _, tc := range cases {
@@ -95,29 +101,31 @@ func TestContactsListRejectsBadParameters(t *testing.T) {
 	}
 }
 
-func TestContactRead(t *testing.T) {
+// TestPeerRead resolves the scope-owned internal id, never a subject alone
+// (ADR 0044).
+func TestPeerRead(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
-		"/api/v1/scopes/support/contacts/5215500000000", testOwnerToken)
+		"/api/v1/scopes/support/peers/7", testOwnerToken)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
 	}
-	var view contactProfileView
+	var view peerView
 	if err := json.Unmarshal(recorder.Body.Bytes(), &view); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if view.Phone != "5215500000000" || view.DisplayName != "Ana" {
+	if view.ID != 7 || view.Subject != "5215500000000" || view.DisplayName != "Ana" {
 		t.Fatalf("view = %#v", view)
 	}
 
 	missing := get(t, server.Handler(),
-		"/api/v1/scopes/support/contacts/5215500000099", testOwnerToken)
+		"/api/v1/scopes/support/peers/999", testOwnerToken)
 	if missing.Code != http.StatusNotFound {
-		t.Fatalf("unknown contact status = %d, want 404", missing.Code)
+		t.Fatalf("unknown peer status = %d, want 404", missing.Code)
 	}
 
 	out := get(t, server.Handler(),
-		"/api/v1/scopes/ventas/contacts/5215500000000", testAccessToken)
+		"/api/v1/scopes/ventas/peers/7", testAccessToken)
 	if out.Code != http.StatusNotFound {
 		t.Fatalf("out-of-scope status = %d, want 404", out.Code)
 	}

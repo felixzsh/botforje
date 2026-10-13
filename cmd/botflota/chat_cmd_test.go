@@ -42,16 +42,16 @@ func (c *chatsServer) lastQuery(t *testing.T) string {
 
 const twoChats = `{"chats":[
 	{"id":3,"scope":"support","bot":"demo",
-	 "contact":{"phone":"5215500000000","name":"Ana"},
+	 "peer":{"provider":"whatsapp","subject":"5215500000000","name":"Ana"},
 	 "started_at":"2026-09-13T10:00:00Z","updated_at":"2026-09-13T10:05:00Z",
 	 "messages":5,"sync":3,"live":2},
 	{"id":1,"scope":"support","bot":"demo",
-	 "contact":{"phone":"5215500000001","name":""},
+	 "peer":{"provider":"whatsapp","subject":"5215500000001"},
 	 "started_at":"2026-09-12T09:00:00Z","updated_at":"2026-09-12T09:00:00Z",
 	 "messages":0,"sync":0,"live":0}
 ]}`
 
-func TestPrintChatsListsSenders(t *testing.T) {
+func TestPrintChatsListsPeers(t *testing.T) {
 	page := &chatsServer{body: twoChats}
 	server := httptest.NewServer(page.handler(t))
 	defer server.Close()
@@ -64,12 +64,17 @@ func TestPrintChatsListsSenders(t *testing.T) {
 	}
 	text := out.String()
 	for _, want := range []string{
-		"PHONE", "NAME", "MESSAGES", "SYNC", "LIVE", "STARTED", "UPDATED",
-		"5215500000000", "Ana", "5215500000001", "-", "5", "3", "2",
+		"ID", "PROVIDER", "SUBJECT", "NAME", "MESSAGES", "SYNC", "LIVE",
+		"STARTED", "UPDATED",
+		"3", "whatsapp", "5215500000000", "Ana",
+		"1", "5215500000001", "-", "5", "3", "2",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("output %q is missing %q", text, want)
 		}
+	}
+	if strings.Contains(text, "phone") || strings.Contains(text, "PHONE") {
+		t.Fatalf("output %q retains the retired phone projection", text)
 	}
 	raw := page.lastQuery(t)
 	for _, want := range []string{"bot=demo", "limit=50"} {
@@ -85,12 +90,13 @@ func TestRunChatListNeedsABot(t *testing.T) {
 	}
 }
 
-func TestRunChatSyncNeedsABotAndSender(t *testing.T) {
+func TestRunChatSyncNeedsABotAndChatID(t *testing.T) {
 	if code := runChatSync(nil); code != 2 {
-		t.Fatalf("exit code = %d, want 2 for a missing bot and sender", code)
+		t.Fatalf("exit code = %d, want 2 for a missing bot", code)
 	}
+	// A bot without --chat-id and without --all names no destination.
 	if code := runChatSync([]string{"demo"}); code != 2 {
-		t.Fatalf("exit code = %d, want 2 for a missing sender", code)
+		t.Fatalf("exit code = %d, want 2 for a missing chat id", code)
 	}
 }
 
@@ -106,25 +112,8 @@ func TestChatsQueryPath(t *testing.T) {
 	}
 }
 
-// chatsWithBlankPhone carries a chat the API cannot address by sender; the
-// bulk walk must skip it.
-const chatsWithBlankPhone = `{"chats":[
-	{"id":3,"scope":"support","bot":"demo",
-	 "contact":{"phone":"5215500000000","name":"Ana"},
-	 "started_at":"2026-09-13T10:00:00Z","updated_at":"2026-09-13T10:05:00Z",
-	 "messages":5,"sync":3,"live":2},
-	{"id":2,"scope":"support","bot":"demo",
-	 "contact":{"phone":"","name":"no phone"},
-	 "started_at":"2026-09-13T09:00:00Z","updated_at":"2026-09-13T09:00:00Z",
-	 "messages":0,"sync":0,"live":0},
-	{"id":1,"scope":"support","bot":"demo",
-	 "contact":{"phone":"5215500000001","name":""},
-	 "started_at":"2026-09-12T09:00:00Z","updated_at":"2026-09-12T09:00:00Z",
-	 "messages":0,"sync":0,"live":0}
-]}`
-
 // TestSyncEveryChatWalksEveryChat covers `chat sync --all`: every chat listed
-// with a zero limit, backfilled in order (ADR 0035).
+// with a zero limit, backfilled by chat id in order (ADR 0035, ADR 0044).
 func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 	var (
 		mu     sync.Mutex
@@ -137,10 +126,10 @@ func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 			if got := r.URL.Query().Get("limit"); got != "0" {
 				t.Errorf("chats limit = %q, want 0 for every chat", got)
 			}
-			_, _ = w.Write([]byte(chatsWithBlankPhone))
+			_, _ = w.Write([]byte(twoChats))
 		case "/api/v1/scopes/support/chats/sync":
 			mu.Lock()
-			synced = append(synced, r.URL.Query().Get("contact"))
+			synced = append(synced, r.URL.Query().Get("chat_id"))
 			mu.Unlock()
 			_, _ = w.Write([]byte(`{"received":3,"rounds":1,"imported":2,` +
 				`"duplicate":1,"skipped":0,"stable":true}`))
@@ -159,8 +148,6 @@ func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 	text := out.String()
 	for _, want := range []string{
 		"syncing 2 chat(s)",
-		"5215500000000",
-		"5215500000001",
 		"imported 2 (duplicate 1, skipped 0) [nothing older]",
 		"synced 2 chat(s), imported 4 (duplicate 2, skipped 0), 0 failed",
 	} {
@@ -168,13 +155,10 @@ func TestSyncEveryChatWalksEveryChat(t *testing.T) {
 			t.Errorf("output %q is missing %q", text, want)
 		}
 	}
-	if strings.Contains(text, "no phone") {
-		t.Errorf("a chat without a phone was walked: %q", text)
-	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(synced) != 2 || synced[0] != "5215500000000" || synced[1] != "5215500000001" {
-		t.Fatalf("synced = %v, want both chats in order", synced)
+	if len(synced) != 2 || synced[0] != "3" || synced[1] != "1" {
+		t.Fatalf("synced = %v, want both chats by id in order", synced)
 	}
 }
 
@@ -187,7 +171,7 @@ func TestSyncEveryChatKeepsGoingAfterAFailure(t *testing.T) {
 		case "/api/v1/scopes/support/chats":
 			_, _ = w.Write([]byte(twoChats))
 		case "/api/v1/scopes/support/chats/sync":
-			if r.URL.Query().Get("contact") == "5215500000000" {
+			if r.URL.Query().Get("chat_id") == "3" {
 				w.WriteHeader(http.StatusBadGateway)
 				_, _ = w.Write([]byte(
 					`{"error":{"code":"sync_failed","message":"no answer"}}`))
@@ -209,7 +193,7 @@ func TestSyncEveryChatKeepsGoingAfterAFailure(t *testing.T) {
 	}
 	text := out.String()
 	for _, want := range []string{
-		"failed", "no answer", "5215500000001", "[no more access]",
+		"failed", "no answer", "[no more access]",
 		"synced 1 chat(s), imported 1 (duplicate 0, skipped 0), 1 failed",
 	} {
 		if !strings.Contains(text, want) {

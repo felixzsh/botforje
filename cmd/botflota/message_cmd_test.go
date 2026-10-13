@@ -58,7 +58,7 @@ func TestPrintMessagesUsesTheNewestPage(t *testing.T) {
 	server := httptest.NewServer(page.handler(t))
 	defer server.Close()
 	client := &apiClient{base: server.URL, token: "tok", http: server.Client()}
-	query := messageQuery{scope: "support", bot: "demo", phone: "52155", limit: 50}
+	query := messageQuery{scope: "support", bot: "demo", chatID: 3, limit: 50}
 
 	var out bytes.Buffer
 	last, err := printMessages(context.Background(), &out, client, query, 0)
@@ -76,7 +76,7 @@ func TestPrintMessagesUsesTheNewestPage(t *testing.T) {
 		t.Fatalf("output = %q, want the provenance columns", text)
 	}
 	raw := page.lastQuery(t)
-	for _, want := range []string{"bot=demo", "contact=52155", "limit=50"} {
+	for _, want := range []string{"bot=demo", "chat_id=3", "limit=50"} {
 		if !strings.Contains(raw, want) {
 			t.Fatalf("query %q is missing %q", raw, want)
 		}
@@ -94,7 +94,7 @@ func TestPrintMessagesResumesFromCursor(t *testing.T) {
 	server := httptest.NewServer(page.handler(t))
 	defer server.Close()
 	client := &apiClient{base: server.URL, token: "tok", http: server.Client()}
-	query := messageQuery{scope: "support", bot: "demo", phone: "52155", limit: 50}
+	query := messageQuery{scope: "support", bot: "demo", chatID: 3, limit: 50}
 
 	var out bytes.Buffer
 	last, err := printMessages(context.Background(), &out, client, query, 2)
@@ -147,7 +147,7 @@ func TestFollowMessagesPollsWithCursor(t *testing.T) {
 	server := httptest.NewServer(page.handler(t))
 	defer server.Close()
 	client := &apiClient{base: server.URL, token: "tok", http: server.Client()}
-	query := messageQuery{scope: "support", bot: "demo", phone: "52155", limit: 50}
+	query := messageQuery{scope: "support", bot: "demo", chatID: 3, limit: 50}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var out syncBuffer

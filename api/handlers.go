@@ -113,10 +113,9 @@ func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
 			ID:    chat.ID,
 			Scope: chat.Scope,
 			Bot:   chat.Bot,
-			Contact: peerView{
+			Peer: peerRefView{
 				Provider: chat.PeerKey.Provider,
 				Subject:  chat.PeerKey.Subject,
-				Phone:    chat.PeerKey.Subject,
 				Name:     chat.DisplayName,
 			},
 			StartedAt: chat.StartedAt,
@@ -167,9 +166,8 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	phone := r.URL.Query().Get("contact")
 	result, err := syncer.HistorySync(r.Context(), scope, bot,
-		legacyWhatsAppTarget(phone), count, timeout)
+		chat.Target, count, timeout)
 	if err != nil {
 		// The upstream failure names the peer, the device, or the provider;
 		// the caller gets the shape, the log gets the detail.
@@ -182,7 +180,6 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"scope":     scope,
 		"bot":       bot,
-		"contact":   phone,
 		"chat_id":   chat.ID,
 		"received":  result.Received,
 		"rounds":    result.Rounds,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/felixzsh/botflota"
@@ -47,14 +48,15 @@ func (f *chatControlFleet) ChatControl(
 }
 
 func setChatControl(
-	t *testing.T, server *Server, scope, token, sender, mode string,
+	t *testing.T, server *Server, scope, token string, chatID int64, mode string,
 ) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{"mode": mode})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	path := "/api/v1/scopes/" + scope + "/chats/control?bot=demo&contact=" + sender
+	path := "/api/v1/scopes/" + scope + "/chats/control?bot=demo&chat_id=" +
+		strconv.FormatInt(chatID, 10)
 	request := httptest.NewRequest(http.MethodPut, path, bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
@@ -67,7 +69,6 @@ func decodeControl(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	var body struct {
 		Scope   string         `json:"scope"`
 		Bot     string         `json:"bot"`
-		Contact string         `json:"contact"`
 		ChatID  int64          `json:"chat_id"`
 		Control map[string]any `json:"control"`
 	}
@@ -94,7 +95,7 @@ func TestChatControlHoldsAndReleases(t *testing.T) {
 	server := newControlServer(t, fleet)
 
 	recorder := setChatControl(t, server, "support", testOwnerToken,
-		"5215500000000", "human")
+		3, "human")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("hold status = %d, want 200: %s", recorder.Code, recorder.Body.String())
 	}
@@ -106,7 +107,7 @@ func TestChatControlHoldsAndReleases(t *testing.T) {
 	}
 
 	recorder = setChatControl(t, server, "support", testOwnerToken,
-		"5215500000000", "auto")
+		3, "auto")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("release status = %d, want 200: %s", recorder.Code, recorder.Body.String())
 	}
@@ -121,43 +122,43 @@ func TestChatControlRefusals(t *testing.T) {
 		fleet  *chatControlFleet
 		scope  string
 		token  string
-		sender string
+		chatID int64
 		mode   string
 		want   int
 		code   string
 	}{
 		{
 			name: "a mode that is neither human nor auto", fleet: &chatControlFleet{},
-			scope: "support", token: testOwnerToken, sender: "5215500000000",
+			scope: "support", token: testOwnerToken, chatID: 3,
 			mode: "paused", want: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "an empty mode", fleet: &chatControlFleet{},
-			scope: "support", token: testOwnerToken, sender: "5215500000000",
+			scope: "support", token: testOwnerToken, chatID: 3,
 			mode: "", want: http.StatusUnprocessableEntity,
 		},
 		{
 			name: "a bot that is not running", fleet: &chatControlFleet{
 				err: botflota.ErrBotNotRunning,
 			},
-			scope: "support", token: testOwnerToken, sender: "5215500000000",
+			scope: "support", token: testOwnerToken, chatID: 3,
 			mode: "human", want: http.StatusConflict, code: "bot_not_running",
 		},
 		{
-			name: "an unknown sender", fleet: &chatControlFleet{},
-			scope: "support", token: testOwnerToken, sender: "0000000000",
+			name: "an unknown chat", fleet: &chatControlFleet{},
+			scope: "support", token: testOwnerToken, chatID: 999,
 			mode: "human", want: http.StatusNotFound,
 		},
 		{
 			name: "another scope, for a scoped token", fleet: &chatControlFleet{},
-			scope: "ventas", token: testAccessToken, sender: "5215500000000",
+			scope: "ventas", token: testAccessToken, chatID: 3,
 			mode: "human", want: http.StatusNotFound,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := setChatControl(t, newControlServer(t, tc.fleet),
-				tc.scope, tc.token, tc.sender, tc.mode)
+				tc.scope, tc.token, tc.chatID, tc.mode)
 			if recorder.Code != tc.want {
 				t.Fatalf("status = %d, want %d: %s",
 					recorder.Code, tc.want, recorder.Body.String())
@@ -179,7 +180,7 @@ func TestChatControlRefusals(t *testing.T) {
 func TestChatControlWithoutACapableFleetSaysSo(t *testing.T) {
 	// The plain fixture fleet has no control capability.
 	recorder := setChatControl(t, testServer(t), "support", testOwnerToken,
-		"5215500000000", "human")
+		3, "human")
 	requireUnsupportedOperation(t, recorder.Code, recorder.Body.String())
 }
 
@@ -195,9 +196,9 @@ func TestChatListReportsControlOfAHeldChat(t *testing.T) {
 	}
 	var body struct {
 		Chats []struct {
-			Contact struct {
-				Phone string `json:"phone"`
-			} `json:"contact"`
+			Peer struct {
+				Subject string `json:"subject"`
+			} `json:"peer"`
 			Control string `json:"control"`
 		} `json:"chats"`
 	}
@@ -206,7 +207,7 @@ func TestChatListReportsControlOfAHeldChat(t *testing.T) {
 	}
 	found := false
 	for _, chat := range body.Chats {
-		if chat.Contact.Phone != "5215500000000" {
+		if chat.Peer.Subject != "5215500000000" {
 			continue
 		}
 		found = true

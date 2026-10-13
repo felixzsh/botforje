@@ -21,39 +21,38 @@ type botView struct {
 	Binding *bindingView `json:"binding"`
 }
 
-// peerView is the peer a chat or message is with. Phone is the legacy
-// WhatsApp projection of the subject; provider and subject are the neutral
-// reference (ADR 0051, ADR 0054).
-type peerView struct {
+// peerRefView is the peer a chat is with: its neutral reference and
+// best-effort name, never a phone projection (ADR 0051, ADR 0054).
+type peerRefView struct {
 	Provider string `json:"provider,omitempty"`
 	Subject  string `json:"subject,omitempty"`
-	Phone    string `json:"phone"`
 	Name     string `json:"name,omitempty"`
 }
 
-// contactProfileView is the scope-level identity read (ADR 0044). DisplayName
-// is the best-effort push name, always present, possibly empty. FirstSeen and
+// peerView is the scope-level identity read (ADR 0044). ID is the
+// scope-owned internal reference a caller passes back; DisplayName is the
+// best-effort push name, always present, possibly empty. FirstSeen and
 // LastSeen are zero without a live inbound. The other fields derive whether
-// the peer came from a directory import and whether chat/history exists.
-type contactProfileView struct {
-	Provider            string    `json:"provider,omitempty"`
-	Subject             string    `json:"subject,omitempty"`
-	Phone               string    `json:"phone"`
-	DisplayName         string    `json:"display_name"`
-	FirstSeen           time.Time `json:"first_seen"`
-	LastSeen            time.Time `json:"last_seen"`
-	AddressBookImported bool      `json:"address_book_imported"`
-	HasChat             bool      `json:"has_chat"`
-	HasHistory          bool      `json:"has_history"`
+// the peer came from a directory import and whether chat or history exists.
+type peerView struct {
+	ID                int64     `json:"id"`
+	Provider          string    `json:"provider,omitempty"`
+	Subject           string    `json:"subject,omitempty"`
+	DisplayName       string    `json:"display_name"`
+	FirstSeen         time.Time `json:"first_seen"`
+	LastSeen          time.Time `json:"last_seen"`
+	DirectoryImported bool      `json:"directory_imported"`
+	HasChat           bool      `json:"has_chat"`
+	HasHistory        bool      `json:"has_history"`
 }
 
 type chatView struct {
-	ID        int64     `json:"id"`
-	Scope     string    `json:"scope"`
-	Bot       string    `json:"bot"`
-	Contact   peerView  `json:"contact"`
-	StartedAt time.Time `json:"started_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        int64       `json:"id"`
+	Scope     string      `json:"scope"`
+	Bot       string      `json:"bot"`
+	Peer      peerRefView `json:"peer"`
+	StartedAt time.Time   `json:"started_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
 	// Messages is the stored history total; Sync and Live split it by
 	// ingest kind.
 	Messages int64 `json:"messages"`
@@ -65,9 +64,10 @@ type chatView struct {
 	PausedTill *time.Time `json:"paused_till,omitempty"`
 }
 
-// addressBookView is one imported directory entry (ADR 0037, ADR 0051).
-// Phone is the legacy WhatsApp projection of the peer subject.
-type addressBookView struct {
+// directoryEntryView is one imported directory entry (ADR 0037, ADR 0051):
+// the peer it describes and the account whose book supplied it, never a
+// phone projection.
+type directoryEntryView struct {
 	Scope string `json:"scope"`
 	Bot   string `json:"bot"`
 	// Provider and Subject are the peer the entry describes; SourceProvider and
@@ -76,7 +76,6 @@ type addressBookView struct {
 	Subject        string    `json:"subject,omitempty"`
 	SourceProvider string    `json:"source_provider,omitempty"`
 	SourceSubject  string    `json:"source_subject,omitempty"`
-	Phone          string    `json:"phone"`
 	DisplayName    string    `json:"display_name,omitempty"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

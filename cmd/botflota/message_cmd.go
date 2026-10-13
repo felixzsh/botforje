@@ -19,6 +19,7 @@ type messageCmd struct {
 	fs     *flag.FlagSet
 	config *string
 	scope  *string
+	chatID *int64
 	limit  *int
 	follow *bool
 }
@@ -30,6 +31,7 @@ func newMessageCmd(name string, follow bool) *messageCmd {
 		fs:     fs,
 		config: configFlag(fs),
 		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
+		chatID: fs.Int64("chat-id", 0, "`ID` chat to read"),
 		limit:  fs.Int("limit", 50, "`N` messages to fetch"),
 	}
 	if follow {
@@ -51,11 +53,11 @@ func runMessage(cmd *messageCmd, args []string) int {
 		return code
 	}
 	path := strings.Fields(cmd.fs.Name())
-	if cmd.fs.NArg() < 2 {
+	if cmd.fs.NArg() < 1 || *cmd.chatID <= 0 {
 		printHelp(os.Stderr, path...)
 		return 2
 	}
-	botName, phone := cmd.fs.Arg(0), cmd.fs.Arg(1)
+	botName := cmd.fs.Arg(0)
 	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
@@ -71,7 +73,7 @@ func runMessage(cmd *messageCmd, args []string) int {
 		return 1
 	}
 	query := messageQuery{
-		scope: scopeName, bot: botName, phone: phone, limit: *cmd.limit,
+		scope: scopeName, bot: botName, chatID: *cmd.chatID, limit: *cmd.limit,
 	}
 	ctx := context.Background()
 	lastID, err := printMessages(ctx, os.Stdout, client, query, 0)
@@ -94,16 +96,16 @@ func runMessage(cmd *messageCmd, args []string) int {
 const followInterval = 2 * time.Second
 
 type messageQuery struct {
-	scope string
-	bot   string
-	phone string
-	limit int
+	scope  string
+	bot    string
+	chatID int64
+	limit  int
 }
 
 func (q messageQuery) path(afterID int64) string {
 	values := url.Values{
 		"bot":     {q.bot},
-		"contact": {q.phone},
+		"chat_id": {strconv.FormatInt(q.chatID, 10)},
 		"limit":   {strconv.Itoa(q.limit)},
 	}
 	if afterID > 0 {

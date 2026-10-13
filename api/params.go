@@ -15,6 +15,9 @@ const (
 	maxLimit     = 500
 )
 
+// chatParams resolves one chat under the authorized scope and bot: the chat
+// id selects a stored conversation, and a foreign or unknown id is 404, so
+// an id alone never probes another scope's chats (ADR 0044).
 func (s *Server) chatParams(
 	w http.ResponseWriter, r *http.Request,
 ) (scope, bot string, chat *botflota.Chat, ok bool) {
@@ -30,15 +33,19 @@ func (s *Server) chatParams(
 		writeError(w, http.StatusBadRequest, "invalid_request", "bot is required")
 		return "", "", nil, false
 	}
-	phone := r.URL.Query().Get("contact")
-	if phone == "" {
-		writeError(w, http.StatusBadRequest, "invalid_request", "contact is required")
+	id, err := strconv.ParseInt(r.URL.Query().Get("chat_id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request",
+			"chat_id is required")
 		return "", "", nil, false
 	}
-	ctx := r.Context()
-	chat, err := s.chats.ForTarget(ctx, scope, bot, legacyWhatsAppTarget(phone))
+	chat, err = s.chats.ByID(r.Context(), id)
+	if err == nil && (chat.Scope != scope || chat.Bot != bot) {
+		writeError(w, http.StatusNotFound, "not_found", "no chat with that id")
+		return "", "", nil, false
+	}
 	if errors.Is(err, botflota.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not_found", "no chat for that contact")
+		writeError(w, http.StatusNotFound, "not_found", "no chat with that id")
 		return "", "", nil, false
 	}
 	if err != nil {

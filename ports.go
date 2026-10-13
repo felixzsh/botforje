@@ -159,6 +159,10 @@ type PeerStore interface {
 		ctx context.Context, scope string, key IdentityKey, name string, at time.Time,
 	) (*Peer, bool, error)
 	Get(ctx context.Context, scope string, key IdentityKey) (*Peer, error)
+	// GetByID reads one scope-owned peer by its internal id. Callers check
+	// the scope themselves; a peer of another scope is indistinguishable
+	// from an unknown one (ADR 0044).
+	GetByID(ctx context.Context, scope string, id int64) (*Peer, error)
 	SetDisplayName(ctx context.Context, scope string, key IdentityKey, name string, at time.Time) error
 	List(
 		ctx context.Context, scope string, since time.Time, limit int, cursor string,

@@ -11,17 +11,17 @@ import (
 	"time"
 )
 
-type addressBookCmd struct {
+type directoryCmd struct {
 	fs     *flag.FlagSet
 	config *string
 	scope  *string
 	limit  *int
 }
 
-func newAddressBookListCmd() *addressBookCmd {
-	fs := flag.NewFlagSet("address-book list", flag.ContinueOnError)
+func newDirectoryListCmd() *directoryCmd {
+	fs := flag.NewFlagSet("directory list", flag.ContinueOnError)
 	fs.Usage = func() {}
-	return &addressBookCmd{
+	return &directoryCmd{
 		fs:     fs,
 		config: configFlag(fs),
 		scope:  fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
@@ -29,13 +29,13 @@ func newAddressBookListCmd() *addressBookCmd {
 	}
 }
 
-func runAddressBookList(args []string) int {
-	cmd := newAddressBookListCmd()
+func runDirectoryList(args []string) int {
+	cmd := newDirectoryListCmd()
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
 	if cmd.fs.NArg() < 1 {
-		printHelp(os.Stderr, "address-book", "list")
+		printHelp(os.Stderr, "directory", "list")
 		return 2
 	}
 	botName := cmd.fs.Arg(0)
@@ -53,37 +53,36 @@ func runAddressBookList(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	query := addressBookQuery{scope: scopeName, bot: botName, limit: *cmd.limit}
-	if err := printAddressBook(context.Background(), os.Stdout, client, query); err != nil {
+	query := directoryQuery{scope: scopeName, bot: botName, limit: *cmd.limit}
+	if err := printDirectory(context.Background(), os.Stdout, client, query); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	return 0
 }
 
-type addressBookQuery struct {
+type directoryQuery struct {
 	scope string
 	bot   string
 	limit int
 }
 
-func (q addressBookQuery) path() string {
+func (q directoryQuery) path() string {
 	values := url.Values{"limit": {strconv.Itoa(q.limit)}}
 	return "/api/v1/scopes/" + url.PathEscape(q.scope) + "/bots/" +
-		url.PathEscape(q.bot) + "/contacts?" + values.Encode()
+		url.PathEscape(q.bot) + "/directory?" + values.Encode()
 }
 
-func printAddressBook(
-	ctx context.Context, w io.Writer, client *apiClient, q addressBookQuery,
+func printDirectory(
+	ctx context.Context, w io.Writer, client *apiClient, q directoryQuery,
 ) error {
 	var body struct {
 		Entries []struct {
 			Provider    string    `json:"provider"`
 			Subject     string    `json:"subject"`
-			Phone       string    `json:"phone"`
 			DisplayName string    `json:"display_name"`
 			UpdatedAt   time.Time `json:"updated_at"`
-		} `json:"contacts"`
+		} `json:"directory"`
 	}
 	if err := client.get(ctx, q.path(), &body); err != nil {
 		return err

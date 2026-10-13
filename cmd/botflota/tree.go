@@ -28,8 +28,8 @@ func cliTree() *commandHelp {
 			"botflota fleet run",
 			"botflota fleet status",
 			"botflota chat list support-bot",
-			"botflota address-book list support-bot",
-			"botflota message tail support-bot 5215500000000 --follow",
+			"botflota directory list support-bot",
+			"botflota message tail support-bot --chat-id 3 --follow",
 		},
 		flags: func() *flag.FlagSet {
 			fs := flag.NewFlagSet("botflota", flag.ContinueOnError)
@@ -206,14 +206,14 @@ func cliTree() *commandHelp {
 				usage:   "botflota chat <command> [options]",
 				examples: []string{
 					"botflota chat list support-bot",
-					"botflota chat sync support-bot 5215500000000",
+					"botflota chat sync support-bot --chat-id 3",
 				},
 				moreHelp: "for more help: botflota chat <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "list",
-						summary: "list one bot's chats and their contacts",
-						long: "Print one row per chat with its contact's phone and name, the\n" +
+						summary: "list one bot's chats and their peers",
+						long: "Print one row per chat with its peer reference and name, the\n" +
 							"stored message total split into sync and live, and the first\n" +
 							"and last activity, newest activity first. The running instance\n" +
 							"answers through the REST API, so fleet run must be up. The bot\n" +
@@ -237,10 +237,10 @@ func cliTree() *commandHelp {
 							"--all walks every chat of the bot, newest activity first, one at a\n" +
 							"time, printing a line per chat and a final total; the command takes\n" +
 							"only the bot, and a chat that fails is reported and skipped.",
-						usage: "botflota chat sync [options] <bot> [contact]",
+						usage: "botflota chat sync [options] <bot>",
 						examples: []string{
-							"botflota chat sync support-bot 5215500000000",
-							"botflota chat sync --count 75 support-bot 5215500000000",
+							"botflota chat sync support-bot --chat-id 3",
+							"botflota chat sync --count 75 support-bot --chat-id 3",
 							"botflota chat sync --all support-bot",
 						},
 						flags: func() *flag.FlagSet { return newChatSyncCmd().fs },
@@ -249,33 +249,33 @@ func cliTree() *commandHelp {
 				},
 			},
 			{
-				name:    "address-book",
-				summary: "list the address book a bot imported",
+				name:    "directory",
+				summary: "list the directory a bot imported",
 				long: "List the entries Botflota copied from one bot's linked\n" +
 					"account. An entry is an identity the account knows, whether or\n" +
-					"not it ever wrote; it is not a chat. Only a bot that sets\n" +
-					"settings.import_contacts has any.",
-				usage: "botflota address-book <command> [options]",
+					"not it ever wrote; it is not a chat. Only a bot that imports a\n" +
+					"directory has any.",
+				usage: "botflota directory <command> [options]",
 				examples: []string{
-					"botflota address-book list support-bot",
+					"botflota directory list support-bot",
 				},
-				moreHelp: "for more help: botflota address-book <command> --help",
+				moreHelp: "for more help: botflota directory <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "list",
-						summary: "print one bot's imported address book",
+						summary: "print one bot's imported directory",
 						long: "Print one row per entry, most recently updated first, with\n" +
-							"the address-book name, the push name, and the business name.\n" +
-							"The running instance answers through the REST API, so fleet run\n" +
-							"must be up. The bot is named as in bot list; add --scope when\n" +
-							"the name exists in more than one scope.",
-						usage: "botflota address-book list [options] <bot>",
+							"the peer subject and the name. The running instance answers\n" +
+							"through the REST API, so fleet run must be up. The bot is\n" +
+							"named as in bot list; add --scope when the name exists in more\n" +
+							"than one scope.",
+						usage: "botflota directory list [options] <bot>",
 						examples: []string{
-							"botflota address-book list support-bot",
-							"botflota address-book list --limit 500 support-bot",
+							"botflota directory list support-bot",
+							"botflota directory list --limit 500 support-bot",
 						},
-						flags: func() *flag.FlagSet { return newAddressBookListCmd().fs },
-						run:   runAddressBookList,
+						flags: func() *flag.FlagSet { return newDirectoryListCmd().fs },
+						run:   runDirectoryList,
 					},
 				},
 			},
@@ -285,21 +285,21 @@ func cliTree() *commandHelp {
 				long:    "Read the stored messages of one chat through the REST API.",
 				usage:   "botflota message <command> [options]",
 				examples: []string{
-					"botflota message list support-bot 5215500000000",
-					"botflota message tail support-bot 5215500000000 --follow",
+					"botflota message list support-bot --chat-id 3",
+					"botflota message tail support-bot --chat-id 3 --follow",
 				},
 				moreHelp: "for more help: botflota message <command> --help",
 				sub: []commandHelp{
 					{
 						name:    "list",
 						summary: "print the newest messages of one chat",
-						long: "Print the last messages exchanged with one contact, oldest\n" +
-							"first. The bot is named as in bot list; add --scope when the\n" +
-							"name exists in more than one scope.",
-						usage: "botflota message list [options] <bot> <contact>",
+						long: "Print the last messages of one chat, oldest first. The bot\n" +
+							"is named as in bot list; add --scope when the name exists in\n" +
+							"more than one scope.",
+						usage: "botflota message list [options] <bot>",
 						examples: []string{
-							"botflota message list support-bot 5215500000000",
-							"botflota message list --limit 100 support-bot 5215500000000",
+							"botflota message list support-bot --chat-id 3",
+							"botflota message list --limit 100 support-bot --chat-id 3",
 						},
 						flags: func() *flag.FlagSet { return newMessageCmd("message list", false).fs },
 						run:   runMessageList,
@@ -309,10 +309,10 @@ func cliTree() *commandHelp {
 						summary: "follow one chat's messages",
 						long: "Print the newest messages and, with --follow, keep polling\n" +
 							"for new ones until interrupted.",
-						usage: "botflota message tail [options] <bot> <contact>",
+						usage: "botflota message tail [options] <bot>",
 						examples: []string{
-							"botflota message tail support-bot 5215500000000",
-							"botflota message tail --follow support-bot 5215500000000",
+							"botflota message tail support-bot --chat-id 3",
+							"botflota message tail --follow support-bot --chat-id 3",
 						},
 						flags: func() *flag.FlagSet { return newMessageCmd("message tail", true).fs },
 						run:   runMessageTail,

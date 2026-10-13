@@ -69,6 +69,7 @@ type chatSyncCmd struct {
 	fs      *flag.FlagSet
 	config  *string
 	scope   *string
+	chatID  *int64
 	count   *int
 	timeout *int
 	all     *bool
@@ -81,6 +82,7 @@ func newChatSyncCmd() *chatSyncCmd {
 		fs:      fs,
 		config:  configFlag(fs),
 		scope:   fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
+		chatID:  fs.Int64("chat-id", 0, "`ID` chat to sync (required unless --all)"),
 		count:   fs.Int("count", 0, "`N` older messages to import per chat (0 = all accessible)"),
 		timeout: fs.Int("timeout", 90, "`SECONDS` to wait for the primary device, per chat"),
 		all:     fs.Bool("all", false, "sync every chat of the bot, one at a time"),
@@ -92,15 +94,16 @@ func runChatSync(args []string) int {
 	if code := parseArgs(cmd.fs, args); code >= 0 {
 		return code
 	}
-	if cmd.fs.NArg() < 1 || (!*cmd.all && cmd.fs.NArg() < 2) {
+	if cmd.fs.NArg() < 1 {
+		printHelp(os.Stderr, "chat", "sync")
+		return 2
+	}
+	if !*cmd.all && *cmd.chatID <= 0 {
+		fmt.Fprintln(os.Stderr, "chat sync needs --chat-id, or --all for every chat")
 		printHelp(os.Stderr, "chat", "sync")
 		return 2
 	}
 	botName := cmd.fs.Arg(0)
-	phone := ""
-	if !*cmd.all {
-		phone = cmd.fs.Arg(1)
-	}
 	cfg, code := loadConfig(*cmd.config)
 	if code != 0 {
 		return code
@@ -121,7 +124,7 @@ func runChatSync(args []string) int {
 		return syncEveryChat(ctx, os.Stdout, client, scopeName, botName,
 			*cmd.count, *cmd.timeout)
 	}
-	return syncOneChat(ctx, os.Stdout, client, scopeName, botName, phone,
+	return syncOneChat(ctx, os.Stdout, client, scopeName, botName, *cmd.chatID,
 		*cmd.count, *cmd.timeout)
 }
 
@@ -136,17 +139,18 @@ type chatSyncResult struct {
 }
 
 func syncOneChat(
-	ctx context.Context, w io.Writer, client *apiClient, scope, bot, phone string,
-	count, timeoutSeconds int,
+	ctx context.Context, w io.Writer, client *apiClient, scope, bot string,
+	chatID int64, count, timeoutSeconds int,
 ) int {
+	label := "chat " + strconv.FormatInt(chatID, 10)
 	if count > 0 {
 		fmt.Fprintf(w, "requesting up to %d older messages for %s through the fleet...\n",
-			count, phone)
+			count, label)
 	} else {
 		fmt.Fprintf(w, "requesting all accessible older messages for %s through the fleet...\n",
-			phone)
+			label)
 	}
-	result, err := requestChatSync(ctx, client, scope, bot, phone, count, timeoutSeconds)
+	result, err := requestChatSync(ctx, client, scope, bot, chatID, count, timeoutSeconds)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -169,47 +173,47 @@ func syncEveryChat(
 	ctx context.Context, w io.Writer, client *apiClient, scope, bot string,
 	count, timeoutSeconds int,
 ) int {
-	phones, err := listChatPhones(ctx, client, scope, bot)
+	ids, err := listChatIDs(ctx, client, scope, bot)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if len(phones) == 0 {
+	if len(ids) == 0 {
 		fmt.Fprintln(w, "no chats to sync")
 		return 0
 	}
-	fmt.Fprintf(w, "syncing %d chat(s) through the fleet...\n", len(phones))
+	fmt.Fprintf(w, "syncing %d chat(s) through the fleet...\n", len(ids))
 	total := chatSyncResult{}
 	failed := 0
-	for _, phone := range phones {
+	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		result, err := requestChatSync(ctx, client, scope, bot, phone, count, timeoutSeconds)
+		result, err := requestChatSync(ctx, client, scope, bot, id, count, timeoutSeconds)
 		if err != nil {
 			failed++
-			fmt.Fprintf(w, "%-15s failed: %v\n", phone, err)
+			fmt.Fprintf(w, "%-8d failed: %v\n", id, err)
 			continue
 		}
 		total.Imported += result.Imported
 		total.Duplicate += result.Duplicate
 		total.Skipped += result.Skipped
-		fmt.Fprintf(w, "%-15s imported %d (duplicate %d, skipped %d)%s\n",
-			phone, result.Imported, result.Duplicate, result.Skipped, stopReason(result))
+		fmt.Fprintf(w, "%-8d imported %d (duplicate %d, skipped %d)%s\n",
+			id, result.Imported, result.Duplicate, result.Skipped, stopReason(result))
 	}
 	fmt.Fprintf(w, "synced %d chat(s), imported %d (duplicate %d, skipped %d), %d failed\n",
-		len(phones)-failed, total.Imported, total.Duplicate, total.Skipped, failed)
+		len(ids)-failed, total.Imported, total.Duplicate, total.Skipped, failed)
 	return 0
 }
 
 func requestChatSync(
-	ctx context.Context, client *apiClient, scope, bot, phone string,
+	ctx context.Context, client *apiClient, scope, bot string, chatID int64,
 	count, timeoutSeconds int,
 ) (chatSyncResult, error) {
 	values := url.Values{
 		"bot":     {bot},
-		"contact": {phone},
+		"chat_id": {strconv.FormatInt(chatID, 10)},
 		"count":   {strconv.Itoa(count)},
 		"timeout": {strconv.Itoa(timeoutSeconds)},
 	}
@@ -222,27 +226,25 @@ func requestChatSync(
 	return result, nil
 }
 
-func listChatPhones(
+func listChatIDs(
 	ctx context.Context, client *apiClient, scope, bot string,
-) ([]string, error) {
+) ([]int64, error) {
 	var body struct {
 		Chats []struct {
-			Contact struct {
-				Phone string `json:"phone"`
-			} `json:"contact"`
+			ID int64 `json:"id"`
 		} `json:"chats"`
 	}
 	query := chatsQuery{scope: scope, bot: bot, limit: 0}
 	if err := client.get(ctx, query.path(), &body); err != nil {
 		return nil, err
 	}
-	phones := make([]string, 0, len(body.Chats))
+	ids := make([]int64, 0, len(body.Chats))
 	for _, chat := range body.Chats {
-		if chat.Contact.Phone != "" {
-			phones = append(phones, chat.Contact.Phone)
+		if chat.ID != 0 {
+			ids = append(ids, chat.ID)
 		}
 	}
-	return phones, nil
+	return ids, nil
 }
 
 func stopReason(result chatSyncResult) string {
@@ -284,10 +286,12 @@ func (q chatsQuery) path() string {
 func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuery) error {
 	var body struct {
 		Chats []struct {
-			Contact struct {
-				Phone string `json:"phone"`
-				Name  string `json:"name"`
-			} `json:"contact"`
+			ID   int64 `json:"id"`
+			Peer struct {
+				Provider string `json:"provider"`
+				Subject  string `json:"subject"`
+				Name     string `json:"name"`
+			} `json:"peer"`
 			Messages  int64     `json:"messages"`
 			Sync      int64     `json:"sync"`
 			Live      int64     `json:"live"`
@@ -298,12 +302,13 @@ func printChats(ctx context.Context, w io.Writer, client *apiClient, q chatsQuer
 	if err := client.get(ctx, q.path(), &body); err != nil {
 		return err
 	}
-	fmt.Fprintf(w, "%-15s %-20s %8s %6s %6s  %-19s  %s\n",
-		"PHONE", "NAME", "MESSAGES", "SYNC", "LIVE", "STARTED", "UPDATED")
+	fmt.Fprintf(w, "%-8s %-12s %-18s %-20s %8s %6s %6s  %-19s  %s\n",
+		"ID", "PROVIDER", "SUBJECT", "NAME", "MESSAGES", "SYNC", "LIVE",
+		"STARTED", "UPDATED")
 	for _, chat := range body.Chats {
-		fmt.Fprintf(w, "%-15s %-20s %8d %6d %6d  %-19s  %s\n",
-			chat.Contact.Phone, dash(chat.Contact.Name), chat.Messages,
-			chat.Sync, chat.Live,
+		fmt.Fprintf(w, "%-8d %-12s %-18s %-20s %8d %6d %6d  %-19s  %s\n",
+			chat.ID, dash(chat.Peer.Provider), dash(chat.Peer.Subject),
+			dash(chat.Peer.Name), chat.Messages, chat.Sync, chat.Live,
 			chat.StartedAt.Local().Format("2006-01-02 15:04:05"),
 			chat.UpdatedAt.Local().Format("2006-01-02 15:04:05"))
 	}

@@ -151,6 +151,23 @@ func (s *PeerStore) Get(
 	return s.get(ctx, s.db, scope, key)
 }
 
+// GetByID reads one scope-owned peer by its internal id (ADR 0044).
+func (s *PeerStore) GetByID(
+	ctx context.Context, scope string, id int64,
+) (*botflota.Peer, error) {
+	row := s.db.QueryRowContext(ctx,
+		"SELECT "+peerReadColumns+" FROM peers p WHERE p.scope = ? AND p.id = ?",
+		scope, id)
+	peer, err := scanPeerRead(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, botflota.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: get peer: %w", err)
+	}
+	return peer, nil
+}
+
 func (s *PeerStore) get(
 	ctx context.Context, q dbtx, scope string, key botflota.IdentityKey,
 ) (*botflota.Peer, error) {

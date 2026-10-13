@@ -185,6 +185,18 @@ func (f fakePeers) Get(
 	return &contact, nil
 }
 
+func (f fakePeers) GetByID(
+	_ context.Context, scope string, id int64,
+) (*botflota.Peer, error) {
+	for _, contact := range f.contacts {
+		if contact.Scope == scope && contact.ID == id {
+			peer := contact
+			return &peer, nil
+		}
+	}
+	return nil, botflota.ErrNotFound
+}
+
 func (f fakePeers) EnsurePeer(
 	context.Context, string, botflota.IdentityKey, time.Time,
 ) (*botflota.Peer, error) {

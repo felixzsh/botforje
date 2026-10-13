@@ -192,6 +192,19 @@ func (s *memStore) Get(
 	return peer, nil
 }
 
+func (s *memStore) GetByID(
+	_ context.Context, scope string, id int64,
+) (*botflota.Peer, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, peer := range s.peers {
+		if peer.Scope == scope && peer.ID == id {
+			return peer, nil
+		}
+	}
+	return nil, botflota.ErrNotFound
+}
+
 func (s *memStore) Ensure(
 	_ context.Context, scope, bot string, target botflota.ChatTarget,
 	peerID int64, at time.Time,
