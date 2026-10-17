@@ -92,14 +92,19 @@ func (s *Server) handleHistoryMigrate(w http.ResponseWriter, r *http.Request) {
 			"history operations are not available")
 		return
 	}
-	// The source is stopped with its queue dropped and the destination drained:
-	// neither may keep writing the rows the move is re-keying. Both locks are
-	// taken in one stable order, so an overlapping operation cannot deadlock.
+	// Both locks are taken in one stable order before the proof is read, so
+	// a concurrent detach or setup input cannot invalidate it: neither can
+	// restart a bot the move is still working on (ADR 0042). The source is
+	// stopped with its queue dropped and the destination drained: neither
+	// may keep writing the rows the move is re-keying.
 	unlock := s.lockBots(
 		botflota.BotRef{Scope: scope, Bot: bot},
 		botflota.BotRef{Scope: scope, Bot: body.To},
 	)
 	defer unlock()
+	if !s.checkMigrationCompatible(w, r, scope, bot, body.To) {
+		return
+	}
 	resume, err := s.pauseBots(scope, bot, true)
 	if err != nil {
 		s.fail(w, "stop bot before moving history", err)
@@ -127,6 +132,72 @@ func (s *Server) handleHistoryMigrate(w http.ResponseWriter, r *http.Request) {
 		"scope": scope, "bot": bot, "to": body.To,
 		"moved": countsView(counts),
 	})
+}
+
+// checkMigrationCompatible proves the two bots' bindings can share history
+// before anything stops or moves: both bindings must be committed, both
+// definitions installed, and the adapters' own compatibility hooks must
+// accept the pair. A missing binding, an unknown definition, a nil hook, or
+// reported reasons refuse the move with 409 incompatible_binding, before any
+// mutation. Shared code never parses opaque subjects itself, and a server
+// without the installed catalog cannot prove compatibility either (ADR 0042,
+// ADR 0051). Like send admission, the check resolves through the installed
+// definitions; unlike it, there is no common fallback proof, so an absent
+// catalog refuses instead of allowing.
+func (s *Server) checkMigrationCompatible(
+	w http.ResponseWriter, r *http.Request, scope, from, to string,
+) bool {
+	if s.channels == nil {
+		writeError(w, http.StatusConflict, "incompatible_binding",
+			"channel compatibility cannot be proven on this instance")
+		return false
+	}
+	fromBinding, err := s.bindings.Get(r.Context(), scope, from)
+	if err != nil {
+		if errors.Is(err, botflota.ErrNotFound) {
+			writeError(w, http.StatusConflict, "incompatible_binding",
+				"the source bot has no committed binding")
+			return false
+		}
+		s.fail(w, "read source binding", err)
+		return false
+	}
+	toBinding, err := s.bindings.Get(r.Context(), scope, to)
+	if err != nil {
+		if errors.Is(err, botflota.ErrNotFound) {
+			writeError(w, http.StatusConflict, "incompatible_binding",
+				"the destination bot has no committed binding")
+			return false
+		}
+		s.fail(w, "read destination binding", err)
+		return false
+	}
+	fromDef, _, err := s.channels.Resolve(s.config().Scopes[scope].Bots[from].Channel)
+	if err != nil {
+		writeError(w, http.StatusConflict, "incompatible_binding",
+			"the source bot's channel is not installed")
+		return false
+	}
+	toDef, _, err := s.channels.Resolve(s.config().Scopes[scope].Bots[to].Channel)
+	if err != nil {
+		writeError(w, http.StatusConflict, "incompatible_binding",
+			"the destination bot's channel is not installed")
+		return false
+	}
+	if fromDef.CompatibleBindings == nil || toDef.CompatibleBindings == nil {
+		writeError(w, http.StatusConflict, "incompatible_binding",
+			"binding compatibility is unknown for that channel")
+		return false
+	}
+	if reasons := fromDef.CompatibleBindings(*fromBinding, *toBinding); len(reasons) > 0 {
+		writeError(w, http.StatusConflict, "incompatible_binding", reasons[0])
+		return false
+	}
+	if reasons := toDef.CompatibleBindings(*fromBinding, *toBinding); len(reasons) > 0 {
+		writeError(w, http.StatusConflict, "incompatible_binding", reasons[0])
+		return false
+	}
+	return true
 }
 
 // historyTarget resolves the scope and the bot both history operations address.

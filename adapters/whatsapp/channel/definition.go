@@ -81,7 +81,11 @@ func Definition() channels.Definition {
 		OptionsSchema:  optionsSchema,
 		Decode:         decodeBot,
 		ValidateTarget: validateTarget,
-		SetupMethods:   []string{whatsapp.SetupMethodQR},
+		// WhatsApp identities are provider-wide: the binding carries no
+		// identity-space context by design, so compatibility is the same
+		// provider and account mode (ADR 0042, ADR 0051).
+		CompatibleBindings: compatibleBindings,
+		SetupMethods:       []string{whatsapp.SetupMethodQR},
 	}
 }
 
@@ -124,6 +128,28 @@ func validateTarget(target botflota.ChatTarget) []string {
 	if target.Topic != "" {
 		return []string{fmt.Sprintf(
 			"direct target carries topic %q", target.Topic)}
+	}
+	return nil
+}
+
+// compatibleBindings reports why one bot's history cannot move to another
+// bot's binding. WhatsApp identities are provider-wide with no
+// identity-space context, so the same provider and account mode share the
+// space and anything else does not. It is pure: subjects stay opaque and
+// are never parsed (ADR 0042, ADR 0051).
+func compatibleBindings(from, to botflota.Binding) []string {
+	if from.Provider != Provider {
+		return []string{fmt.Sprintf(
+			"source binding provider %q is not %s", from.Provider, Provider)}
+	}
+	if to.Provider != Provider {
+		return []string{fmt.Sprintf(
+			"destination binding provider %q is not %s", to.Provider, Provider)}
+	}
+	if from.Mode != to.Mode {
+		return []string{fmt.Sprintf(
+			"account mode %q cannot receive history from mode %q",
+			to.Mode, from.Mode)}
 	}
 	return nil
 }

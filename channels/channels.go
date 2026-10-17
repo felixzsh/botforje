@@ -203,6 +203,13 @@ type Definition struct {
 	// and the provider match first, so a hook never replaces those base
 	// checks (ADR 0044, ADR 0052).
 	ValidateTarget func(target botflota.ChatTarget) []string
+	// CompatibleBindings reports why one bot's history cannot move to
+	// another bot's binding, as reasons the caller can act on. It is pure
+	// and adapter-owned: shared code never parses opaque subjects or
+	// assumes a provider match alone proves compatibility. A nil hook
+	// means unknown compatibility, which history migration refuses
+	// (ADR 0042, ADR 0051).
+	CompatibleBindings func(from, to botflota.Binding) []string
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)

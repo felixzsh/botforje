@@ -97,7 +97,7 @@ func (f *fakeHistory) ReadHistory(
 	return nil
 }
 
-func newHistoryServer(t *testing.T, history *fakeHistory) *Server {
+func newHistoryServer(t *testing.T, history botflota.HistoryStore) *Server {
 	t.Helper()
 	server := testServer(t)
 	server.history = history

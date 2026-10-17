@@ -206,3 +206,44 @@ func TestDefinitionValidatesTargets(t *testing.T) {
 		})
 	}
 }
+
+// TestDefinitionProvesBindingCompatibility: WhatsApp identities are
+// provider-wide with no identity-space context, so the same provider and
+// account mode share the space and anything else does not. Subjects stay
+// opaque: the hook never parses them (ADR 0042, ADR 0051).
+func TestDefinitionProvesBindingCompatibility(t *testing.T) {
+	def := Definition()
+	if def.CompatibleBindings == nil {
+		t.Fatal("CompatibleBindings is nil, want the adapter's space rule")
+	}
+	binding := func(provider, mode string) botflota.Binding {
+		return botflota.Binding{
+			Scope: "support", Bot: "demo",
+			Provider: provider, Adapter: "whatsmeow", Mode: mode,
+			Identity: botflota.IdentityKey{
+				Provider: provider, Subject: "5215500000000",
+			},
+		}
+	}
+	if reasons := def.CompatibleBindings(
+		binding(Provider, Mode), binding(Provider, Mode),
+	); len(reasons) != 0 {
+		t.Fatalf("compatible reasons = %v, want none", reasons)
+	}
+	cases := []struct {
+		name string
+		from botflota.Binding
+		to   botflota.Binding
+	}{
+		{"foreign source provider", binding("telegram", Mode), binding(Provider, Mode)},
+		{"foreign destination provider", binding(Provider, Mode), binding("telegram", Mode)},
+		{"different mode", binding(Provider, Mode), binding(Provider, "cloud")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if reasons := def.CompatibleBindings(tc.from, tc.to); len(reasons) == 0 {
+				t.Fatalf("bindings %#v -> %#v admitted, want reasons", tc.from, tc.to)
+			}
+		})
+	}
+}
