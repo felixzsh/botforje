@@ -87,6 +87,10 @@ type OutgoingMessage struct {
 	Origin          MessageOrigin
 	Routing         RoutingMethod
 	StoredMessageID int64
+	// DeliveryKey is the delivery-owned idempotency key, assigned when the
+	// reply is queued and reused across every attempt of the same durable
+	// delivery, so a retry never mints a new provider id (ADR 0052).
+	DeliveryKey string
 }
 
 // ExternalSend is a message that left a bot's linked account without Botflota

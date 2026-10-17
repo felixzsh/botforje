@@ -153,6 +153,7 @@ func runFleet(args []string) int {
 		Messages:       db.Messages(),
 		Turn:           db.Turns(),
 		Outbox:         db.Outbox(),
+		Bindings:       db.Bindings(),
 		Notify:         webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
 		Log:            logger,

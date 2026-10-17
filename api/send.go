@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/channels"
 )
 
 // sendTarget is the neutral conversation selector of an outbound send: the
@@ -99,7 +100,8 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.bindings.Get(r.Context(), scope, bot); err != nil {
+	binding, err := s.bindings.Get(r.Context(), scope, bot)
+	if err != nil {
 		if errors.Is(err, botflota.ErrNotFound) {
 			// No peer, chat, message, or outbox row is created for an
 			// unbound send; a disconnected bound bot is not unbound
@@ -111,13 +113,16 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, "read binding", err)
 		return
 	}
-	if !s.admitSend(w, scope, bot, target) {
+	content := botflota.TextContent{Body: body.Body}
+	if !s.admitSend(w, scope, bot, target, content) {
 		return
 	}
 	result, err := s.sends.CommitSend(r.Context(), botflota.SendRecord{
 		Scope: scope, Bot: bot, Target: target, Recipient: recipient,
-		Content:  botflota.TextContent{Body: body.Body},
-		ClientID: body.ClientID, At: time.Now(),
+		Content: content, ClientID: body.ClientID,
+		// The queued delivery snapshots the admitted binding: a later
+		// replacement or detach never sends it (ADR 0040).
+		BindingGeneration: binding.Generation, At: time.Now(),
 	})
 	if errors.Is(err, botflota.ErrDuplicate) {
 		// The accepted message id sits beside the error, so a caller that
@@ -212,7 +217,8 @@ func (s *Server) sendDestination(
 // target, or undeclared content is refused before persistence; deeper
 // delivery-time checks stay with the outbox (ADR 0044, ADR 0052).
 func (s *Server) admitSend(
-	w http.ResponseWriter, scope, bot string, target botflota.ChatTarget,
+	w http.ResponseWriter, scope, bot string,
+	target botflota.ChatTarget, content botflota.SendableContent,
 ) bool {
 	if s.channels == nil {
 		return true
@@ -232,17 +238,10 @@ func (s *Server) admitSend(
 			"target provider does not match the bot's channel")
 		return false
 	}
-	if !def.Capabilities.SupportsSend(botflota.KindText) {
+	if reasons := channels.AdmitSend(def, target, content); len(reasons) > 0 {
 		writeError(w, http.StatusUnprocessableEntity, "unsupported_operation",
-			"that channel cannot send text")
+			reasons[0])
 		return false
-	}
-	if def.ValidateTarget != nil {
-		if reasons := def.ValidateTarget(target); len(reasons) > 0 {
-			writeError(w, http.StatusUnprocessableEntity, "unsupported_operation",
-				reasons[0])
-			return false
-		}
 	}
 	return true
 }

@@ -60,12 +60,12 @@ func (s *TurnStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) er
 		// crash never leaves a message row nobody will send (ADR 0011).
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO outbox (scope, bot, message_id, target_provider, target_kind,
-			 target_thread, target_topic, state,
+			 target_thread, target_topic, binding_generation, delivery_key, state,
 			 attempts, next_attempt, error, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
 			turn.Scope, turn.Bot, outbound.Message.ID, outbound.Target.Provider,
 			string(outbound.Target.Kind), outbound.Target.Thread,
-			outbound.Target.Topic,
+			outbound.Target.Topic, turn.BindingGeneration, newDeliveryKey(),
 			formatTime(turn.At), formatTime(turn.At)); err != nil {
 			return fmt.Errorf("sqlite: queue reply: %w", err)
 		}

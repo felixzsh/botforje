@@ -302,7 +302,10 @@ type SendRecord struct {
 	Content   SendableContent
 	// ClientID is the caller's idempotency key; empty means no key.
 	ClientID string
-	At       time.Time
+	// BindingGeneration snapshots the committed binding the send was
+	// admitted under; delivery refuses to send it from another one.
+	BindingGeneration int64
+	At                time.Time
 }
 
 // SendResult is what CommitSend stored.
@@ -332,13 +335,16 @@ type SendStore interface {
 // delivery in the same unit, so a crash never leaves a stored reply nobody
 // sends.
 type TurnRecord struct {
-	Scope    string
-	Bot      string
-	Session  *Session
-	ChatID   int64
-	At       time.Time
-	Inbound  *Message
-	Outbound []OutboundRecord
+	Scope   string
+	Bot     string
+	Session *Session
+	ChatID  int64
+	At      time.Time
+	Inbound *Message
+	// BindingGeneration snapshots the committed binding the turn was
+	// admitted under; delivery refuses to send its replies from another.
+	BindingGeneration int64
+	Outbound          []OutboundRecord
 	// Guards is nil when the turn changed no guard state.
 	Guards map[string]GuardState
 }
@@ -378,6 +384,12 @@ type OutboxEntry struct {
 	Content     SendableContent
 	Origin      MessageOrigin
 	Routing     RoutingMethod
+	// BindingGeneration is the committed binding generation the delivery
+	// was accepted under; a replaced or detached binding never sends it.
+	BindingGeneration int64
+	// DeliveryKey is the delivery-owned idempotency key, reused across
+	// every attempt of this delivery (ADR 0052).
+	DeliveryKey string
 }
 
 // OutboxStore is the durable per-bot delivery queue. NextPending returns

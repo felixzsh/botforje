@@ -165,6 +165,8 @@ var schema = []string{
 		target_thread   TEXT NOT NULL,
 		target_topic    TEXT NOT NULL DEFAULT '',
 		client_id       TEXT NOT NULL DEFAULT '',
+		binding_generation INTEGER NOT NULL DEFAULT 0,
+		delivery_key    TEXT NOT NULL DEFAULT '',
 		state           TEXT NOT NULL DEFAULT 'pending',
 		attempts        INTEGER NOT NULL DEFAULT 0,
 		next_attempt    TEXT NOT NULL DEFAULT '',

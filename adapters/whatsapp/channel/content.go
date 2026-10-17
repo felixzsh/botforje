@@ -197,7 +197,10 @@ func (a *Adapter) buildMedia(
 	}
 	resp, err := upload(ctx, data, mediaTypeFor(content.Type))
 	if err != nil {
-		return nil, fmt.Errorf("whatsapp: upload media: %w", err)
+		// The bytes never reached the wire: worth retrying, never a
+		// proven rejection.
+		return nil, botflota.TransientSendFailure(
+			fmt.Errorf("whatsapp: upload media: %w", err), 0)
 	}
 	return mediaMessage(content, mime, resp)
 }
@@ -274,22 +277,26 @@ func (a *Adapter) readMedia(
 		}
 		response, err := client.Do(request)
 		if err != nil {
-			return nil, fmt.Errorf("whatsapp: fetch media: %w", err)
+			return nil, botflota.TransientSendFailure(
+				fmt.Errorf("whatsapp: fetch media: %w", err), 0)
 		}
 		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("whatsapp: fetch media: %s", response.Status)
+			return nil, botflota.TransientSendFailure(fmt.Errorf(
+				"whatsapp: fetch media: %s", response.Status), 0)
 		}
 		return readLimited(response.Body)
 	case content.Path != "":
 		file, err := os.Open(content.Path)
 		if err != nil {
-			return nil, fmt.Errorf("whatsapp: open media: %w", err)
+			return nil, botflota.TransientSendFailure(
+				fmt.Errorf("whatsapp: open media: %w", err), 0)
 		}
 		defer file.Close()
 		return readLimited(file)
 	default:
-		return nil, errors.New("whatsapp: media has neither url nor path")
+		return nil, botflota.PermanentSendFailure(
+			errors.New("whatsapp: media has neither url nor path"))
 	}
 }
 
@@ -299,7 +306,8 @@ func readLimited(reader io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	if len(data) > maxMediaSize {
-		return nil, fmt.Errorf("whatsapp: media exceeds %d bytes", maxMediaSize)
+		return nil, botflota.PermanentSendFailure(fmt.Errorf(
+			"whatsapp: media exceeds %d bytes", maxMediaSize))
 	}
 	return data, nil
 }

@@ -146,6 +146,50 @@ func TestSendMessageQueuesByTarget(t *testing.T) {
 	}
 }
 
+// TestSendMessageSnapshotsBindingGeneration: the committed send carries the
+// generation the binding had at admission, so delivery can refuse a later
+// identity (ADR 0040).
+func TestSendMessageSnapshotsBindingGeneration(t *testing.T) {
+	sends := &fakeSends{}
+	server := testServerWithOptions(t, &fakeFleet{},
+		func(opts *Options) { opts.Sends = sends }, nil)
+	recorder := postJSON(t, server.Handler(), "/api/v1/scopes/support/messages",
+		testOwnerToken, map[string]any{
+			"bot": "demo", "chat_id": 3, "body": "aviso",
+		})
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body)
+	}
+	if len(sends.sends) != 1 {
+		t.Fatalf("committed sends = %d, want 1", len(sends.sends))
+	}
+	if sends.sends[0].BindingGeneration != 1 {
+		t.Fatalf("generation = %d, want the admitted 1", sends.sends[0].BindingGeneration)
+	}
+}
+
+// TestSendMessageRejectsForeignProviderTarget: a target outside the bot's
+// installed definition is refused before queue admission (ADR 0044).
+func TestSendMessageRejectsForeignProviderTarget(t *testing.T) {
+	sends := &fakeSends{}
+	server := testServerWithOptions(t, &fakeFleet{},
+		func(opts *Options) { opts.Sends = sends; opts.Channels = testCatalog(t) }, nil)
+	recorder := postJSON(t, server.Handler(), "/api/v1/scopes/support/messages",
+		testOwnerToken, map[string]any{
+			"bot": "demo",
+			"target": map[string]any{
+				"provider": "pager", "kind": "direct", "thread": "x",
+			},
+			"body": "aviso",
+		})
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body = %s", recorder.Code, recorder.Body)
+	}
+	if len(sends.sends) != 0 {
+		t.Fatalf("committed sends = %d, want none admitted", len(sends.sends))
+	}
+}
+
 func TestSendMessageRepeatsAnswerTheAcceptedID(t *testing.T) {
 	sends := &fakeSends{
 		result: botflota.SendResult{MessageID: 77, OutboxID: 78},

@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math/rand"
 	"sync"
@@ -28,22 +29,30 @@ type outboxSend func(ctx context.Context, msg botflota.OutgoingMessage) (string,
 
 // Only Store, Scope, Bot, and Send are required.
 type outboxConfig struct {
-	Store        botflota.OutboxStore
-	Scope        string
-	Bot          string
-	Send         outboxSend
-	Delay        time.Duration
-	Jitter       time.Duration
-	MaxPerMinute int
-	MaxAttempts  int
-	SendTimeout  time.Duration
-	Poll         time.Duration
-	RetryBase    time.Duration
-	Now          func() time.Time
-	Rand         *rand.Rand
-	Sleep        func(ctx context.Context, d time.Duration) error
-	OnError      func(msg botflota.OutgoingMessage, err error)
-	Log          *slog.Logger
+	Store botflota.OutboxStore
+	Scope string
+	Bot   string
+	Send  outboxSend
+	// Bindings re-reads the committed generation immediately before every
+	// send; nil skips the durable enforcement gate. CheckDelivery re-invokes
+	// the installed definition's admission at delivery time; any refusal
+	// fails the entry permanently. OnAuthLost stops the bot when the
+	// adapter reports lost binding authorization; the queue stays pending.
+	Bindings      botflota.BindingStore
+	CheckDelivery func(botflota.OutboxEntry) error
+	OnAuthLost    func(botflota.OutboxEntry)
+	Delay         time.Duration
+	Jitter        time.Duration
+	MaxPerMinute  int
+	MaxAttempts   int
+	SendTimeout   time.Duration
+	Poll          time.Duration
+	RetryBase     time.Duration
+	Now           func() time.Time
+	Rand          *rand.Rand
+	Sleep         func(ctx context.Context, d time.Duration) error
+	OnError       func(msg botflota.OutgoingMessage, err error)
+	Log           *slog.Logger
 }
 
 // outbox delivers one bot's queued replies from the durable queue: the engine
@@ -300,7 +309,9 @@ func (q *outbox) retryDelay(attempts int) time.Duration {
 }
 
 // send is one delivery attempt; its outcome is recorded on the queue entry,
-// never only in a log (ADR 0011).
+// never only in a log (ADR 0011). A send success means downstream
+// acceptance, never recipient delivery: the provider id the send returns is
+// recorded, and an empty one still ends the entry sent (ADR 0052).
 func (q *outbox) send(entry botflota.OutboxEntry) {
 	if q.cfg.Send == nil {
 		return
@@ -317,10 +328,47 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 		q.cfg.Log.Debug("queued reply cancelled; not sent", "id", entry.ID)
 		return
 	}
+	// Delivery rechecks eligibility independently of queue admission: a
+	// queued message the bot can no longer deliver fails permanently,
+	// without a silent downgrade and without useless retries (ADR 0052).
+	if q.cfg.CheckDelivery != nil {
+		if err := q.cfg.CheckDelivery(entry); err != nil {
+			q.fail(entry, err, "delivery no longer eligible")
+			return
+		}
+	}
+	// The committed binding generation is re-read immediately before
+	// sending: an entry accepted under a replaced or detached binding never
+	// inherits the new identity (ADR 0040). Detach and replacement already
+	// fail the old rows under the per-bot lock; this gate closes the race
+	// with an entry read before they ran.
+	if q.cfg.Bindings != nil {
+		binding, err := q.cfg.Bindings.Get(
+			context.Background(), q.cfg.Scope, q.cfg.Bot)
+		if err != nil {
+			if errors.Is(err, botflota.ErrNotFound) {
+				q.fail(entry, errors.New("binding detached; not sending"),
+					"binding detached; not sending")
+				return
+			}
+			q.cfg.Log.Warn("outbox binding check failed",
+				"id", entry.ID, "error", err)
+			q.retry(entry, err)
+			return
+		}
+		if binding.Generation != entry.BindingGeneration {
+			q.fail(entry, errors.New("binding generation changed"),
+				"binding replaced; not sending from the new identity")
+			return
+		}
+	}
+	// One durable message is exactly one wire send: the delivery-owned
+	// idempotency key travels on every attempt, so a retry never mints a
+	// new provider id (ADR 0052).
 	msg := botflota.OutgoingMessage{
 		Bot: q.cfg.Bot, Target: entry.Target, Content: entry.Content,
 		Origin: entry.Origin, Routing: entry.Routing,
-		StoredMessageID: entry.MessageID,
+		StoredMessageID: entry.MessageID, DeliveryKey: entry.DeliveryKey,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), q.cfg.SendTimeout)
 	defer cancel()
@@ -340,22 +388,89 @@ func (q *outbox) send(entry botflota.OutboxEntry) {
 	if q.cfg.OnError != nil {
 		q.cfg.OnError(msg, err)
 	}
-	if attempts >= q.cfg.MaxAttempts {
+	// Shared code classifies with errors.As on the adapter-produced
+	// outcome; it never parses provider error text (ADR 0052).
+	failure, _ := botflota.AsSendFailure(err)
+	if failure != nil && failure.AuthLost {
+		// Lost authorization stops the bot with its queue pending and
+		// visible; the entry keeps its attempts, so the next bound run
+		// resumes it. Replacement still fails old rows explicitly.
+		q.cfg.Log.Error("binding authorization lost; stopping with queue pending",
+			"id", entry.ID, "error", err)
+		q.Discard()
+		if q.cfg.OnAuthLost != nil {
+			q.cfg.OnAuthLost(entry)
+		}
+		return
+	}
+	if failure != nil && failure.Permanent {
+		// Invalid or unsupported input fails immediately and unblocks the
+		// FIFO instead of burning retries behind the head (ADR 0052).
+		q.fail(entry, err, "send failed permanently")
+		return
+	}
+	uncertain := failure != nil && failure.Uncertain
+	if attempts >= q.cfg.MaxAttempts && !(uncertain && entry.Attempts == 0) {
+		// An uncertain first attempt still retries at-least-once, even at
+		// the attempt bound; its terminal record never claims a proven
+		// rejection (ADR 0052).
+		reason := err.Error()
+		if uncertain {
+			reason = "acceptance not confirmed: " + reason
+		}
 		q.cfg.Log.Error("send failed; giving up",
 			"target", target(msg),
 			"kind", string(botflota.ContentKind(msg.Content)),
 			"attempts", attempts, "error", err)
 		if markErr := q.cfg.Store.MarkFailed(context.Background(),
-			entry.ID, err.Error(), q.cfg.Now()); markErr != nil {
+			entry.ID, reason, q.cfg.Now()); markErr != nil {
 			q.cfg.Log.Error("record failed reply", "error", markErr)
 		}
 		return
 	}
-	next := q.cfg.Now().Add(q.retryDelay(attempts))
+	var next time.Time
+	if failure != nil && failure.RetryAfter > 0 {
+		next = q.cfg.Now().Add(failure.RetryAfter)
+	} else {
+		next = q.cfg.Now().Add(q.retryDelay(attempts))
+	}
 	q.cfg.Log.Warn("send failed; retrying",
 		"target", target(msg),
 		"kind", string(botflota.ContentKind(msg.Content)),
 		"attempts", attempts, "retry_in", next.Sub(q.cfg.Now()), "error", err)
+	if markErr := q.cfg.Store.MarkRetry(context.Background(),
+		entry.ID, err.Error(), next, q.cfg.Now()); markErr != nil {
+		q.cfg.Log.Error("record retry", "error", markErr)
+	}
+}
+
+// fail ends one entry for good; the row stays for diagnosis.
+func (q *outbox) fail(entry botflota.OutboxEntry, err error, what string) {
+	q.cfg.Log.Error(what,
+		"target", entry.Target.Thread,
+		"kind", string(botflota.ContentKind(entry.Content)),
+		"attempts", entry.Attempts+1, "error", err)
+	if q.cfg.OnError != nil {
+		q.cfg.OnError(botflota.OutgoingMessage{
+			Bot: q.cfg.Bot, Target: entry.Target, Content: entry.Content,
+			Origin: entry.Origin, Routing: entry.Routing,
+			StoredMessageID: entry.MessageID, DeliveryKey: entry.DeliveryKey,
+		}, err)
+	}
+	if markErr := q.cfg.Store.MarkFailed(context.Background(),
+		entry.ID, err.Error(), q.cfg.Now()); markErr != nil {
+		q.cfg.Log.Error("record failed reply", "error", markErr)
+	}
+}
+
+// retry schedules one more attempt within the bounded attempts.
+func (q *outbox) retry(entry botflota.OutboxEntry, err error) {
+	attempts := entry.Attempts + 1
+	if attempts >= q.cfg.MaxAttempts {
+		q.fail(entry, err, "send failed; giving up")
+		return
+	}
+	next := q.cfg.Now().Add(q.retryDelay(attempts))
 	if markErr := q.cfg.Store.MarkRetry(context.Background(),
 		entry.ID, err.Error(), next, q.cfg.Now()); markErr != nil {
 		q.cfg.Log.Error("record retry", "error", markErr)

@@ -95,12 +95,13 @@ func (s *SendStore) CommitSend(
 	}
 	result, err := tx.ExecContext(ctx,
 		`INSERT INTO outbox (scope, bot, message_id, target_provider, target_kind,
-		 target_thread, target_topic, client_id, state,
-		 attempts, next_attempt, error, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
+		 target_thread, target_topic, client_id, binding_generation, delivery_key,
+		 state, attempts, next_attempt, error, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, '', '', ?, ?)`,
 		send.Scope, send.Bot, message.ID, send.Target.Provider,
 		string(send.Target.Kind), send.Target.Thread, send.Target.Topic,
-		send.ClientID, formatTime(send.At), formatTime(send.At))
+		send.ClientID, send.BindingGeneration, newDeliveryKey(),
+		formatTime(send.At), formatTime(send.At))
 	if err != nil {
 		_ = tx.Rollback()
 		if send.ClientID != "" {

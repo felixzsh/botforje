@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -462,8 +463,10 @@ func (s *memStore) CommitTurn(ctx context.Context, turn botflota.TurnRecord) err
 			entry: botflota.OutboxEntry{
 				ID: s.nextOut, Target: outbound.Target,
 				MessageID: outbound.Message.ID, Content: content,
-				Origin:  outbound.Message.Origin,
-				Routing: outbound.Message.Routing,
+				Origin:            outbound.Message.Origin,
+				Routing:           outbound.Message.Routing,
+				BindingGeneration: turn.BindingGeneration,
+				DeliveryKey:       "dlv-mem-" + strconv.FormatInt(s.nextOut, 10),
 			},
 		})
 		s.mu.Unlock()
@@ -501,6 +504,7 @@ type queuedReply struct {
 	nextAttempt time.Time
 	sent        bool
 	failed      bool
+	reason      string
 }
 
 func (s *memStore) NextPending(
@@ -569,7 +573,7 @@ func (s *memStore) MarkRetry(
 }
 
 func (s *memStore) MarkFailed(
-	_ context.Context, id int64, _ string, _ time.Time,
+	_ context.Context, id int64, reason string, _ time.Time,
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -578,6 +582,7 @@ func (s *memStore) MarkFailed(
 		return botflota.ErrNotFound
 	}
 	queued.failed = true
+	queued.reason = reason
 	queued.entry.Attempts++
 	return nil
 }

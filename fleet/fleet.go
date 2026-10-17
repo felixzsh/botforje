@@ -32,6 +32,10 @@ type Options struct {
 	Messages botflota.MessageStore
 	Turn     botflota.TurnStore
 	Outbox   botflota.OutboxStore
+	// Bindings rechecks the committed generation before every send; nil
+	// skips the durable enforcement gate (ADR 0040). Production always sets
+	// it; tests that drive the worker without bindings leave it unset.
+	Bindings botflota.BindingStore
 	// Notify receives each bot's first-contact hook; nil means no consumer
 	// (ADR 0045).
 	Notify botflota.PeerFirstSeenNotifier
@@ -254,6 +258,25 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 		Now:          opts.Now,
 		Rand:         rand.New(rand.NewSource(seeds.Int63())),
 		Log:          botLog,
+		Bindings:     opts.Bindings,
+		// Delivery re-invokes the installed definition's admission
+		// independently of queue admission: an eligibility change since
+		// then fails the entry permanently, without downgrade (ADR 0052).
+		CheckDelivery: deliveryCheck(opts.Catalog, bot.Channel),
+		// Lost authorization stops the bot with its queue pending and
+		// visible; a replacement's FailPending still owns the old rows.
+		// The stop runs off the worker goroutine: the run loop's
+		// shutdown waits for this worker, so a synchronous stop would
+		// deadlock (ADR 0040).
+		OnAuthLost: func(entry botflota.OutboxEntry) {
+			botLog.Warn("binding authorization lost; stopping with queue pending",
+				"outbox_id", entry.ID)
+			go func() {
+				if err := f.stopBot(scopeName, botName, true); err != nil {
+					botLog.Error("stop bot after authorization loss", "error", err)
+				}
+			}()
+		},
 		OnError: func(_ botflota.OutgoingMessage, err error) {
 			if opts.OnError != nil {
 				opts.OnError(scopeName, botName, fmt.Errorf("send: %w", err))
@@ -372,6 +395,8 @@ func (f *Fleet) buildRuntime(
 		Store: opts.Store, Chats: opts.Chats, Peers: opts.Peers,
 		Messages:   opts.Messages,
 		Turn:       opts.Turn,
+		Admit:      admitReplies(opts.Catalog, bot.Channel),
+		Bindings:   opts.Bindings,
 		Notify:     opts.Notify,
 		HTTPClient: opts.HTTPClient, Now: opts.Now,
 		Rand:           rand.New(rand.NewSource(opts.Rand.Int63())),

@@ -4,7 +4,9 @@ package stores
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"time"
 )
@@ -42,6 +44,21 @@ func formatTime(t time.Time) string {
 		return ""
 	}
 	return t.UTC().Format("2006-01-02T15:04:05.000000000Z07:00")
+}
+
+// newDeliveryKey mints the delivery-owned idempotency key of one queued
+// delivery: 128 random bits as hex, assigned once at queue time and reused
+// across every attempt of that delivery (ADR 0052).
+func newDeliveryKey() string {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// Practically unreachable; still never queue an empty key.
+		nano := time.Now().UnixNano()
+		for i := range raw {
+			raw[i] = byte(nano >> (8 * (i % 8)))
+		}
+	}
+	return hex.EncodeToString(raw[:])
 }
 
 func parseTime(value string) time.Time {

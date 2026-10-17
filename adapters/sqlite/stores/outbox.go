@@ -25,6 +25,7 @@ func (s *OutboxStore) NextPending(
 	}
 	const query = `SELECT o.id, o.attempts, o.target_provider, o.target_kind,
 		o.target_thread, o.target_topic, o.next_attempt,
+		o.binding_generation, o.delivery_key,
 		m.kind, m.body, m.content, m.origin, m.routing
 		FROM outbox o JOIN messages m ON m.id = o.message_id
 		WHERE o.scope = ? AND o.bot = ? AND o.state = 'pending'
@@ -47,6 +48,7 @@ func (s *OutboxStore) NextPending(
 		)
 		if err := rows.Scan(&entry.ID, &entry.Attempts, &entry.Target.Provider,
 			&targetKind, &entry.Target.Thread, &entry.Target.Topic, &nextAttempt,
+			&entry.BindingGeneration, &entry.DeliveryKey,
 			&kind, &body, &content, &origin, &routing); err != nil {
 			return nil, fmt.Errorf("sqlite: outbox scan: %w", err)
 		}

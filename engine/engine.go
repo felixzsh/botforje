@@ -29,6 +29,14 @@ type Options struct {
 	Peers    botflota.PeerStore
 	Messages botflota.MessageStore
 	Turn     botflota.TurnStore
+	// Admit validates one rendered reply before queue admission: the
+	// consuming bot's declared content support and target rules. A refusal
+	// fails the turn before anything is persisted; nil skips the check.
+	// The fleet wires it from the bot's installed definition (ADR 0052).
+	Admit func(target botflota.ChatTarget, content botflota.SendableContent) error
+	// Bindings snapshots the committed binding generation onto the turn;
+	// nil leaves the snapshot zero and skips the no-binding refusal.
+	Bindings botflota.BindingStore
 	// Notify receives the first-contact hook; nil means no consumer (ADR 0045).
 	Notify         botflota.PeerFirstSeenNotifier
 	LLM            botflota.LLMProvider
@@ -51,6 +59,8 @@ type Engine struct {
 	peers          botflota.PeerStore
 	messages       botflota.MessageStore
 	turn           botflota.TurnStore
+	admit          func(botflota.ChatTarget, botflota.SendableContent) error
+	bindings       botflota.BindingStore
 	notify         botflota.PeerFirstSeenNotifier
 	llm            botflota.LLMProvider
 	hasLLM         bool
@@ -72,6 +82,8 @@ func New(opts Options) *Engine {
 		peers:          opts.Peers,
 		messages:       opts.Messages,
 		turn:           opts.Turn,
+		admit:          opts.Admit,
+		bindings:       opts.Bindings,
 		notify:         opts.Notify,
 		llm:            opts.LLM,
 		hasLLM:         opts.LLM != nil,
@@ -317,12 +329,37 @@ func (e *Engine) commitTurn(
 	now time.Time,
 	guardsDirty bool,
 ) error {
+	for i := range out {
+		if e.admit != nil {
+			// A rendered reply the consuming bot cannot deliver fails
+			// before queue admission: no silent downgrade, no split
+			// into several wire sends, no new fallback (ADR 0052).
+			if err := e.admit(out[i].Target, out[i].Content); err != nil {
+				return fmt.Errorf("engine: reply %d not admitted: %w", i, err)
+			}
+		}
+	}
+	var generation int64
+	if e.bindings != nil {
+		binding, err := e.bindings.Get(ctx, e.scope, e.bot)
+		if err != nil {
+			if errors.Is(err, botflota.ErrNotFound) {
+				// A new send without a committed binding is rejected
+				// instead of guessing a future one (ADR 0044).
+				return errors.New(
+					"engine: no committed binding; refusing queued replies")
+			}
+			return fmt.Errorf("engine: read binding: %w", err)
+		}
+		generation = binding.Generation
+	}
 	turn := botflota.TurnRecord{
-		Scope:   e.scope,
-		Bot:     e.bot,
-		Session: session,
-		ChatID:  chat.ID,
-		At:      now,
+		Scope:             e.scope,
+		Bot:               e.bot,
+		Session:           session,
+		ChatID:            chat.ID,
+		At:                now,
+		BindingGeneration: generation,
 		Inbound: &botflota.Message{
 			ChatID:            chat.ID,
 			Target:            msg.Target,
