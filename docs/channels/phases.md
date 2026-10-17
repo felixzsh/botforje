@@ -417,23 +417,23 @@ Its delivery, reception, and provenance contracts closed with the owner on
 2026-10-17 (see [open-decisions.md](open-decisions.md)); the checkboxes below
 stay unchecked until their code and gates land.
 
-- [ ] Enforce classified send outcomes: permanent invalid/unsupported
+- [x] Enforce classified send outcomes: permanent invalid/unsupported
   input fails immediately; transient failures retry within bounds and
   honor retry hints. Losing binding authorization stops that bot with
   its queue pending; replacing the binding fails its previous entries.
   Do not classify outcomes by parsing provider error text in shared code.
-- [ ] Validate rendered content/targets before queue admission and
+- [x] Validate rendered content/targets before queue admission and
   recheck dynamic eligibility at delivery. Never silently split one
   durable message into multiple wire sends or downgrade content. Apply
   an already-supported explicit fallback before dependent side effects;
   this plan does not create a new fallback DSL.
-- [ ] Check the stored binding generation at admission and immediately
+- [x] Check the stored binding generation at admission and immediately
   before sending. Serialize detach/replacement with in-flight delivery;
   old pending entries cannot inherit a new identity. Apply ADR 0044's closed
   no-binding admission decision: reject a new send instead of guessing a
   future binding. P4's API check does not replace these durable enforcement
   gates; see [open-decisions.md](open-decisions.md).
-- [ ] Make send success mean downstream acceptance, not recipient
+- [x] Make send success mean downstream acceptance, not recipient
   delivery/read confirmation. Preserve the existing status contract
   through documented translation, optional provider IDs, and
   at-least-once crash behavior; report uncertain timeout outcomes
