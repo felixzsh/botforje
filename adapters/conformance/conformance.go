@@ -77,6 +77,30 @@ type Subject struct {
 	// definition's provider and a group target on it.
 	SupportedTarget   botflota.ChatTarget
 	UnsupportedTarget botflota.ChatTarget
+	// Deliver hands one inbound message to the running subject. Nil delivers
+	// through Channel.Inject. A subject that maps raw provider updates sets it
+	// to run its own real mapping, so the contrast still measures the adapter's
+	// code rather than a test-only shortcut.
+	Deliver func(scope, bot string, msg botflota.IncomingMessage)
+	// OptionsFor returns the authored channel.options one bot selects. Nil
+	// uses Options for every bot, which is what a single-bot subject needs.
+	OptionsFor func(scope, bot string) spec.ChannelOptions
+	// Peer, when set, adds a second committed binding over the same definition
+	// and backend, so the isolation contrast proves one view's release never
+	// disturbs its peer (ADR 0051, ADR 0052).
+	Peer *Peer
+}
+
+// Peer is the second binding the two-binding contrast installs over the same
+// definition and backend as its subject.
+type Peer struct {
+	// Bot is the peer's bot name; empty means "peer".
+	Bot string
+	// Binding is the peer's committed association, distinct from the subject's
+	// own bot: a shared backend must not blur their identities or spaces.
+	Binding func(scope, bot string) botflota.Binding
+	// Options is the authored channel.options the peer bot selects.
+	Options spec.ChannelOptions
 }
 
 // declaration is the definition's pure half: no store is injected, so the
@@ -135,6 +159,23 @@ func requireSubject(t *testing.T, s Subject) {
 	if s.Binding == nil || s.Channel == nil {
 		t.Fatal("conformance: Subject.Binding and Subject.Channel are required")
 	}
+}
+
+// optionsFor returns the authored options one bot selects, defaulting to the
+// subject's single Options block.
+func optionsFor(s Subject, scope, bot string) spec.ChannelOptions {
+	if s.OptionsFor != nil {
+		return s.OptionsFor(scope, bot)
+	}
+	return s.Options
+}
+
+// peerBot is the peer's bot name, defaulted.
+func peerBot(s Subject) string {
+	if s.Peer != nil && s.Peer.Bot != "" {
+		return s.Peer.Bot
+	}
+	return "peer"
 }
 
 func supportedTarget(s Subject) botflota.ChatTarget {

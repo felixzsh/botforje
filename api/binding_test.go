@@ -6,9 +6,11 @@ package api
 // cross-scope opacity, and no secret echo.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -422,6 +424,48 @@ func TestSetupLifecycle(t *testing.T) {
 		testOwnerToken, "")
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("cancel unknown status = %d, want 404", recorder.Code)
+	}
+}
+
+// TestSetupRedactsSubmittedSecretFromLogs proves a submitted credential is
+// write-only everywhere: the response body and the server's own log never
+// carry it (ADR 0053).
+func TestSetupRedactsSubmittedSecretFromLogs(t *testing.T) {
+	const secret = "super-secret-credential"
+	var logs bytes.Buffer
+	runner := &stubSetupRunner{sessions: map[string]*botflota.SetupSession{}}
+	server := testServerWithOptions(t, &fakeFleet{},
+		func(opts *Options) {
+			opts.Log = slog.New(slog.NewTextHandler(&logs, nil))
+			opts.Setups = testBindingSetup(&stubBindingLifecycle{}, runner)
+		}, nil)
+	handler := server.Handler()
+
+	recorder := doJSON(t, handler, "POST",
+		"/api/v1/scopes/support/bots/demo/binding/setups",
+		testOwnerToken, `{"method":"token","request_key":"redact-1"}`)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("begin status = %d, want 202: %s",
+			recorder.Code, recorder.Body.String())
+	}
+	var begun struct {
+		ID string `json:"id"`
+	}
+	decodeSetupResponse(t, recorder.Body.Bytes(), &begun)
+
+	recorder = doJSON(t, handler, "POST",
+		"/api/v1/scopes/support/bots/demo/binding/setups/"+begun.ID+"/inputs",
+		testOwnerToken,
+		`{"revision":1,"request_key":"redact-2","values":{"token":"`+secret+`"}}`)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("input status = %d, want 200: %s",
+			recorder.Code, recorder.Body.String())
+	}
+	if body := recorder.Body.String(); strings.Contains(body, secret) {
+		t.Fatalf("response echoes the submitted secret: %s", body)
+	}
+	if logged := logs.String(); strings.Contains(logged, secret) {
+		t.Fatalf("the server log carries the submitted secret: %s", logged)
 	}
 }
 
