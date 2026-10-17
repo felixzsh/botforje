@@ -543,6 +543,10 @@ implemented runtime rather than the accepted target.
   the code. Regenerate the schema from implemented Go types. Do not
   repeat the completed ADR-writing phase; amend an ADR only for a real
   unresolved decision.
+- [ ] Align `PLAN.md` Phase 7's pre-P1 deliverable descriptions —
+  `phone`, `contact`, `pair`/`unpair`, `contact.first_seen` — with the
+  neutral contracts, or mark them superseded, so the plan describes the
+  implemented code instead of the retired shapes.
 - [ ] Run `make check` and `make test-race` in the main repository with
   required permission, and complete the WhatsApp manual checklist.
   Report manual checks as pending until actually exercised.
