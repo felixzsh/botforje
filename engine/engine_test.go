@@ -400,7 +400,7 @@ func newTestEngine(t *testing.T, opts engine.Options) *engine.Engine {
 
 func outbound(t *testing.T, eng *engine.Engine, sender, text string) []string {
 	t.Helper()
-	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	messages, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "support-bot", Sender: waKey(sender), Target: waTarget(sender), At: t0,
 		Content: botflota.TextContent{Body: text},
 	})
@@ -668,7 +668,7 @@ func TestInboundKindRecorded(t *testing.T) {
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
 	ctx := context.Background()
-	if _, err := eng.Handle(ctx, botflota.IncomingMessage{
+	if _, _, err := eng.Handle(ctx, botflota.IncomingMessage{
 		Sender: waKey("s"), Target: waTarget("s"), At: t0,
 		Content: botflota.MediaContent{Type: botflota.MediaImage},
 	}); err != nil {
@@ -694,7 +694,7 @@ func TestInboundKindRecorded(t *testing.T) {
 func TestSenderProfilePersistedOnFirstMessage(t *testing.T) {
 	store := newMemStore()
 	eng := fixtureEngine(t, store)
-	if _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	if _, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "support-bot", Sender: waKey("52155"), Target: waTarget("52155"), FromName: "Ana", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
 	}); err != nil {
@@ -771,7 +771,7 @@ func TestSenderNameFeedsTemplates(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	messages, err := eng.Handle(ctx, botflota.IncomingMessage{
+	messages, _, err := eng.Handle(ctx, botflota.IncomingMessage{
 		Bot: "b", Sender: waKey("52155"), Target: waTarget("52155"), At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
@@ -811,7 +811,7 @@ func TestDuplicateMessageStopsBeforeTheTurn(t *testing.T) {
 		ProviderMessageID: "dup-1", At: t0,
 		Content: botflota.TextContent{Body: "1"},
 	}
-	first, err := eng.Handle(context.Background(), message)
+	first, _, err := eng.Handle(context.Background(), message)
 	if err != nil {
 		t.Fatalf("first Handle: %v", err)
 	}
@@ -820,7 +820,7 @@ func TestDuplicateMessageStopsBeforeTheTurn(t *testing.T) {
 	}
 	stored := len(store.messages)
 
-	second, err := eng.Handle(context.Background(), message)
+	second, _, err := eng.Handle(context.Background(), message)
 	if err != nil {
 		t.Fatalf("second Handle: %v", err)
 	}
@@ -844,7 +844,7 @@ func TestDuplicateMessageWritesNothing(t *testing.T) {
 		FromName: "Ana", ProviderMessageID: "dup-2", At: t0,
 		Content: botflota.TextContent{Body: "1"},
 	}
-	if _, err := eng.Handle(context.Background(), message); err != nil {
+	if _, _, err := eng.Handle(context.Background(), message); err != nil {
 		t.Fatalf("first Handle: %v", err)
 	}
 	if _, err := store.Get(context.Background(), "support", message.Sender); err != nil {
@@ -855,7 +855,7 @@ func TestDuplicateMessageWritesNothing(t *testing.T) {
 	redelivery := message
 	redelivery.At = t0.Add(time.Hour)
 	redelivery.FromName = "Renamed"
-	replies, err := eng.Handle(context.Background(), redelivery)
+	replies, _, err := eng.Handle(context.Background(), redelivery)
 	if err != nil {
 		t.Fatalf("redelivery Handle: %v", err)
 	}

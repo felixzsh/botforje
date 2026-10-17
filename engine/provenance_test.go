@@ -193,7 +193,7 @@ func TestGeneratedReplyOrigin(t *testing.T) {
 func TestProviderMessageIDIsRecorded(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "support-bot", Sender: waKey("s"), Target: waTarget("s"),
 		ProviderMessageID: "ABC123", At: t0,
 		Content: botflota.TextContent{Body: "hi"},
@@ -210,7 +210,7 @@ func TestProviderMessageIDIsRecorded(t *testing.T) {
 func TestOutboundRecordIDLinksTheStoredReply(t *testing.T) {
 	store := newMemStore()
 	eng := provenanceEngine(t, store, provenanceGraph(), nil)
-	replies, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	replies, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "support-bot", Sender: waKey("s"), Target: waTarget("s"),
 		ProviderMessageID: "ABC123", At: t0,
 		Content: botflota.TextContent{Body: "hi"},

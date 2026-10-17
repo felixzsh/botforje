@@ -22,6 +22,49 @@ type StateReporter interface {
 	ChannelState() string
 }
 
+// ReceiveOutcome is one delivered entry's agreed processing outcome (ADR
+// 0004, ADR 0040): committed is a durably stored turn, already_recorded is
+// a persisted duplicate, discarded is a deliberate discard under a current
+// policy, and failed is a processing failure. Only the first three ever
+// reach a confirmer; a failure is settled by never confirming, so a
+// cumulative cursor never advances past it. Confirming promises no
+// exactly-once execution of external side effects: a replay after a failed
+// commit can repeat a step.
+type ReceiveOutcome string
+
+const (
+	// ReceiveCommitted reports a turn whose durable transaction landed.
+	ReceiveCommitted ReceiveOutcome = "committed"
+	// ReceiveAlreadyRecorded reports a message the store already held.
+	ReceiveAlreadyRecorded ReceiveOutcome = "already_recorded"
+	// ReceiveDiscarded reports a message deliberately dropped under a
+	// current policy: a filtered message, or a held inbound whose
+	// history was stored without running the graph.
+	ReceiveDiscarded ReceiveOutcome = "discarded"
+	// ReceiveFailed reports a processing failure. It is never sent to a
+	// confirmer: the missing confirmation is what keeps the entry
+	// replayable.
+	ReceiveFailed ReceiveOutcome = "failed"
+)
+
+// ReceiveReceipt settles one delivered entry: the opaque source cursor it
+// arrived with and the agreed outcome. The cursor is the source's own
+// update id, never message identity (ADR 0026).
+type ReceiveReceipt struct {
+	Cursor  string
+	Outcome ReceiveOutcome
+}
+
+// ReceiveConfirmer is an optional MessageChannel capability: a source
+// that confirms updates settles each entry only after its agreed
+// processing outcome, never on handoff to a goroutine, channel, or queue
+// (ADR 0004, ADR 0040). A channel that cannot confirm its source leaves
+// this unimplemented instead of faking one; the fleet never calls a
+// confirmation on a channel that does not implement it.
+type ReceiveConfirmer interface {
+	ConfirmReceive(ctx context.Context, receipt ReceiveReceipt) error
+}
+
 // DevicePresence reports whether a linked account's local channel
 // credentials still exist, without exposing the device store or the transport
 // addressing to its consumers (ADR 0020, ADR 0039).

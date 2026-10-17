@@ -87,7 +87,7 @@ func TestEngineRefusesUnsupportedCardVariantsBeforeAdmission(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newMemStore()
 			eng := cardEngine(t, store, tc.entryKind)
-			_, err := eng.Handle(context.Background(),
+			_, _, err := eng.Handle(context.Background(),
 				botflota.IncomingMessage{
 					Bot:    "support-bot",
 					Sender: waKey("card-1"), Target: waTarget("card-1"),

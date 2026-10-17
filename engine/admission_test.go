@@ -107,7 +107,7 @@ func TestEngineAdmitsRepliesBeforeQueueAdmission(t *testing.T) {
 			store := newMemStore()
 			eng := admissionEngine(t, store, store,
 				limit(test.max), &admitBindings{generation: 3})
-			_, err := eng.Handle(context.Background(),
+			_, _, err := eng.Handle(context.Background(),
 				botflota.IncomingMessage{
 					Bot:    "support-bot",
 					Sender: waKey("admit-1"), Target: waTarget("admit-1"),
@@ -142,7 +142,7 @@ func TestEngineSnapshotsBindingGeneration(t *testing.T) {
 	captured := &captureTurn{memStore: store}
 	eng := admissionEngine(t, store, captured, nil,
 		&admitBindings{generation: 7})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot:    "support-bot",
 		Sender: waKey("admit-2"), Target: waTarget("admit-2"), At: t0,
 		Content: botflota.TextContent{Body: "hello"},
@@ -160,7 +160,7 @@ func TestEngineSnapshotsBindingGeneration(t *testing.T) {
 func TestEngineRefusesQueuedRepliesWithoutABinding(t *testing.T) {
 	store := newMemStore()
 	eng := admissionEngine(t, store, store, nil, &admitBindings{missing: true})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot:    "support-bot",
 		Sender: waKey("admit-3"), Target: waTarget("admit-3"), At: t0,
 		Content: botflota.TextContent{Body: "hello"},

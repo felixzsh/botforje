@@ -19,13 +19,13 @@ func TestRecordSuppressedKeepsHistoryWithoutASession(t *testing.T) {
 		ProviderMessageID: "M1",
 		Content:           botflota.TextContent{Body: "hola"},
 	}
-	if err := eng.RecordSuppressed(context.Background(), msg); err != nil {
+	if _, err := eng.RecordSuppressed(context.Background(), msg); err != nil {
 		t.Fatalf("RecordSuppressed: %v", err)
 	}
 	if _, err := store.sessionFor("support", "support-bot", sender); err == nil {
 		t.Fatal("a suppressed message created a session")
 	}
-	if err := eng.RecordSuppressed(context.Background(), msg); err != nil {
+	if _, err := eng.RecordSuppressed(context.Background(), msg); err != nil {
 		t.Fatalf("redelivery: %v", err)
 	}
 	stored := 0

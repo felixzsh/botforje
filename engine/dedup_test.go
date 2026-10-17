@@ -29,12 +29,12 @@ func TestDedupIsScopedToTheMessageSpace(t *testing.T) {
 		}
 	}
 	for _, space := range []string{"account-a", "account-b"} {
-		out, err := eng.Handle(ctx, inbound(space))
+		out, _, err := eng.Handle(ctx, inbound(space))
 		if err != nil || len(out) == 0 {
 			t.Fatalf("Handle(%s) = %v, %v; want replies", space, out, err)
 		}
 	}
-	out, err := eng.Handle(ctx, inbound("account-a"))
+	out, _, err := eng.Handle(ctx, inbound("account-a"))
 	if err != nil || len(out) != 0 {
 		t.Fatalf("redelivery Handle = %v, %v; want no reply", out, err)
 	}
@@ -69,11 +69,11 @@ func TestDedupIsScopedToTheConsumingBot(t *testing.T) {
 					Content: botflota.TextContent{Body: "1"}, At: t0,
 					ProviderMessageID: "shared-id",
 				}
-				out, err := owner.engine.Handle(ctx, msg)
+				out, _, err := owner.engine.Handle(ctx, msg)
 				if err != nil || len(out) != 1 {
 					t.Fatalf("first Handle(%s) = %v, %v; want one reply", owner.bot, out, err)
 				}
-				out, err = owner.engine.Handle(ctx, msg)
+				out, _, err = owner.engine.Handle(ctx, msg)
 				if err != nil || len(out) != 0 {
 					t.Fatalf("redelivery Handle(%s) = %v, %v; want no reply", owner.bot, out, err)
 				}

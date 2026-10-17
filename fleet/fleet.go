@@ -805,18 +805,26 @@ func (b *Bot) handleMessage(ctx context.Context, msg botflota.IncomingMessage) {
 	}
 	if !b.filter.Allow(msg) {
 		b.log.Debug("message filtered", "peer", msg.Sender.Subject)
+		// A filtered message is a deliberate discard, never a failure:
+		// it stores nothing, so there is no history to wait for.
+		b.settleReceive(ctx, msg, botflota.ReceiveDiscarded)
 		return
 	}
 	if b.paused(msg.Target, b.now()) {
 		b.log.Info("chat held by a human; message stored without a reply",
 			"peer", msg.Sender.Subject)
-		if err := b.engine.RecordSuppressed(ctx, msg); err != nil {
-			b.log.Error("record held message", "peer", msg.Sender.Subject, "error", err)
+		outcome, err := b.engine.RecordSuppressed(ctx, msg)
+		if err != nil {
+			b.log.Error("record held message",
+				"peer", msg.Sender.Subject, "error", err)
 			b.onError(err)
+			return
 		}
+		// A held inbound confirms only after its history is stored.
+		b.settleReceive(ctx, msg, outcome)
 		return
 	}
-	replies, err := b.engine.Handle(ctx, msg)
+	replies, outcome, err := b.engine.Handle(ctx, msg)
 	if err != nil {
 		b.log.Error("engine failed", "peer", msg.Sender.Subject, "error", err)
 		b.onError(err)
@@ -824,6 +832,34 @@ func (b *Bot) handleMessage(ctx context.Context, msg botflota.IncomingMessage) {
 	}
 	if len(replies) > 0 {
 		b.outbox.Wake()
+	}
+	// The turn committed above; confirming does not wait for the queued
+	// replies to leave the outbox. A failure never reaches this call, so
+	// its entry stays replayable.
+	b.settleReceive(ctx, msg, outcome)
+}
+
+// settleReceive confirms one delivered entry after its agreed processing
+// outcome (ADR 0004, ADR 0040). It never confirms on handoff, never
+// confirms a failure, and never calls a channel that cannot confirm: a
+// source without the optional port, or an entry without a cursor, settles
+// nothing. A failed confirmation is logged and reported; the processing
+// already committed, so it is not retried here.
+func (b *Bot) settleReceive(
+	ctx context.Context, msg botflota.IncomingMessage, outcome botflota.ReceiveOutcome,
+) {
+	if outcome == botflota.ReceiveFailed || msg.ReceiveCursor == "" {
+		return
+	}
+	confirmer, ok := b.channel.(botflota.ReceiveConfirmer)
+	if !ok {
+		return
+	}
+	receipt := botflota.ReceiveReceipt{Cursor: msg.ReceiveCursor, Outcome: outcome}
+	if err := confirmer.ConfirmReceive(ctx, receipt); err != nil {
+		b.log.Error("receive confirmation failed",
+			"outcome", string(outcome), "error", err)
+		b.onError(err)
 	}
 }
 

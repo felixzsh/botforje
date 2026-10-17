@@ -77,7 +77,13 @@ type IncomingMessage struct {
 	// knowledge (ADR 0026, ADR 0051). The engine stores it with the
 	// message, so dedup never confuses one account's ids with another's.
 	MessageSpace string
-	At           time.Time
+	// ReceiveCursor is the opaque source update id or receive cursor
+	// that settles this entry's processing completion (ADR 0004,
+	// ADR 0040). It is never part of message identity and never feeds
+	// dedup: the durable key stays the provider id in its message
+	// space. Empty when the source confirms nothing.
+	ReceiveCursor string
+	At            time.Time
 }
 
 // OutgoingMessage is one message the engine asks the channel to deliver.

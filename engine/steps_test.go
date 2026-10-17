@@ -59,7 +59,7 @@ func TestIntentOnlyWithoutLLM(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Sender: waKey("s"), Target: waTarget("s"), Content: botflota.TextContent{Body: "hi"},
 	})
 	if !errors.Is(err, botflota.ErrNoLLM) {
@@ -105,7 +105,7 @@ func TestMessageToOverridesRecipient(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	messages, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", Sender: waKey("5215500000000"), Target: waTarget("5215500000000"), At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
@@ -138,7 +138,7 @@ func TestMessageRecipientDefaultsToSender(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	messages, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	messages, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", Sender: waKey("5215500000000"), Target: waTarget("5215500000000"), At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
@@ -167,7 +167,7 @@ func TestMessageToResolvingEmptyFails(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Bot: "b", Sender: waKey("52155"), Target: waTarget("52155"), At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
@@ -191,7 +191,7 @@ func TestLocationStep(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	messages, err := eng.Handle(context.Background(),
+	messages, _, err := eng.Handle(context.Background(),
 		botflota.IncomingMessage{Sender: waKey("s"), Target: waTarget("s"),
 			Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
@@ -234,7 +234,7 @@ func TestMediaContactPollSteps(t *testing.T) {
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
 	})
-	messages, err := eng.Handle(context.Background(),
+	messages, _, err := eng.Handle(context.Background(),
 		botflota.IncomingMessage{Sender: waKey("s"), Target: waTarget("s"),
 			Content: botflota.TextContent{Body: "hi"}})
 	if err != nil {
@@ -316,7 +316,7 @@ func TestRequestRetriesThenSucceeds(t *testing.T) {
 
 func TestRequestFailureStopsTheRun(t *testing.T) {
 	eng := retryEngine(t, 1, &flakyTransport{fail: 5})
-	_, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
 		Sender: waKey("s"), Target: waTarget("s"), Content: botflota.TextContent{Body: "hi"},
 	})
 	if err == nil {

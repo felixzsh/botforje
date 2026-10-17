@@ -118,14 +118,20 @@ func New(opts Options) *Engine {
 	return e
 }
 
+// Handle runs one inbound message and reports how the source settles it:
+// committed once the turn's durable transaction lands, already-recorded
+// for a persisted duplicate, and failed alongside the error (ADR 0004,
+// ADR 0040). The outcome names the agreed result; the caller confirms it.
 func (e *Engine) Handle(
 	ctx context.Context, msg botflota.IncomingMessage,
-) ([]botflota.OutgoingMessage, error) {
+) ([]botflota.OutgoingMessage, botflota.ReceiveOutcome, error) {
 	if !msg.Sender.Valid() {
-		return nil, errors.New("engine: incoming message has no sender identity")
+		return nil, botflota.ReceiveFailed,
+			errors.New("engine: incoming message has no sender identity")
 	}
 	if !msg.Target.Valid() {
-		return nil, errors.New("engine: incoming message has no conversation target")
+		return nil, botflota.ReceiveFailed,
+			errors.New("engine: incoming message has no conversation target")
 	}
 	if msg.Content == nil {
 		// A channel that predates the kind vocabulary, or a plain text event,
@@ -133,26 +139,26 @@ func (e *Engine) Handle(
 		msg.Content = botflota.TextContent{}
 	}
 	if e.messages == nil {
-		return nil, errors.New("engine: no message store")
+		return nil, botflota.ReceiveFailed, errors.New("engine: no message store")
 	}
 	if e.turn == nil {
-		return nil, errors.New("engine: no turn store")
+		return nil, botflota.ReceiveFailed, errors.New("engine: no turn store")
 	}
 	// Dedup runs before load: a redelivery reads the contact and chat but
 	// never writes them, so it cannot move last_seen or create the rows it
 	// is about to ignore (ADR 0040).
 	seen, err := e.storedBefore(ctx, msg)
 	if err != nil {
-		return nil, err
+		return nil, botflota.ReceiveFailed, err
 	}
 	if seen {
 		e.log.Debug("duplicate message ignored", "id", msg.ProviderMessageID)
-		return nil, nil
+		return nil, botflota.ReceiveAlreadyRecorded, nil
 	}
 	now := e.now()
 	current, err := e.load(ctx, msg, now)
 	if err != nil {
-		return nil, err
+		return nil, botflota.ReceiveFailed, err
 	}
 	r := &run{
 		ctx:     ctx,
@@ -165,7 +171,7 @@ func (e *Engine) Handle(
 
 	result, err := e.route(r, current.newSession)
 	if err != nil {
-		return nil, err
+		return nil, botflota.ReceiveFailed, err
 	}
 	r.routing = result.Method
 	switch {
@@ -173,14 +179,14 @@ func (e *Engine) Handle(
 		if current.newSession {
 			e.log.Debug("entered root node", "node", current.session.Node)
 			if err := r.enter(); err != nil {
-				return nil, err
+				return nil, botflota.ReceiveFailed, err
 			}
 		} else {
 			e.log.Debug("no transition", "node", current.session.Node)
 		}
 	default:
 		if err := r.move(result.Target, !current.newSession); err != nil {
-			return nil, err
+			return nil, botflota.ReceiveFailed, err
 		}
 	}
 
@@ -191,9 +197,9 @@ func (e *Engine) Handle(
 	session.ExpiresAt = e.expiry(now)
 	if err := e.commitTurn(ctx, current.chat, session, msg, r.routing, r.out,
 		now, r.guardsDirty); err != nil {
-		return nil, err
+		return nil, botflota.ReceiveFailed, err
 	}
-	return r.out, nil
+	return r.out, botflota.ReceiveCommitted, nil
 }
 
 // storedBefore reports a message this bot already stores for that
@@ -223,29 +229,34 @@ func (e *Engine) storedBefore(
 // RecordSuppressed stores an inbound message for a chat handed to a human:
 // history and deduplication, no routing and no session change (ADR 0043). A
 // redelivery whose id the chat already stores is dropped like any other.
+// It reports discarded once the held history is stored, already-recorded
+// for a persisted duplicate, and failed alongside the error, so the caller
+// confirms a held inbound only after its history lands (ADR 0040).
 func (e *Engine) RecordSuppressed(
 	ctx context.Context, msg botflota.IncomingMessage,
-) error {
+) (botflota.ReceiveOutcome, error) {
 	if !msg.Sender.Valid() {
-		return errors.New("engine: incoming message has no sender identity")
+		return botflota.ReceiveFailed,
+			errors.New("engine: incoming message has no sender identity")
 	}
 	if !msg.Target.Valid() {
-		return errors.New("engine: incoming message has no conversation target")
+		return botflota.ReceiveFailed,
+			errors.New("engine: incoming message has no conversation target")
 	}
 	if msg.Content == nil {
 		msg.Content = botflota.TextContent{}
 	}
 	seen, err := e.storedBefore(ctx, msg)
 	if err != nil {
-		return err
+		return botflota.ReceiveFailed, err
 	}
 	if seen {
-		return nil
+		return botflota.ReceiveAlreadyRecorded, nil
 	}
 	now := e.now()
 	current, err := e.load(ctx, msg, now)
 	if err != nil {
-		return err
+		return botflota.ReceiveFailed, err
 	}
 	record := &botflota.Message{
 		ChatID:            current.chat.ID,
@@ -259,9 +270,10 @@ func (e *Engine) RecordSuppressed(
 		Routing:           botflota.RoutingUnknown,
 	}
 	if err := e.turn.Record(ctx, record, now); err != nil {
-		return fmt.Errorf("engine: record suppressed inbound: %w", err)
+		return botflota.ReceiveFailed,
+			fmt.Errorf("engine: record suppressed inbound: %w", err)
 	}
-	return nil
+	return botflota.ReceiveDiscarded, nil
 }
 
 // notifyFirstContact reports an identity whose first inbound message this

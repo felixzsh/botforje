@@ -59,7 +59,7 @@ func TestFirstContactFiresOncePerProfile(t *testing.T) {
 func TestFirstContactFiresForAHeldChat(t *testing.T) {
 	hook := &hookNotifier{}
 	eng := fixtureEngineNotify(t, newMemStore(), hook)
-	err := eng.RecordSuppressed(context.Background(), botflota.IncomingMessage{
+	_, err := eng.RecordSuppressed(context.Background(), botflota.IncomingMessage{
 		Bot: "support-bot", Sender: waKey("5215500000002"), Target: waTarget("5215500000002"), At: t0,
 		Content: botflota.TextContent{Body: "hola"},
 	})
@@ -148,7 +148,7 @@ func TestFirstContactFiresBeforeTheChatAndSessionLoad(t *testing.T) {
 				DefaultTimeout: 300 * time.Second,
 			})
 			phone := "5215500000004"
-			_, err := eng.Handle(ctx, botflota.IncomingMessage{
+			_, _, err := eng.Handle(ctx, botflota.IncomingMessage{
 				Bot: "support-bot", Sender: waKey(phone), Target: waTarget(phone), At: t0,
 				Content: botflota.TextContent{Body: "hola"},
 			})

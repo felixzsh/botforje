@@ -76,6 +76,13 @@ func (a *Adapter) onMessage(event *events.Message) {
 	space := a.ownPhone
 	a.mu.Unlock()
 
+	// Live events carry no confirmable cursor: whatsmeow delivers them
+	// without an acknowledgement the adapter could settle, and the
+	// on-demand backfill imports inert history that needs no per-entry
+	// confirmation. Read receipts are user-visible presence sent while
+	// pacing an outbound reply, not processing completion. The adapter
+	// therefore leaves botflota.ReceiveConfirmer unimplemented instead
+	// of faking one (ADR 0004, ADR 0040).
 	message := botflota.IncomingMessage{
 		Bot:               a.bot,
 		Sender:            ingest.PeerKey(from),
