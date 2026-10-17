@@ -207,8 +207,9 @@ Deliverables:
   capability, `adapters/`, and `internal` as a last resort (ADR 0034).
 - [x] Declarative objects moved to `spec`; the template language moved to the
   core and the runtime context into `engine` (ADR 0034).
-- [x] CLI groups: `config init|validate|schema`, `bot list|pair|unpair`,
-  `fleet run|status`, `chat list|sync`, `message list|tail`. Operational queries
+- [x] CLI groups: `config init|validate|schema`, `bot list|bind|unbind`,
+  `fleet run|status`, `peer list|show`, `directory list`, `chat list|sync`,
+  `message list|tail`, `graph-run list`. Operational queries
   use the API; process lifecycle belongs to the supervisor (ADR 0025).
 - [x] CLI help: `usage`, description, commands, options, and examples for every
   group and subcommand; `--help` exits 0 and usage errors exit 2.
@@ -225,45 +226,47 @@ Deliverables:
 - [x] `fleet status` is an API client and reports uptime, per-bot connection
   state, outbox depth, and active sessions; a `--json` mode serves scripts.
 - [x] Operational queries read the API: `bot list` asks the running instance
-  for each bot's pairing state, phone, and last change instead of opening the
+  for each bot's binding and connection state instead of opening the
   database and the device store (ADR 0039).
 - [x] Message history persistence: the engine appends the inbound message and
   every reply under the chat and the session run that handled them (ADR 0026);
   the pairing history sync is imported separately and inertly (ADR 0035).
 - [x] WhatsApp history import (ADR 0035): capture the account-wide sync that
-  arrives when an account links, in `bot pair` and in `fleet run`, storing 1:1
+  arrives when an account links, in `bot bind` and in `fleet run`, storing 1:1
   content under its kind as `sync`/`unknown` with no session run; deduplicate by
   `provider_message_id`, write the channel's id back onto live replies, import
   the `PUSH_NAME` contact names, widen each chat's activity to the imported
   range, and expose `chat sync` to page older messages on demand.
 - [x] Message history commands: list or tail one chat with
-  `message list|tail <bot> <contact> [--limit n] [--follow]`, served through
+  `message list|tail <bot> --chat-id <id> [--limit n] [--follow]`, served through
   the REST API.
-- [x] Contact identities: record each contact's push name and first/last
-  inbound from the first allowed message, keyed by (scope, phone) and shared by the scope's
-  bots (ADR 0029). `chats.message_count` counts inbound messages until message
-  history is recorded.
-- [x] Contact reads over the API (ADR 0044): `GET
-  /api/v1/scopes/{scope}/contacts` lists the scope's identities newest activity
+- [x] Peer identities: record each peer's display name and first/last
+  inbound from the first allowed message, keyed by (scope, provider, subject)
+  and shared by the scope's bots (ADR 0029). `chats.message_count` counts
+  inbound messages until message history is recorded.
+- [x] Peer reads over the API (ADR 0044): `GET
+  /api/v1/scopes/{scope}/peers` lists the scope's identities newest activity
   first, with `since` over `first_seen` and an opaque keyset cursor, and `GET
-  .../contacts/{phone}` answers one identity or 404; `GET .../bots/{bot}` reads
+  .../peers/{id}` answers one scope-owned identity or 404; `GET .../bots/{bot}` reads
   one bot or 404.
 - [x] API-origin outbound send (ADR 0044): `POST
-  /api/v1/scopes/{scope}/messages` stores and queues one text message to any
-  phone of one `(scope, bot)` in a single transaction — creating the contact and
-  the chat when missing — with `ingest=api`, `origin=api`, no session run, and
+  /api/v1/scopes/{scope}/messages` stores and queues one text message to a
+  neutral target of one `(scope, bot)` in a single transaction — resolving a
+  `chat_id` under that scope and bot or addressing an explicit target — with
+  `ingest=api`, `origin=api`, no session run, and
   an optional `client_id` whose repeat answers 409 with the accepted id. The
   existing outbox worker paces and retries it; the chat's control state is
   neither read nor changed; the channel's echo correlation keeps it from
   pausing the chat (ADR 0043).
-- [x] First-contact webhooks (ADR 0045): `webhooks` in the main config file and
-  a `FirstContactNotifier` port; `contact.first_seen` is emitted when a contact
+- [x] First-peer webhooks (ADR 0045): `webhooks` in the main config file and
+  a `FirstContactNotifier` port; `peer.first_seen` is emitted when a peer
   claims its first inbound and delivered at-least-once through a durable SQLite queue
   with exponential backoff and an HMAC-SHA256 signature over the raw body.
 - [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
   Config reload is automatic and needs no signal (ADR 0009). Starting,
   stopping, and restarting are supervisor operations (ADR 0025).
-- [x] REST API (`api/`): status, bots, chats, sessions, messages, and config.
+- [x] REST API (`api/`): status, bots, peers, directory, chats, graph runs,
+  messages, binding/setups, history, and config.
   `fleet run` serves it from the same process and injects the live fleet and
   stores; operational CLI commands call it. Handlers are small and direct; a
   narrow service is extracted only after real duplication appears.

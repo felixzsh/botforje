@@ -326,56 +326,62 @@ Change: `api/api.go`, account/pairing handlers, `views.go`, `params.go`,
 serialization.
 Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
 
-Public-contract decisions closed with the owner on 2026-10-12; implementation
-is now the next slice, not another compatibility review. ADR 0054 owns public
+Public-contract decisions closed with the owner on 2026-10-12, and the
+implementation landed across the P4 commits: neutral lifecycle/bind/
+capability wiring, the `/binding/setups` operations, per-bot discovery
+with explicit unsupported outcomes, neutral peer/chat/binding references
+with adapter-owned send admission, the `peer` and `graph-run` CLI groups,
+neutral webhook/export provenance, adapter-owned binding-compatibility
+enforcement before history migration, and scoped authorization with
+redaction throughout. ADR 0054 owns public
 names matching the selected domain vocabulary, ADR 0053 the `/binding/setups`
 lifecycle, ADR 0044 neutral references and committed-binding send admission,
 ADR 0052 discovery/unsupported-operation views, and ADR 0042 ZIP/CSV sections.
 ADR 0045 matches the already selected `peer.first_seen` envelope. See
 [open-decisions.md](open-decisions.md) for the closure of P4's public contracts
 and P5's delivery, reception, and provenance contracts.
-The checkboxes below remain unchecked until code and executable gates land.
+The checkboxes below are checked as that landed implementation.
 
-- [ ] Wire neutral lifecycle/bind/capability dependencies into the API.
+- [x] Wire neutral lifecycle/bind/capability dependencies into the API.
   Remove constructor requirements for WhatsApp pairing and unsupported
   live features; distinguish reading already stored history/address
   books from invoking a currently available channel operation.
-- [ ] Implement scoped channel/binding/method discovery and bind
+- [x] Implement scoped channel/binding/method discovery and bind
   begin/read/input/cancel operations. Align public routes with
   ADR 0053 before changing endpoints; scope and bot
   remain part of every operation's ownership
   ([open-decisions.md](open-decisions.md)).
-- [ ] Expose declared support, account authorization, and conversation
+- [x] Expose declared support, account authorization, and conversation
   eligibility as separate facts. Unknown never implies permission; a
   disconnected bot keeps support without invented rights. Translate
   absent optional operations to explicit unsupported outcomes, not
   internal errors.
-- [ ] Use neutral peer/chat/binding references for reads, controls,
+- [x] Use neutral peer/chat/binding references for reads, controls,
   sync, and sends. Resolve chat IDs under scope and bot, never by ID
   alone. WhatsApp selectors and routes are the neutral ones; no legacy
   selector, old route, or phone output is retained, and shared code never
   inspects the shape of a neutral subject ([domain-cleanup.md](domain-cleanup.md)).
-- [ ] Replace API-wide digit validation with the selected adapter's
+- [x] Replace API-wide digit validation with the selected adapter's
   target rules and common admission checks. Preserve atomic API sends,
   `client_id` reconciliation, chat-control semantics, and the default
   reply path without assuming arbitrary-address outreach is permitted.
   Reject new unbound sends before persistence with 409 `binding_required`;
   preserve duplicate reconciliation and do not confuse disconnected with unbound
   (ADR 0044). P5 adds durable generation snapshots and delivery enforcement.
-- [ ] Make operational CLI commands consume neutral API views/selectors
+- [x] Make operational CLI commands consume neutral API views/selectors
   and common setup steps. Commands, arguments, fields, and results match the
   selected domain names: `bot bind`/`bot unbind`, peer, directory, chat, and
   graph run, with no retired command aliases. Keep the locked offline operator
   path and adapted WhatsApp workflows working through the neutral operations;
   an adapter with existing step kinds needs no CLI handler or provider form.
-- [ ] Carry neutral identity/provenance through webhooks and CSV export,
+- [x] Carry neutral identity/provenance through webhooks and CSV export,
   with no legacy field retained and no compatibility boundary. A serialized
   envelope or archive change is breaking by default; do not put a universal
   phone field back into the event or store contract.
   Enforce provider and identity-space compatibility between the two
   bots' bindings before history migration; never present unreadable
   local targets as valid for a replacement bot.
-- [ ] Authorize before reading binding/session data; keep out-of-scope
+- [x] Authorize before reading binding/session data; keep out-of-scope
   targets opaque (404). Enforce stale-session/step conflicts,
   request-key retry safety, bounded input bodies and budgets,
   authenticated non-cacheable challenges, and redaction across JSON,
@@ -383,16 +389,16 @@ The checkboxes below remain unchecked until code and executable gates land.
 
 Gate:
 
-- [ ] A scoped HTTP client completes each fake setup mode and
+- [x] A scoped HTTP client completes each fake setup mode and
   reauthorization without filesystem access, then reads a conversation,
   holds/releases it, and queues a text send through the same API.
-- [ ] Personal CLI operation uses those operations while the instance
+- [x] Personal CLI operation uses those operations while the instance
   runs, with no database fallback; existing WhatsApp pairing, query,
   and send commands keep working through the neutral operations.
-- [ ] Cross-scope reads/inputs/cancellation, stale IDs, unsupported
+- [x] Cross-scope reads/inputs/cancellation, stale IDs, unsupported
   methods, and lost-response retries obey the accepted errors. Submitted
   tokens/passwords/codes are never echoed or exported.
-- [ ] Per-bot discovery and API admission agree with config validation
+- [x] Per-bot discovery and API admission agree with config validation
   on declared capabilities. Unsupported submitted content/operations are
   refused before queueing or invoking the absent operation. A
   disconnected bot retains its declaration without invented dynamic

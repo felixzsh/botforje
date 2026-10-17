@@ -169,17 +169,22 @@ arguments, JSON fields, and counts, not retired Go names awaiting their rename
 | --- | --- | --- |
 | Peer | `S/peers/{id}` | Scope |
 | Directory | `B/directory` | Bot's historical snapshots |
-| Chat | `B/chats/{chat_id}` | Scope and bot |
-| Graph run | `B/graph-runs/{id}` | Scope and bot |
+| Chat | `B/chats` | Scope and bot |
+| Graph run | `B/graph-runs` | Scope and bot |
 | Channel discovery | `B/channel` | Bot's installed definition |
 | Binding | `B/binding` | Bot's committed association |
 | Setup session | `B/binding/setups/{id}` | Scope, bot, and setup ID |
 
 Collections use the same names without an item ID. `peer_id` filters, where
 supported, refer to a peer in the authorized scope; graph-run references use
-`graph_run_id`, never an ambiguous graph `session_id`. Resolve chat and graph-run
-IDs under scope and bot, not by global ID alone. A graph run is not a setup
-session. No `/contacts`, `/account`, `/pairing`, or `enrollments` alias survives.
+`graph_run_id`, never an ambiguous graph `session_id`. Chat and graph-run
+reads resolve their IDs under scope and bot, not by global ID alone: chat
+control is `PUT B/chats/control?chat_id=<id>` with `{"mode":...}` in the
+JSON body, chat sync is `POST B/chats/sync?chat_id=<id>`, and graph runs
+are read from the collection as `GET B/graph-runs?chat_id=`. The chat
+selector is a URL query parameter in both cases, never a body field. A graph run is
+not a setup session. No `/contacts`, `/account`, `/pairing`, or `enrollments`
+alias survives.
 
 ADR 0053 owns setup discovery, begin/read/input/cancel, safe views, and status
 mapping; ADR 0052 owns declared-support discovery. A binding response reports
@@ -200,15 +205,16 @@ ADR 0053 for setup semantics.
 ### Conversation control
 
 A chat is handed to a human in two ways, both per chat: an external observation
-can start the automatic pause (ADR 0043), and `PUT B/chats/{chat_id}/control` with
-`{"mode":"human"}` holds it until `{"mode":"auto"}` releases it. The ID selects
+can start the automatic pause (ADR 0043), and
+`PUT B/chats/control?chat_id=<id>` with `{"mode":"human"}` in the body
+holds it until `{"mode":"auto"}` releases it. The ID selects
 one conversation, not a peer's last or implied direct chat. Taking the hold
 cancels automatic replies still queued for that target; other chats are
 untouched. The pause length is `settings.external_reply_pause`, not a request
 field. Chat views report effective `control` (`auto`, `paused`, or `human`) and
 `paused_till` while a pause counts down. Control state is live runtime state:
 a restart returns every chat to `auto`, and held messages are not replayed.
-Chat sync uses `B/chats/{chat_id}/sync` and the same scoped lookup; it refuses
+Chat sync uses `POST B/chats/sync?chat_id=<id>` with the same scoped lookup; it refuses
 an unsupported live operation instead of guessing a target from a peer.
 
 The `fleet run` process remains under the host supervisor. A future
@@ -293,9 +299,12 @@ retry reuses. Changing the webhook list requires a restart.
 
 ## Current implementation and target
 
-The P4 names and shapes above are approved but not implemented yet. Current
-handlers still use pre-P4 routes and selectors; that is pending replacement,
-not a supported compatibility contract for the new surface.
+The P4 names and shapes above are implemented: neutral peer/chat/binding
+references, scoped channel/binding/method discovery with the
+`/binding/setups` lifecycle, committed-binding send admission, chat
+control/sync under `B/chats`, collection graph-run reads, and the ZIP/CSV
+export sections all serve through the routes this document describes. No
+legacy selector, old route, or phone projection survives beside them.
 
 Today, the API has owner and scoped bearer tokens, checks scope access on
 scope-addressed routes, reads and publishes scope configuration, and supports
@@ -307,8 +316,9 @@ well; the watcher loads and validates them and activates only safe changed
 scopes (ADR 0009). The CLI uses the API for operational commands while the
 instance is running.
 
-The full target is not implemented yet: the complete set of bot and conversation
-controls remains planned, while browser sessions and an operator dashboard are
+The full target beyond P4 is not implemented yet: the complete set of bot
+and conversation controls remains planned, while browser sessions and an
+operator dashboard are
 optional tooling. Hosts can use the current publication API from their own
 backends without either (ADR 0046). Scope and bot membership changes and channel
 settings currently remain pending until restart; a graph topology change waits

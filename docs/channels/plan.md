@@ -7,7 +7,8 @@ is not a prerequisite. This does not approve unresolved contracts or
 close runtime gates. P0 (documentation only) is complete and accepted;
 P1's implementation landed on 2026-10-11 (ADR 0051), and P2/P3 landed on
 2026-10-12 with their reviewed runtime gates closed. P4's public contracts
-were owner-approved on 2026-10-12; P4 implementation and P5/P6 remain pending.
+were owner-approved on 2026-10-12 and P4 implementation landed with its
+reviewed runtime gates closed; P5/P6 remain pending.
 [Open decisions](open-decisions.md) records the phase-local closures.
 
 **Owner decision — this preparation is new design, with no backward
@@ -22,8 +23,9 @@ P4 public API/CLI names, arguments, fields, and exports follow the selected
 domain vocabulary, including pending internal renames (ADR 0054). Binding/setup
 routes use `/binding/setups`, not `/account/enrollments` (ADR 0053); ADR 0044
 closes neutral send selectors and no-binding admission, ADR 0052 discovery,
-and ADR 0042 the neutral ZIP/CSV format. These approved decisions authorize P4
-implementation, not checked implementation gates. P5's receive-completion,
+and ADR 0042 the neutral ZIP/CSV format. These approved decisions authorized
+P4 implementation, whose code and gates are now checked in
+[phases.md](phases.md). P5's receive-completion,
 message-ID namespace, and delivery contracts closed with the owner on
 2026-10-17 (see [open-decisions.md](open-decisions.md)); their implementation
 remains pending.
