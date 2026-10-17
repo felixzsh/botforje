@@ -450,7 +450,7 @@ stay unchecked until their code and gates land.
   requirement or unconditional optional-feature calls. Preserve inert
   imports, peer-first-seen rules, own-send echo correlation, and held
   inbound.
-- [ ] Exercise upstream replay/cursor behavior against processing
+- [x] Exercise upstream replay/cursor behavior against processing
   success, failure, filtering, and suppression. Inbound handoff is not
   proof of durable commit; settle any required processing
   acknowledgement before advancing irreversible cursors. Do not add a
