@@ -65,6 +65,7 @@ func (h *HistoryImporter) importCallLogs(
 			Content:           botflota.CallContent{Label: historyCallLogLabel(record)},
 			At:                at,
 			ProviderMessageID: record.GetCallID(),
+			MessageSpace:      h.ownPhone,
 			Ingest:            botflota.IngestSync,
 			Origin:            origin,
 			Routing:           botflota.RoutingUnknown,

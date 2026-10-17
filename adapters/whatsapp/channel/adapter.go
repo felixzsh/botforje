@@ -124,7 +124,10 @@ type Adapter struct {
 	client *whatsmeow.Client
 	state  State
 	seen   *dedup
-	last   map[string]lastInbound
+	// ownPhone spaces live ids under the linked account (ADR 0026).
+	// Guarded by mu.
+	ownPhone string
+	last     map[string]lastInbound
 
 	// sentMu guards sentIDs, which Send writes and the event handler reads.
 	sentMu  sync.Mutex
@@ -236,9 +239,13 @@ func (a *Adapter) Connect(ctx context.Context) error {
 	// every contact event this import runs on (ADR 0037).
 	client.EmitAppStateEventsOnFullSync = a.addressBook != nil
 	client.AddEventHandler(a.handleEvent)
+	ownPhone := whatsapp.DevicePhone(device)
 	if a.importer != nil {
-		a.importer.SetOwnPhone(whatsapp.DevicePhone(device))
+		a.importer.SetOwnPhone(ownPhone)
 	}
+	a.mu.Lock()
+	a.ownPhone = ownPhone
+	a.mu.Unlock()
 	if a.addressBook != nil {
 		a.addressBook.SetSource(ingest.PeerKey(whatsapp.DevicePhone(device)))
 	}

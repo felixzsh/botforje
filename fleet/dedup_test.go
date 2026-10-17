@@ -55,7 +55,7 @@ func TestMessageLookupIsScopedToTheOwner(t *testing.T) {
 		{"another scope", "other", "alpha", destination, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := store.HasProviderID(ctx, tc.scope, tc.bot, tc.target, "shared-id")
+			got, err := store.HasProviderID(ctx, tc.scope, tc.bot, "", tc.target, "shared-id")
 			if err != nil || got != tc.want {
 				t.Fatalf("HasProviderID = %v, %v; want %v", got, err, tc.want)
 			}

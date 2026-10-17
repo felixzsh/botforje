@@ -218,7 +218,7 @@ func TestMessageProviderIDIsScopedToItsOwner(t *testing.T) {
 	} {
 		t.Run("has "+tc.name, func(t *testing.T) {
 			got, err := db.Messages().HasProviderID(ctx, tc.scope, tc.bot,
-				tc.target, "wamid.B")
+				"", tc.target, "wamid.B")
 			if err != nil {
 				t.Fatalf("HasProviderID: %v", err)
 			}

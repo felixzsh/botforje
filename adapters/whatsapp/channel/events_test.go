@@ -183,6 +183,77 @@ func TestLoggedOutPersistsUnpairedStatus(t *testing.T) {
 	}
 }
 
+// TestLiveIngressNeverBecomesATextTurn is the ingest-boundary conformance
+// check for unsupported interactions: control traffic (reactions, edits,
+// poll votes, protocol messages), receipts, and payloads the adapter cannot
+// model are dropped before routing. None of them may masquerade as a text
+// turn, reach the inbound queue, or surface as an external-send observation
+// (ADR 0035, ADR 0036). No button, editing, or receipt machinery is added
+// for them: the boundary stays honest by discarding them.
+func TestLiveIngressNeverBecomesATextTurn(t *testing.T) {
+	message := func(body *waE2E.Message, fromMe bool) *events.Message {
+		event := textEvent("5215500000000", "CTRL", "")
+		event.Message = body
+		event.Info.IsFromMe = fromMe
+		return event
+	}
+	tests := []struct {
+		name  string
+		event *events.Message
+	}{
+		{"reaction", message(&waE2E.Message{
+			ReactionMessage: &waE2E.ReactionMessage{}}, false)},
+		{"edited payload", message(&waE2E.Message{
+			EditedMessage: &waE2E.FutureProofMessage{}}, false)},
+		{"poll vote", message(&waE2E.Message{
+			PollUpdateMessage: &waE2E.PollUpdateMessage{}}, false)},
+		{"protocol traffic", message(&waE2E.Message{
+			ProtocolMessage: &waE2E.ProtocolMessage{}}, false)},
+		{"unmodelable payload", message(&waE2E.Message{
+			PlaceholderMessage: &waE2E.PlaceholderMessage{}}, false)},
+		{"own reaction", message(&waE2E.Message{
+			ReactionMessage: &waE2E.ReactionMessage{}}, true)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			a := newTestAdapter()
+			a.onMessage(test.event)
+			select {
+			case got := <-a.incoming:
+				t.Fatalf("control traffic reached the inbound queue: %#v", got)
+			default:
+			}
+			select {
+			case got := <-a.outbound:
+				t.Fatalf("control traffic was observed as an external send: %#v", got)
+			default:
+			}
+		})
+	}
+}
+
+// TestReceiptsAreNotTurns proves delivery/read receipts never enter the
+// inbound or observation queues: they are transport signals, not content.
+func TestReceiptsAreNotTurns(t *testing.T) {
+	a := newTestAdapter()
+	jid := types.NewJID("5215500000000", types.DefaultUserServer)
+	a.handleEvent(&events.Receipt{
+		MessageSource: types.MessageSource{Sender: jid, Chat: jid},
+		MessageIDs:    []types.MessageID{"ABC"},
+		Timestamp:     t0,
+	})
+	select {
+	case got := <-a.incoming:
+		t.Fatalf("a receipt reached the inbound queue: %#v", got)
+	default:
+	}
+	select {
+	case got := <-a.outbound:
+		t.Fatalf("a receipt was observed as an external send: %#v", got)
+	default:
+	}
+}
+
 func newTestAdapter() *Adapter {
 	return &Adapter{
 		bot:      "support-bot",

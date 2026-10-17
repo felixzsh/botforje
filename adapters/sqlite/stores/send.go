@@ -81,14 +81,15 @@ func (s *SendStore) CommitSend(
 	}
 	messages := MessageStore{db: tx}
 	message := &botflota.Message{
-		ChatID:    chat.ID,
-		Target:    send.Target,
-		Direction: botflota.Outbound,
-		Content:   send.Content,
-		At:        send.At,
-		Ingest:    botflota.IngestAPI,
-		Origin:    botflota.OriginAPI,
-		Routing:   botflota.RoutingUnknown,
+		ChatID:       chat.ID,
+		Target:       send.Target,
+		Direction:    botflota.Outbound,
+		Content:      send.Content,
+		At:           send.At,
+		MessageSpace: send.MessageSpace,
+		Ingest:       botflota.IngestAPI,
+		Origin:       botflota.OriginAPI,
+		Routing:      botflota.RoutingUnknown,
 	}
 	if err := messages.Append(ctx, message); err != nil {
 		return botflota.SendResult{}, fmt.Errorf("sqlite: store sent message: %w", err)

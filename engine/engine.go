@@ -34,6 +34,11 @@ type Options struct {
 	// fails the turn before anything is persisted; nil skips the check.
 	// The fleet wires it from the bot's installed definition (ADR 0052).
 	Admit func(target botflota.ChatTarget, content botflota.SendableContent) error
+	// Space reports the adapter-declared message-ID space of the
+	// committed binding, so every stored message keeps the provenance
+	// of the account that recorded it (ADR 0026, ADR 0051). The fleet
+	// wires it from the bot's installed definition; nil stores no space.
+	Space func(binding *botflota.Binding) string
 	// Bindings snapshots the committed binding generation onto the turn;
 	// nil leaves the snapshot zero and skips the no-binding refusal.
 	Bindings botflota.BindingStore
@@ -60,6 +65,7 @@ type Engine struct {
 	messages       botflota.MessageStore
 	turn           botflota.TurnStore
 	admit          func(botflota.ChatTarget, botflota.SendableContent) error
+	space          func(*botflota.Binding) string
 	bindings       botflota.BindingStore
 	notify         botflota.PeerFirstSeenNotifier
 	llm            botflota.LLMProvider
@@ -83,6 +89,7 @@ func New(opts Options) *Engine {
 		messages:       opts.Messages,
 		turn:           opts.Turn,
 		admit:          opts.Admit,
+		space:          opts.Space,
 		bindings:       opts.Bindings,
 		notify:         opts.Notify,
 		llm:            opts.LLM,
@@ -189,11 +196,12 @@ func (e *Engine) Handle(
 	return r.out, nil
 }
 
-// storedBefore reports a message this bot already stores for that destination.
-// The provider id is scoped by the destination and by the bot itself, so a
-// redelivery never re-runs an action or an HTTP side effect, never moves
-// last_seen, and is never taken for another bot's message (ADR 0026, ADR 0040,
-// ADR 0051).
+// storedBefore reports a message this bot already stores for that
+// destination in that message's space. The provider id is scoped by the
+// space, the complete destination, and the bot itself, so a redelivery
+// never re-runs an action or an HTTP side effect, never moves last_seen,
+// and is never taken for another account's or another bot's message
+// (ADR 0026, ADR 0040, ADR 0051).
 func (e *Engine) storedBefore(
 	ctx context.Context, msg botflota.IncomingMessage,
 ) (bool, error) {
@@ -204,8 +212,8 @@ func (e *Engine) storedBefore(
 		// Nothing can be stored; load reports the missing store.
 		return false, nil
 	}
-	seen, err := e.messages.HasProviderID(ctx, e.scope, e.bot, msg.Target,
-		msg.ProviderMessageID)
+	seen, err := e.messages.HasProviderID(ctx, e.scope, e.bot,
+		msg.MessageSpace, msg.Target, msg.ProviderMessageID)
 	if err != nil {
 		return false, fmt.Errorf("engine: dedup: %w", err)
 	}
@@ -246,6 +254,7 @@ func (e *Engine) RecordSuppressed(
 		Content:           msg.Content,
 		At:                msg.At,
 		ProviderMessageID: msg.ProviderMessageID,
+		MessageSpace:      msg.MessageSpace,
 		Ingest:            botflota.IngestLive,
 		Routing:           botflota.RoutingUnknown,
 	}
@@ -275,6 +284,21 @@ func (e *Engine) notifyFirstContact(
 	}
 }
 
+// bindingSpace reports the adapter-declared message-ID space of the
+// committed binding, or none when the engine has no binding store or no
+// space hook. A store error keeps no space rather than failing the record:
+// provenance must never block history.
+func (e *Engine) bindingSpace(ctx context.Context) string {
+	if e.space == nil || e.bindings == nil {
+		return ""
+	}
+	binding, err := e.bindings.Get(ctx, e.scope, e.bot)
+	if err != nil || binding == nil {
+		return ""
+	}
+	return e.space(binding)
+}
+
 // RecordOperator stores an outbound message the operator sent outside Botflota
 // under its destination chat, with the operator origin, and queues nothing
 // (ADR 0043). A provider id the destination already stores — a later history
@@ -294,6 +318,12 @@ func (e *Engine) RecordOperator(
 	if err != nil {
 		return fmt.Errorf("engine: chat: %w", err)
 	}
+	// An observed send left the linked account, so it keeps that
+	// account's space; an id the adapter could not place keeps none.
+	space := msg.MessageSpace
+	if space == "" {
+		space = e.bindingSpace(ctx)
+	}
 	record := &botflota.Message{
 		ChatID:            chat.ID,
 		Target:            msg.Target,
@@ -301,6 +331,7 @@ func (e *Engine) RecordOperator(
 		Content:           msg.Content,
 		At:                msg.At,
 		ProviderMessageID: msg.ProviderMessageID,
+		MessageSpace:      space,
 		Ingest:            botflota.IngestLive,
 		Origin:            botflota.OriginOperator,
 		Routing:           botflota.RoutingUnknown,
@@ -340,6 +371,7 @@ func (e *Engine) commitTurn(
 		}
 	}
 	var generation int64
+	var space string
 	if e.bindings != nil {
 		binding, err := e.bindings.Get(ctx, e.scope, e.bot)
 		if err != nil {
@@ -352,6 +384,12 @@ func (e *Engine) commitTurn(
 			return fmt.Errorf("engine: read binding: %w", err)
 		}
 		generation = binding.Generation
+		// A reply's later provider id is recorded under the space of
+		// the binding it was admitted under, never the triggering
+		// chat's (ADR 0026, ADR 0051).
+		if e.space != nil {
+			space = e.space(binding)
+		}
 	}
 	turn := botflota.TurnRecord{
 		Scope:             e.scope,
@@ -367,6 +405,7 @@ func (e *Engine) commitTurn(
 			Content:           msg.Content,
 			At:                msg.At,
 			ProviderMessageID: msg.ProviderMessageID,
+			MessageSpace:      msg.MessageSpace,
 			Ingest:            botflota.IngestLive,
 			Routing:           routing,
 		},
@@ -376,14 +415,15 @@ func (e *Engine) commitTurn(
 		turn.Outbound = append(turn.Outbound, botflota.OutboundRecord{
 			Target: out[i].Target,
 			Message: &botflota.Message{
-				ChatID:    chat.ID,
-				Target:    out[i].Target,
-				Direction: botflota.Outbound,
-				Content:   out[i].Content,
-				At:        now,
-				Ingest:    botflota.IngestLive,
-				Origin:    out[i].Origin,
-				Routing:   out[i].Routing,
+				ChatID:       chat.ID,
+				Target:       out[i].Target,
+				Direction:    botflota.Outbound,
+				Content:      out[i].Content,
+				At:           now,
+				MessageSpace: space,
+				Ingest:       botflota.IngestLive,
+				Origin:       out[i].Origin,
+				Routing:      out[i].Routing,
 			},
 		})
 	}

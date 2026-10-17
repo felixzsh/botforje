@@ -318,7 +318,7 @@ type fakeMessages struct{ messages map[int64][]botflota.Message }
 func (f fakeMessages) Append(context.Context, *botflota.Message) error { return nil }
 
 func (f fakeMessages) HasProviderID(
-	context.Context, string, string, botflota.ChatTarget, string,
+	context.Context, string, string, string, botflota.ChatTarget, string,
 ) (bool, error) {
 	return false, nil
 }

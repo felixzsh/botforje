@@ -169,7 +169,9 @@ func (h *HistoryImporter) Totals() ImportTotals {
 }
 
 // SetOwnPhone tells the importer the paired account's own number, which is
-// known only once the device is loaded.
+// known only once the device is loaded. The number doubles as the
+// adapter-declared message space of every row this import writes: history
+// keeps the provenance of the account that recorded it (ADR 0026, ADR 0051).
 func (h *HistoryImporter) SetOwnPhone(phone string) { h.ownPhone = phone }
 
 func addTotals(a, b ImportTotals) ImportTotals {
@@ -249,6 +251,7 @@ func (h *HistoryImporter) importConversation(
 			skipped++
 			continue
 		}
+		record.MessageSpace = h.ownPhone
 		if record.Direction == botflota.Inbound && pushName != "" {
 			name = pushName
 		}

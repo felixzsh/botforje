@@ -396,6 +396,7 @@ func (f *Fleet) buildRuntime(
 		Messages:   opts.Messages,
 		Turn:       opts.Turn,
 		Admit:      admitReplies(opts.Catalog, bot.Channel),
+		Space:      spaceOf(opts.Catalog, bot.Channel),
 		Bindings:   opts.Bindings,
 		Notify:     opts.Notify,
 		HTTPClient: opts.HTTPClient, Now: opts.Now,

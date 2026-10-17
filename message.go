@@ -72,7 +72,12 @@ type IncomingMessage struct {
 	FromName          string
 	Content           MessageContent
 	ProviderMessageID string
-	At                time.Time
+	// MessageSpace is the adapter-declared message-ID space the id
+	// belongs to, taken from the adapter's own account/profile
+	// knowledge (ADR 0026, ADR 0051). The engine stores it with the
+	// message, so dedup never confuses one account's ids with another's.
+	MessageSpace string
+	At           time.Time
 }
 
 // OutgoingMessage is one message the engine asks the channel to deliver.
@@ -103,5 +108,9 @@ type ExternalSend struct {
 	Target            ChatTarget
 	Content           MessageContent
 	ProviderMessageID string
-	At                time.Time
+	// MessageSpace is the adapter-declared message-ID space the id
+	// belongs to, taken from the adapter's own account/profile
+	// knowledge (ADR 0026, ADR 0051).
+	MessageSpace string
+	At           time.Time
 }

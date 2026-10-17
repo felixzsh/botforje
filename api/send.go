@@ -121,8 +121,12 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		Scope: scope, Bot: bot, Target: target, Recipient: recipient,
 		Content: content, ClientID: body.ClientID,
 		// The queued delivery snapshots the admitted binding: a later
-		// replacement or detach never sends it (ADR 0040).
-		BindingGeneration: binding.Generation, At: time.Now(),
+		// replacement or detach never sends it (ADR 0040). A later
+		// provider id for this send is recorded under the binding's
+		// message space (ADR 0026, ADR 0051).
+		BindingGeneration: binding.Generation,
+		MessageSpace:      s.messageSpace(scope, bot, binding),
+		At:                time.Now(),
 	})
 	if errors.Is(err, botflota.ErrDuplicate) {
 		// The accepted message id sits beside the error, so a caller that
@@ -210,6 +214,26 @@ func (s *Server) sendDestination(
 		knownRecipient = &key
 	}
 	return destination, knownRecipient, true
+}
+
+// messageSpace reports the adapter-declared message-ID space of one bot's
+// committed binding through its installed definition (ADR 0026, ADR 0051).
+// No catalog, no selection, or no hook means the provider's ids need none.
+func (s *Server) messageSpace(
+	scope, bot string, binding *botflota.Binding,
+) string {
+	if s.channels == nil || binding == nil {
+		return ""
+	}
+	botSpec, ok := s.config().Scopes[scope].Bots[bot]
+	if !ok {
+		return ""
+	}
+	def, _, err := s.channels.Resolve(botSpec.Channel)
+	if err != nil || def.MessageSpace == nil {
+		return ""
+	}
+	return def.MessageSpace(binding)
 }
 
 // admitSend applies the selected adapter's target rules and declared content

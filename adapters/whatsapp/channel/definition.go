@@ -85,7 +85,14 @@ func Definition() channels.Definition {
 		// identity-space context by design, so compatibility is the same
 		// provider and account mode (ADR 0042, ADR 0051).
 		CompatibleBindings: compatibleBindings,
-		SetupMethods:       []string{whatsapp.SetupMethodQR},
+		// A provider id is interpreted under the linked account that
+		// recorded it: a second account is a different space, while
+		// reauthorization of the same account keeps it and a binding
+		// generation change never changes it by itself (ADR 0026,
+		// ADR 0051). The value is the binding's own subject, opaque to
+		// shared code.
+		MessageSpace: messageSpace,
+		SetupMethods: []string{whatsapp.SetupMethodQR},
 	}
 }
 
@@ -130,6 +137,17 @@ func validateTarget(target botflota.ChatTarget) []string {
 			"direct target carries topic %q", target.Topic)}
 	}
 	return nil
+}
+
+// messageSpace reports the message-ID space of one committed binding:
+// the linked account's own subject. It is pure and adapter-owned: shared
+// code threads the opaque value without parsing it. A binding of another
+// provider carries no space this adapter can interpret.
+func messageSpace(binding *botflota.Binding) string {
+	if binding == nil || binding.Identity.Provider != Provider {
+		return ""
+	}
+	return binding.Identity.Subject
 }
 
 // compatibleBindings reports why one bot's history cannot move to another

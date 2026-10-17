@@ -33,6 +33,25 @@ func admitReplies(
 	}
 }
 
+// spaceOf resolves the adapter-declared message-ID space of one bot's
+// committed binding through its installed definition (ADR 0026, ADR 0051).
+// A nil catalog, an unknown selection, or a definition without the hook
+// means the provider's ids need no space. It is pure: no store opens.
+func spaceOf(
+	catalog *channels.Catalog, sel spec.Channel,
+) func(*botflota.Binding) string {
+	return func(binding *botflota.Binding) string {
+		if catalog == nil || binding == nil {
+			return ""
+		}
+		def, _, err := catalog.Resolve(sel)
+		if err != nil || def.MessageSpace == nil {
+			return ""
+		}
+		return def.MessageSpace(binding)
+	}
+}
+
 // deliveryCheck re-invokes the same admission at delivery time, separately
 // from the static declaration checked when the reply was queued. An
 // eligibility change since admission fails the entry permanently: no silent

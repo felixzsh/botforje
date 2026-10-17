@@ -234,7 +234,7 @@ func TestMoveBotMovesMessageOwnership(t *testing.T) {
 				bot  string
 				want bool
 			}{{"lost-bot", false}, {"new-bot", true}} {
-				got, err := db.Messages().HasProviderID(ctx, "support", owner.bot, target, "same-id")
+				got, err := db.Messages().HasProviderID(ctx, "support", owner.bot, "", target, "same-id")
 				if err != nil || got != owner.want {
 					t.Fatalf("HasProviderID(%s) = %v, %v; want %v",
 						owner.bot, got, err, owner.want)

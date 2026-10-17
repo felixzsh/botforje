@@ -76,19 +76,23 @@ var schema = []string{
 		content             TEXT NOT NULL DEFAULT '{}',
 		sent_at             TEXT NOT NULL,
 		provider_message_id TEXT NOT NULL DEFAULT '',
+		message_space       TEXT NOT NULL DEFAULT '',
 		ingest_kind         TEXT NOT NULL DEFAULT 'unknown',
 		origin              TEXT NOT NULL DEFAULT '',
 		routing             TEXT NOT NULL DEFAULT 'unknown'
 	)`,
 	`CREATE INDEX IF NOT EXISTS messages_chat ON messages (chat_id, id)`,
-	// The provider id is scoped by the destination the message actually
-	// belongs to and by the bot that owns it, so an alternate recipient's ids
-	// never collide with the chat that records the send, and one bot's message
-	// is never taken for another's (ADR 0051). P5 owns the final
-	// binding-scoped key.
+	// The durable dedup key is the scope, the bot, the adapter-declared
+	// message space, the complete destination, and the provider id
+	// (ADR 0026, ADR 0051): an alternate recipient's ids never collide
+	// with the chat that records the send, one account's ids are never
+	// taken for another's, and one bot's message is never taken for
+	// another's. Binding generation is delivery authorization, never part
+	// of this key; a moved message keeps the space it was created under.
 	`CREATE UNIQUE INDEX IF NOT EXISTS messages_provider
-		ON messages (scope, bot, target_provider, target_kind, target_thread,
-		             target_topic, provider_message_id)
+		ON messages (scope, bot, message_space, target_provider,
+		             target_kind, target_thread, target_topic,
+		             provider_message_id)
 		WHERE provider_message_id != ''`,
 	`CREATE TABLE IF NOT EXISTS directory_entries (
 		scope           TEXT NOT NULL,

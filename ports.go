@@ -269,21 +269,21 @@ type SessionStore interface {
 }
 
 // MessageStore records message history (ADR 0026). Append reports
-// ErrDuplicate when the same bot already stores the same provider id for that
-// message's destination; the outbox records the channel id of a delivered
-// reply when it marks it sent. Oldest returns the oldest message that can
-// anchor a history request — one with a channel id, never a call row (ADR
-// 0035). History returns up to limit messages oldest first: the last ones when
-// afterID is zero, or those newer than afterID. HasProviderID is the cheap read
-// the engine uses before it runs a turn, so a redelivery never repeats an
-// action. Both the destination and the owning bot scope the provider id
-// (ADR 0051).
+// ErrDuplicate when the same bot already stores the same provider id for
+// that message's destination in that message's space; the outbox records
+// the channel id of a delivered reply when it marks it sent. Oldest returns
+// the oldest message that can anchor a history request — one with a channel
+// id, never a call row (ADR 0035). History returns up to limit messages
+// oldest first: the last ones when afterID is zero, or those newer than
+// afterID. HasProviderID is the cheap read the engine uses before it runs
+// a turn, so a redelivery never repeats an action. The space, the complete
+// destination, and the owning bot scope the provider id (ADR 0026, ADR 0051).
 type MessageStore interface {
 	Append(ctx context.Context, message *Message) error
 	Oldest(ctx context.Context, chatID int64) (*Message, error)
 	History(ctx context.Context, chatID, afterID int64, limit int) ([]Message, error)
 	HasProviderID(
-		ctx context.Context, scope, bot string, target ChatTarget,
+		ctx context.Context, scope, bot, space string, target ChatTarget,
 		providerID string,
 	) (bool, error)
 }
@@ -300,6 +300,10 @@ type SendRecord struct {
 	Target    ChatTarget
 	Recipient *IdentityKey
 	Content   SendableContent
+	// MessageSpace is the adapter-declared message-ID space of the
+	// bot's committed binding: a later provider id for this send is
+	// recorded under it (ADR 0026, ADR 0051).
+	MessageSpace string
 	// ClientID is the caller's idempotency key; empty means no key.
 	ClientID string
 	// BindingGeneration snapshots the committed binding the send was

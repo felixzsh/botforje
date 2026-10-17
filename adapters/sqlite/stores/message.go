@@ -16,7 +16,7 @@ func NewMessageStore(db *sql.DB) *MessageStore { return &MessageStore{db: db} }
 
 const messageColumns = `id, chat_id, session_id, target_provider, target_kind,
 	target_thread, target_topic, direction, kind, body, content,
-	sent_at, provider_message_id, ingest_kind, origin, routing`
+	sent_at, provider_message_id, message_space, ingest_kind, origin, routing`
 
 func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) error {
 	if message.Content == nil {
@@ -43,15 +43,15 @@ func (s *MessageStore) Append(ctx context.Context, message *botflota.Message) er
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO messages (chat_id, scope, bot, session_id, target_provider,
 		 target_kind, target_thread, target_topic, direction, kind, body, content,
-		 sent_at, provider_message_id, ingest_kind, origin, routing)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 sent_at, provider_message_id, message_space, ingest_kind, origin, routing)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT DO NOTHING`,
 		message.ChatID, scope, bot, sessionID, message.Target.Provider,
 		string(message.Target.Kind), message.Target.Thread, message.Target.Topic,
 		string(message.Direction), string(message.Content.MessageKind()),
 		message.Content.VisibleText(), string(content), formatTime(message.At),
-		message.ProviderMessageID, string(message.Ingest), string(message.Origin),
-		string(message.Routing))
+		message.ProviderMessageID, message.MessageSpace, string(message.Ingest),
+		string(message.Origin), string(message.Routing))
 	if err != nil {
 		return fmt.Errorf("sqlite: append message: %w", err)
 	}
@@ -87,13 +87,14 @@ func (s *MessageStore) chatOwner(
 	return scope, bot, nil
 }
 
-// HasProviderID reports whether this bot already stored a message to this
-// destination with this channel id; an empty id never matches. Both the
-// destination and the owner scope the id, so an alternate recipient's ids
-// never collide with the chat whose history records the send, and one bot
-// never sees another's (ADR 0051).
+// HasProviderID reports whether this bot already stored a message with
+// this channel id in this message space for this destination; an empty id
+// never matches. The space, the complete destination, and the owner scope
+// the id, so an alternate recipient's ids never collide with the chat whose
+// history records the send, one account's ids are never taken for another's,
+// and one bot never sees another's (ADR 0026, ADR 0051).
 func (s *MessageStore) HasProviderID(
-	ctx context.Context, scope, bot string, target botflota.ChatTarget,
+	ctx context.Context, scope, bot, space string, target botflota.ChatTarget,
 	providerID string,
 ) (bool, error) {
 	if providerID == "" {
@@ -102,10 +103,10 @@ func (s *MessageStore) HasProviderID(
 	var exists bool
 	err := s.db.QueryRowContext(ctx,
 		`SELECT EXISTS(SELECT 1 FROM messages
-		 WHERE scope = ? AND bot = ?
+		 WHERE scope = ? AND bot = ? AND message_space = ?
 		 AND target_provider = ? AND target_kind = ? AND target_thread = ?
 		 AND target_topic = ? AND provider_message_id = ?)`,
-		scope, bot, target.Provider, string(target.Kind), target.Thread,
+		scope, bot, space, target.Provider, string(target.Kind), target.Thread,
 		target.Topic, providerID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("sqlite: find provider id: %w", err)
@@ -188,7 +189,8 @@ func scanMessage(rows *sql.Rows) (botflota.Message, error) {
 	if err := rows.Scan(&message.ID, &message.ChatID, &sessionID,
 		&message.Target.Provider, &targetKind, &message.Target.Thread,
 		&message.Target.Topic, &direction, &kind, &body, &content, &sentAt,
-		&message.ProviderMessageID, &ingest, &origin, &routing); err != nil {
+		&message.ProviderMessageID, &message.MessageSpace, &ingest, &origin,
+		&routing); err != nil {
 		return botflota.Message{}, err
 	}
 	message.Target.Kind = botflota.ChatKind(targetKind)

@@ -398,7 +398,8 @@ func (s *memStore) Append(_ context.Context, message *botflota.Message) error {
 }
 
 func (s *memStore) HasProviderID(
-	_ context.Context, scope, bot string, target botflota.ChatTarget, providerID string,
+	_ context.Context, scope, bot, space string,
+	target botflota.ChatTarget, providerID string,
 ) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -411,6 +412,7 @@ func (s *memStore) HasProviderID(
 		}
 		for _, message := range s.messages {
 			if message.ChatID == chat.ID && message.Target == target &&
+				message.MessageSpace == space &&
 				message.ProviderMessageID == providerID {
 				return true, nil
 			}

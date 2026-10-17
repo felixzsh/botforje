@@ -148,8 +148,12 @@ const (
 // kind and visible text columns from Content (ADR 0036). SessionID is zero
 // when no session run handled it. Target is the destination the message
 // actually belongs to, which for an alternate recipient differs from the
-// triggering chat, and ProviderMessageID is the channel's id, scoped by that
-// destination for dedup (ADR 0051).
+// triggering chat, and ProviderMessageID is the channel's id, interpreted in
+// MessageSpace and scoped by that destination for dedup (ADR 0026, ADR 0051).
+// MessageSpace is the adapter-declared message-ID space the adapter recorded
+// the id under: the provider, account, or profile context the id needs for
+// uniqueness. A moved message keeps the space it was created under, never
+// the current account's.
 type Message struct {
 	ID                int64
 	ChatID            int64
@@ -159,6 +163,7 @@ type Message struct {
 	Content           MessageContent
 	At                time.Time
 	ProviderMessageID string
+	MessageSpace      string
 	Ingest            Ingest
 	Origin            MessageOrigin
 	Routing           RoutingMethod

@@ -210,6 +210,15 @@ type Definition struct {
 	// means unknown compatibility, which history migration refuses
 	// (ADR 0042, ADR 0051).
 	CompatibleBindings func(from, to botflota.Binding) []string
+	// MessageSpace reports the adapter-declared message-ID space of one
+	// committed binding: the provider, account, or profile context a
+	// provider id needs for uniqueness (ADR 0026, ADR 0051). The space
+	// survives reconnect, restart, and reauthorization of the same
+	// account; a different account is a different space, and a binding
+	// generation change does not by itself change it. It is pure and
+	// adapter-owned: shared code threads the opaque value without
+	// parsing it. A nil hook means the provider's ids need no space.
+	MessageSpace func(binding *botflota.Binding) string
 	// Build constructs the channel for one bot. A definition injected into a
 	// config-only command leaves it nil; nothing invokes it there.
 	Build func(Bind) (botflota.MessageChannel, error)

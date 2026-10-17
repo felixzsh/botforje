@@ -74,7 +74,9 @@ func (s *OutboxStore) NextPending(
 
 // MarkSent records the delivery and the channel's own message id in one
 // transaction; UPDATE OR IGNORE keeps a duplicate id the history sync already
-// stored from failing a send that really happened.
+// stored from failing a send that really happened. The row keeps the
+// message space it was queued under: a reply's provider id is recorded
+// under the space of the binding that admitted it (ADR 0026, ADR 0051).
 func (s *OutboxStore) MarkSent(
 	ctx context.Context, id int64, providerID string, at time.Time,
 ) error {

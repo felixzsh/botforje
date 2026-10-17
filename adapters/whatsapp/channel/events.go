@@ -73,6 +73,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	a.last[from] = lastInbound{
 		id: event.Info.ID, chat: chat, from: event.Info.Sender,
 	}
+	space := a.ownPhone
 	a.mu.Unlock()
 
 	message := botflota.IncomingMessage{
@@ -82,6 +83,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 		FromName:          event.Info.PushName,
 		Content:           content,
 		ProviderMessageID: id,
+		MessageSpace:      space,
 		At:                event.Info.Timestamp,
 	}
 	// The queue applies backpressure instead of dropping: the whatsmeow event
@@ -116,11 +118,15 @@ func (a *Adapter) onOwnMessage(
 		a.log.Warn("dropping own message: chat has no known phone number")
 		return
 	}
+	a.mu.Lock()
+	space := a.ownPhone
+	a.mu.Unlock()
 	message := botflota.ExternalSend{
 		Bot:               a.bot,
 		Target:            ingest.DirectTarget(pn.User),
 		Content:           content,
 		ProviderMessageID: id,
+		MessageSpace:      space,
 		At:                event.Info.Timestamp,
 	}
 	// Backpressure, like the inbound queue: the event handler waits until the
