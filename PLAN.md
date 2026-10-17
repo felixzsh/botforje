@@ -487,8 +487,9 @@ deprecation window, dual-format period, or compatibility translation layer.
 belongs in shared binding/peer/chat contracts, even as an optional field. Do not replace
 device locators with generic identity labels plus phone metadata or unchecked provider data.
 `docs/channels/plan.md` owns the preparation boundaries and document map;
-`docs/channels/phases.md` owns implementation and runtime gates. P1–P3 are implemented and reviewed;
-P4's public contracts are approved, not implemented. The research and cleanup evidence stays in
+`docs/channels/phases.md` owns implementation and runtime gates. P1–P5 are implemented and reviewed;
+P6's automated gates pass, with the WhatsApp manual checklist pending operator exercise. The
+research and cleanup evidence stays in
 `docs/channels/`; align the canonical ADRs before implementing any newly changed contract.
 Exact selected contract, field, helper, and command names live in
 `docs/channels/domain-terminology.md`; open decisions live in `docs/channels/open-decisions.md`.
@@ -595,6 +596,9 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   `make test-race` where concurrency changed, and the WhatsApp manual
   checklist pass. The boundary audit in `docs/channels/phases.md` P6 passes,
   including optional fields, template context, and read/event models.
+  Implementation and automated gates complete 2026-10-17, but the WhatsApp
+  manual checklist is pending operator exercise, so P6 remains open; its
+  automated gates are checked in `docs/channels/phases.md`.
 
 Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several

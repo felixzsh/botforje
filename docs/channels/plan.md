@@ -9,7 +9,10 @@ P1's implementation landed on 2026-10-11 (ADR 0051), and P2/P3 landed on
 2026-10-12 with their reviewed runtime gates closed. P4's public contracts
 were owner-approved on 2026-10-12 and P4 implementation landed with its
 reviewed runtime gates closed; P5 landed on 2026-10-17 with its reviewed
-runtime gates closed, and P6 remains pending.
+runtime gates closed. P6 implementation landed on 2026-10-17 with its
+automated gates passing; the WhatsApp operational manual checklist remains
+pending operator exercise, and P6 is not formally closed until then. The
+preparation is otherwise complete.
 [Open decisions](open-decisions.md) records the phase-local closures.
 
 **Owner decision — this preparation is new design, with no backward
@@ -184,8 +187,9 @@ wait for unrelated real-adapter research to finish every phase.
   accepted acceptance/status translation, uncertain-outcome retry policy,
   message-ID/dedup scope, unbound-send admission, processing completion, and
   own-send attribution/pause contracts live in ADR 0004/0026/0040/0043/0044/0051/0052
-  (see [open-decisions.md](open-decisions.md)); their implementation remains
-  pending. Queue handoff, provider acknowledgement, and durable processing
+  (see [open-decisions.md](open-decisions.md)); their implementation landed on
+  2026-10-17, with every item and gate checked in [phases.md](phases.md).
+  Queue handoff, provider acknowledgement, and durable processing
   stay different boundaries, inert history import stays distinct from live
   recovery, and only the agreed processing outcomes are confirmed.
 - **P6 — Conformance:** exercise those distinctions through the same

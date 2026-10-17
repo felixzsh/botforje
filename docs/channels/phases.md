@@ -518,6 +518,16 @@ Change: cross-package contract/regression tests and fixtures, plus the
 remaining documentation and generated reference that must describe the
 implemented runtime rather than the accepted target.
 
+P6 implementation landed on 2026-10-17: the reusable conformance adapter and
+harness (`adapters/conformance`, `adapters/testchannel`), the single-fixture
+contrast across the WhatsApp mapping and the registered fakes, the
+shared-backend and update-source coverage, the domain/hot-path audit, and
+the documentation, schema, and `PLAN.md` alignment. Every automated gate
+passes. The WhatsApp operational manual checklist in
+[`../guide/whatsapp.md`](../guide/whatsapp.md) (pairing, reconnect, live
+messages, queued replies, history import/backfill, unpair) is pending
+operator exercise, so P6 stays open until it is exercised.
+
 - [x] Run the same fixture graph through WhatsApp's test mapping and
   contrasting registered fakes: an opaque-ID text-only channel and a
   profile-local channel. Both traverse actual engine, stores,
@@ -560,13 +570,20 @@ implemented runtime rather than the accepted target.
   implemented code instead of the retired shapes.
 - [ ] Run `make check` and `make test-race` in the main repository with
   required permission, and complete the WhatsApp manual checklist.
-  Report manual checks as pending until actually exercised.
+  Report manual checks as pending until actually exercised. Both
+  automated checks passed on 2026-10-17; the WhatsApp manual checklist
+  is PENDING operator exercise and was not run here, so this item stays
+  open.
 
 Gate:
 
 - [ ] The extension-locality demonstration and every automated gate
   pass; WhatsApp pairing, reconnect, live messages, queued replies,
-  history import/backfill, and unpair remain operational.
-- [ ] P1–P6 code outcomes are complete and tracked in `../../PLAN.md`.
+  history import/backfill, and unpair remain operational. Its automated
+  half passes and was verified here; the WhatsApp operational manual
+  checklist remains PENDING operator exercise (real credentials and a
+  device are needed) and was not run, which is why this bullet stays
+  open.
+- [x] P1–P6 code outcomes are complete and tracked in `../../PLAN.md`.
   Adding an adapter for existing capabilities now means adapter work
   plus registration, not another runtime architecture project.
