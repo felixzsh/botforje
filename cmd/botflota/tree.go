@@ -29,6 +29,8 @@ func cliTree() *commandHelp {
 			"botflota fleet status",
 			"botflota chat list support-bot",
 			"botflota directory list support-bot",
+			"botflota peer list",
+			"botflota graph-run list support-bot --chat-id 3",
 			"botflota message tail support-bot --chat-id 3 --follow",
 		},
 		flags: func() *flag.FlagSet {
@@ -104,9 +106,9 @@ func cliTree() *commandHelp {
 				sub: []commandHelp{
 					{
 						name:    "list",
-						summary: "list configured bots and their pairing",
-						long: "Print a table of configured bots with their phone number,\n" +
-							"pairing state, and last change. The running instance answers\n" +
+						summary: "list configured bots and their binding",
+						long: "Print a table of configured bots with their binding\n" +
+							"and connection state. The running instance answers\n" +
 							"through the REST API, so fleet run must be up; it does not\n" +
 							"change stored state.",
 						usage: "botflota bot list [options]",
@@ -276,6 +278,84 @@ func cliTree() *commandHelp {
 						},
 						flags: func() *flag.FlagSet { return newDirectoryListCmd().fs },
 						run:   runDirectoryList,
+					},
+				},
+			},
+			{
+				name:    "peer",
+				summary: "read a scope's peer identities",
+				long: "List the messaging identities a scope knows and read one\n" +
+					"by its scope-owned id. A peer is an identity the scope\n" +
+					"recorded, whether or not it ever wrote; it is not a chat.\n" +
+					"First and last seen stay empty without a live inbound.",
+				usage: "botflota peer <command> [options]",
+				examples: []string{
+					"botflota peer list",
+					"botflota peer show --peer-id 7",
+				},
+				moreHelp: "for more help: botflota peer <command> --help",
+				sub: []commandHelp{
+					{
+						name:    "list",
+						summary: "print a scope's peer identities",
+						long: "Print one row per peer, most recently active first, with\n" +
+							"the neutral reference and name, first and last live\n" +
+							"inbound, and whether a directory import, chat, or history\n" +
+							"recorded it. The running instance answers through the\n" +
+							"REST API, so fleet run must be up. Add --scope when the\n" +
+							"config holds more than one scope.",
+						usage: "botflota peer list [options]",
+						examples: []string{
+							"botflota peer list",
+							"botflota peer list --scope dev --limit 100",
+						},
+						flags: func() *flag.FlagSet { return newPeerListCmd().fs },
+						run:   runPeerList,
+					},
+					{
+						name:    "show",
+						summary: "read one peer by its scope-owned id",
+						long: "Print the peer the scope-owned id names: its neutral\n" +
+							"reference and name, first and last live inbound, and\n" +
+							"whether a directory import, chat, or history recorded\n" +
+							"it. The running instance answers through the REST API,\n" +
+							"so fleet run must be up. --peer-id is always required: a\n" +
+							"subject alone never names a peer across providers.",
+						usage: "botflota peer show [options]",
+						examples: []string{
+							"botflota peer show --peer-id 7",
+							"botflota peer show --scope dev --peer-id 7",
+						},
+						flags: func() *flag.FlagSet { return newPeerShowCmd().fs },
+						run:   runPeerShow,
+					},
+				},
+			},
+			{
+				name:    "graph-run",
+				summary: "read a chat's graph run",
+				long: "Read the stored graph execution of one chat through the\n" +
+					"REST API. A graph run is one bounded execution of the bot's\n" +
+					"graph for the chat, never a setup session.",
+				usage: "botflota graph-run <command> [options]",
+				examples: []string{
+					"botflota graph-run list support-bot --chat-id 3",
+				},
+				moreHelp: "for more help: botflota graph-run <command> --help",
+				sub: []commandHelp{
+					{
+						name:    "list",
+						summary: "print one chat's graph run",
+						long: "Print the graph run of one chat with its current node,\n" +
+							"visited nodes, and times. The bot is named as in bot\n" +
+							"list; add --scope when the name exists in more than one\n" +
+							"scope.",
+						usage: "botflota graph-run list [options] <bot>",
+						examples: []string{
+							"botflota graph-run list support-bot --chat-id 3",
+						},
+						flags: func() *flag.FlagSet { return newGraphRunListCmd().fs },
+						run:   runGraphRunList,
 					},
 				},
 			},
