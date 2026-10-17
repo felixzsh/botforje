@@ -165,7 +165,8 @@ Deliverables:
   presence before replies (ADR 0011).
 - [x] Logout and ban detection: stop the bot, keep the session, and report
   through `bot list` instead of retrying forever (ADR 0011).
-- [x] CLI `bot pair <bot>` and `bot list`.
+- [x] CLI `bot pair <bot>` and `bot list` (the command is now `bot bind`;
+  ADR 0054).
 - [x] Tests: adapter unit tests with fakes; a manual end-to-end checklist.
 
 Gate: one configured bot answers a real WhatsApp message and survives a
@@ -179,7 +180,8 @@ Goal: multiple bots in one process, paced and isolated.
 Deliverables:
 
 - [x] Fleet supervisor that builds one actor per bot from config.
-- [x] Filter: ignore groups and allow/ignore contacts; deduplication lives in
+- [x] Filter: ignore groups and allow/ignore contacts (now refuse shared
+  conversations and allow/ignore peers; ADR 0051); deduplication lives in
   the channel adapter, which sees the event first.
 - [x] Outbox: per-bot FIFO with `queue_delay` plus a shared random `jitter`,
   an optional `max_messages_per_minute` ceiling, and backpressure (ADR 0011).
@@ -230,7 +232,7 @@ Deliverables:
   database and the device store (ADR 0039).
 - [x] Message history persistence: the engine appends the inbound message and
   every reply under the chat and the session run that handled them (ADR 0026);
-  the pairing history sync is imported separately and inertly (ADR 0035).
+  the account-wide history sync is imported separately and inertly (ADR 0035).
 - [x] WhatsApp history import (ADR 0035): capture the account-wide sync that
   arrives when an account links, in `bot bind` and in `fleet run`, storing 1:1
   content under its kind as `sync`/`unknown` with no session run; deduplicate by
@@ -259,7 +261,7 @@ Deliverables:
   neither read nor changed; the channel's echo correlation keeps it from
   pausing the chat (ADR 0043).
 - [x] First-peer webhooks (ADR 0045): `webhooks` in the main config file and
-  a `FirstContactNotifier` port; `peer.first_seen` is emitted when a peer
+  a `PeerFirstSeenNotifier` port; `peer.first_seen` is emitted when a peer
   claims its first inbound and delivered at-least-once through a durable SQLite queue
   with exponential backoff and an HMAC-SHA256 signature over the raw body.
 - [x] Graceful shutdown: SIGINT/SIGTERM stops the fleet and drains the outbox.
@@ -295,7 +297,7 @@ Deliverables:
   scope; return a generic error for invalid configuration outside that scope
   or for instance-wide failures. Document that direct file edits are not
   version-checked or serialized with API publications. See the publication
-  sequence in `docs/current-plan.md`.
+  sequence in `docs/next-plan.md`.
 - [x] Visible labels: creation uses the submitted name as the YAML key and a
   later rename writes only `display_name`; a key collision is rejected, never
   auto-suffixed. Effective labels (`display_name`, else the key) must be unique
@@ -335,39 +337,39 @@ Deliverables:
   Storage exhaustion and retention require a separate explicit decision
   (`docs/access-policy.md`).
 - [x] Account history: unlinking keeps chats, messages, sessions, and
-  contacts; deleting one bot's history is an explicit confirmed operation that
-  never touches the scope's contacts or another bot and reports what it removed;
+  directory; deleting one bot's history is an explicit confirmed operation that
+  never touches the scope's peers or another bot and reports what it removed;
   exporting one bot's history is a streamed zip of one CSV per table the
   deletion removes, so an irreversible deletion can be an informed one;
-  migration **moves** a bot's chats and contacts to a bot of the same scope
+  migration **moves** a bot's chats and directory to a bot of the same scope
   that holds no chat of its own, for a bot replacing a lost account, with both
   bots stopped, the source's queue removed, and its active sessions expired.
   ADR 0042 settles the routes, the confirmation, the report, the
   empty-destination rule, the export, the single transaction, and the retry.
 - [x] Instance ownership (ADR 0039): `fleet run` and the local commands that
   write take an exclusive lock on `data_dir` for the life of the process, so a
-  second run or a pairing beneath a live fleet fails immediately; the port
-  probe that guarded `bot pair` is gone and `port: 0` no longer hides a
+  second run or a binding beneath a live fleet fails immediately; the port
+  probe that guarded `bot bind` is gone and `port: 0` no longer hides a
   running fleet.
-- [ ] Pairing methods: keep the QR and add the eight-digit pairing code, so an
+- [ ] Setup methods: keep the QR and add the eight-digit pairing code, so an
   account whose passkey step happens on the phone can link without another
   client; a pending step is a reported state, never a wait until the code
   expires (ADR 0028).
-- [x] Pairing session in the API: start, cancel, and status per bot, carrying
-  the method, the payload (QR or code), the state, and the expiry, so a UI can
-  drive onboarding without shell access; a session that succeeds activates the
-  bot in the running fleet (ADR 0022, ADR 0025). Replacing a pairing is an
-  unpair plus a new session, both through the API.
-- [x] `bot pair` follows instance ownership (ADR 0039): it drives the running
-  instance's pairing session through the API — rendering its QR and polling
-  until WhatsApp answers — and pairs locally under the lock when the fleet is
+- [x] Setup session in the API: begin, read, answer, and cancel per bot,
+  carrying the method, the typed step (display, input, approval, profile), the
+  state, and the expiry, so a UI can drive onboarding without shell access; a
+  session that succeeds activates the bot in the running fleet (ADR 0022,
+  ADR 0025). Replacing a binding is `bot bind --force` through the API.
+- [x] `bot bind` follows instance ownership (ADR 0039): it drives the running
+  instance's setup session through the API — rendering its display step and
+  polling until it commits — and binds locally under the lock when the fleet is
   stopped. No path falls back to the database beneath a live instance.
-- [x] Account lifecycle in the API: `DELETE .../bots/{bot}/account` cancels a
-  live pairing session, stops the running bot so its channel disconnects, and
-  removes the credentials; `bot unpair` drives it while the instance is owned
-  and works locally when it is not, and `bot pair --force` replaces through
-  the same path (ADR 0021, ADR 0039).
-- [ ] Account states beyond pairing: a connection rejected with 428 (passkey
+- [x] Account lifecycle in the API: `DELETE .../bots/{bot}/binding` detaches the
+  committed binding, stops the running bot so its channel disconnects, and
+  removes the adapter credentials; `bot unbind` drives it while the instance is
+  owned and works locally when it is not, and `bot bind --force` replaces
+  through the same path (ADR 0021, ADR 0039).
+- [ ] Account states beyond binding: a connection rejected with 428 (passkey
   required) or 463 (reachout timelock) stops the bot and is visible in
   `bot list` (ADR 0028).
 - [x] Owner token auth: generated on first run, hashed in SQLite, written once
@@ -388,7 +390,8 @@ Deliverables:
   (`rate_limit`, defaults 600 and 60 per minute, `0` turns one off) budget
   each credential and each source of failed attempts (429 with
   `Retry-After`); upstream failures are answered by code and never by
-  detail, and the pairing `code` stays out of every log (ADR 0025).
+  detail, and the setup session's display payload stays out of every log
+  (ADR 0025).
 - [x] Secret guard: the engine rejects any `${...}` that reaches an outgoing
   message (ADR 0014).
 - [x] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
@@ -422,7 +425,7 @@ Deliverables:
 - [x] Tests: a multi-scope candidate, and the expiry that lifts an
   active-session deferral once those sessions end. These two close with the
   publication API, which reuses the activation pipeline
-  (`docs/current-plan.md`).
+  (`docs/next-plan.md`).
 - [x] Tests: API handlers and auth.
 - [x] Tests: config discovery and reload behavior (validation fallback, live
   application, restart-required).
@@ -438,15 +441,15 @@ Deliverables:
   (`message`, `location`, `media`, `contact`, `poll`) are defined in the config
   schema, and a channel rejects a kind it cannot deliver with
   `ErrUnsupportedKind`.
-- [x] `bot pair --import-history` (ADR 0035): the flag asks WhatsApp for the
-  full history window at registration and waits for it, which is what brings
-  chats older than the default recent window; a pairing without it still
-  imports what arrives and leaves `chat sync` as the per-chat path.
-- [x] Contact import (ADR 0037): a per-bot `settings.import_contacts` copies the
-  linked account's address book into its own `contacts` resource, keyed by
-  (scope, bot, phone), with the address-book, business, and push names kept
-  apart; `contact list` and the scope `contacts` route read it. A control-only
-  conversation shell registers no contact and no chat.
+- [x] `bot bind --param full_history=true` (ADR 0035): the parameter asks
+  WhatsApp for the full history window at registration and waits for it, which is
+  what brings chats older than the default recent window; a binding without it
+  still imports what arrives and leaves `chat sync` as the per-chat path.
+- [x] Directory import (ADR 0037): a per-bot `channel.options.import_contacts`
+  copies the bound account's directory into its own `directory` resource, keyed
+  by (scope, bot, peer), with the directory, business, and push names kept
+  apart; `directory list` and the bot's `directory` route read it. A control-only
+  conversation shell registers no peer and no chat.
 - [x] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over the running fleet's connection, in
   sequence and never in parallel, keeping the walk going when one chat fails.
@@ -597,10 +600,11 @@ Gate: a fresh instance can be validated, authenticated, started, inspected,
 and reconfigured through CLI and API only. Scoped publication of several
 authorized scopes is atomic and leaves every other scope untouched. An owner
 can delete one bot's history and migrate it to another bot of the same scope
-without touching contacts or a peer bot. An integration can send a message to
-an eligible channel target, read the scope's contacts, and receive a signed first-contact
-webhook. The channel-neutral slices (ADR 0051–0054) keep WhatsApp runnable
-and close with their own gates (`docs/channel-adapter-findings/channel-plan.md`).
+without touching the scope's peers or another bot. An integration can send a
+message to an eligible channel target, read the scope's peers, and receive a
+signed `peer.first_seen` webhook. The channel-neutral slices (ADR 0051–0054)
+keep WhatsApp runnable
+and close with their own gates (`docs/channels/plan.md`).
 
 Provisioning and resource policy remain TBD in `docs/access-policy.md` and do
 not gate the outcome above. An owner can bound a definition's local files (ADR

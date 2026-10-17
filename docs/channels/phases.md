@@ -549,12 +549,12 @@ implemented runtime rather than the accepted target.
   coverage from the earlier gates. Fakes declare unsupported features
   honestly and require no new SDK, network service, or production
   credential.
-- [ ] Update `glossary.md`, `architecture.md`, `api.md`,
+- [x] Update `glossary.md`, `architecture.md`, `api.md`,
   `integration.md`, relevant guides/help, and config examples to match
   the code. Regenerate the schema from implemented Go types. Do not
   repeat the completed ADR-writing phase; amend an ADR only for a real
   unresolved decision.
-- [ ] Align `PLAN.md` Phase 7's pre-P1 deliverable descriptions —
+- [x] Align `PLAN.md` Phase 7's pre-P1 deliverable descriptions —
   `phone`, `contact`, `pair`/`unpair`, `contact.first_seen` — with the
   neutral contracts, or mark them superseded, so the plan describes the
   implemented code instead of the retired shapes.
