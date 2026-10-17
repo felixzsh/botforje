@@ -24,10 +24,16 @@ right now, not to stored history.
   stops the bot.
 
 - **Two ways in.** A live message that leaves the linked account without
-  Botflota sending it hands the chat to the operator and starts a pause; an
-  explicit `human` control from the API holds the chat indefinitely until it
-  is released. Both share one state; the automatic pause is a countdown, the
+  Botflota sending it hands the chat over and starts a pause; an explicit
+  `human` control from the API holds the chat indefinitely until it is
+  released. Both share one state; the automatic pause is a countdown, the
   manual switch is not.
+
+- **Handing over is not human attribution.** An uncorrelated own send may come
+  from another automation or client, not a person, so the automatic pause is a
+  conservative best-effort reaction to an observed external send, never a claim
+  about who wrote it and never a permanent record. What matters is that
+  Botflota did not send it, not that a human did.
 
 - **One pause length per bot.** `settings.external_reply_pause` is the
   milliseconds a chat stays paused after an external reply; `0` or absent uses
@@ -62,19 +68,22 @@ right now, not to stored history.
   is untouched.
 
 - **An external reply is recorded, not routed.** A live outbound message that
-  Botflota did not send is stored under its chat with the operator origin, so
+  Botflota did not send is stored under its chat with its known provenance, so
   history and the dashboard show it. The history sync is not a trigger: the
   past cannot say who replied, and a chunk arriving at link time must not pause
-  anything.
+  anything. Provenance the adapter cannot establish stays unknown instead of
+  being written as an operator.
 
 - **Correlation is the channel's job.** The adapter knows the ids it sent, so
-  it can tell its own echo from the operator's reply, and it pre-generates the
-  id of an outbound message so a reply is marked before it can be echoed back.
-  This covers every send Botflota performs, including an API-origin message
-  (ADR 0044); none of them ever looks like an operator reply. Fleet sees only
-  observations that are not the bot's own. The set of sent ids is bounded, so
-  the correlation holds within a window of recent sends rather than forever;
-  the echo arrives long before that window could matter.
+  it can tell its own echo from another sender's message, and it pre-generates
+  the id of an outbound message so a reply is marked before it can be echoed
+  back. This covers every send Botflota performs, including an API-origin
+  message (ADR 0044); none of them ever looks like an external send. Fleet sees
+  only observations that are not the bot's own. The set of sent ids is bounded
+  and in memory, so the correlation holds within a window of recent sends and
+  not across a restart; an adapter that cannot separate its own echo does not
+  report the observation at all. A missed correlation can pause a chat nobody
+  touched, which is why the pause is short-lived by design.
 
 - **The API exposes the control, not the timer.** A scoped principal may set a
   chat to `human` or `auto`, and reads the effective state in the chat list.

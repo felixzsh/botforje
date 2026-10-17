@@ -24,7 +24,9 @@ routes use `/binding/setups`, not `/account/enrollments` (ADR 0053); ADR 0044
 closes neutral send selectors and no-binding admission, ADR 0052 discovery,
 and ADR 0042 the neutral ZIP/CSV format. These approved decisions authorize P4
 implementation, not checked implementation gates. P5's receive-completion,
-message-ID namespace, and delivery contracts still require their own closure.
+message-ID namespace, and delivery contracts closed with the owner on
+2026-10-17 (see [open-decisions.md](open-decisions.md)); their implementation
+remains pending.
 
 Code baseline: `3544357`, inspected on 2026-10-08; this research review
 is not a new code audit.
@@ -174,16 +176,14 @@ wait for unrelated real-adapter research to finish every phase.
   compatibility or breaking changes with their owning ADRs before
   changing serialized meaning. Neither a rename nor preserving an old
   field justifies keeping a provider-specific assumption in the domain.
-- **P5 — Delivery and reception:** choose acceptance/status translation,
-  uncertain-outcome retry policy, message-ID/dedup scope, unbound-send
-  admission, and processing completion in ADR 0004/0026/0040/0044/0052.
-  Queue handoff, provider acknowledgement, and durable processing are
-  different boundaries. Distinguish inert history import from live
-  recovery; confirm only the explicitly agreed processing outcomes.
-  Review ADR 0043's operator attribution and pause policy: an
-  uncorrelated own send may come from another automation, not a person.
-  Correlate all Botflota origins, including API sends, and review late
-  echoes and restart without assuming every channel emits an echo.
+- **P5 — Delivery and reception:** closed with the owner on 2026-10-17. The
+  accepted acceptance/status translation, uncertain-outcome retry policy,
+  message-ID/dedup scope, unbound-send admission, processing completion, and
+  own-send attribution/pause contracts live in ADR 0004/0026/0040/0043/0044/0051/0052
+  (see [open-decisions.md](open-decisions.md)); their implementation remains
+  pending. Queue handoff, provider acknowledgement, and durable processing
+  stay different boundaries, inert history import stays distinct from live
+  recovery, and only the agreed processing outcomes are confirmed.
 - **P6 — Conformance:** exercise those distinctions through the same
   engine, stores, fleet, and API paths with contrasting fakes. Include
   authorization without a persistent socket, context-local targets,

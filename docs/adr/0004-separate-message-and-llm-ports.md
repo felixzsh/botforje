@@ -34,13 +34,22 @@ Ports stay separate from config and persistence. Core code never imports
 whatsmeow, a System One or LLM SDK, YAML, or SQL.
 
 An inbound handoff is not proof of durable processing. A source that confirms
-updates through a cursor or HTTP response needs a narrow processing-completion
-boundary before the preparation's P5 gate closes. Distinguish committed work,
-already-recorded duplicates, deliberate discards, and failed processing from
-provider transport acknowledgements and message identity. Exact signatures and
-discard/failure semantics remain TBD in `docs/channel-adapter-findings/channel-plan.md`, section 7;
-the four transport operations are not an assertion that no completion contract
-will be needed. No generic durable inbox or provider command port is approved.
+updates through a cursor or HTTP response gets an optional completion outcome
+for each delivered entry; a source that needs none does not use one. The
+outcome is one of four: committed (the turn, its messages, and its queued
+replies were durably committed), already-recorded duplicate, deliberate discard
+under a current policy, and failed processing. Committed, duplicate, and
+deliberate discard let the adapter confirm its own update; a failure never does,
+and a cumulative cursor never advances past a failed entry. Handing an entry to
+a goroutine, channel, or queue confirms nothing, and cancellation, shutdown, or
+a missing outcome is not success. A held inbound confirms after its history is
+stored without running the graph, and confirming a turn does not wait for its
+replies to leave the outbox. The adapter translates the outcome into its
+protocol, for example an HTTP response or a cursor. Message identity and
+provider update IDs or cursors stay separate values (ADR 0026, ADR 0040). No
+generic durable inbox or provider command port is approved, and confirming
+processing promises no exactly-once execution of external side effects: a
+replay after a failed commit can repeat a `request` step.
 
 ## Consequences
 

@@ -34,10 +34,11 @@ Two policies were explicitly selected:
   mutation, or silently empty unsupported aliases (ADR 0018/0020).
 
 Durable local-space normalization follows ADR 0051; a provider match alone does
-not prove migration compatibility. P3 association generations/freshness and P5
-receive/message-space decisions remain outside this design closure. The durable
-message-ID/dedup key is scoped by the owning bot and by the destination in P1;
-its account/binding-generation scoping stays a P5 decision.
+not prove migration compatibility. P3 association generations/freshness stay
+outside this design closure, and the P5 receive/message-space decisions closed
+on 2026-10-17 (ADR 0004, ADR 0026/0051). The durable message-ID/dedup key is
+scoped by the owning bot and by the destination in P1, and by the
+dapter-declared message space in P5.
 
 P1 retires the `contact` root and propagates the neutral `peer` values. No
 per-bot translation is added for it (owner decision 2026-10-12): the retired
@@ -331,7 +332,8 @@ names matching the selected domain vocabulary, ADR 0053 the `/binding/setups`
 lifecycle, ADR 0044 neutral references and committed-binding send admission,
 ADR 0052 discovery/unsupported-operation views, and ADR 0042 ZIP/CSV sections.
 ADR 0045 matches the already selected `peer.first_seen` envelope. See
-[open-decisions.md](open-decisions.md) for the closure and remaining P5 decisions.
+[open-decisions.md](open-decisions.md) for the closure of P4's public contracts
+and P5's delivery, reception, and provenance contracts.
 The checkboxes below remain unchecked until code and executable gates land.
 
 - [ ] Wire neutral lifecycle/bind/capability dependencies into the API.
@@ -405,6 +407,10 @@ send/events/history/ingest.
 Decision owner: ADR 0052, with ADR 0004, 0011, 0035, 0036, 0040,
 and 0044.
 
+Its delivery, reception, and provenance contracts closed with the owner on
+2026-10-17 (see [open-decisions.md](open-decisions.md)); the checkboxes below
+stay unchecked until their code and gates land.
+
 - [ ] Enforce classified send outcomes: permanent invalid/unsupported
   input fails immediately; transient failures retry within bounds and
   honor retry hints. Losing binding authorization stops that bot with
@@ -443,8 +449,8 @@ and 0044.
   proof of durable commit; settle any required processing
   acknowledgement before advancing irreversible cursors. Do not add a
   universal durable inbox without its decision, or claim replay
-  guarantees a channel cannot supply. Close the completion contract in
-  ADR 0004/0040 before the P5 gate (see
+  guarantees a channel cannot supply. The completion contract is closed in
+  ADR 0004/0040 (see
   [open-decisions.md](open-decisions.md)): distinguish confirmed
   processing, persisted duplicates, deliberate discards, and failures.
   Keep source update IDs and receive cursors out of message identity; do
@@ -452,14 +458,15 @@ and 0044.
 - [ ] Verify message-ID space across binding replacement and
   retained/migrated history. Preserve destination and any required
   account provenance independently of the triggering history chat.
-  Settle the durable key in ADR 0051/0026 before choosing SQL
-  constraints (see [open-decisions.md](open-decisions.md)); binding
+  The durable key is settled in ADR 0051/0026, so choose SQL constraints
+  from it (see [open-decisions.md](open-decisions.md)); binding
   generation alone is not proof of the provider's message-ID namespace.
 - [ ] Exercise bounded routing from a shared source to a slow or stopped
   logical consumer. Document the coupled backpressure/replay boundary
   rather than promising independent progress or adding unapproved
   durable buffering. Deployment policy remains TBD in
-  [open-decisions.md](open-decisions.md).
+  [open-decisions.md](open-decisions.md). The preparation's backpressure
+  boundary itself is closed in ADR 0052; only deployment policy stays TBD.
 - [ ] Preserve typed content and stored codecs. Keep selections, message
   IDs, callback/event IDs, and control traffic conceptually distinct;
   unsupported interactions must not masquerade as text turns. Test the

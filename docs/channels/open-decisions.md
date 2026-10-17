@@ -3,8 +3,9 @@
 Status: phase-local decision register. Open entries are not approved for
 implementation; each must be resolved with the owner and recorded in its owning
 ADR before the affected slice is coded. Closed entries record that approval,
-not passing implementation gates. P4's public contracts are closed below;
-P5 and future real-adapter decisions remain open.
+not passing implementation gates. P4's public contracts and P5's
+delivery/reception/provenance contracts are closed below; future real-adapter
+decisions remain open.
 
 Several items below were previously stated as closed in `plan.md`.
 They are reopened here because their answers depend on provider
@@ -81,7 +82,53 @@ contract decisions, not completed P4 code or gates:
 
 No unresolved public-contract choice listed above blocks starting P4. Do not
 pull receive-completion, message-ID namespace, or production shared-service
-policy into P4; close those contracts before their own consumers are coded.
+policy into P4; the P5 contracts are closed in the section below, and
+production shared-service policy remains open.
+
+## Closed on 2026-10-17 — P5 delivery, reception, and provenance
+
+The owner approved seven contracts, closing the P5 items that `phases.md`,
+ADR 0004/0040, ADR 0026/0051, ADR 0043/0035, and ADR 0052 left open. These are
+contract closures recorded in their owning ADRs, not passing implementation
+gates; P5 and P6 code remains pending.
+
+- **Receive/processing completion.** ADR 0004/0040: a source that confirms
+  updates gets an optional per-entry outcome of committed, already-recorded
+  duplicate, deliberate discard, or failed processing. Queue or goroutine
+  handoff confirms nothing, a failure never confirms, a cumulative cursor never
+  passes a failed entry, and a held inbound confirms after its history is
+  stored. Confirming promises no exactly-once execution of external side
+  effects.
+- **Message-ID space and durable dedup key.** ADR 0026/0051: every message
+  records an adapter-declared message space (the provider/account/profile
+  context needed for uniqueness); the durable key is scope, bot, that space,
+  the complete destination, and the provider id. The space survives
+  reconnect/restart/reauthorization, a different account is a different space, a
+  generation change does not by itself change it, and moved history keeps its
+  provenance. Binding generation is delivery authorization, not a message-ID
+  namespace.
+- **Own-send attribution and pause.** ADR 0043: handing over is a conservative
+  best-effort reaction to an observed external send, not human attribution.
+  Correlation covers every Botflota send including API-origin, holds within a
+  bounded in-memory window, and is not claimed across restart or for adapters
+  that cannot separate their own echo. Imported history never triggers a pause,
+  and unknown provenance stays unknown.
+- **Shared-source backpressure.** ADR 0052/0040: bounded buffers, no silent
+  drop, cancelable waits, releasing one logical view without closing peers, and
+  coupled consumer progress. Grouping, fairness, capacity, and durable
+  buffering stay deployment decisions, and Botflota promises no provider
+  losslessness.
+- **History and external-observation provenance.** ADR 0026/0035/0043: ingest
+  kind, known origin, and the recorded message space are preserved. Import is
+  inert, a live replay of pending traffic follows normal processing, and a
+  history move never rewrites provenance as the current account's.
+- **Uncertain send outcome.** ADR 0052/0040: a timeout after possible
+  acceptance is uncertain, not a proven rejection. It retries at-least-once and
+  its terminal record says acceptance was not confirmed; an idempotency key or
+  pre-assigned id is reused for that delivery's attempts.
+- **Capability granularity.** ADR 0052: per installed definition and account
+  mode, never per provider, with declared support, account authorization, and
+  current eligibility kept separate.
 
 ## Reopened claims waiting on provider evidence
 
@@ -93,33 +140,20 @@ policy into P4; close those contracts before their own consumers are coded.
   Closed section above: neutral entries shape with adapter-owned vCard
   handling. Closing evidence added 2026-10-12: ADR 0036 aligned and the
   per-bot card-variant capability check implemented.
-- **Capability granularity.** Declaring support per channel *and*
-  account mode (not per provider) is the working assumption, motivated
-  by WhatsApp native versus Cloud and Telegram bot versus user login.
-  Confirm it holds as findings grow, or revise it here. Depends on:
-  `provider-differences/outbound-messages.md` and
-  `provider-differences/optional-operations.md`. Owner: ADR 0052.
-- **Receive completion signature.** What "durable processing" means for
-  a replay/cursor source — confirmed processing, persisted duplicates,
-  deliberate discards, failures — and which function signature carries
-  it are still TBD; no universal durable inbox is approved. Depends on:
-  `provider-differences/history-and-recovery.md`,
-  `provider-differences/delivery-and-receipts.md`. Owner: ADR 0004,
-  ADR 0040. Gates P5.
-- **Durable message-ID and dedup key.** Account-local IDs must not
-  collide with retained history after replacement; binding generation
-  alone is not proof of the provider's message-ID namespace. Depends
-  on: `provider-differences/history-and-recovery.md` and the per-finding
-  send contracts. Owner: ADR 0051, ADR 0026. Gates P5.
-- **Shared-source buffering and backpressure.** Logical data isolation
-  does not imply independent throughput or failure domains; bounded
-  buffers, replay versus buffering, fairness, and grouping are all
-  unsettled. Depends on:
-  `provider-differences/delivery-and-receipts.md`,
-  `provider-differences/binding-lifecycle.md`, and
-  `provider-findings/simplex.md`. Owner: ADR 0046, ADR 0054. No
-  supervisor, per-profile spool, fairness promise, or capacity figure is
-  approved.
+- **Capability granularity.** Closed on 2026-10-17, see the P5 section above:
+  per installed definition and account mode, never per provider (ADR 0052).
+- **Receive completion signature.** Closed on 2026-10-17, see the P5 section
+  above: committed, already-recorded duplicate, deliberate discard, and failed
+  processing (ADR 0004, ADR 0040). No universal durable inbox is approved.
+- **Durable message-ID and dedup key.** Closed on 2026-10-17, see the P5
+  section above: the adapter-declared message space plus the complete
+  destination plus the provider id, scoped by scope and bot, with moved history
+  keeping its provenance (ADR 0026, ADR 0051).
+- **Shared-source buffering and backpressure.** Closed for the preparation on
+  2026-10-17, see the P5 section above: bounded buffers, no silent drop,
+  cancelable waits, coupled progress, and no provider-losslessness promise
+  (ADR 0052, ADR 0040). Deployment grouping, fairness, capacity, and durable
+  buffering remain TBD under ADR 0046/0054.
 - **Identity-space composition rule.** The P1 design in ADR 0051 requires
   store/profile-local IDs to include their durable space in adapter-normalized
   subjects and threads, with a documented unambiguous encoding. Provider-wide
@@ -138,8 +172,8 @@ policy into P4; close those contracts before their own consumers are coded.
   The destination-dedup and close/reopen/restart gates pass. The retired
   `contact.*` template references get no replacement: the neutral `peer` root
   is the only one, and an old reference fails as an unknown root (owner
-  decision 2026-10-12). The account-scoped durable dedup key stays a P5
-  decision.
+  decision 2026-10-12). The account-scoped durable dedup key closed on
+  2026-10-17 (ADR 0026/0051).
 - **P2, selector ambiguity.** Closed on 2026-10-12 (owner decision):
   two installed definitions that share a provider and mode are rejected when
   the catalog is built, and the adapter kind never participates in selection
@@ -169,12 +203,11 @@ policy into P4; close those contracts before their own consumers are coded.
   not a peer identity. A first allowed inbound is not directory insertion;
   keep its durable timing and signed retry bytes intact. Owner: ADR 0018,
   ADR 0044, ADR 0045, ADR 0053, ADR 0054.
-- **P5, history and external observations.** Source retrieval,
-  traversal/exhaustion, and persisted import outcome must remain
-  distinct. An emission outside this runtime is not necessarily
-  human-originated. Settle normalized source and provenance boundaries
-  with actual consumers before claiming support. Owner: ADR 0035,
-  ADR 0043, ADR 0052.
+- **P5, history and external observations.** Closed on 2026-10-17, see the P5
+  section above: ingest kind, known origin, and the recorded message space are
+  preserved; import is inert, live replay is normal processing, and an emission
+  outside this runtime is never attributed to a person without evidence
+  (ADR 0026, ADR 0035, ADR 0043).
 - **P4/P6, persistence and export boundary.** Closed on 2026-10-12:
   ADR 0042 owns the domain-section ZIP/CSV contract above. Physical schema
   and format filenames stay out of shared history ports. P4 implementation
@@ -183,12 +216,10 @@ policy into P4; close those contracts before their own consumers are coded.
   binding for new admission and rejects its absence with 409 `binding_required`.
   Pending code must apply that decision; durable queue snapshots, generation
   checks, and replacement safety still belong to P5.
-- **P5, receive commit boundary.** If a replay/cursor channel needs a
-  durable-processing signal, settle the narrow acknowledgement contract
-  in ADR 0004/0040 before closing P5. Do not silently promote a channel
-  handoff into a durable inbox or a committed turn. Exact signatures,
-  deliberate-discard rules, and failed-processing behavior remain TBD;
-  distinguish a provider update ID/cursor from a persisted message ID.
+- **P5, receive commit boundary.** Closed on 2026-10-17, see the P5 section
+  above: the narrow acknowledgement contract is the four-outcome completion of
+  ADR 0004/0040. A channel handoff is still not a durable inbox or a committed
+  turn, and a provider update ID/cursor is still not a persisted message ID.
 - **Future shared adapters and deployment.** Decide trusted service
   ownership, grouping, shutdown, exclusive command coordination, and the
   supported overload/replay boundary before deploying a shared source.

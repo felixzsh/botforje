@@ -21,9 +21,10 @@ that nobody reads.
   gets an identity only: no chat or inbound interaction is implied. Either the
   whole turn lands or none of it does.
 - Deduplicate first: before loading or routing, the engine drops a message
-  already recorded in its actual provider message space and destination,
-  reading the contact and chat without writing them, so a redelivery never
-  repeats an action or an HTTP side effect and never moves `last_seen`.
+  already recorded in its adapter-declared message space and actual
+  destination (ADR 0026), reading the contact and chat without writing them, so
+  a redelivery never repeats an action or an HTTP side effect and never moves
+  `last_seen`.
 - Queue with the turn: every reply is inserted into the `outbox` table in
   the same transaction that stores its message row. Delivery is
   at-least-once: a crash between sending and marking resends on restart, and
@@ -35,10 +36,13 @@ that nobody reads.
   consuming the retry budget (ADR 0052).
 - A per-bot worker drains the queue: it keeps the pacing of ADR 0011
   (`queue_delay`, `jitter`, `max_messages_per_minute`), wakes on each
-  committed turn, retries a rejected send with exponential backoff capped at
-  one minute, gives up after a bounded number of attempts (a `failed` row
-  stays for diagnosis), and records a successful delivery as `sent` with the
-  channel's id on the stored message.
+  committed turn, retries a transient rejection with exponential backoff
+  capped at one minute, gives up after a bounded number of attempts (a
+  `failed` row stays for diagnosis), and records a successful delivery as
+  `sent` with the channel's id on the stored message. A permanent rejection
+  fails the entry immediately, and an uncertain outcome — typically a send
+  timeout after the provider may have accepted the message — is retried and
+  recorded as unconfirmed rather than as a proven non-delivery (ADR 0052).
 - The queue is strictly FIFO: the oldest pending reply heads it and waits
   out its retry there, so a later reply never overtakes it, and a shutdown
   leaves a scheduled retry to the same account's next run. Unlinking or
@@ -49,15 +53,18 @@ that nobody reads.
   event handler until the bot actor takes the message; it never discards
   (ADR 0011 promised bounded queues, not drops).
   A shared-source adapter keeps buffers bounded too, but may couple consumers'
-  progress. It must expose the actual replay/backpressure boundary rather than
-  silently drop traffic or promise isolation that the source cannot provide
-  (ADR 0052). Additional durable buffering is not approved by this rule.
+  progress. A wait on a shared source is cancelable, and releasing one logical
+  view frees its own waits without closing a peer's view. It must expose the
+  actual replay/backpressure boundary rather than silently drop traffic or
+  promise isolation that the source cannot provide (ADR 0052). Additional
+  durable buffering is not approved by this rule, and Botflota promises no
+  losslessness for a source that cannot replay.
 - Receive confirmation follows an agreed processing outcome, not queue handoff.
-  Before P5 closes, settle the narrow contract for committed processing,
-  already-recorded duplicates, deliberate discards, and failures with ADR 0004.
-  A failed persistence operation is not successful confirmation; exact discard,
-  failure, and retry rules remain TBD in `docs/channel-adapter-findings/channel-plan.md`, section 7.
-  Provider update IDs/cursors do not become persisted message identities.
+  ADR 0004 owns the closed outcome contract: committed, already-recorded
+  duplicate, deliberate discard, and failed processing. A failed persistence is
+  never successful confirmation, and a cumulative cursor never advances past a
+  failed entry. Provider update IDs/cursors do not become persisted message
+  identities (ADR 0026).
 - Stored timestamps are fixed-width RFC 3339 UTC, so ordering the stored
   text is chronological: the retry schedule, chat activity, and session
   expiry all compare as text.

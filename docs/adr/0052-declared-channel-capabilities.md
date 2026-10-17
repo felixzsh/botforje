@@ -30,7 +30,9 @@ API publication consume the same catalog; `config` never imports adapters or
 declares the content kinds it can send and receive, its feature variants
 (response buttons, links, menus, selection input, and the like), and its
 limits in provider-correct units (bytes for callback data, characters for some
-text, bytes for media). Three answers stay distinct: supported by this
+text, bytes for media). Granularity is the installed definition and its account
+mode, never the provider: two modes of one provider may declare different
+support. Three answers stay distinct: supported by this
 adapter, authorized for this account, and currently usable for this
 conversation. Dynamic rights, block state, and reply windows cannot be
 certified by offline YAML validation, and unknown permission is not granted.
@@ -77,7 +79,12 @@ become failed without exhausting their retries.
 **Acceptance is not delivery.** `Send` success means the documented downstream
 transport or queue accepted the message, never that the recipient received or
 read it. Delivery stays at-least-once, and a timeout has an uncertain outcome
-that is never presented as a proven rejection (ADR 0040).
+that is never presented as a proven rejection (ADR 0040). That uncertain
+outcome retries under the same rule, and the state a spent attempt budget
+leaves says acceptance was not confirmed rather than that the recipient did not
+receive the message. When a provider accepts an idempotency key or a
+pre-assigned id, the adapter reuses the same one for the attempts of that
+durable delivery.
 
 **Failure classes are explicit.** Permanent failures — an unsupported kind, an
 invalid target, an identity the binding does not cover, a stale binding
@@ -94,12 +101,15 @@ the adapter; disconnecting one bot releases its view, not its peers' views.
 No common profile-switch, service pool, or subprocess-management port follows.
 
 Bounded buffering and logical isolation do not imply independent progress
-under overload: a full consumer queue can stall a shared source. Preserve the
-no-silent-drop contract and state the actual replay/backpressure boundary.
-Deployment-specific grouping, fairness, and any justified durable buffering
-remain TBD under ADR 0046/0054, not advertised guarantees or new mandatory
-capabilities. Preparation tests exercise shared-view teardown and bounded
-backpressure without claiming a production capacity.
+under overload: a full consumer queue can stall a shared source. Waits on a
+shared source are cancelable, and releasing one logical view frees its own waits
+without closing a peer's view. Preserve the no-silent-drop contract and state
+the actual replay/backpressure boundary. Botflota promises it does not silently
+drop traffic; it does not promise that a source without replay keeps every event
+across an outage. Deployment-specific grouping, fairness, capacity, and any
+justified durable buffering remain TBD under ADR 0046/0054, not advertised
+guarantees or new mandatory capabilities. Preparation tests exercise shared-view
+teardown and bounded backpressure without claiming a production capacity.
 
 **Optional operations stay optional ports.** Media subtypes, location, contact
 cards, polls, response buttons, formatting, groups, topics, typing, marking

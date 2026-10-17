@@ -495,7 +495,8 @@ adapt through ports and registration, without changing common records or adding 
 logical binding views versus physical resources, adapter/auxiliary credential ownership,
 stable binding identity versus temporary context selection, message provenance, and receive
 completion. P2–P6 add shared-backend and replay-source fakes; the P5 completion signature and
-durable dedup key still need their canonical decisions. Service deployment, grouping, shared
+durable dedup key closed with the owner on 2026-10-17
+(`docs/channels/open-decisions.md`). Service deployment, grouping, shared
 overload policy, and capacity remain TBD, not a production adapter or resource-policy requirement.
 
 Recommended minimal schema direction, subject to that canonical ADR alignment:
@@ -572,7 +573,8 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
 - [ ] P5 — delivery and optional-operation semantics (ADR 0052): outbox
   failure classes, binding-generation checks, and normalized
   history/external-reply contracts; a replacement account cannot send the
-  previous account's pending entries. Enforce declared support and dynamic
+  previous account's pending entries (delivery, reception, and provenance
+  contracts closed on 2026-10-17). Enforce declared support and dynamic
   eligibility for P2's card payload, with no phone rules in shared delivery.
 - [ ] P6 — regression gate and documentation: glossary, architecture, API,
   config examples/schema, and guides match the code; `make check`,

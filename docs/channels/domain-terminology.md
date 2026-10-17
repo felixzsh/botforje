@@ -18,7 +18,8 @@ exclusive ownership of a socket/process. `Binding` identifies the fixed verified
 association, not the backend's currently selected profile. Neither resource
 sharing nor context selection adds a common pool or profile-switch contract.
 Exact receive-completion signatures and durable message-provenance fields are
-pending decisions; no names or speculative fields are assigned to them here.
+closed as contracts in ADR 0004, ADR 0026, and ADR 0051 (2026-10-17); this
+catalog still assigns them no speculative names.
 
 ## Reading the catalog
 

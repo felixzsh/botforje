@@ -63,15 +63,21 @@ Import the history sync, inertly and honestly:
   The past cannot say who wrote an outbound message outside Botflota, so the
   import never guesses.
 - The import is inert: it never runs the engine, queues a reply, or touches
-  the outbox. The bot's filter (`ignore_groups`, `allowed_contacts`,
-  `ignored_contacts`) does not apply, because the import is not a conversation.
+  the outbox. The bot's inbound filter (`allowed_peers`, `ignored_peers`) does
+  not apply, because the import is not a conversation.
 - The conversation's chat phone number resolves as usual (ADR 0020): the
   conversation's phone JID first, then the LID store. A chat with no known
   phone number is skipped.
-- `provider_message_id` is the dedup key, unique per chat. `Append` reports a
-  new `botflota.ErrDuplicate` sentinel when the id is already present; the
-  importer counts it as already imported instead of failing or aborting the
+- `provider_message_id` is opaque and is interpreted in the message's recorded
+  space and destination (ADR 0026/0051). `Append` reports a new
+  `botflota.ErrDuplicate` sentinel when the id is already present in that space;
+  the importer counts it as already imported instead of failing or aborting the
   sync.
+- Imported provenance is preserved, not rewritten: a later history migration
+  keeps the imported ingest kind, origin, and recorded message space instead of
+  presenting the data as the current account's own (ADR 0026, ADR 0042). A live
+  replay of pending traffic is not an import and follows normal processing
+  (ADR 0004).
 - A live outbound reply is recorded before it is sent, and the channel returns
   its own message id after delivery. The fleet writes that id back onto the
   stored row, so a later sync that echoes the reply deduplicates it too.

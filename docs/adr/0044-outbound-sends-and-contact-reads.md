@@ -86,10 +86,11 @@ entry is not a peer's chat, an interaction, or a contact-card payload.
 ## Phase boundary
 
 These P4 contracts are owner-approved, not claims about current handlers.
-The no-binding admission decision is closed here; P5 still implements durable
-binding snapshots and generation checks at admission/delivery, classification,
-message-ID provenance, and receive-processing completion. P4 must not invent
-those remaining contracts or let queued sends inherit a replacement identity.
+The no-binding admission decision is closed here. P5 implements durable binding
+snapshots and generation checks at admission and delivery, send classification,
+the message-ID provenance of ADR 0026/0051, and the receive-processing
+completion outcome of ADR 0004. P4 must not invent those remaining
+implementations or let queued sends inherit a replacement identity.
 
 ## Consequences
 

@@ -172,9 +172,11 @@ or setup secrets. No legacy reader, old CSV header, or compatibility archive is
 retained, and no old-database migration is required (ADR 0054).
 
 P4 implements this public format and enforces binding compatibility before a
-history move. P5 still owns retained message spaces and replacement dedup; P6
-checks conformance and documentation against the implemented format. Approval
-of this contract does not close those implementation gates.
+history move. The retained message space and replacement dedup key are closed
+by ADR 0026/0051; the export still invents no provenance field, cursor, or
+namespace of its own. P6 checks conformance and documentation against the
+implemented format. Approval of this contract does not close those
+implementation gates.
 
 ## Consequences
 

@@ -1,8 +1,8 @@
 # ADR 0026 — Chat, graph run, and message model
 
 Status: Accepted (2026-09); P1 design aligned and implemented on 2026-10-11.
-The account-scoped durable dedup key stays a P5 decision; implementation is
-tracked in [the channel phases](../channels/phases.md).
+The message-ID space and its durable dedup key closed on 2026-10-17;
+implementation is tracked in [the channel phases](../channels/phases.md).
 
 ## Context
 
@@ -58,13 +58,19 @@ conversation. An explicit alternate destination keeps the triggering chat's
 history association, but its outbound record and queued delivery also carry the
 exact destination. Never substitute the history chat's target for that destination.
 
-`provider_message_id` is opaque. It is interpreted in its actual destination and
-provider message space, not globally and not in the triggering history chat when
-those differ. Source update IDs and receive cursors are different adapter values.
-P1 tests overlapping source/destination IDs and restart with the persisted target.
-Full account-local/replacement provenance and the final durable dedup key remain
-P5 decisions; this ADR does not invent a namespace column or equate that space
-with binding generation (ADR 0051).
+`provider_message_id` is opaque. Every message records the adapter-declared
+message space that interprets it: the provider, account, or profile context
+needed to tell one ID owner from another. The durable key is scope, bot, that
+recorded space, the complete destination, and the provider id (ADR 0051), so IDs
+that overlap another account's or the triggering chat's never collapse. The
+space survives reconnect, restart, and reauthorization of the same account; a
+different account or profile with independent IDs is a different space, and a new
+binding generation does not by itself change it. A message keeps the space it was
+created under, and moved history keeps its original provenance rather than being
+relabeled as the current account's. Source update IDs and receive cursors are
+different adapter values, and no dedup key is fabricated from body text and
+timestamps. Binding generation stays delivery authorization, not message-ID
+namespace.
 
 ### Recording semantics
 
@@ -72,10 +78,13 @@ with binding generation (ADR 0051).
 History import is inert: it creates no live activity or first-seen claim.
 Unknown history senders remain unknown, not invented peers.
 
-Origin records known provenance, not inferred human authorship. Imported outbound
-bodies remain unknown; a body actually produced by the model is LLM-origin, a kept
-anchor is preset, and an API send is API-origin. Stronger external-send attribution
-and pause policy are reviewed in P5 with ADR 0043.
+Origin records known provenance, not inferred human authorship; unknown provenance
+stays unknown instead of becoming an operator. Imported outbound bodies remain
+unknown; a body actually produced by the model is LLM-origin, a kept anchor is
+preset, and an API send is API-origin. A history move preserves ingest kind,
+origin, and the recorded message space, never rewriting provenance as the current
+account's (ADR 0042). Live external-send attribution and the pause it triggers
+are owned by ADR 0043.
 
 Routing metadata records the engine's actual choice. The `TurnStore` transaction
 commits the inbound, graph-run update, outbound records, and queued deliveries

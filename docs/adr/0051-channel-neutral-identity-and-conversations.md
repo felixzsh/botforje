@@ -3,8 +3,8 @@
 Status: Accepted (2026-10); P1 design concretized and implemented on
 2026-10-11. Implementation is tracked in
 [the channel phases](../channels/phases.md); the per-bot WhatsApp template
-alias moves to P2, and the account-scoped durable dedup key stays a P5
-decision.
+alias moves to P2, and the account-scoped durable dedup key closed on
+2026-10-17 (ADR 0026).
 
 ## Context
 
@@ -162,12 +162,15 @@ recipient or target from the other in common code. An alternate destination can
 retain the triggering chat's history association, but its record and queued
 entry persist the exact destination used for sending.
 
-Provider message IDs are opaque and scoped by actual destination and the provider's
-message space, including account context where required. They are not source
-update IDs or receive cursors. P1 proves destination separation, including IDs
-that overlap those in the triggering chat; full retained-history/replacement
-provenance and the durable dedup key remain P5 decisions with ADR 0026. Neither
-binding generation nor a global unique message-ID index is an automatic solution.
+Provider message IDs are opaque and interpreted in an adapter-declared message
+space plus the actual destination; that space carries the provider, account, or
+profile context required for uniqueness. They are not source update IDs or
+receive cursors. The durable key is scope, bot, the recorded space, the complete
+destination, and the provider id (ADR 0026), so an ID that overlaps another
+account's or the triggering chat's never collapses. A message keeps the space it
+was created under, and moved history keeps its provenance. Binding generation is
+delivery authorization, not a message-ID space, and no global unique message-ID
+index is used.
 
 ### Common values and no compatibility
 
@@ -182,11 +185,6 @@ errors (ADR 0018/0020). Internal renames do not authorize changing selectors,
 JSON/YAML, routes, event topics, or archives, and they do not introduce a
 compatibility shim; a superseded shape is removed by its owning phase (ADR 0054,
 PLAN.md "no backward compatibility").
-
-WhatsApp retains provider `whatsapp` and adapter-normalized PN subjects, which are
-provider-wide and need no local prefix. Its direct thread may equal the subject
-only because the adapter establishes that mapping. PN/LID resolution stays inside
-the adapter (ADR 0020); the core treats the resulting digits as an opaque subject.
 
 WhatsApp retains provider `whatsapp` and adapter-normalized PN subjects, which are
 provider-wide and need no local prefix. Its direct thread may equal the subject
