@@ -108,9 +108,8 @@ func runFleet(args []string) int {
 			logger.Error("open device store", "error", err)
 			return 1
 		}
-		if err := whatsapp.ValidateAccounts(ctx, devices, db.Bindings(),
-			db.Pairings()); err != nil {
-			logger.Error("validate pairings", "error", err)
+		if err := whatsapp.ValidateAccountOwners(ctx, db.Bindings()); err != nil {
+			logger.Error("validate account ownership", "error", err)
 			return 1
 		}
 		// The setup runner is assembled with the catalog: its activation
@@ -129,7 +128,6 @@ func runFleet(args []string) int {
 	catalog, err = runtimeCatalog(channel.Deps{
 		Devices:      devices,
 		Bindings:     db.Bindings(),
-		Pairings:     db.Pairings(),
 		Peers:        db.Peers(),
 		Chats:        db.Chats(),
 		Messages:     db.Messages(),
@@ -310,9 +308,9 @@ func serveAPI(
 		logger.Warn("owner token rotated",
 			"file", filepath.Join(dataDir, api.OwnerTokenFile))
 	}
-	var closePairings func()
+	var closeSetup func()
 	if devices != nil {
-		closePairings = manager.Close
+		closeSetup = manager.Close
 	}
 	budgets := cfg.RateBudgets()
 	server, err := api.New(api.Options{
@@ -338,12 +336,12 @@ func serveAPI(
 		Log:         logger,
 	})
 	if err != nil {
-		closer(closePairings)
+		closer(closeSetup)
 		return nil, err
 	}
 	listener, err := server.Listen()
 	if err != nil {
-		closer(closePairings)
+		closer(closeSetup)
 		return nil, err
 	}
 	logger.Info("api listening", "address", listener.Addr().String())
@@ -360,14 +358,14 @@ func serveAPI(
 		once.Do(func() {
 			stop()
 			<-served
-			closer(closePairings)
+			closer(closeSetup)
 		})
 	}, nil
 }
 
-func closer(closePairings func()) {
-	if closePairings != nil {
-		closePairings()
+func closer(closeSetup func()) {
+	if closeSetup != nil {
+		closeSetup()
 	}
 }
 
@@ -399,7 +397,6 @@ func pairingManager(
 				Bot:            botName,
 				Devices:        devices,
 				Bindings:       db.Bindings(),
-				Pairings:       db.Pairings(),
 				Peers:          db.Peers(),
 				Chats:          db.Chats(),
 				Messages:       db.Messages(),

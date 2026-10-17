@@ -31,7 +31,7 @@ func testSetupDeps(t *testing.T) Deps {
 		t.Fatal("NewPairManager returned nil")
 	}
 	return Deps{
-		Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
+		Devices: devices, Bindings: db.Bindings(),
 		Peers: db.Peers(), Chats: db.Chats(), Messages: db.Messages(),
 		Directory: db.Directory(), Outbox: db.Outbox(), Pairs: manager,
 	}

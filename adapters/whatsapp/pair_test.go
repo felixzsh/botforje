@@ -121,7 +121,7 @@ func TestClearPairing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := removePairing(ctx, devices, db.Bindings(), db.Pairings(),
+	if err := removePairing(ctx, devices, db.Bindings(),
 		db.Outbox(), account, t0); err != nil {
 		t.Fatal(err)
 	}
@@ -135,12 +135,5 @@ func TestClearPairing(t *testing.T) {
 	_, err = db.Bindings().Get(ctx, account.Scope, account.Bot)
 	if !errors.Is(err, botflota.ErrNotFound) {
 		t.Fatalf("account error = %v, want not found", err)
-	}
-	status, err := db.Pairings().Get(ctx, account.Scope, account.Bot)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if status.State != botflota.PairingNotPaired || !status.LastChange.Equal(t0) {
-		t.Fatalf("status = %#v, want not paired at %s", status, t0)
 	}
 }

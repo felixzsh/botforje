@@ -330,8 +330,8 @@ func (e *Engine) RecordOperator(
 	if err != nil {
 		return fmt.Errorf("engine: chat: %w", err)
 	}
-	// An observed send left the linked account, so it keeps that
-	// account's space; an id the adapter could not place keeps none.
+	// An observed send left the binding, so it keeps that binding's
+	// space; an id the adapter could not place keeps none.
 	space := msg.MessageSpace
 	if space == "" {
 		space = e.bindingSpace(ctx)

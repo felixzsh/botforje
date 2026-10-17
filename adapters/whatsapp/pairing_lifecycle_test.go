@@ -30,9 +30,9 @@ func TestPairManagerCloseWaitsForPairingToFinish(t *testing.T) {
 			close(release)
 		}
 	}()
-	if _, err := manager.StartPair(
-		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {
-		t.Fatalf("StartPair: %v", err)
+	if _, err := manager.BeginSetup(context.Background(), "dev", "alpha",
+		botflota.SetupBegin{Method: "qr", RequestKey: "key-1"}); err != nil {
+		t.Fatalf("BeginSetup: %v", err)
 	}
 	select {
 	case <-started:
@@ -117,38 +117,43 @@ func TestPairManagerEndPairWaitsForCancelledSession(t *testing.T) {
 			close(release)
 		}
 	}()
-	if _, err := manager.StartPair(
-		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {
-		t.Fatalf("StartPair: %v", err)
+	session, err := manager.BeginSetup(
+		context.Background(), "dev", "alpha",
+		botflota.SetupBegin{Method: "qr", RequestKey: "key-1"})
+	if err != nil {
+		t.Fatalf("BeginSetup: %v", err)
 	}
 	select {
 	case <-started:
 	case <-time.After(2 * time.Second):
 		t.Fatal("pairing goroutine did not start")
 	}
-	if err := manager.CancelPair(context.Background(), "dev", "alpha"); err != nil {
-		t.Fatalf("CancelPair: %v", err)
+	if err := manager.CancelSetup(
+		context.Background(), "dev", "alpha", session.ID); err != nil {
+		t.Fatalf("CancelSetup: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	err := manager.EndPair(ctx, "dev", "alpha")
+	err = manager.EndPair(ctx, "dev", "alpha")
 	cancel()
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("EndPair = %v, want to wait for the cancelled goroutine", err)
 	}
-	if _, err := manager.StartPair(
-		context.Background(), "dev", "alpha", botflota.PairRequest{}); !errors.Is(
+	if _, err := manager.BeginSetup(
+		context.Background(), "dev", "alpha",
+		botflota.SetupBegin{Method: "qr", RequestKey: "key-2"}); !errors.Is(
 		err, botflota.ErrBusy,
 	) {
-		t.Fatalf("StartPair before old session ends = %v, want ErrBusy", err)
+		t.Fatalf("BeginSetup before old session ends = %v, want ErrBusy", err)
 	}
 
 	close(release)
 	if err := manager.EndPair(context.Background(), "dev", "alpha"); err != nil {
 		t.Fatalf("EndPair after cancellation completed: %v", err)
 	}
-	if _, err := manager.StartPair(
-		context.Background(), "dev", "alpha", botflota.PairRequest{}); err != nil {
-		t.Fatalf("StartPair after old session ended: %v", err)
+	if _, err := manager.BeginSetup(
+		context.Background(), "dev", "alpha",
+		botflota.SetupBegin{Method: "qr", RequestKey: "key-3"}); err != nil {
+		t.Fatalf("BeginSetup after old session ended: %v", err)
 	}
 }

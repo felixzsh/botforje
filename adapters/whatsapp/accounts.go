@@ -1,5 +1,5 @@
 // Package whatsapp links a WhatsApp companion to a Botflota bot and keeps the
-// link: the whatsmeow device store, linked-account ownership, pairing, and the
+// link: the whatsmeow device store, binding ownership, account setup, and the
 // helpers the channel and the history import share (ADR 0006, ADR 0011).
 package whatsapp
 
@@ -122,7 +122,6 @@ type UnpairOptions struct {
 	Bot      string
 	Devices  *Devices
 	Bindings botflota.BindingStore
-	Pairings botflota.PairingStore
 	// Outbox fails the queued replies the link still owes; unlinking
 	// requires it, so a later pairing never sends the old replies (ADR
 	// 0040).
@@ -146,81 +145,6 @@ func ValidateAccountOwners(ctx context.Context, accounts botflota.BindingStore) 
 		owners[account.Identity] = account
 	}
 	return nil
-}
-
-// ValidateAccounts reconciles the committed bindings this installation
-// serves with their local credentials. Bindings of another provider are
-// never this adapter's business: each bot is inspected through its own
-// definition, never by scanning every bot through one device store
-// (ADR 0053). A binding without local credentials is recoverable and marks
-// the bot unpaired without aborting validation.
-func ValidateAccounts(
-	ctx context.Context, devices *Devices,
-	accounts botflota.BindingStore, pairings botflota.PairingStore,
-) error {
-	if devices == nil {
-		return errors.New("whatsapp: no device store")
-	}
-	if err := ValidateAccountOwners(ctx, accounts); err != nil {
-		return err
-	}
-	all, err := accounts.List(ctx)
-	if err != nil {
-		return fmt.Errorf("whatsapp: list linked accounts: %w", err)
-	}
-	for i := range all {
-		if all[i].Identity.Provider != ingest.Provider {
-			continue
-		}
-		device, err := devices.Load(ctx, &all[i])
-		if err != nil {
-			return err
-		}
-		if device == nil {
-			if err := UpdatePairingStatus(ctx, pairings, all[i].Scope, all[i].Bot,
-				botflota.PairingUnpaired, PairingNow(nil)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// CheckPairing treats a missing account or missing local credentials as an
-// expected state, not an error; other database and pairing errors are returned.
-func CheckPairing(
-	ctx context.Context,
-	devices *Devices,
-	accounts botflota.BindingStore,
-	pairings botflota.PairingStore,
-	scope, bot string,
-) (botflota.PairingState, error) {
-	if devices == nil {
-		return "", errors.New("whatsapp: no device store")
-	}
-	account, err := accounts.Get(ctx, scope, bot)
-	switch {
-	case errors.Is(err, botflota.ErrNotFound):
-		if err := UpdatePairingStatus(ctx, pairings, scope, bot,
-			botflota.PairingNotPaired, PairingNow(nil)); err != nil {
-			return "", err
-		}
-		return botflota.PairingNotPaired, nil
-	case err != nil:
-		return "", fmt.Errorf("whatsapp: get pairing for bot %q: %w", bot, err)
-	}
-	ready, err := HasLocalDevice(ctx, devices, account)
-	if err != nil {
-		return "", err
-	}
-	if !ready {
-		if err := UpdatePairingStatus(ctx, pairings, scope, bot,
-			botflota.PairingUnpaired, PairingNow(nil)); err != nil {
-			return "", err
-		}
-		return botflota.PairingUnpaired, nil
-	}
-	return botflota.PairingPaired, nil
 }
 
 func HasLocalDevice(
@@ -249,8 +173,8 @@ func Unpair(ctx context.Context, opts UnpairOptions) error {
 	if err != nil {
 		return err
 	}
-	return removePairing(ctx, opts.Devices, opts.Bindings, opts.Pairings,
-		opts.Outbox, account, PairingNow(nil))
+	return removePairing(ctx, opts.Devices, opts.Bindings, opts.Outbox,
+		account, PairingNow(nil))
 }
 
 // ensureIdentityAvailable rejects an identity already linked to another
@@ -291,31 +215,6 @@ func duplicateAccountError(
 	)
 }
 
-func UpdatePairingStatus(
-	ctx context.Context,
-	pairings botflota.PairingStore,
-	scope, bot string,
-	state botflota.PairingState,
-	changedAt time.Time,
-) error {
-	current, err := pairings.Get(ctx, scope, bot)
-	if err == nil && current.State == state && !current.LastChange.IsZero() {
-		return nil
-	}
-	if err != nil && !errors.Is(err, botflota.ErrNotFound) {
-		return fmt.Errorf("whatsapp: get pairing status: %w", err)
-	}
-	if changedAt.IsZero() {
-		changedAt = PairingNow(nil)
-	}
-	if err := pairings.Set(ctx, &botflota.PairingStatus{
-		Scope: scope, Bot: bot, State: state, LastChange: changedAt,
-	}); err != nil {
-		return fmt.Errorf("whatsapp: set pairing status: %w", err)
-	}
-	return nil
-}
-
 func PairingNow(now func() time.Time) time.Time {
 	if now == nil {
 		return time.Now().UTC()
@@ -350,7 +249,6 @@ func (d *Devices) HasCredentials(
 type AccountOwner struct {
 	*Devices
 	Bindings botflota.BindingStore
-	Pairings botflota.PairingStore
 	Outbox   botflota.OutboxStore
 	// Pairs is the live setup runner, when the instance runs one: detach
 	// waits for the bot's in-flight setup before it forgets the binding, so
@@ -435,7 +333,7 @@ func (o AccountOwner) UnpairAccount(
 ) error {
 	return Unpair(ctx, UnpairOptions{
 		Scope: scope, Bot: bot, Devices: o.Devices,
-		Bindings: o.Bindings, Pairings: o.Pairings, Outbox: o.Outbox,
+		Bindings: o.Bindings, Outbox: o.Outbox,
 	})
 }
 

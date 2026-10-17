@@ -29,71 +29,6 @@ func TestValidateAccountOwners(t *testing.T) {
 	}
 }
 
-func TestValidateAccountsAllowsMissingDevice(t *testing.T) {
-	ctx := context.Background()
-	db := openWhatsAppTestDB(t)
-	account := &botflota.Binding{
-		Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
-	}
-	if err := db.Bindings().Commit(ctx, account); err != nil {
-		t.Fatal(err)
-	}
-	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ValidateAccounts(ctx, devices, db.Bindings(), db.Pairings()); err != nil {
-		t.Fatalf("ValidateAccounts: %v", err)
-	}
-	status, err := db.Pairings().Get(ctx, account.Scope, account.Bot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.State != botflota.PairingUnpaired {
-		t.Fatalf("state = %q, want unpaired", status.State)
-	}
-}
-
-func TestCheckPairingAllowsRecoverableStates(t *testing.T) {
-	cases := []struct {
-		name    string
-		account *botflota.Binding
-		want    botflota.PairingState
-	}{
-		{name: "not paired", want: botflota.PairingNotPaired},
-		{
-			name: "unpaired",
-			account: &botflota.Binding{
-				Scope: "dev", Bot: "botsito", Provider: "whatsapp", Identity: waKey("5215500000000"),
-			},
-			want: botflota.PairingUnpaired,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-			db := openWhatsAppTestDB(t)
-			if tc.account != nil {
-				if err := db.Bindings().Commit(ctx, tc.account); err != nil {
-					t.Fatal(err)
-				}
-			}
-			devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
-			if err != nil {
-				t.Fatal(err)
-			}
-			state, err := CheckPairing(ctx, devices, db.Bindings(),
-				db.Pairings(), "dev", "botsito")
-			if err != nil {
-				t.Fatalf("CheckPairing: %v", err)
-			}
-			if state != tc.want {
-				t.Fatalf("state = %q, want %q", state, tc.want)
-			}
-		})
-	}
-}
-
 func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
@@ -109,8 +44,7 @@ func TestUnpairRemovesOrphanedAccount(t *testing.T) {
 	}
 	if err := Unpair(ctx, UnpairOptions{
 		Scope: account.Scope, Bot: account.Bot, Devices: devices,
-		Bindings: db.Bindings(), Pairings: db.Pairings(),
-		Outbox: db.Outbox(),
+		Bindings: db.Bindings(), Outbox: db.Outbox(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +127,7 @@ func TestUnpairFailsTheQueuedReplies(t *testing.T) {
 	outbox := &fakeOutbox{}
 	if err := Unpair(ctx, UnpairOptions{
 		Scope: account.Scope, Bot: account.Bot, Devices: devices,
-		Bindings: db.Bindings(), Pairings: db.Pairings(),
-		Outbox: outbox,
+		Bindings: db.Bindings(), Outbox: outbox,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -205,37 +138,6 @@ func TestUnpairFailsTheQueuedReplies(t *testing.T) {
 	}
 }
 
-func TestPairingStatusChangesOnlyOnStateChange(t *testing.T) {
-	ctx := context.Background()
-	db := openWhatsAppTestDB(t)
-	pairings := db.Pairings()
-	if err := UpdatePairingStatus(ctx, pairings, "dev", "bot",
-		botflota.PairingUnpaired, t0); err != nil {
-		t.Fatal(err)
-	}
-	if err := UpdatePairingStatus(ctx, pairings, "dev", "bot",
-		botflota.PairingUnpaired, t1); err != nil {
-		t.Fatal(err)
-	}
-	status, err := pairings.Get(ctx, "dev", "bot")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !status.LastChange.Equal(t0) {
-		t.Fatalf("same state changed timestamp to %s, want %s", status.LastChange, t0)
-	}
-	if err := UpdatePairingStatus(ctx, pairings, "dev", "bot",
-		botflota.PairingPaired, t1); err != nil {
-		t.Fatal(err)
-	}
-	status, err = pairings.Get(ctx, "dev", "bot")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.State != botflota.PairingPaired || !status.LastChange.Equal(t1) {
-		t.Fatalf("status = %#v, want paired at %s", status, t1)
-	}
-}
 func TestNumber(t *testing.T) {
 	cases := map[string]string{
 		"5215500000000:65@s.whatsapp.net": "5215500000000",
@@ -250,10 +152,10 @@ func TestNumber(t *testing.T) {
 	}
 }
 
-// TestOwnershipConflictNamesNoOtherBot holds the public text of the one-phone
-// rule: the conflict may live in a scope the caller cannot see, so a pairing
-// session reports only the reason and the detail stays in the instance log
-// (ADR 0021).
+// TestOwnershipConflictNamesNoOtherBot holds the sanitized public text of the
+// one-phone rule: the conflict may live in a scope the caller cannot see, so a
+// setup session reports only a sanitized reason and the detail stays in the
+// instance log (ADR 0021).
 func TestOwnershipConflictNamesNoOtherBot(t *testing.T) {
 	err := duplicateAccountError(ingest.PeerKey("5215500000000"),
 		botflota.Binding{
@@ -263,13 +165,13 @@ func TestOwnershipConflictNamesNoOtherBot(t *testing.T) {
 	if !errors.Is(err, botflota.ErrIdentityInUse) {
 		t.Fatalf("error = %v, want ErrAccountInUse", err)
 	}
-	text := pairingErrorText(err)
-	for _, leak := range []string{"hidden", "peer", "5215500000000"} {
-		if strings.Contains(text, leak) {
-			t.Fatalf("session error = %q, want no name from another scope", text)
-		}
+	code := setupErrorCode(err)
+	if code != "identity_in_use" {
+		t.Fatalf("setup error code = %q, want the sanitized reason", code)
 	}
-	if text == "" {
-		t.Fatal("the session reports no reason")
+	for _, leak := range []string{"hidden", "peer", "5215500000000"} {
+		if strings.Contains(code, leak) {
+			t.Fatalf("session error = %q, want no name from another scope", code)
+		}
 	}
 }

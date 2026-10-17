@@ -106,6 +106,42 @@ func TestBindingCommitReplacementAdvancesGeneration(t *testing.T) {
 	}
 }
 
+// TestBindingCommitImplementationChange covers what identifies the installed
+// implementation: the same provider and subject under a different adapter kind
+// or account mode is a replacement, while the same adapter and mode is a
+// renewal (ADR 0053).
+func TestBindingCommitImplementationChange(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name       string
+		adapter    string
+		mode       string
+		generation int64
+	}{
+		{"pure renewal", "whatsmeow", "native", 1},
+		{"adapter change", "bridge", "native", 2},
+		{"mode change", "whatsmeow", "business", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := open(t, filepath.Join(t.TempDir(), "app.db"))
+			first := testBinding("support", "support-bot", "5215500000000")
+			if err := db.Bindings().Commit(ctx, first); err != nil {
+				t.Fatalf("Commit: %v", err)
+			}
+			next := testBinding("support", "support-bot", "5215500000000")
+			next.Adapter = tc.adapter
+			next.Mode = tc.mode
+			if err := db.Bindings().Commit(ctx, next); err != nil {
+				t.Fatalf("Commit change: %v", err)
+			}
+			if next.Generation != tc.generation {
+				t.Fatalf("generation = %d, want %d", next.Generation, tc.generation)
+			}
+		})
+	}
+}
+
 // TestBindingCommitRejectsIncomplete: the store records a committed
 // association, never a partial row a reader must guess about.
 func TestBindingCommitRejectsIncomplete(t *testing.T) {
@@ -137,7 +173,7 @@ func TestBindingCommitRejectsIncomplete(t *testing.T) {
 	}
 }
 
-func TestLinkedAccountList(t *testing.T) {
+func TestBindingList(t *testing.T) {
 	ctx := context.Background()
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
 	for _, account := range []botflota.Binding{

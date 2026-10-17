@@ -36,7 +36,6 @@ type PairOptions struct {
 	Bot      string
 	Devices  *Devices
 	Bindings botflota.BindingStore
-	Pairings botflota.PairingStore
 	// Peers, Chats, and Messages are all required to import the history
 	// sync; the fleet connection imports what this session misses (ADR 0035).
 	Peers    botflota.PeerStore
@@ -300,14 +299,13 @@ func retireStaleLink(
 }
 
 // removePairing drops the queued replies the old link still owes, then the
-// device, the account record, and the pairing status: the replies end
-// failed before the link goes, so none of them can leave from the account
-// that replaces it (ADR 0040).
+// device and the account record: the replies end failed before the link
+// goes, so none of them can leave from the account that replaces it
+// (ADR 0040).
 func removePairing(
 	ctx context.Context,
 	devices *Devices,
 	accounts botflota.BindingStore,
-	pairings botflota.PairingStore,
 	outbox botflota.OutboxStore,
 	account *botflota.Binding,
 	changedAt time.Time,
@@ -325,8 +323,7 @@ func removePairing(
 	if err := accounts.Delete(ctx, account.Scope, account.Bot); err != nil {
 		return fmt.Errorf("whatsapp: delete existing account: %w", err)
 	}
-	return UpdatePairingStatus(ctx, pairings, account.Scope, account.Bot,
-		botflota.PairingNotPaired, changedAt)
+	return nil
 }
 
 // unlinkedReason is what a reply queued for a removed link records instead
@@ -365,15 +362,6 @@ func confirmLink(client *whatsmeow.Client, logger walog.Logger) {
 	if !client.WaitForConnection(20 * time.Second) {
 		logger.Errorf("paired, but the confirmation connection did not come up")
 	}
-}
-
-// accountLog is the pairing log for account bookkeeping that must never
-// fail a committed link; a nil Log discards it.
-func accountLog(opts PairOptions) *slog.Logger {
-	if opts.Log == nil {
-		return botflota.DiscardLogger()
-	}
-	return opts.Log
 }
 
 func waitUntilDisconnected(client *whatsmeow.Client, timeout time.Duration) bool {
@@ -424,14 +412,6 @@ func saveAccount(
 	// association never existed (ADR 0053).
 	if opts.OnSaved != nil {
 		opts.OnSaved()
-	}
-	if err := UpdatePairingStatus(ctx, opts.Pairings, opts.Scope, opts.Bot,
-		botflota.PairingPaired, PairingNow(opts.Now)); err != nil {
-		// The link is committed; a stale status row must not fail the
-		// setup. The translator keeps serving readiness from the binding
-		// and the device store, never from this row.
-		accountLog(opts).Warn("pairing status not recorded",
-			"scope", opts.Scope, "bot", opts.Bot, "error", err)
 	}
 	return identity, nil
 }

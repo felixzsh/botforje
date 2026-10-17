@@ -65,14 +65,14 @@ type ReceiveConfirmer interface {
 	ConfirmReceive(ctx context.Context, receipt ReceiveReceipt) error
 }
 
-// DevicePresence reports whether a linked account's local channel
+// DevicePresence reports whether a binding's local channel
 // credentials still exist, without exposing the device store or the transport
 // addressing to its consumers (ADR 0020, ADR 0039).
 type DevicePresence interface {
 	HasCredentials(ctx context.Context, account *Binding) (bool, error)
 }
 
-// AccountUnpairer removes a linked account and its local credentials, the
+// AccountUnpairer removes a binding and its local credentials, the
 // destructive counterpart of DevicePresence (ADR 0021, ADR 0039). The caller
 // stops the running bot first, so no channel holds the connection while its
 // credentials go away.
@@ -81,7 +81,7 @@ type AccountUnpairer interface {
 }
 
 // OutboundObserver is an optional MessageChannel capability: a channel that
-// reports messages leaving the linked account outside Botflota, so a bot can
+// reports messages leaving the binding outside Botflota, so a bot can
 // hand the chat to a human (ADR 0043). A channel that cannot tell its own echo
 // apart from an operator reply does not implement it.
 type OutboundObserver interface {
@@ -286,8 +286,8 @@ type HistorySink interface {
 	DirectoryEntry(DirectoryEntry) error
 }
 
-// DirectoryStore records the account-directory entries of each bot's linked
-// account when contact import is on (ADR 0037, ADR 0051). Put creates a proven
+// DirectoryStore records the account-directory entries of each bot's binding
+// when contact import is on (ADR 0037, ADR 0051). Put creates a proven
 // directory entry and merges non-empty names; Merge updates an existing entry
 // without creating membership based on a message. List returns the most
 // recently updated entries first; zero limit means all entries.
@@ -508,12 +508,14 @@ type WebhookStore interface {
 
 // BindingStore records the committed account association of each bot
 // (ADR 0006, ADR 0051, ADR 0053). Commit inserts the first binding of a bot
-// with generation one, keeps the generation when the same identity-space
-// renews its credentials, and advances it when an unrelated identity
-// replaces the stored one; creation and update times are set by the store.
-// The identity-space comparison covers provider, namespace, and subject, so
-// a replacement that recycles a bare subject from another space still
-// advances. Pairing progress is tracked separately by the setup session,
+// with generation one, keeps the generation only when the same identity space
+// renews through the same implementation, and advances it when an unrelated
+// identity, adapter kind, or account mode replaces the stored one; creation
+// and update times are set by the store. The identity-space comparison covers
+// provider, adapter kind, account mode, namespace, and subject, so a
+// replacement that recycles a bare subject from another space still advances
+// and a switch of adapter or mode under one subject never inherits the old
+// generation. Setup progress is tracked separately by the setup session,
 // never in this row. Delete forgets the local binding and leaves chats,
 // directory, and history alone; detachment never destroys them (ADR 0053).
 type BindingStore interface {
@@ -521,13 +523,6 @@ type BindingStore interface {
 	List(ctx context.Context) ([]Binding, error)
 	Commit(ctx context.Context, account *Binding) error
 	Delete(ctx context.Context, scope, bot string) error
-}
-
-// PairingStore records the last confirmed pairing transition of a bot
-// (ADR 0011).
-type PairingStore interface {
-	Get(ctx context.Context, scope, bot string) (*PairingStatus, error)
-	Set(ctx context.Context, status *PairingStatus) error
 }
 
 // OwnerTokenStore stores the instance's single owner token (ADR 0025). It
@@ -583,20 +578,4 @@ type SetupRunner interface {
 		ctx context.Context, scope, bot, sessionID string, input SetupInput,
 	) (*SetupSession, error)
 	CancelSetup(ctx context.Context, scope, bot, sessionID string) error
-}
-
-// PairingRunner drives the live pairing session of one bot, so the CLI and a
-// dashboard link an account through the same path (ADR 0025). StartPair
-// answers ErrBusy while a session goroutine for that bot is unfinished,
-// CurrentPair answers ErrNotFound when there is none, CancelPair is
-// idempotent once a session is final, and EndPair waits for any published
-// session's goroutine even after its state is final, so an unpair never races
-// its writes (ADR 0021).
-type PairingRunner interface {
-	StartPair(
-		ctx context.Context, scope, bot string, req PairRequest,
-	) (*PairingSession, error)
-	CurrentPair(ctx context.Context, scope, bot string) (*PairingSession, error)
-	CancelPair(ctx context.Context, scope, bot string) error
-	EndPair(ctx context.Context, scope, bot string) error
 }

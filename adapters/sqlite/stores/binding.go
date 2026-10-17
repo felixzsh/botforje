@@ -53,7 +53,7 @@ func (s *BindingStore) Get(
 		return nil, botflota.ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: get linked account: %w", err)
+		return nil, fmt.Errorf("sqlite: get binding: %w", err)
 	}
 	return account, nil
 }
@@ -62,19 +62,19 @@ func (s *BindingStore) List(ctx context.Context) ([]botflota.Binding, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+bindingColumns+` FROM bindings ORDER BY scope, bot`)
 	if err != nil {
-		return nil, fmt.Errorf("sqlite: list linked accounts: %w", err)
+		return nil, fmt.Errorf("sqlite: list bindings: %w", err)
 	}
 	defer rows.Close()
 	var accounts []botflota.Binding
 	for rows.Next() {
 		account, err := scanBinding(rows)
 		if err != nil {
-			return nil, fmt.Errorf("sqlite: scan linked account: %w", err)
+			return nil, fmt.Errorf("sqlite: scan binding: %w", err)
 		}
 		accounts = append(accounts, *account)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("sqlite: list linked accounts: %w", err)
+		return nil, fmt.Errorf("sqlite: list bindings: %w", err)
 	}
 	return accounts, nil
 }
@@ -83,43 +83,47 @@ func (s *BindingStore) List(ctx context.Context) ([]botflota.Binding, error) {
 // definition metadata (provider, adapter kind, account mode), the stable
 // identity-space context, and the normalized own identity (ADR 0051,
 // ADR 0053). The first commit of a bot starts generation one; renewing the
-// same identity space keeps it, and an unrelated replacement advances past
-// the stored one. Generations are monotonic per bot even across detach:
-// the last committed generation survives the row's deletion, so a later
-// association never reuses an earlier one. The SDK device locator and the
-// credentials stay in adapter-owned storage; this row never carries them.
+// same implementation over the same identity space keeps it, and a different
+// identity, adapter kind, or account mode advances past the stored one.
+// Generations are monotonic per bot even across detach: the last committed
+// generation survives the row's deletion, so a later association never reuses
+// an earlier one. The SDK device locator and the credentials stay in
+// adapter-owned storage; this row never carries them.
 func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) error {
 	if account.Scope == "" || account.Bot == "" {
-		return errors.New("sqlite: linked account needs scope and bot")
+		return errors.New("sqlite: binding needs scope and bot")
 	}
 	if account.Provider == "" {
-		return errors.New("sqlite: linked account needs a provider")
+		return errors.New("sqlite: binding needs a provider")
 	}
 	if !account.Identity.Valid() {
-		return errors.New("sqlite: linked account needs provider and subject")
+		return errors.New("sqlite: binding needs provider and subject")
 	}
 	if account.Identity.Provider != account.Provider {
-		return errors.New("sqlite: linked account identity names another provider")
+		return errors.New("sqlite: binding identity names another provider")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("sqlite: commit linked account: %w", err)
+		return fmt.Errorf("sqlite: commit binding: %w", err)
 	}
 	defer tx.Rollback()
 	var stored struct {
 		provider   string
+		adapter    string
+		mode       string
 		namespace  string
 		subject    string
 		generation int64
 		created    string
 	}
 	err = tx.QueryRowContext(ctx,
-		`SELECT provider, namespace, subject, generation, created_at
+		`SELECT provider, adapter, mode, namespace, subject, generation,
+		        created_at
 		 FROM bindings WHERE scope = ? AND bot = ?`,
 		account.Scope, account.Bot).Scan(
-		&stored.provider, &stored.namespace, &stored.subject,
-		&stored.generation, &stored.created)
+		&stored.provider, &stored.adapter, &stored.mode, &stored.namespace,
+		&stored.subject, &stored.generation, &stored.created)
 	var remembered int64
 	if rerr := tx.QueryRowContext(ctx,
 		`SELECT generation FROM binding_generations WHERE scope = ? AND bot = ?`,
@@ -134,8 +138,10 @@ func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) er
 		account.Generation = remembered + 1
 		account.CreatedAt, _ = time.Parse(time.RFC3339Nano, now)
 	case err != nil:
-		return fmt.Errorf("sqlite: read linked account: %w", err)
+		return fmt.Errorf("sqlite: read binding: %w", err)
 	case stored.provider == account.Provider &&
+		stored.adapter == account.Adapter &&
+		stored.mode == account.Mode &&
 		stored.namespace == account.Namespace &&
 		stored.subject == account.Identity.Subject:
 		account.Generation = stored.generation
@@ -161,7 +167,7 @@ func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) er
 		account.Scope, account.Bot, account.Provider, account.Adapter,
 		account.Mode, account.Namespace, account.Identity.Subject,
 		account.Generation, account.CreatedAt.Format(time.RFC3339Nano), now); err != nil {
-		return fmt.Errorf("sqlite: commit linked account: %w", err)
+		return fmt.Errorf("sqlite: commit binding: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO binding_generations (scope, bot, generation, updated_at)
@@ -172,7 +178,7 @@ func (s *BindingStore) Commit(ctx context.Context, account *botflota.Binding) er
 		return fmt.Errorf("sqlite: remember binding generation: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("sqlite: commit linked account: %w", err)
+		return fmt.Errorf("sqlite: commit binding: %w", err)
 	}
 	return nil
 }
@@ -181,7 +187,7 @@ func (s *BindingStore) Delete(ctx context.Context, scope, bot string) error {
 	_, err := s.db.ExecContext(ctx,
 		"DELETE FROM bindings WHERE scope = ? AND bot = ?", scope, bot)
 	if err != nil {
-		return fmt.Errorf("sqlite: delete linked account: %w", err)
+		return fmt.Errorf("sqlite: delete binding: %w", err)
 	}
 	return nil
 }

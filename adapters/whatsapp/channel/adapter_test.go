@@ -44,8 +44,8 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 	}
 	a := &Adapter{
 		scope: "dev", bot: "botsito", bindings: db.Bindings(),
-		pairings: db.Pairings(), devices: devices,
-		log: botflota.DiscardLogger(),
+		devices: devices,
+		log:     botflota.DiscardLogger(),
 	}
 	err = a.Connect(ctx)
 	if err == nil || !strings.Contains(err.Error(), "no local device credentials") {
@@ -77,7 +77,7 @@ func TestOptionalWorkersStartOnlyWhenDeclared(t *testing.T) {
 			adapter, err := New(Options{
 				Scope: "dev", Bot: "botsito",
 				Devices: devices, Bindings: db.Bindings(),
-				Pairings: db.Pairings(), Peers: db.Peers(), Chats: db.Chats(),
+				Peers: db.Peers(), Chats: db.Chats(),
 				Messages: db.Messages(), Directory: db.Directory(),
 				History: test.history, ImportContacts: test.contacts,
 				Log: botflota.DiscardLogger(),
@@ -123,7 +123,7 @@ func TestDisconnectStopsWorkersAfterConnectFails(t *testing.T) {
 	adapter, err := New(Options{
 		Scope: account.Scope, Bot: account.Bot,
 		Devices: devices, Bindings: db.Bindings(),
-		Pairings: db.Pairings(), Peers: db.Peers(), Chats: db.Chats(),
+		Peers: db.Peers(), Chats: db.Chats(),
 		Messages: db.Messages(), History: true, Log: botflota.DiscardLogger(),
 	})
 	if err != nil {

@@ -20,7 +20,7 @@ Three independent ports sit beside the config engine and persistence:
   System One port and keeps generation for text only (ADR 0004, ADR 0030).
 
 The other core ports follow the same rule: what exists is small and wired
-(`PairingRunner`, `DevicePresence`, the store ports), and the two that back
+(`SetupRunner`, `DevicePresence`, the store ports), and the two that back
 the atomic turn and delivery — `TurnStore` and `OutboxStore` — are why the
 engine writes no rows directly (ADR 0040).
 
@@ -140,7 +140,7 @@ dashboard and integrations are API-only and never see local files.
   kind (direct or group), an opaque thread id, and an optional topic. A sender
   and a thread are different values, so one person in a direct chat and in a
   group has both (ADR 0051).
-- Directory entry — an entry of one bot's linked account, keyed by owner,
+- Directory entry — an entry of one bot's binding, keyed by owner,
   peer identity, and source identity, and copied only when the bot sets
   `import_contacts`. It is never a chat; importing it also registers the peer
   as a scope identity, so the directory holds the people the account knows.
@@ -258,7 +258,7 @@ Inbound:
     else. The outbox worker then delivers the replies with the pacing below.
 
 A conversation may be handed to a human instead (ADR 0043). A live message
-that leaves the linked account without Botflota sending it — an operator reply
+that leaves the binding without Botflota sending it — an operator reply
 from another client, told apart from the bot's own echo by the channel — starts
 a pause for that conversation; the API may also hold one until it is released.
 While it is held, the fleet stores each inbound message for history and
@@ -422,7 +422,7 @@ Stored history is bounded per limit set (planned, Phase 7;
 `docs/access-policy.md`): `max_stored_message_bytes` sums the stored `body` and
 `content` bytes of the set's scopes — inbound, outbound, and imported alike —
 not the size of the database file, and each bot carries its own
-`settings.history_import_max_bytes` for what its linked account may import.
+`settings.history_import_max_bytes` for what its binding may import.
 When a set has no room left, import stops first and reports a partial import,
 then the bots of that set pause their turns: a bot never answers a message it
 could not store, so the atomic turn of ADR 0040 still holds. The pause
@@ -545,8 +545,8 @@ instance and works locally when it does not; replacing a binding is
 
 An account change never changes history. Unbinding keeps the bot's chats,
 messages, sessions, and directory, so a rebind or a replacement picks them
-up; `adapters/whatsapp/pair.go` removes credentials, the account record, and the
-pairing status only. Deleting a bot's history is a separate explicit
+up; `adapters/whatsapp/pair.go` removes credentials and the account record only.
+Deleting a bot's history is a separate explicit
 operation, and a migration moves chats, messages, and the directory to
 another bot of the same scope — a recreated bot or a peer bot — while peer
 identities stay with the scope they are shared by (ADR 0029). A migration is a move, not a copy:

@@ -245,14 +245,17 @@ Decision owner: ADR 0053, with ADR 0021, 0022, 0025, 0028, and 0039.
 Landed 2026-10-12 on the accepted P2 baseline: `Binding` carries the
 committed association (provider, adapter kind, account mode, namespace,
 normalized identity, generation, times); `BindingStore.Commit` assigns
-generation one, keeps it on same-space renewal, and advances it on
-replacement. The neutral session/step/readiness model (`SetupSession`,
+generation one, keeps it when the same provider, adapter kind, account mode,
+and identity space renew, and advances it when any of them changes. The
+neutral session/step/readiness model (`SetupSession`,
 `SetupStep`, `BindingStatus`) and the `AccountLifecycle`/`SetupRunner`
-ports live in the core; WhatsApp's `PairManager` speaks both the neutral
-runner and the pairing translation over one engine, and `fleet.SetupFor`
+ports live in the core; WhatsApp's `PairManager` speaks the neutral
+runner over one engine, and `fleet.SetupFor`
 resolves endpoints through the bot's definition. The schema is edited in
 place under the pre-release reset policy (`../../PLAN.md`): no migration,
-backfill, or legacy result shape survives. Every P3 item and gate is
+backfill, or legacy result shape survives; the legacy pairing port, session
+shape, and status row were deleted on 2026-10-17, not translated. Every P3
+item and gate is
 checked as of 2026-10-12, with the tests in the core, `stores`,
 `whatsapp`, `channel`, `fleet`, and `channels` covering the sessions, the
 commit races, the generations, the shared-backend isolation, and the

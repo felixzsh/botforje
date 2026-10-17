@@ -132,13 +132,6 @@ var schema = []string{
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY (scope, bot)
 	)`,
-	`CREATE TABLE IF NOT EXISTS pairing_status (
-		scope       TEXT NOT NULL,
-		bot         TEXT NOT NULL,
-		state       TEXT NOT NULL,
-		last_change TEXT NOT NULL,
-		PRIMARY KEY (scope, bot)
-	)`,
 	`CREATE TABLE IF NOT EXISTS owner_token (
 		id         INTEGER PRIMARY KEY CHECK (id = 1),
 		hash       BLOB NOT NULL,
@@ -263,8 +256,6 @@ func (d *DB) Webhooks() *stores.WebhookStore { return stores.NewWebhookStore(d.D
 func (d *DB) Bindings() *stores.BindingStore {
 	return stores.NewBindingStore(d.DB)
 }
-
-func (d *DB) Pairings() *stores.PairingStore { return stores.NewPairingStore(d.DB) }
 
 func (d *DB) OwnerTokens() *stores.OwnerTokenStore {
 	return stores.NewOwnerTokenStore(d.DB)

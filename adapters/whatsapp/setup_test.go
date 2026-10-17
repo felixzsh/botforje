@@ -230,14 +230,6 @@ func TestSetupCommitKeepsSuccessAcrossCancel(t *testing.T) {
 	if kept.State != botflota.SetupSucceeded {
 		t.Fatalf("state = %s, want the committed success kept", kept.State)
 	}
-	legacy, err := manager.CurrentPair(ctx, "dev", "alpha")
-	if err != nil {
-		t.Fatalf("CurrentPair: %v", err)
-	}
-	if legacy.State != botflota.PairSucceeded ||
-		legacy.Result.Identity != waKey("5215500000001") {
-		t.Fatalf("legacy session = %#v, want the same committed outcome", legacy)
-	}
 }
 
 func TestSetupActivationFailureIsReportedSeparately(t *testing.T) {
@@ -270,16 +262,6 @@ func TestSetupActivationFailureIsReportedSeparately(t *testing.T) {
 			t.Fatalf("session never committed: %#v", session)
 		}
 		time.Sleep(time.Millisecond)
-	}
-	legacy, err := manager.CurrentPair(ctx, "dev", "alpha")
-	if err != nil {
-		t.Fatalf("CurrentPair: %v", err)
-	}
-	if legacy.State != botflota.PairSucceeded {
-		t.Fatalf("state = %s, want the committed success kept", legacy.State)
-	}
-	if legacy.ActivationError == "" {
-		t.Fatal("the activation failure was not reported separately")
 	}
 }
 
@@ -337,7 +319,7 @@ func TestInspectBindingSeparatesReadinessFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := AccountOwner{
-		Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
+		Devices: devices, Bindings: db.Bindings(),
 		Outbox: db.Outbox(),
 	}
 	// No binding: the bot stays inspectable and setup-capable.
@@ -409,7 +391,7 @@ func TestDetachBindingSettlesAndKeepsHistory(t *testing.T) {
 	}
 	manager, _ := testSetupManager(t, PairManagerOptions{})
 	owner := AccountOwner{
-		Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
+		Devices: devices, Bindings: db.Bindings(),
 		Outbox: db.Outbox(), Pairs: manager,
 	}
 	saveTestDevice(t, devices, ctx, "5215500000003")
@@ -466,7 +448,7 @@ func TestDetachDuringImport(t *testing.T) {
 		return PairResult{Identity: waKey("5215500000004")}, ctx.Err()
 	}
 	owner := AccountOwner{
-		Devices: devices, Bindings: db.Bindings(), Pairings: db.Pairings(),
+		Devices: devices, Bindings: db.Bindings(),
 		Outbox: db.Outbox(), Pairs: manager,
 	}
 	// The staged account commits before the teardown arrives; the detach
@@ -639,23 +621,9 @@ func TestSetupCommitWinsOverRacingCancel(t *testing.T) {
 	}
 }
 
-type failingPairings struct{ botflota.PairingStore }
-
-func (failingPairings) Get(
-	_ context.Context, _, _ string,
-) (*botflota.PairingStatus, error) {
-	return nil, botflota.ErrNotFound
-}
-
-func (failingPairings) Set(
-	_ context.Context, _ *botflota.PairingStatus,
-) error {
-	return errors.New("status store is down")
-}
-
-// TestSaveAccountToleratesStatusFailure: once the binding is committed, a
-// later auxiliary write cannot fail the setup or hide the link.
-func TestSaveAccountToleratesStatusFailure(t *testing.T) {
+// TestSaveAccountCommitsTheBinding: a provider-confirmed link is stored as
+// the bot's committed binding with generation one, before OnSaved reports it.
+func TestSaveAccountCommitsTheBinding(t *testing.T) {
 	ctx := context.Background()
 	db := openWhatsAppTestDB(t)
 	devices, err := OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
@@ -669,9 +637,8 @@ func TestSaveAccountToleratesStatusFailure(t *testing.T) {
 	committed := make(chan struct{}, 1)
 	opts := PairOptions{
 		Scope: "dev", Bot: "alpha", Devices: devices,
-		Bindings: db.Bindings(), Pairings: failingPairings{},
-		Outbox: db.Outbox(), Log: botflota.DiscardLogger(), Now: time.Now,
-		OnSaved: func() { committed <- struct{}{} },
+		Bindings: db.Bindings(),
+		OnSaved:  func() { committed <- struct{}{} },
 	}
 	identity, err := saveAccount(ctx, opts, client)
 	if err != nil {
@@ -683,7 +650,7 @@ func TestSaveAccountToleratesStatusFailure(t *testing.T) {
 	select {
 	case <-committed:
 	default:
-		t.Fatal("OnSaved did not run before the status write")
+		t.Fatal("OnSaved did not run after the commit")
 	}
 	stored, err := db.Bindings().Get(ctx, "dev", "alpha")
 	if err != nil {

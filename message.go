@@ -104,7 +104,7 @@ type OutgoingMessage struct {
 	DeliveryKey string
 }
 
-// ExternalSend is a message that left a bot's linked account without Botflota
+// ExternalSend is a message that left a bot's binding without Botflota
 // sending it: a human replied from another client, or another automation on the
 // same account sent it (ADR 0043). It carries the exact
 // destination, never a raw device locator. It is an observation, not a

@@ -1,7 +1,6 @@
 package channel
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -284,27 +283,15 @@ func textInbound(subject, id string) botflota.IncomingMessage {
 	}
 }
 
-func TestLoggedOutPersistsUnpairedStatus(t *testing.T) {
-	ctx := context.Background()
-	db := openWhatsAppTestDB(t)
-	account := &botflota.Binding{
-		Scope: "dev", Bot: "bot", Provider: "whatsapp", Identity: waKey("5215500000000"),
-	}
-	if err := db.Bindings().Commit(ctx, account); err != nil {
-		t.Fatal(err)
-	}
-	a := &Adapter{
-		scope: "dev", bot: "bot", bindings: db.Bindings(),
-		pairings: db.Pairings(), state: StateConnected,
-		stop: make(chan struct{}), log: botflota.DiscardLogger(), now: func() time.Time { return t1 },
-	}
+// TestLoggedOutReportsTheNeutralState: the fleet reads the adapter's own
+// lifecycle surface, so a provider logout moves it to logged_out. No stored
+// pairing row carries that transition (ADR 0011).
+func TestLoggedOutReportsTheNeutralState(t *testing.T) {
+	a := newTestAdapter()
+	a.stop = make(chan struct{})
 	a.handleEvent(&events.LoggedOut{})
-	status, err := db.Pairings().Get(ctx, "dev", "bot")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.State != botflota.PairingUnpaired || !status.LastChange.Equal(t1) {
-		t.Fatalf("status = %#v, want unpaired at %s", status, t1)
+	if got := a.State(); got != StateLoggedOut {
+		t.Fatalf("state = %q, want %q", got, StateLoggedOut)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/invopop/jsonschema"
@@ -91,7 +92,7 @@ func Definition() channels.Definition {
 		// identity-space context by design, so compatibility is the same
 		// provider and account mode (ADR 0042, ADR 0051).
 		CompatibleBindings: compatibleBindings,
-		// A provider id is interpreted under the linked account that
+		// A provider id is interpreted under the binding that
 		// recorded it: a second account is a different space, while
 		// reauthorization of the same account keeps it and a binding
 		// generation change never changes it by itself (ADR 0026,
@@ -146,7 +147,7 @@ func validateTarget(target botflota.ChatTarget) []string {
 }
 
 // messageSpace reports the message-ID space of one committed binding:
-// the linked account's own subject. It is pure and adapter-owned: shared
+// the binding's own subject. It is pure and adapter-owned: shared
 // code threads the opaque value without parsing it. A binding of another
 // provider carries no space this adapter can interpret.
 func messageSpace(binding *botflota.Binding) string {
@@ -241,15 +242,20 @@ func builtOptions(raw rawOptions, common spec.BotSettings) BotOptions {
 // Prepare returns the definition's readiness hook bound to one installation's
 // dependencies: a bot joins the fleet only once WhatsApp confirms a usable link,
 // and a residual or missing pairing skips it without stopping its peers
-// (ADR 0022, ADR 0053).
+// (ADR 0022, ADR 0053). Readiness is computed from the committed binding and
+// the device store, never from a stored status row.
 func Prepare(deps Deps) func(context.Context, channels.Bind) (bool, string, error) {
 	return func(ctx context.Context, bind channels.Bind) (bool, string, error) {
-		state, err := whatsapp.CheckPairing(
-			ctx, deps.Devices, deps.Bindings, deps.Pairings, bind.Scope, bind.Bot)
+		if deps.Devices == nil || deps.Bindings == nil {
+			return false, "", fmt.Errorf("whatsapp: no device or binding store")
+		}
+		owner := whatsapp.AccountOwner{Devices: deps.Devices, Bindings: deps.Bindings}
+		status, err := owner.InspectBinding(ctx, bind.Scope, bind.Bot)
 		if err != nil {
 			return false, "", err
 		}
-		return state == botflota.PairingPaired, string(state), nil
+		return status.Condition == botflota.ReadinessConfigured,
+			strings.Join(status.Reasons, "; "), nil
 	}
 }
 
@@ -275,7 +281,7 @@ func Setup(deps Deps) func(channels.Bind) (botflota.AccountLifecycle, botflota.S
 		}
 		owner := whatsapp.AccountOwner{
 			Devices: deps.Devices, Bindings: deps.Bindings,
-			Pairings: deps.Pairings, Outbox: deps.Outbox, Pairs: deps.Pairs,
+			Outbox: deps.Outbox, Pairs: deps.Pairs,
 		}
 		return owner, deps.Pairs, nil
 	}
@@ -287,7 +293,6 @@ func Setup(deps Deps) func(channels.Bind) (botflota.AccountLifecycle, botflota.S
 type Deps struct {
 	Devices    *whatsapp.Devices
 	Bindings   botflota.BindingStore
-	Pairings   botflota.PairingStore
 	Peers      botflota.PeerStore
 	Chats      botflota.ChatStore
 	Messages   botflota.MessageStore
@@ -317,7 +322,6 @@ func Builder(deps Deps) func(channels.Bind) (botflota.MessageChannel, error) {
 			Bot:            bind.Bot,
 			Devices:        deps.Devices,
 			Bindings:       deps.Bindings,
-			Pairings:       deps.Pairings,
 			Peers:          deps.Peers,
 			Chats:          deps.Chats,
 			Messages:       deps.Messages,

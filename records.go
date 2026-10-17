@@ -21,12 +21,15 @@ type BotRef struct {
 // adapter mapped (ADR 0051, ADR 0053). Provider names the catalog provider,
 // Adapter the adapter kind, and Mode the account mode the bot selected; the
 // three identify the installed implementation, never a bare provider string.
-// Namespace carries the stable identity-space context when the provider's
-// ids are local to one store or profile, and stays empty for provider-wide
-// ids the adapter needs no space for. Generation starts at one and advances
-// on every identity replacement; renewing the same identity keeps it. The
-// SDK device locator and the credentials stay in adapter-owned storage; the
-// binding records the association, never a copy of their schema.
+// A change in any of them is a replacement, not a renewal: only the same
+// provider, adapter, and mode can keep the stored generation. Namespace
+// carries the stable identity-space context when the provider's ids are
+// local to one store or profile, and stays empty for provider-wide ids the
+// adapter needs no space for. Generation starts at one and advances on every
+// replacement: an identity change, or an adapter or mode change under the
+// same subject. The SDK device locator and the credentials stay in
+// adapter-owned storage; the binding records the association, never a copy
+// of their schema.
 type Binding struct {
 	Scope      string
 	Bot        string
@@ -251,22 +254,6 @@ type CooldownState struct {
 type RateLimitState struct {
 	Count       int       `json:"count"`
 	WindowStart time.Time `json:"window_start"`
-}
-
-type PairingState string
-
-const (
-	PairingPaired    PairingState = "paired"
-	PairingNotPaired PairingState = "not paired"
-	PairingUnpaired  PairingState = "unpaired"
-)
-
-// PairingStatus records the last confirmed transition of a bot's pairing.
-type PairingStatus struct {
-	Scope      string
-	Bot        string
-	State      PairingState
-	LastChange time.Time
 }
 
 // OwnerToken is the instance owner's credential (ADR 0025). Only the hash is

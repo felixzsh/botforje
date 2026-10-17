@@ -761,7 +761,6 @@ func openWhatsappOfflineCatalog(
 	catalog, err := runtimeCatalog(channel.Deps{
 		Devices:      devices,
 		Bindings:     db.Bindings(),
-		Pairings:     db.Pairings(),
 		Peers:        db.Peers(),
 		Chats:        db.Chats(),
 		Messages:     db.Messages(),
@@ -1055,7 +1054,6 @@ func offlinePairBuild(
 			Bot:            botName,
 			Devices:        devices,
 			Bindings:       db.Bindings(),
-			Pairings:       db.Pairings(),
 			Peers:          db.Peers(),
 			Chats:          db.Chats(),
 			Messages:       db.Messages(),

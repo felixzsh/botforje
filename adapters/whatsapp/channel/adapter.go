@@ -45,13 +45,12 @@ type Settings struct {
 	Jitter time.Duration
 }
 
-// Options requires Bot, Scope, Devices, Bindings, and Pairings.
+// Options requires Bot, Scope, Devices, and Bindings.
 type Options struct {
 	Scope    string
 	Bot      string
 	Devices  *whatsapp.Devices
 	Bindings botflota.BindingStore
-	Pairings botflota.PairingStore
 	// Peers, Chats, and Messages are all required to import the account-wide
 	// history sync WhatsApp delivers after linking.
 	Peers    botflota.PeerStore
@@ -87,7 +86,6 @@ type Adapter struct {
 	scope    string
 	bot      string
 	bindings botflota.BindingStore
-	pairings botflota.PairingStore
 	devices  *whatsapp.Devices
 	settings Settings
 	http     *http.Client
@@ -124,7 +122,7 @@ type Adapter struct {
 	client *whatsmeow.Client
 	state  State
 	seen   *dedup
-	// ownPhone spaces live ids under the linked account (ADR 0026).
+	// ownPhone spaces live ids under the binding (ADR 0026).
 	// Guarded by mu.
 	ownPhone string
 	last     map[string]lastInbound
@@ -176,7 +174,6 @@ func New(opts Options) (*Adapter, error) {
 		scope:     opts.Scope,
 		bot:       opts.Bot,
 		bindings:  opts.Bindings,
-		pairings:  opts.Pairings,
 		devices:   opts.Devices,
 		settings:  opts.Settings,
 		http:      httpClient,
@@ -227,9 +224,6 @@ func (a *Adapter) Connect(ctx context.Context) error {
 		return err
 	}
 	if device == nil {
-		if err := a.updatePairingStatus(botflota.PairingUnpaired); err != nil {
-			return err
-		}
 		return missingDeviceError(account)
 	}
 	client := whatsmeow.NewClient(device, a.waLogger)
@@ -324,31 +318,8 @@ func (a *Adapter) setState(state State) {
 	default:
 		a.log.Info("channel state", "state", string(state))
 	}
-	if state == StateConnected {
-		if err := a.updatePairingStatus(botflota.PairingPaired); err != nil {
-			a.logPairingStatusError(err)
-		}
-	} else if state == StateLoggedOut {
-		if err := a.updatePairingStatus(botflota.PairingUnpaired); err != nil {
-			a.logPairingStatusError(err)
-		}
-	}
 	if a.onState != nil {
 		a.onState(state)
-	}
-}
-
-func (a *Adapter) updatePairingStatus(state botflota.PairingState) error {
-	if a.pairings == nil {
-		return nil
-	}
-	return whatsapp.UpdatePairingStatus(context.Background(), a.pairings,
-		a.scope, a.bot, state, whatsapp.PairingNow(a.now))
-}
-
-func (a *Adapter) logPairingStatusError(err error) {
-	if a.log != nil {
-		a.log.Error("persist pairing status", "error", err)
 	}
 }
 
