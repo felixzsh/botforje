@@ -461,7 +461,7 @@ stay unchecked until their code and gates land.
   processing, persisted duplicates, deliberate discards, and failures.
   Keep source update IDs and receive cursors out of message identity; do
   not advance confirmation on handoff alone.
-- [ ] Verify message-ID space across binding replacement and
+- [x] Verify message-ID space across binding replacement and
   retained/migrated history. Preserve destination and any required
   account provenance independently of the triggering history chat.
   The durable key is settled in ADR 0051/0026, so choose SQL constraints
@@ -473,12 +473,12 @@ stay unchecked until their code and gates land.
   durable buffering. Deployment policy remains TBD in
   [open-decisions.md](open-decisions.md). The preparation's backpressure
   boundary itself is closed in ADR 0052; only deployment policy stays TBD.
-- [ ] Preserve typed content and stored codecs. Keep selections, message
+- [x] Preserve typed content and stored codecs. Keep selections, message
   IDs, callback/event IDs, and control traffic conceptually distinct;
   unsupported interactions must not masquerade as text turns. Test the
   extension boundary without shipping unused button/editing/receipt
   machinery.
-- [ ] Apply admission/delivery capability checks to P2's neutral
+- [x] Apply admission/delivery capability checks to P2's neutral
   peer-card payload. No common telephone parser or provider-specific
   payload map; preserve supported WhatsApp cards and reject unsupported
   card variants before queue admission.
