@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/testchannel"
 	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
@@ -15,7 +18,7 @@ import (
 // installed definitions without builders, so validation opens no store and
 // starts no transport (ADR 0052, ADR 0054).
 func pureCatalog() (*channels.Catalog, error) {
-	return channels.New(channel.Definition())
+	return channels.New(channel.Definition(), testchannel.Definition())
 }
 
 // runtimeCatalog binds the installed definitions to the process-wide
@@ -25,7 +28,25 @@ func runtimeCatalog(deps channel.Deps) (*channels.Catalog, error) {
 	def.Build = channel.Builder(deps)
 	def.Prepare = channel.Prepare(deps)
 	def.Setup = channel.Setup(deps)
-	return channels.New(def)
+	return channels.New(def, testchannelDefinition(deps.Bindings, deps.Now))
+}
+
+// testchannelDefinition binds the in-memory adapter's declaration to one
+// process's stores. It is the entry a second installed adapter adds to the
+// composition root: its files plus this registration.
+func testchannelDefinition(
+	bindings botflota.BindingStore, now func() time.Time,
+) channels.Definition {
+	def := testchannel.Definition()
+	deps := testchannel.Deps{
+		Bindings: bindings,
+		Backend:  testchannel.NewBackend(),
+		Now:      now,
+	}
+	def.Build = testchannel.Builder(deps)
+	def.Prepare = testchannel.Prepare(deps)
+	def.Setup = testchannel.Setup(deps)
+	return def
 }
 
 // whatsappSelected reports whether the config runs a bot on the WhatsApp

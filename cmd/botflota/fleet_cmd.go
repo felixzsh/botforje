@@ -94,8 +94,10 @@ func runFleet(args []string) int {
 	}
 	defer db.Close()
 	ctx := context.Background()
-	// Only the adapters the config selects are assembled: a fleet that runs no
-	// WhatsApp bot opens no WhatsApp device store (ADR 0052, ADR 0054).
+	// Only the resources a selected adapter needs are opened: a fleet that runs
+	// no WhatsApp bot opens no WhatsApp device store. Every installed adapter's
+	// definition is still registered, so selecting one needs no provider switch
+	// here (ADR 0052, ADR 0054).
 	var devices *whatsapp.Devices
 	var catalog *channels.Catalog
 	var runner *fleet.Fleet
@@ -121,30 +123,24 @@ func runFleet(args []string) int {
 				}
 				return runner.StartBot(scope, bot)
 			}, logger)
-		catalog, err = runtimeCatalog(channel.Deps{
-			Devices:      devices,
-			Bindings:     db.Bindings(),
-			Pairings:     db.Pairings(),
-			Peers:        db.Peers(),
-			Chats:        db.Chats(),
-			Messages:     db.Messages(),
-			Directory:    db.Directory(),
-			Outbox:       db.Outbox(),
-			Pairs:        manager,
-			DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
-		})
-		if err != nil {
-			logger.Error("build channel catalog", "error", err)
-			return 1
-		}
 		// Setup workers stop before the stores they write go away (ADR 0053).
 		defer manager.Close()
-	} else {
-		catalog, err = channels.New()
-		if err != nil {
-			logger.Error("build channel catalog", "error", err)
-			return 1
-		}
+	}
+	catalog, err = runtimeCatalog(channel.Deps{
+		Devices:      devices,
+		Bindings:     db.Bindings(),
+		Pairings:     db.Pairings(),
+		Peers:        db.Peers(),
+		Chats:        db.Chats(),
+		Messages:     db.Messages(),
+		Directory:    db.Directory(),
+		Outbox:       db.Outbox(),
+		Pairs:        manager,
+		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
+	})
+	if err != nil {
+		logger.Error("build channel catalog", "error", err)
+		return 1
 	}
 
 	runner, err = fleet.New(cfg, fleet.Options{

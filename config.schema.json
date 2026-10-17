@@ -108,6 +108,38 @@
           "additionalProperties": false,
           "properties": {
             "mode": {
+              "const": "local"
+            },
+            "options": {
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "namespace": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "namespace"
+              ],
+              "type": "object"
+            },
+            "provider": {
+              "const": "testchannel"
+            }
+          },
+          "required": [
+            "provider",
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
               "const": "native"
             },
             "options": {

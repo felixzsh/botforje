@@ -20,6 +20,7 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
+	"github.com/felixzsh/botflota/adapters/testchannel"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/channels"
@@ -696,10 +697,30 @@ type offlineAssembly struct {
 // installedOfflineAssemblies lists the shipped adapters' offline assembly.
 // Tests register fakes through the same list.
 func installedOfflineAssemblies() []offlineAssembly {
-	return []offlineAssembly{{
-		provider: channel.Provider, mode: channel.Mode,
-		open: openWhatsappOfflineCatalog,
-	}}
+	return []offlineAssembly{
+		{
+			provider: channel.Provider, mode: channel.Mode,
+			open: openWhatsappOfflineCatalog,
+		},
+		{
+			provider: testchannel.Provider, mode: testchannel.Mode,
+			open: openTestchannelOfflineCatalog,
+		},
+	}
+}
+
+// openTestchannelOfflineCatalog wires the in-memory adapter for one bot; its
+// backend opens no store, so offline bind needs nothing beyond the database it
+// already holds (ADR 0052, ADR 0053).
+func openTestchannelOfflineCatalog(
+	_ *config.Config, db *sqlite.DB, _ spec.Bot, _ *slog.Logger,
+) (*channels.Catalog, func(), error) {
+	nop := func() {}
+	catalog, err := channels.New(testchannelDefinition(db.Bindings(), nil))
+	if err != nil {
+		return nil, nop, err
+	}
+	return catalog, nop, nil
 }
 
 func offlineChannelCatalog(
