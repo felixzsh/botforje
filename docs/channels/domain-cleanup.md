@@ -20,8 +20,9 @@ providers and not a renamed WhatsApp model. Future providers may bring
 identities and flows none of the studied channels use; they must not
 inherit assumptions from those examples. Removal of common optional phone
 metadata is an owner decision. The selected P1 contracts and template/directory
-rules are now recorded in their canonical ADRs; their implementation remains
-pending, as distinguished in [open-decisions.md](open-decisions.md).
+rules are now recorded in their canonical ADRs; P1 landed on 2026-10-11 and the
+later phases landed on 2026-10-17, as distinguished in
+[open-decisions.md](open-decisions.md).
 
 ## Principles for the common contract
 

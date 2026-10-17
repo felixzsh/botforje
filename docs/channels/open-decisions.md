@@ -90,7 +90,8 @@ production shared-service policy remains open.
 The owner approved seven contracts, closing the P5 items that `phases.md`,
 ADR 0004/0040, ADR 0026/0051, ADR 0043/0035, and ADR 0052 left open. These are
 contract closures recorded in their owning ADRs, not passing implementation
-gates; P5 and P6 code remains pending.
+gates; P5 landed on 2026-10-17, and P6's automated gates pass, with the
+WhatsApp manual checklist pending operator exercise.
 
 - **Receive/processing completion.** ADR 0004/0040: a source that confirms
   updates gets an optional per-entry outcome of committed, already-recorded
@@ -213,8 +214,9 @@ gates; P5 and P6 code remains pending.
   (ADR 0026, ADR 0035, ADR 0043).
 - **P4/P6, persistence and export boundary.** Closed on 2026-10-12:
   ADR 0042 owns the domain-section ZIP/CSV contract above. Physical schema
-  and format filenames stay out of shared history ports. P4 implementation
-  and P6 conformance remain pending; no legacy reader/archive is approved.
+  and format filenames stay out of shared history ports. P4 and P5 landed on
+  2026-10-17; P6's automated gates pass, with the WhatsApp manual checklist
+  pending operator exercise; no legacy reader/archive is approved.
 - **P4/P5, unbound sends.** Closed on 2026-10-12: ADR 0044 requires a committed
   binding for new admission and rejects its absence with 409 `binding_required`.
   Pending code must apply that decision; durable queue snapshots, generation
