@@ -154,9 +154,134 @@ func TestOnMessageWaitsWhenQueueIsFull(t *testing.T) {
 	}
 }
 
+// TestStoppedAdapterReleasesBlockedHandoffs: a full bounded queue blocks the
+// event handler instead of dropping, and closing the adapter releases that wait
+// so no producer goroutine leaks (ADR 0011, ADR 0040, ADR 0052).
+func TestStoppedAdapterReleasesBlockedHandoffs(t *testing.T) {
+	tests := []struct {
+		name string
+		fill func(a *Adapter)
+		wait func(a *Adapter)
+	}{
+		{
+			name: "inbound message",
+			fill: func(a *Adapter) {
+				a.incoming <- textInbound("5215500000000", "IN-1")
+			},
+			wait: func(a *Adapter) {
+				a.onMessage(textEvent("5215500000001", "IN-2", "second"))
+			},
+		},
+		{
+			name: "external reply observation",
+			fill: func(a *Adapter) {
+				a.outbound <- botflota.ExternalSend{
+					Bot: "support-bot", Target: waTarget("5215500000000"),
+					Content: botflota.TextContent{Body: "held"},
+				}
+			},
+			wait: func(a *Adapter) {
+				own := textEvent("5215500000001", "OUT-2", "mine")
+				own.Info.IsFromMe = true
+				a.onMessage(own)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			a := newTestAdapter()
+			a.stop = make(chan struct{})
+			a.incoming = make(chan botflota.IncomingMessage, 1)
+			a.outbound = make(chan botflota.ExternalSend, 1)
+			test.fill(a)
+			released := make(chan struct{})
+			go func() {
+				test.wait(a)
+				close(released)
+			}()
+			select {
+			case <-released:
+				t.Fatal("the handoff returned while the bounded queue was full")
+			case <-time.After(50 * time.Millisecond):
+			}
+			close(a.stop)
+			select {
+			case <-released:
+			case <-time.After(time.Second):
+				t.Fatal("closing the adapter did not release the blocked handoff")
+			}
+		})
+	}
+}
+
+// TestObservationsShareTheLiveConversationValues: a live inbound and an
+// external-reply observation of the same wire chat reduce to the same neutral
+// conversation target and sender identity, so the hand-over path and the
+// routable path agree (ADR 0043, ADR 0051).
+func TestObservationsShareTheLiveConversationValues(t *testing.T) {
+	a := newTestAdapter()
+	a.onMessage(textEvent("5215500000000", "IN-1", "hi"))
+	own := textEvent("5215500000000", "OUT-1", "mine")
+	own.Info.IsFromMe = true
+	a.onMessage(own)
+
+	inbound := <-a.incoming
+	external := <-a.outbound
+	if inbound.Target != waTarget("5215500000000") ||
+		inbound.Sender != waKey("5215500000000") {
+		t.Fatalf("inbound sender/target = %+v / %+v", inbound.Sender, inbound.Target)
+	}
+	if external.Target != inbound.Target {
+		t.Fatalf("external target = %+v, want the live %+v",
+			external.Target, inbound.Target)
+	}
+	if external.MessageSpace != inbound.MessageSpace {
+		t.Fatalf("external space = %q, want the live %q",
+			external.MessageSpace, inbound.MessageSpace)
+	}
+}
+
+// TestOptionalOperationsStayInertWhenDisabled proves the adapter never calls
+// an optional SDK-backed feature it was not configured for: history sync, the
+// address book, and their events are inert without their option (ADR 0035,
+// ADR 0037, ADR 0052).
+func TestOptionalOperationsStayInertWhenDisabled(t *testing.T) {
+	a := newTestAdapter()
+	tests := []struct {
+		name string
+		run  func()
+	}{
+		{"history chunk", func() {
+			a.onHistory(&events.HistorySync{Data: &waHistorySync.HistorySync{}})
+		}},
+		{"history event", func() {
+			a.handleEvent(&events.HistorySync{Data: &waHistorySync.HistorySync{}})
+		}},
+		{"address book event", func() { a.onContact(&events.Contact{}) }},
+		{"address book event by handler", func() { a.handleEvent(&events.Contact{}) }},
+		{"cached address book", func() { a.onceConnected() }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.run()
+		})
+	}
+	if a.importer != nil || a.addressBook != nil {
+		t.Fatal("a disabled optional feature built a worker")
+	}
+}
+
 func TestOnHistoryWithoutImporterIsInert(t *testing.T) {
 	a := newTestAdapter()
 	a.onHistory(&events.HistorySync{Data: &waHistorySync.HistorySync{}})
+}
+
+// textInbound is a minimal neutral inbound entry for a queue-fill helper.
+func textInbound(subject, id string) botflota.IncomingMessage {
+	return botflota.IncomingMessage{
+		Bot: "support-bot", Sender: waKey(subject), Target: waTarget(subject),
+		Content: botflota.TextContent{Body: "first"}, ProviderMessageID: id,
+	}
 }
 
 func TestLoggedOutPersistsUnpairedStatus(t *testing.T) {

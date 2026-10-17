@@ -311,3 +311,52 @@ func bodies(messages []botflota.Message) []string {
 	}
 	return out
 }
+
+// TestHistoryRecordsShareTheLiveNormalization: an imported row names the same
+// neutral peer, conversation target, and message space a live inbound for the
+// same phone would, while staying inert — sync ingest, unknown origin, and no
+// first-seen claim (ADR 0026, ADR 0035, ADR 0051).
+func TestHistoryRecordsShareTheLiveNormalization(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	importer := NewHistory("dev", "bot", db.Peers(), db.Chats(),
+		db.Messages(), nil, nil)
+	importer.SetOwnPhone("5215500099999")
+	base := uint64(t0.Unix())
+	conversation := historyConversation("5215500000000@s.whatsapp.net", "", "Ana",
+		historyText("M1", false, "hello", base, 1),
+	)
+	importer.Handle(ctx, &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{conversation},
+	}})
+
+	peer, err := db.Peers().Get(ctx, "dev", PeerKey("5215500000000"))
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	wantTarget := DirectTarget(peer.Key.Subject)
+	chat, err := db.Chats().ForTarget(ctx, "dev", "bot", wantTarget)
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	messages, err := db.Messages().History(ctx, chat.ID, 0, 10)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(messages))
+	}
+	got := messages[0]
+	if got.Target != wantTarget || chat.Target != wantTarget {
+		t.Fatalf("targets = %+v / %+v, want %+v", got.Target, chat.Target, wantTarget)
+	}
+	if got.MessageSpace != "5215500099999" {
+		t.Fatalf("message space = %q, want the linked account", got.MessageSpace)
+	}
+	if got.Ingest != botflota.IngestSync || got.Origin != "" {
+		t.Fatalf("provenance = %+v, want an inert sync row", got)
+	}
+	if !peer.FirstSeen.IsZero() {
+		t.Fatalf("first seen = %v, want no claim from an import", peer.FirstSeen)
+	}
+}

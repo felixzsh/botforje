@@ -176,6 +176,64 @@ func waitUntil(t *testing.T, ready func() bool, what string) {
 	}
 }
 
+// TestOpaqueIdentitiesNeedNoPhone: a text-only channel's opaque subject and
+// thread travel through the fleet, engine, and outbox untouched, so shared
+// code neither requires nor parses a phone number (ADR 0020, ADR 0051).
+func TestOpaqueIdentitiesNeedNoPhone(t *testing.T) {
+	built := newFakeChannel()
+	catalog, err := channels.New(channels.Definition{
+		Provider: "fake", Kind: "fake", Modes: []string{"text"},
+		Capabilities: channels.Capabilities{
+			Send: []botflota.MessageKind{botflota.KindText},
+		},
+		Build: func(channels.Bind) (botflota.MessageChannel, error) {
+			return built, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	store := newStore()
+	runner, err := New(textFakeConfig(), Options{
+		Store: store, Chats: store, Peers: store, Messages: store,
+		Turn: store, Outbox: store, Catalog: catalog,
+		DefaultTimeout: time.Minute, Now: func() time.Time { return t0 },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	waitUntil(t, func() bool {
+		built.mu.Lock()
+		defer built.mu.Unlock()
+		return built.connected
+	}, "the text-only fake connected")
+
+	target := botflota.ChatTarget{
+		Provider: "fake", Kind: botflota.ChatDirect, Thread: "thread/9",
+	}
+	built.incoming <- botflota.IncomingMessage{
+		Bot:    "demo",
+		Sender: botflota.IdentityKey{Provider: "fake", Subject: "subject-7"},
+		Target: target, Content: botflota.TextContent{Body: "hola"}, At: t0,
+	}
+	select {
+	case reply := <-built.sent:
+		if reply.Target != target {
+			t.Fatalf("reply target = %+v, want the opaque %+v", reply.Target, target)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no reply for an opaque identity")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
 // TestPrepareSkipsAnUnreadyBotWithoutBuildingIt proves startup asks the
 // definition before assembling a bot: an unready bot joins no fleet, its peers
 // are untouched, and no channel is constructed (ADR 0022, ADR 0053).

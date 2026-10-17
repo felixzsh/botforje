@@ -53,6 +53,57 @@ func TestConnectReportsMissingDevice(t *testing.T) {
 	}
 }
 
+// TestOptionalWorkersStartOnlyWhenDeclared: assembling a channel starts the
+// history and address-book workers only for an option the bot selected, so no
+// optional feature is invoked unconditionally (ADR 0035, ADR 0037, ADR 0052).
+func TestOptionalWorkersStartOnlyWhenDeclared(t *testing.T) {
+	ctx := context.Background()
+	db := openWhatsAppTestDB(t)
+	devices, err := whatsapp.OpenDevices(ctx, db.DB, nil, slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name     string
+		history  bool
+		contacts bool
+	}{
+		{"neither option", false, false},
+		{"history only", true, false},
+		{"address book only", false, true},
+		{"both options", true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			adapter, err := New(Options{
+				Scope: "dev", Bot: "botsito",
+				Devices: devices, Bindings: db.Bindings(),
+				Pairings: db.Pairings(), Peers: db.Peers(), Chats: db.Chats(),
+				Messages: db.Messages(), Directory: db.Directory(),
+				History: test.history, ImportContacts: test.contacts,
+				Log: botflota.DiscardLogger(),
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			if (adapter.importer != nil) != test.history {
+				t.Fatalf("importer present = %v, want History=%v",
+					adapter.importer != nil, test.history)
+			}
+			if (adapter.historyDone != nil) != test.history {
+				t.Fatalf("history worker present = %v, want History=%v",
+					adapter.historyDone != nil, test.history)
+			}
+			if (adapter.addressBook != nil) != test.contacts {
+				t.Fatalf("address book present = %v, want ImportContacts=%v",
+					adapter.addressBook != nil, test.contacts)
+			}
+			if err := adapter.Disconnect(ctx); err != nil {
+				t.Fatalf("Disconnect: %v", err)
+			}
+		})
+	}
+}
+
 // TestDisconnectStopsWorkersAfterConnectFails covers the adapter lifetime:
 // New starts its workers before Connect, so Disconnect must stop them even
 // when the first connection cannot start.

@@ -176,7 +176,75 @@ func TestAnAPISendReachesAHeldChat(t *testing.T) {
 	}
 }
 
-// TestHandingOverFailsAReplyAlreadyInFlight covers the edge the recheck cannot
+// TestHeldInboundIsRecordedWithoutASession: while a chat is held, the fleet
+// stores each inbound message for history and deduplication, runs no
+// transition, and queues no reply; releasing the hold restores the bot
+// (ADR 0043).
+func TestHeldInboundIsRecordedWithoutASession(t *testing.T) {
+	runner, channels, store := buildFleetWithStore(t, "", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = runner.Run(ctx) }()
+	waitConnected(t, runner)
+	alpha := channels["alpha"]
+
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", waTarget("held"), true); err != nil {
+		t.Fatalf("SetChatHuman: %v", err)
+	}
+	alpha.incoming <- botflota.IncomingMessage{
+		Bot: "alpha", Sender: waKey("held"), Target: waTarget("held"),
+		Content:           botflota.TextContent{Body: "hola"},
+		ProviderMessageID: "held-1", At: t0,
+	}
+
+	var stored *botflota.Message
+	deadline := time.Now().Add(2 * time.Second)
+	for stored == nil {
+		store.mu.Lock()
+		for _, message := range store.messages {
+			if message.ProviderMessageID == "held-1" {
+				copied := *message
+				stored = &copied
+				break
+			}
+		}
+		store.mu.Unlock()
+		if time.Now().After(deadline) {
+			t.Fatal("the held inbound message was not recorded")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if stored.Direction != botflota.Inbound || stored.Target != waTarget("held") {
+		t.Fatalf("held message = %+v", stored)
+	}
+	store.mu.Lock()
+	sessions, queued := len(store.sessions), len(store.outbox)
+	store.mu.Unlock()
+	if sessions != 0 {
+		t.Fatalf("sessions = %d, want none for a held chat", sessions)
+	}
+	if queued != 0 {
+		t.Fatalf("queued replies = %d, want none for a held chat", queued)
+	}
+	select {
+	case reply := <-alpha.sent:
+		t.Fatalf("a held chat was answered: %#v", reply)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	if err := runner.SetChatHuman(ctx, "dev", "alpha", waTarget("held"), false); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	alpha.incoming <- botflota.IncomingMessage{
+		Bot: "alpha", Sender: waKey("held"), Target: waTarget("held"),
+		Content:           botflota.TextContent{Body: "again"},
+		ProviderMessageID: "held-2", At: t0,
+	}
+	if reply := receive(t, alpha.sent); botflota.ContentText(reply.Content) != "hello from alpha" {
+		t.Fatalf("reply after release = %q", botflota.ContentText(reply.Content))
+	}
+}
+
 // reach: the worker had already left the queue with the reply when the chat was
 // handed over, so the row is failed at once and the send still finishes, which
 // is the best effort ADR 0043 promises.
