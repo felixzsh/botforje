@@ -518,7 +518,7 @@ Change: cross-package contract/regression tests and fixtures, plus the
 remaining documentation and generated reference that must describe the
 implemented runtime rather than the accepted target.
 
-- [ ] Run the same fixture graph through WhatsApp's test mapping and
+- [x] Run the same fixture graph through WhatsApp's test mapping and
   contrasting registered fakes: an opaque-ID text-only channel and a
   profile-local channel. Both traverse actual engine, stores,
   fleet/outbox, and API paths, not bespoke test-only execution
@@ -544,7 +544,7 @@ implemented runtime rather than the accepted target.
   field/parameter/context audit: optional phone fields also fail the
   clean-domain gate. Keep transport, setup, support, and storage
   separate.
-- [ ] Complete automated fresh-schema/reopen, scope-isolation,
+- [x] Complete automated fresh-schema/reopen, scope-isolation,
   publication/reload, setup-race, retry, cancellation, and redaction
   coverage from the earlier gates. Fakes declare unsupported features
   honestly and require no new SDK, network service, or production
