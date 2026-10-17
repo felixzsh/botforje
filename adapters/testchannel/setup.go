@@ -197,12 +197,12 @@ func (r *Runner) InputSetup(
 	if session == nil {
 		return nil, fmt.Errorf("testchannel: setup session: %w", botflota.ErrNotFound)
 	}
+	if session.inputKey != "" && session.inputKey == input.RequestKey {
+		return copySession(session), nil
+	}
 	if session.state.Final() {
 		return nil, fmt.Errorf(
 			"testchannel: setup session is final: %w", botflota.ErrConflict)
-	}
-	if session.inputKey != "" && session.inputKey == input.RequestKey {
-		return copySession(session), nil
 	}
 	if input.Revision != session.revision {
 		return nil, fmt.Errorf(
