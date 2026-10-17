@@ -180,18 +180,21 @@ gates; P5 and P6 code remains pending.
   or precedence. Recorded in ADR 0054 and implemented in `channels.New`;
   verified by the catalog tests. The neutral HTTP/CLI form of the selector
   stays a P4 item.
-- **P1 directory provenance closed; P3/P4 work remains.** The owner chose
-  historical snapshots with explicit source account identity (ADR 0037/0042).
-  A compatible migration moves data ownership without rewriting origin or
-  claiming current membership. Full binding generations, freshness after
-  replacement, and public representations remain their phase's decisions;
-  no P1 source identity alone establishes those guarantees.
-- **P3/P5, status and generations.** Decide which confirmed facts are
-  durable and which observations are live or stale; do not persist
-  yesterday's successful pairing as current readiness. Request revision,
-  config reload generation, and binding generation are separate. Specify
-  how association provenance survives delete/rebind for directories and
-  queued sends. Owner: ADR 0051, ADR 0053, ADR 0040.
+- **P1 directory provenance closed.** The owner chose historical snapshots
+  with explicit source account identity (ADR 0037/0042). A compatible migration
+  moves data ownership without rewriting origin or claiming current
+  membership. Binding generations are decided in ADR 0053, and the public
+  representations are closed in the P4 section above; no P1 source identity
+  alone establishes those guarantees.
+- **P3/P5, status and generations.** Closed on 2026-10-17: readiness is a live
+  observation of the committed binding and local credential presence, so a
+  stored pairing transition is never presented as current readiness (ADR 0053),
+  and a setup session's `revision`, a binding's `generation`, and the active
+  config snapshot are independent values (ADR 0053, ADR 0009). Directory
+  provenance survives delete/rebind through its preserved source identity
+  (ADR 0042), and queued sends through their accepted binding generation
+  (ADR 0040). Queue-side enforcement is P5 implementation, not an open
+  decision. Owners: ADR 0009, ADR 0040, ADR 0042, ADR 0051, ADR 0053.
 - **P2/P4, public compatibility.** Closed on 2026-10-12 (owner decision):
   the preparation ships no backward compatibility. A superseded template root,
   settings key, selector, route, event, or archive section is removed with its

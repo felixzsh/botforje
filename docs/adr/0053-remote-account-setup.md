@@ -28,6 +28,11 @@ condition (`unconfigured`, `configured`, `action_required`, `unavailable`), safe
 reasons, and the appropriate setup method. An existing credential is not proof
 of access.
 
+**Three versions stay distinct.** A setup session's `revision`, a binding's
+`generation`, and the active config snapshot of ADR 0009 are independent
+values: none substitutes for another, and a change in one never implies a
+change in the others.
+
 **P2 implements only the join decision.** A channel definition reports whether
 one bot can join the fleet now and a safe state string; startup skips an
 unready bot without stopping its peers, and an adapter's stores are opened only
