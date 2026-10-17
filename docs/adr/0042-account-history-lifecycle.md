@@ -8,7 +8,7 @@ Unlinking a bot already removes its credentials, its account record, its pairing
 state, and the replies the old link still owed, and leaves everything else
 alone (ADR 0021, ADR 0040). Two further operations were sketched but not
 settled: an explicit deletion of one bot's history, and a migration that hands
-it to another bot (`docs/current-plan.md`).
+it to another bot (`docs/next-plan.md`).
 
 The stored shapes are what make them delicate. A chat is keyed by its
 conversation (ADR 0051); sessions and messages cascade from their chat;
