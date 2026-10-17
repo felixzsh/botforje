@@ -204,7 +204,7 @@ func runFleet(args []string) int {
 	}
 
 	if len(statuses) == 0 {
-		logger.Warn("no paired bots; fleet is idle")
+		logger.Warn("no bound bots; fleet is idle")
 	}
 	// Run owns the instance's life: it also waits out an empty fleet, so a
 	// pairing through the API can start the first bot (ADR 0022).

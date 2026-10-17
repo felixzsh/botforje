@@ -19,7 +19,7 @@ type commandHelp struct {
 func cliTree() *commandHelp {
 	return &commandHelp{
 		name:    "botflota",
-		summary: "Declarative WhatsApp fleet runner.",
+		summary: "Declarative messaging bot fleet runner.",
 		usage:   "botflota <command> [options]",
 		examples: []string{
 			"botflota config validate",
@@ -164,7 +164,7 @@ func cliTree() *commandHelp {
 			{
 				name:    "fleet",
 				summary: "run and manage the fleet",
-				long:    "Run the fleet of paired bots and inspect the running one.",
+				long:    "Run the fleet of bound bots and inspect the running one.",
 				usage:   "botflota fleet <command> [options]",
 				examples: []string{
 					"botflota fleet run",
@@ -174,8 +174,8 @@ func cliTree() *commandHelp {
 				sub: []commandHelp{
 					{
 						name:    "run",
-						summary: "run every paired bot until interrupted",
-						long: "Start every paired bot, answer inbound messages with the\n" +
+						summary: "run every bound bot until interrupted",
+						long: "Start every bound bot, answer inbound messages with the\n" +
 							"configured pacing, and stop on interrupt after draining the outbox.",
 						usage: "botflota fleet run [options]",
 						examples: []string{
