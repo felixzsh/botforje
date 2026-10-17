@@ -3,7 +3,7 @@
 ADR 0046 separates runtime protections from the policies of a host application.
 Nothing in this document is implemented or an approved enforcement contract.
 Publication and account history remain independent capabilities
-(`current-plan.md`); they do not require limit sets.
+(`next-plan.md`); they do not require limit sets.
 
 ## Decisions requiring creator approval
 

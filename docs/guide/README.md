@@ -5,8 +5,8 @@ the CLI and API land.
 
 ## Sections
 
-- Getting Started — install, first bot, pair an account.
-- `whatsapp.md` — pairing and the channel verification checklist.
+- Getting Started — install, first bot, bind an account.
+- `whatsapp.md` — binding and the channel verification checklist.
 - Concepts — bot, graph, node, edge, action, tool, session, contexts,
   routing, hybrid behavior.
 - Guides — task walkthroughs: a support menu bot, an order builder with tools.

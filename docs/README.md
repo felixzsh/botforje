@@ -7,13 +7,13 @@ Map of the documentation.
 - `scope.md` — what Botflota includes.
 - `glossary.md` — terms used across the docs.
 - `api.md` — API authority, scope coverage, and current versus target behavior.
-- `current-plan.md` — current Phase 7 plan for API publication and account
-  history.
-- `channel-adapter-findings/channel-plan.md` — provider-neutral architecture, rationale, pending
+- `next-plan.md` — Phase 7 delivery plan for API publication and account
+  history, with its retired vocabulary marked.
+- `channels/plan.md` — provider-neutral architecture, rationale, pending
   decisions, and P1–P6 gates (ADR 0051–0054); progress is tracked in `../PLAN.md` Phase 7.
-- `channel-adapter-findings/domain-contracts.md` — compact current-to-target contract, field,
+- `channels/domain-terminology.md` — compact current-to-target contract, field,
   helper, and command renames; architectural reasons and pending decisions belong to
-  `channel-adapter-findings/channel-plan.md`.
+  `channels/plan.md`.
 - `integration.md` — runtime versus host responsibilities, application flow,
   and the shared-process trust boundary (ADR 0046).
 - `access-policy.md` — TBD resource-policy and provisioning decisions; not an
@@ -31,7 +31,7 @@ For contributors and agents working on this repository:
 ### Channel adapter findings
 
 Research notes recorded on 2026-10-09, not implemented behavior or completed plan gates.
-`channel-adapter-findings/channel-plan.md` and the canonical ADRs still own shared architecture
+`channels/plan.md` and the canonical ADRs still own shared architecture
 and accepted contracts.
 
 Provider send capabilities (`provider-findings/`):
@@ -55,24 +55,24 @@ Cross-provider capability research (`provider-differences/`, scaffolds to be fil
 - [Binding lifecycle][binding-lifecycle].
 - [Optional operations][optional-operations].
 
-[outbound]: channel-adapter-findings/provider-differences/outbound-messages.md
-[whatsmeow]: channel-adapter-findings/provider-findings/whatsmeow.md
-[telegram]: channel-adapter-findings/provider-findings/telegram.md
-[signal]: channel-adapter-findings/provider-findings/signal.md
-[simplex]: channel-adapter-findings/provider-findings/simplex.md
-[whatsappcloud]: channel-adapter-findings/provider-findings/whatsappcloud.md
-[history-recovery]: channel-adapter-findings/provider-differences/history-and-recovery.md
-[delivery-receipts]: channel-adapter-findings/provider-differences/delivery-and-receipts.md
-[external-messages]: channel-adapter-findings/provider-differences/external-messages.md
-[identity-targets]: channel-adapter-findings/provider-differences/identity-directory-targets.md
-[binding-lifecycle]: channel-adapter-findings/provider-differences/binding-lifecycle.md
-[optional-operations]: channel-adapter-findings/provider-differences/optional-operations.md
+[outbound]: channels/provider-differences/outbound-messages.md
+[whatsmeow]: channels/provider-findings/whatsmeow.md
+[telegram]: channels/provider-findings/telegram.md
+[signal]: channels/provider-findings/signal.md
+[simplex]: channels/provider-findings/simplex.md
+[whatsappcloud]: channels/provider-findings/whatsappcloud.md
+[history-recovery]: channels/provider-differences/history-and-recovery.md
+[delivery-receipts]: channels/provider-differences/delivery-and-receipts.md
+[external-messages]: channels/provider-differences/external-messages.md
+[identity-targets]: channels/provider-differences/identity-directory-targets.md
+[binding-lifecycle]: channels/provider-differences/binding-lifecycle.md
+[optional-operations]: channels/provider-differences/optional-operations.md
 
 ## User guide
 
 For people running bots. It lives in `guide/`.
 
-- `guide/whatsapp.md` — pairing an account and running bots.
+- `guide/whatsapp.md` — binding an account and running bots.
 - `guide/systemd.md` — running Botflota as a systemd service.
 
 ## Where things live

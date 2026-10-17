@@ -14,14 +14,15 @@ policy and shared CPU, memory, and fairness remain TBD.
 A config-driven fleet runner with these capabilities, without a dashboard or a
 hosting platform:
 
-- One instance runs multiple WhatsApp bots.
+- One instance runs multiple bots, each on a registered channel (WhatsApp
+  today).
 - Bots, graphs, and actions defined in YAML; YAML is the behavior source of
   truth.
 - Graph conversations with sessions persisted in SQLite.
 - Actions with `message`, `request`, `location`, `media`, `contact`, and `poll`
   steps; cooldown guards.
-- Filters (groups, allow/ignore contacts) and a per-bot outbox with
-  configurable delay and jitter, plus human-like presence.
+- Filters (refuse shared conversations, allow/ignore peers) and a per-bot
+  outbox with configurable delay and jitter, plus human-like presence.
 - CLI: `config` and `bot` groups, plus `fleet`.
 - REST API with token-based auth.
 - Hybrid AI support designed in from the start: deterministic routing works

@@ -126,6 +126,6 @@ directory and config files.
   restart the service.
 - The unit starts and exits at once: `journalctl --user -u botflota` (or
   `journalctl -u botflota`) shows the config error.
-- The bot looks unpaired or the data is empty: the running `data_dir` is not
+- The bot is skipped as not ready or the data is empty: the running `data_dir` is not
   the one you expect; check `data_dir` in the config the unit passes with
   `--config`.

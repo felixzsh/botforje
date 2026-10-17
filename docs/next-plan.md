@@ -1,5 +1,15 @@
 # Phase 7: configuration publication and account history
 
+**Superseded vocabulary (2026-10-17).** This document records the Phase 7
+delivery contract as written before the channel-neutral preparation (P1–P6).
+The implemented names are the neutral ones in `docs/glossary.md`: a `Binding`
+is the linked account, `peer` replaces contact identity, `directory` replaces
+address book, and the lifecycle operations are `bot bind`/`bot unbind` over
+`.../bots/{bot}/binding`. The retired `DELETE .../bots/{bot}/account`, `bot
+pair`, and `contacts` shapes named below are history, not current routes;
+`api.md` owns the current ones. The internal persisted record is still
+`Session`; its public name is graph run.
+
 Phase 7 plan for the capabilities Botflota needs on its own, whatever hosts it:
 reading and publishing **existing** scopes by API, the visible-name rules that
 make those edits safe, and the account history operations (keep, delete,
@@ -30,7 +40,7 @@ dashboard or browser handoff (ADR 0046; `integration.md`).
   sharing is allowed. This plan reuses those credentials unchanged.
 - YAML map keys remain identities, not display labels (ADR 0016). Optional
   `display_name` is editable; when absent or empty, an interface shows the key.
-  A label edit must preserve references, sessions, guards, linked accounts, and
+  A label edit must preserve references, sessions, guards, bindings, and
   token authorization. The API must not materialize the fallback in saved YAML.
   Manual key changes are deletion plus creation, not inferred renames. The
   watcher never writes IDs into manual files.
@@ -126,28 +136,28 @@ This is behavior Botflota owes an operator regardless of any host. The routes,
 the confirmation, the counts, the export, and the empty-destination rule are
 implemented; the decisions behind them are in ADR 0042.
 
-- **Unlink keeps everything** (current). `DELETE .../bots/{bot}/account` and
-  `bot unpair` remove the credentials, the account record, and the pairing
-  status, and fail the replies the old link still owes (ADR 0040). Chats,
-  sessions, messages, contact identities, and address-book entries stay as they are,
-  so a temporary unlink or a later replacement never costs history.
+- **Unbinding keeps everything** (current). `DELETE .../bots/{bot}/binding` and
+  `bot unbind` remove the adapter credentials, the binding row, and the
+  pairing status, and fail the replies the old link still owes (ADR 0040). Chats,
+  graph runs, messages, peer identities, and directory entries stay as they are,
+  so a temporary unbind or a later replacement never costs history.
 - **Deleting history is its own explicit operation**, confirmed by the caller
   and addressed to one `(scope, bot)`: it drops that bot's chats, and with them
-  the cascaded sessions, messages, and queued replies, plus its address-book
-  entries. It never touches the scope's contact identities — those are shared
+  the cascaded graph runs, messages, and queued replies, plus its directory
+  entries. It never touches the scope's peer identities — those are shared
   by the scope's bots (ADR 0029) — and it never touches another bot. The API reports what was
-  removed. Nothing else calls it: no pairing, replacement, or config edit
+  removed. Nothing else calls it: no binding, replacement, or config edit
   deletes history as a side effect.
 - **Migration transfers history, not identity.** A migration moves a bot's
-  chats and address book to another bot **of the same scope**, so a bot replacing
+  chats and directory to another bot **of the same scope**, so a bot replacing
   a lost account starts from the same conversations and Botflota treats the
   result as an ordinary bot. Scope never changes: references and sessions never
-  cross scopes (ADR 0016), so there is no cross-scope move. Contact identities
-  are already shared by the scope and need no copy. A bot that only relinks its account needs no
+  cross scopes (ADR 0016), so there is no cross-scope move. Peer identities
+  are already shared by the scope and need no copy. A bot that only rebinds its account needs no
   migration at all — its history is keyed by bot, not by account.
 - **History can be exported before it is deleted** (current). One `zip`
-  download, one CSV per table the deletion removes — chats, sessions, messages,
-  contacts — with a header even for a table with no rows, streamed so a
+  download, one CSV per table the deletion removes — chats, graph runs, messages,
+  directory — with a header even for a table with no rows, streamed so a
   conversation of several megabytes costs constant memory, and read in one
   transaction so an arrival mid-export cannot tear the file. It is a read with
   the same authority as any scope route, and it is independent of deletion.
@@ -161,7 +171,7 @@ refused with 409 and named, and the caller empties it or picks another. It runs
 with both bots stopped, settles the source's pending outbox first — the old link
 must never send what it no longer owns — and expires the source's active
 sessions instead of pretending the destination's graph sits at the same node.
-Chats, sessions, messages, and contacts transfer in one recoverable operation
+Chats, graph runs, messages, and directory transfer in one recoverable operation
 that lands all of them or none, and that a repeat does not duplicate. Both
 operations are owner-and-scoped like any other write to their scope.
 
@@ -232,7 +242,7 @@ Publication:
   scope outside the caller's authority. Activation may be pending for one scope
   while another becomes active.
 - Missing/empty and explicit `display_name`: round-trip without changing keys,
-  references, guards, sessions, linked accounts, or token access. Editing a
+  references, guards, sessions, bindings, or token access. Editing a
   label in one scope cannot alter another; missing fallback is presentation
   only. A manual key edit remains a different identity.
 - Invalid candidate or masked secret: no partial file write and no secret
@@ -246,12 +256,12 @@ Publication:
 
 Account history:
 
-- Unlink, replace, pair, and unpair leave chats, sessions, messages, and the
-  address book untouched, and the next pairing resumes them.
-- Explicit history deletion removes exactly one bot's history and address book,
-  never the scope's contact identities or another bot, and reports what it
+- Binding, replacing, and unbinding leave chats, sessions, messages, and the
+  directory untouched, and the next binding resumes them.
+- Explicit history deletion removes exactly one bot's history and directory,
+  never the scope's peer identities or another bot, and reports what it
   removed. A confirmation that does not repeat the target is refused.
-- Migration moves a bot's chats and address book to another bot of the same scope,
+- Migration moves a bot's chats and directory to another bot of the same scope,
   never across scopes, with both bots stopped, the source's queued replies
   failed before anything transfers, and its active sessions expired; it lands
   all of them or none after an error or restart, and a repeat does not

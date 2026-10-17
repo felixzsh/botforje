@@ -10,7 +10,7 @@ it without requiring a particular host, dashboard, or deployment topology.
 | --- | --- |
 | Execute graphs and actions | Provide its own user experience |
 | Validate and publish YAML | Author drafts and decide which changes to request |
-| Pair accounts and operate bot channels | Guide setup and display operational results |
+| Bind accounts and operate bot channels | Guide setup and display operational results |
 | Persist conversations and deliver messages | Decide workflows built on those capabilities |
 | Enforce scope authorization | Map external identities to scopes and instances |
 | Expose runtime facts and events | Interpret those facts for its own policies |
@@ -51,7 +51,7 @@ sign-in is optional future work, not a required step in the flow above.
   remains the canonical saved behavior on the instance (ADR 0002).
 - Distinguish saved from active configuration: an accepted edit can remain
   pending until activation is safe (ADR 0009).
-- Use API operations for pairing, conversation control, messages, and history.
+- Use API operations for binding, conversation control, messages, and history.
   Do not operate directly on the running instance's files or database.
 - Deduplicate webhook deliveries by event ID. Only `peer.first_seen` exists
   today; other lifecycle and usage events are planned, not available contracts.
@@ -136,7 +136,7 @@ shared instance is the operator's and every other scope's names as well.
 
 ## Integration validation
 
-A first integration should prove one scoped publish, pairing, a conversation
+A first integration should prove one scoped publish, binding, a conversation
 read, and a signed webhook, without waiting for a dashboard or delegated login.
 Use a fake channel for deterministic authorization and publication tests; real
 account onboarding is a separate operational check. Onboarding authors who are

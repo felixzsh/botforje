@@ -312,17 +312,20 @@ Resolved after the audit (owner decision 2026-10-17):
   `config/examples/reference.yml`, and the `PLAN.md` instance-setting list
   were updated. The P6 field/parameter/context/dependency audit then passed.
 
-Recorded for the item 5/6 documentation and schema alignment, not changed
-here: `docs/glossary.md` still defines a bot as "one WhatsApp account";
-`docs/scope.md` says an instance runs WhatsApp bots; `docs/architecture.md`
-still describes the core as avoiding `whatsmeow`; and
-`config/examples/reference.yml` still shows a `graph.owner_phone` example and
-comments that `to` is a phone number, that peer subjects are WhatsApp phone
-numbers, and that `external_reply_pause` follows a phone reply.
-`docs/guide/whatsapp.md` still names the retired `bot pair` command and a
+Recorded by the audit for the item 5/6 documentation and schema alignment,
+then aligned there: at audit time `docs/glossary.md` defined a bot as "one
+WhatsApp account"; `docs/scope.md` said an instance runs WhatsApp bots;
+`docs/architecture.md` described the core as avoiding `whatsmeow`;
+`config/examples/reference.yml` showed a `graph.owner_phone` example and
+commented that `to` is a phone number, that peer subjects are WhatsApp phone
+numbers, and that `external_reply_pause` follows a phone reply; and
+`docs/guide/whatsapp.md` named the retired `bot pair` command and a
 paired phone number. The
 retired `contact.*` template has no alias or universal phone value, so those
-are documentation drift, not runtime contracts.
+were documentation drift, not runtime contracts. P6 items 5 and 6 aligned the
+affected documents, the example, and the Phase 7 plan with the implemented
+runtime, and `make schema` left `config.schema.json` unchanged; see
+[phases.md](phases.md).
 
 P6 item 3 is checked: every named category verified clean and the last open
 finding is resolved.

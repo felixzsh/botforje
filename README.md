@@ -11,7 +11,7 @@ automation.
   changing the runtime.
 - One runtime: a single Go process runs the fleet across scopes, with no
   browser process per bot or mandatory auxiliary process (ADR 0001).
-- Per-bot operations: pairing or unpairing one bot does not stop its peers;
+- Per-bot operations: binding or unbinding one bot does not stop its peers;
   process lifecycle belongs to the host's supervisor (ADR 0039).
 - The graph is the core: models drive and enrich conversations but never
   replace the state machine. A System One model routes and replies are
@@ -46,7 +46,7 @@ opt-in LLM realization — all of them Phase 8 in `PLAN.md`.
 ## Documentation
 
 - `config/examples/reference.yml` — reference configuration.
-- `docs/guide/` — pairing an account, running bots, and running as a systemd
+- `docs/guide/` — binding an account, running bots, and running as a systemd
   service.
 - `docs/glossary.md` — terms used across the docs.
 - `docs/integration.md` — runtime versus host responsibilities and integration.

@@ -1,6 +1,6 @@
 # Glossary
 
-- Bot — one WhatsApp account bound to a graph, its settings, and optional
+- Bot — one channel account bound to a graph, its settings, and optional
   system_one and llm; the deployable unit.
 - Fleet — the set of bots a single Botflota instance runs.
 - Scope — the top-level config namespace that isolates entities, references,
@@ -64,7 +64,7 @@
   (`5215500000000`), without the JID suffix.
 - LID (hidden user) — WhatsApp's `user@lid` address; kept internal to
   WhatsApp handling for resolution and delivery.
-- Peer identity (contact identity) — the key a messaging channel maps its own
+- Peer identity — the key a messaging channel maps its own
   addresses to: the provider and an opaque subject. When a provider's ids are
   only meaningful inside one store or profile, the adapter composes that
   space's stable identifier into the subject (ADR 0051).
@@ -87,17 +87,17 @@
   its source account identity; its current data owner need not be the account
   that imported it. Moving it never establishes current membership (ADR 0042).
 - Contact card — a message payload that shares someone's contact information,
-  such as a name, phone, email, or both. The selected target names are
-  `ContactCardContent` and `spec.ContactCard`, replacing `ContactContent` and
-  `spec.Contact`. The person described need not be a registered peer or a
-  directory member; sharing the card does not register them, add membership,
-  or create a chat with them. A `ContactCardEntry` (currently `ContactEntry`)
-  is one kind/value/label inside the card, not a `DirectoryEntry`. Its phone
-  or email value is opaque payload data, not a messaging identity or routing
-  instruction. `KindContactCard` is the selected Go name; the serialized kind
+  such as a name, phone, email, or both. The implemented payload type is
+  `ContactContent` and the declared step is `spec.Contact`; the selected target
+  names `ContactCardContent` and `spec.ContactCard` are still pending and the
+  catalog owns that rename. The person described need not be a registered peer
+  or a directory member; sharing the card does not register them, add
+  membership, or create a chat with them. A `ContactEntry` is one
+  kind/value/label inside the card, not a `DirectoryEntry`. Its phone or email
+  value is opaque payload data, not a messaging identity or routing
+  instruction. The implemented Go name is `KindContact`; the serialized kind
   remains `contact`, and each adapter supports only the variants it can
-  represent. Code renames are pending; see
-  [the terminology catalog](channels/domain-terminology.md).
+  represent. See [the terminology catalog](channels/domain-terminology.md).
 - Messaging provider — the service end users are on (WhatsApp today); one
   provider is reached through one or more channels.
 - Channel — one implementation that reaches a messaging provider. WhatsApp
@@ -138,9 +138,8 @@
   runtime context; a missing path is an error.
 - Runtime context — the values a template reads: graph and node variables,
   peer, message, bot, tool inputs, and request results. The P1 peer values are
-  `id`, `provider`, `subject`, and `name`. The old `contact.*` root is retired;
-  its per-bot WhatsApp translation is P2 work, never a universal phone field
-  (ADR 0018, ADR 0020).
+  `id`, `provider`, `subject`, and `name`. The old `contact.*` root is retired
+  with no alias (ADR 0018, ADR 0020).
 - Device store — the WhatsApp device credentials that keep a companion device
   linked: its identity keys, prekeys, and registration. It lives in the
   database, so a bot can run on a server.
@@ -173,4 +172,4 @@
 - History migration — moving, never copying, a bot's chats, messages, and
   directory to another bot of the same scope, so a recreated or peer bot starts
   from the same conversations; it runs with both bots stopped
-  (`docs/current-plan.md`). Unlinking an account never deletes history.
+  (`docs/next-plan.md`). Unlinking an account never deletes history.

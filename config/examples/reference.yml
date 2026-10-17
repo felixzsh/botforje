@@ -10,7 +10,7 @@ $schema: "../../config.schema.json"
 address: "127.0.0.1"              # REST API bind address
 port: 3000                        # REST API port (0 disables the API)
 # log_level and log_level_deps describe `fleet run`. A one-shot command such as
-# `bot pair` logs at warn and takes --verbose for the configured level.
+# `bot bind` logs at warn and takes --verbose for the configured level.
 log_level: "info"                 # debug, info, warn, error
 log_level_deps: "info"            # dependency logs; also accepts off
 default_timeout: 300              # Default graph session timeout in seconds
@@ -174,13 +174,14 @@ scopes:
           - message:
               body: "Thanks! We created lead {{node.lead-capture.resp.body.id}}."
 
-      # Send to a different recipient: `to` is a phone number or a template,
-      # and empty means the contact. Here the operator is notified on WhatsApp
-      # instead of the customer.
+      # Send to a different thread of the same provider: `to` is an optional
+      # thread override or a template, and empty means the inbound
+      # conversation. Here the operator is notified on the account's own thread
+      # instead of the customer's.
       notify-owner:
         steps:
           - message:
-              to: "{{graph.owner_phone}}"
+              to: "{{graph.operator_thread}}"
               body: "New request from {{peer.name}} ({{peer.subject}}): {{message.body}}"
 
       # Guarded action: a contact cannot trigger it twice within the cooldown,
@@ -312,7 +313,7 @@ scopes:
         initial_context:              # Persists across nodes for the session
           customer_name: ""
           visit_count: 0
-          owner_phone: ""             # Recipient for notify-owner; set per bot
+          operator_thread: ""         # Thread for notify-owner; set per bot
 
         nodes:
           menu:
@@ -447,9 +448,9 @@ scopes:
           queue_delay: 1500           # Milliseconds between outbound messages
           jitter: 400                 # Extra random 0-400 ms per delay
           max_messages_per_minute: 0  # Outbound ceiling; 0 means no limit
-          allowed_peers: []        # Empty means all contacts allowed
-          ignored_peers: ["5215500000000"]  # Peer subjects (WhatsApp phone numbers for now)
-          external_reply_pause: 900000  # Hand a chat over after a phone reply (ms)
+          allowed_peers: []        # Empty means all peers allowed
+          ignored_peers: ["5215500000000"]  # Peer subjects; WhatsApp uses phone-number subjects
+          external_reply_pause: 900000  # Hand a chat over after an external reply (ms)
 
       sales-bot:
         graph: "faq-support"        # No llm: this bot is deterministic

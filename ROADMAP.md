@@ -23,7 +23,7 @@ When Phase 9 closes, a clean machine and one config file give:
 
 - `config validate` over a settled config baseline, with a generated schema for
   editors.
-- A fleet of WhatsApp accounts paired with `bot pair` and run with
+- A fleet of WhatsApp accounts bound with `bot bind` and run with
   `fleet run`, answering from YAML graphs deterministically, with System One routing
   plus prescribed replies, or with an optional LLM.
 - SQLite persistence for the device store, chats, sessions, and messages.

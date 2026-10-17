@@ -56,7 +56,7 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
 
 - `botflota` (root) — core contracts: messages, persisted records, ports,
   errors, logging, and the template language; standard library only, never
-  YAML, SQL, whatsmeow, or an LLM SDK.
+  YAML, SQL, or a channel or LLM SDK.
 - `spec` — declarative objects: scopes, graphs, actions, bots, model
   profiles, and the `Text` and `Secret` value types.
 - `config` — documents: load, includes, interpolation, origin, validation,
@@ -292,9 +292,8 @@ and `{{node.<request-name>.duration}}`. Tool result syntax is still open
 
 `peer.id` is the peer's opaque handle within the scope, stable for the life of
 the identity; `peer.provider` and `peer.subject` are its comparable key, and
-`peer.name` is best-effort presentation. The old `contact.*` root is retired;
-its per-bot WhatsApp translation is P2 work, never a universal phone field
-(ADR 0018, ADR 0020).
+`peer.name` is best-effort presentation. The old `contact.*` root is retired
+with no alias (ADR 0018, ADR 0020).
 
 `graph` and `node` are read-write; `peer`, `message`, `bot`, and `input` are
 read-only, and `node` resets on every node entry. A missing path, an unknown
@@ -393,15 +392,15 @@ origin, because the past cannot say who wrote an outbound message outside
 Botflota.
 
 The account-wide history sync WhatsApp delivers at link time is imported
-inertly (ADR 0035): `bot pair` and `fleet run` share one importer, every 1:1
+inertly (ADR 0035): `bot bind` and `fleet run` share one importer, every 1:1
 content message is kept under its kind (ADR 0036), and every row is `sync`
 with `unknown` origin and routing and no session run. The import never runs the
 engine and ignores the bot filter, because it is not a conversation turn;
-`settings.history_sync: false` turns it off. A conversation registers its
+`channel.options.history_sync: false` turns it off. A conversation registers its
 peer and chat only when it stored at least one message or call, so the
 control-only shells WhatsApp sends for the account's directory never become
 chats. The directory itself is a separate, opt-in import
-(`settings.import_contacts`): it fills the `directory_entries` resource per bot
+(`channel.options.import_contacts`): it fills the `directory_entries` resource per bot
 and never touches the scope's peers, chats, or the engine (ADR 0037).
 `provider_message_id` (the channel's own id) is the dedup key, scoped by the
 bot that owns the message and by the destination it belongs to, both for a
@@ -443,20 +442,20 @@ composition and mechanics.
 `fleet run` hosts the API in the same process when `port` is set; `port: 0`
 keeps it off and the address defaults to `127.0.0.1`. The read routes live
 under `/api/v1`. Instance routes are `status`, `bots`, `config`, and `tokens`;
-scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `chats`,
-`contacts`, `sessions`, and `messages`, and a bot exposes its imported
-directory at `/bots/{bot}/contacts`. Every addressable object carries its scope, a
+scope routes are `/api/v1/scopes/{scope}/` plus `bots`, `config`, `peers`, and
+`messages`; a bot adds `chats`, `graph-runs`, `channel`, `directory`, `binding`,
+and `history` under `/bots/{bot}`. Every addressable object carries
+its scope, a
 message carries its bot as a (scope, bot) pair, and a chat is addressed by that
-pair plus the neutral `peer=<subject>` selector; P4 removes the legacy
-`contact=<subject>` selector and phone projection instead of keeping them
-alongside the neutral references (ADR 0054, PLAN.md "no backward
+pair plus `?chat_id=<id>`; there is no legacy `contact=<subject>` selector or
+phone projection beside the neutral references (ADR 0054, PLAN.md "no backward
 compatibility"). `messages` returns
 the last messages of a
 chat, or the ones newer than `?after_id=`, which is how `message tail --follow`
 polls, and each message carries its kind, its visible text, and the structured
 `content`; `chats` lists a bot's chats with their peer identities, which is how
 `chat list` reads them; `status` and `bots` report each bot's active sessions;
-`POST chats/sync` asks the phone for older messages of one chat over the live
+`POST chats/sync` asks the account for older messages of one chat over the live
 connection and reports the batch counts. A scope's `messages` route also
 accepts a `POST`: an API-origin send that stores and queues one text message
 to any peer — creating the peer and the chat when missing — so the bot's
@@ -495,53 +494,61 @@ standard error shape with code `rate_limited` and a `Retry-After` header.
 The budgets are instance settings (`rate_limit`): the defaults are 600 per
 credential and 60 failed attempts per minute, and `0` turns one off.
 Public errors never carry upstream detail — the caller gets a stable code
-and the log gets the reason — and the pairing session's `code` reaches only
-the response that asks for it, never a log (ADR 0025).
+and the log gets the reason — and the setup session's display payload reaches
+only the response that asks for it, never a log (ADR 0025).
 
-## Pairing
+## Binding and setup
 
-Linking a bot to WhatsApp is a separate step from running it: `bot pair` opens a
-channel, shows the QR code or the pairing code, and stores the resulting
-credentials in the shared SQLite file (ADR 0006). The companion registers under
-the bot's `channel.options.device_name` (default `Botflota`), the name the phone
-shows in Linked devices; it is sent only when registering, so an existing link
-keeps its name.
+Binding a bot to its channel account is a separate step from running it:
+`bot bind` drives the neutral setup lifecycle (ADR 0053). It resolves the
+adapter's advertised method, begins a session through the API of a running
+instance, and answers the session's typed steps — display, input, approval, and
+profile — without a provider-specific form. For WhatsApp the `qr` method
+renders the QR in the terminal, and the resulting companion credentials live in
+the adapter-owned device store in the shared SQLite file (ADR 0006). The
+companion registers under the bot's `channel.options.device_name` (default
+`Botflota`), the name the account shows in Linked devices; it is sent only when
+registering, so an existing link keeps its name.
 Two key systems are involved,
 and only one is software: the companion identity (Noise and Signal keys, prekeys,
 registration id) lives in the device store and can run on a server, while a
 passkey lives in an authenticator on the account owner's device and never leaves
 it (ADR 0028).
 
-When the server requires a passkey, the phone performs the ceremony and the
+When the server requires a passkey, the account performs the ceremony and the
 companion receives the handoff; if the server asks the companion instead, the
 pending step is reported and the bot stays stopped (ADR 0028).
 
 Right after linking, WhatsApp pushes the account-wide history sync. The same
-inert importer captures it in `bot pair` and in `fleet run`, whichever
+inert importer captures it in `bot bind` and in `fleet run`, whichever
 connection sees a chunk (ADR 0035). Pairing registers as a Desktop companion
-and always imports what arrives while its connection is alive. With
-`--import-history` it also registers with `RequireFullSync=true` and a wide
-window, and waits until that sync completes, the chunks go idle for a tolerant
-gap, or a long wait budget of its own runs out; without it, only the default
-recent window arrives and `chat sync` pages older messages per chat. The phone
+and always imports what arrives while its connection is alive. With the
+`full_history=true` setup parameter (`bot bind --param full_history=true`) it
+also registers with `RequireFullSync=true` and a wide window, and waits until
+that sync completes, the chunks go idle for a tolerant gap, or a long wait
+budget of its own runs out; without it, only the default
+recent window arrives and `chat sync` pages older messages per chat. The account
 remains the authority over the actual window.
 
-Pairing operations travel over the API of a running instance (ADR 0039):
-`POST`, `GET`, and `DELETE` on `.../bots/{bot}/pairing` start, read, and
-cancel a session, and `DELETE .../bots/{bot}/account` ends a live session
-and waits for its goroutine, stops the bot so its channel disconnects,
-removes the credentials, and fails the replies its queue still owes — one
-operation under the bot's lock, so the writes of one bot never overlap. The
-CLI drives those routes while another process owns the instance and works
-locally when it does not; replacing a pairing is an unpair followed by a
-pair, whichever way the instance is running.
+Binding operations travel over the API of a running instance (ADR 0039): `GET`
+and `DELETE` on `.../bots/{bot}/binding` inspect and detach a committed
+binding, `GET .../binding/methods` lists the advertised methods, `POST
+.../binding/setups` begins a setup session, `GET .../binding/setups/{id}` reads
+it, `POST .../binding/setups/{id}/inputs` answers one step, and `DELETE
+.../binding/setups/{id}` cancels the session.
+Detaching ends a live session and waits for its goroutine, stops the bot so its
+channel disconnects, removes the adapter's credentials, and fails the replies
+its queue still owes — one operation under the bot's lock, so the writes of one
+bot never overlap. The CLI drives those routes while another process owns the
+instance and works locally when it does not; replacing a binding is
+`bot bind --force`, whichever way the instance is running.
 
-An account change never changes history. Unlinking keeps the bot's chats,
-messages, sessions, and address book, so a relink or a replacement picks them
+An account change never changes history. Unbinding keeps the bot's chats,
+messages, sessions, and directory, so a rebind or a replacement picks them
 up; `adapters/whatsapp/pair.go` removes credentials, the account record, and the
 pairing status only. Deleting a bot's history is a separate explicit
-operation, and a migration moves chats, messages, and the address book to
-another bot of the same scope — a recreated bot or a peer bot — while contact
+operation, and a migration moves chats, messages, and the directory to
+another bot of the same scope — a recreated bot or a peer bot — while peer
 identities stay with the scope they are shared by (ADR 0029). A migration is a move, not a copy:
 it runs with both bots stopped, fails the source's queued replies before the
 old link can send them, and ends the source's active sessions instead of
@@ -550,8 +557,8 @@ ownership follows its chat in the same transaction, including the owner columns
 used for deduplication; its target, provider ID, and historical metadata stay
 unchanged. Current data ownership is not binding/message-space provenance
 (ADR 0051); that remaining policy stays in P5. Neither operation runs as a
-side effect of pairing, unpairing, or a config edit. Both are
-planned in `docs/current-plan.md` and settled in ADR 0042.
+side effect of binding, unbinding, or a config edit. Both are
+planned in `docs/next-plan.md` and settled in ADR 0042.
 
 ## Concurrency
 

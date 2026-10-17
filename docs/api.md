@@ -3,10 +3,10 @@
 This document defines the API's scope coverage and authority model. It is not
 the generated endpoint reference; the endpoint reference follows the code.
 `architecture.md` documents how the running instance composes and serves it.
-P4's neutral public contract was owner-approved on 2026-10-12; the resource,
-binding, conversation, send, and read contracts below are its implementation
-target, not a claim that the new handlers already exist. `channels/phases.md`
-tracks code and runtime gates; the current implementation is distinguished below.
+P4's neutral public contract was owner-approved on 2026-10-12 and is
+implemented; the resource, binding, conversation, send, and read contracts below
+describe the routes the server serves. `channels/phases.md` tracks code and
+runtime gates; the current implementation is distinguished below.
 
 ## API contract
 
@@ -144,12 +144,13 @@ watcher; it does not edit a separate in-memory YAML source.
 The caller owns drafts and their storage. On a conflict it reads the latest
 scope version and reconciles before saving again; Botflota stores no draft UI.
 
-Bot operations address one `(scope, bot)` at a time. Pairing and unpairing
-already work through the API while the instance runs; unpairing stops only that
+Bot operations address one `(scope, bot)` at a time. Binding and detaching
+already work through the API while the instance runs; detaching stops only that
 bot, lets a send already in progress finish, and fails the rest of its queued
-replies before the account is removed. Unlinking never removes history: chats,
-messages, sessions, and contacts stay, so a relink finds them again. Deleting
-one bot's history is a separate explicit confirmed operation that reports what
+replies before the adapter's credentials are removed. Unbinding never removes
+history: chats, messages, graph runs, and the directory stay, so a rebind finds
+them again. Deleting one bot's history is a separate explicit confirmed
+operation that reports what
 it removed, and migration moves it to another bot of the same scope for a bot
 replacing a lost account; both work through the API (ADR 0042), and a bot can
 export its history first so deleting it is an informed choice
@@ -175,13 +176,13 @@ arguments, JSON fields, and counts, not retired Go names awaiting their rename
 | Binding | `B/binding` | Bot's committed association |
 | Setup session | `B/binding/setups/{id}` | Scope, bot, and setup ID |
 
-Collections use the same names without an item ID. `peer_id` filters, where
-supported, refer to a peer in the authorized scope; graph-run references use
+Collections use the same names without an item ID. A peer is referenced by its
+scope-owned `{id}`, never a bare subject; graph-run references use
 `graph_run_id`, never an ambiguous graph `session_id`. Chat and graph-run
 reads resolve their IDs under scope and bot, not by global ID alone: chat
 control is `PUT B/chats/control?chat_id=<id>` with `{"mode":...}` in the
-JSON body, chat sync is `POST B/chats/sync?chat_id=<id>`, and graph runs
-are read from the collection as `GET B/graph-runs?chat_id=`. The chat
+JSON body, chat sync is `POST B/chats/sync?chat_id=<id>`, and the chat's graph
+run is read as `GET B/graph-runs?chat_id=`. The chat
 selector is a URL query parameter in both cases, never a body field. A graph run is
 not a setup session. No `/contacts`, `/account`, `/pairing`, or `enrollments`
 alias survives.
@@ -247,7 +248,8 @@ creating data or queueing. Disconnected is not unbound. A repeat of an accepted
 new admission. Known restrictions and declared support are checked separately;
 unknown authorization or eligibility never establishes a right to send.
 The existing outbox owns delivery, and the API neither runs a graph nor changes
-chat control. Binding-generation snapshots and delivery enforcement remain P5.
+chat control. Binding-generation snapshots and delivery enforcement are
+implemented with the P5 send contracts.
 
 ### Peer and directory reads
 
@@ -259,9 +261,10 @@ live inbound is distinct from registration, an API send, or an import.
 not current directory membership, reachability, or permission.
 
 `GET B/directory` reads that bot's retained directory snapshots (ADR 0037).
-Each entry separates its `peer: {provider, subject}` from its
-`source_identity: {provider, subject}`, with `scope`, `bot`, `display_name`, and
-`updated_at`. No phone projection or `/contacts` alias is retained. Both reads
+Each entry carries the peer it describes as `provider` and `subject`, the
+account whose book supplied it as `source_provider` and `source_subject`, and
+`scope`, `bot`, `display_name`, and `updated_at`. No phone projection or
+`/contacts` alias is retained. Both reads
 are available independently of the channel's current import capability.
 
 ### History export
@@ -308,7 +311,8 @@ legacy selector, old route, or phone projection survives beside them.
 
 Today, the API has owner and scoped bearer tokens, checks scope access on
 scope-addressed routes, reads and publishes scope configuration, and supports
-pairing, pairing cancellation, unpairing, exporting one bot's history as a zip
+binding inspection and detach, the setup begin/read/input/cancel lifecycle,
+exporting one bot's history as a zip
 of CSVs, and holding or releasing one chat's automation (ADR 0043) while the
 fleet is running. The owner-only routes expose instance
 configuration and manage access tokens. YAML edits still enter through files as

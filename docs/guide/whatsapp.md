@@ -1,55 +1,53 @@
-# Pairing and running bots
+# Binding and running bots
 
-How to pair one real WhatsApp account, run the bots, and prove the channel
+How to bind one real WhatsApp account, run the bots, and prove the channel
 end to end.
 
-## Pair an account
+## Bind an account
 
 1. Build: `make build`.
 2. Configure the bot and validate: `./bin/botflota config validate`.
-3. Pair it; this prints an ASCII QR and waits:
-   `./bin/botflota bot pair --import-history support-bot`
+3. Bind it; the WhatsApp `qr` method prints an ASCII QR and waits:
+   `./bin/botflota bot bind support-bot`
    Add `--scope name` when the bot name repeats across scopes. The QR is
    rendered half-block, so it stays narrow enough for a normal terminal; if
-   your font is very large, zoom out or widen the window first. The code
-   rotates every ~20 seconds and the screen clears between codes, so the
-   visible one is always current. After you scan, `bot pair` reconnects once to
-   confirm the companion is online before it exits. If WhatsApp resets a scan,
-   `bot pair` automatically starts a fresh QR; keep the command running.
+   your font is very large, zoom out or widen the window first. WhatsApp
+   rotates the challenge, and the command re-renders the current one, so keep
+   it running.
 4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
-5. `bot pair` prints the paired phone number, what the registration stored
-   (chats, messages, and contacts), and exits. Add `--verbose` to also print
-   the structured log at the configured `log_level`.
+5. `bot bind` prints the bound identity (`provider/subject`) and exits. Add
+   `--verbose` to also print the structured log at the configured `log_level`.
 
-For new pairings, WhatsApp should show the companion as `Botflota`. Existing
-links keep their old name until they are unlinked and paired again.
+For new bindings, WhatsApp shows the companion as `Botflota`, or as the bot's
+`channel.options.device_name` when it sets one. Existing links keep their old
+name until they are unbound and bound again.
 
-To replace a pairing, run `./bin/botflota bot pair --force support-bot`; it
-removes the same things `bot unpair` does: the linked-account row, the
-pairing status, and the channel's device row with its keys, sessions,
-app-state cache, hidden-user map, contact cache, and message secrets.
-Botflota's own contacts, chats, sessions, messages, and address book are
-never touched.
+To replace a binding, run `./bin/botflota bot bind --force support-bot`; it
+detaches the committed binding first and removes the same things `bot unbind`
+does: the binding row, the pairing status, and the adapter's device row
+with its keys, sessions, app-state cache, hidden-user map, contact cache, and
+message secrets. Botflota's own peers, chats, messages, graph runs, and
+directory are never touched.
 
 Two things to expect. The phone keeps listing the old companion until you remove
-it in WhatsApp > Linked devices, so a re-pair adds a device rather than
+it in WhatsApp > Linked devices, so a rebind adds a device rather than
 replacing one. And a fresh registration is the only way to change what the
 registration carries — the requested history window above all — because WhatsApp
 reads it once, at linking time.
 
-`bot pair` and `bot unpair` adapt to a running instance: both drive its API —
-the QR comes from the pairing session, the bot joins the fleet as soon as
-WhatsApp accepts the scan, and an unpair stops the bot before its credentials
-go — and both work locally under the instance lock when the fleet is stopped.
-One phone number keeps one companion connection at a time, which is why
-replacing a pairing is an unpair followed by a pair, whichever way the
-instance is running.
+`bot bind` and `bot unbind` adapt to a running instance: while `fleet run` owns
+the instance both drive its API — the QR comes from the setup session, the bot
+joins the fleet as soon as setup commits, and an unbind stops the bot before
+its credentials go — and both work locally under the instance lock when the
+fleet is stopped. One phone number keeps one companion connection at a time,
+which is why replacing a binding is `--force`, whichever way the instance is
+running.
 
 Botflota allows one bot per WhatsApp phone number. WhatsApp may list several
 linked devices, but assigning the same number to two bots can duplicate replies.
-The fleet and `bot pair` reject that configuration. To remove one pairing
+The fleet and `bot bind` reject that configuration. To remove one binding
 while keeping sessions and message history, run
-`./bin/botflota bot unpair support-bot`. This does not unlink the old companion
+`./bin/botflota bot unbind support-bot`. This does not unlink the old companion
 from WhatsApp; remove it from WhatsApp's Linked devices screen if it remains
 listed.
 
@@ -57,20 +55,20 @@ listed.
 
 When an account links, WhatsApp pushes the account-wide history sync: the
 conversations it chooses, with the messages it chooses. Botflota stores what
-arrives, without replying. The pairing connection is the only one that sees
-this sync, so `bot pair` always imports it while it waits.
+arrives, without replying. The binding connection is the only one that sees
+this sync, so `bot bind` always imports it while it waits.
 
-`--import-history` is what decides how much arrives:
+`--param full_history=true` is what decides how much arrives:
 
 - With it, the companion registers asking for the full window
   (`RequireFullSync` plus a ten-year, 10 GB limit) and the command waits until
-  that transfer reaches 100 %, goes idle, or a ten-minute budget runs out. This
-  is the mode that brings chats older than the default window: on a real
-  account it took the same pairing from 13 to 184 conversations.
+  that transfer completes, the chunks go idle, or a ten-minute budget runs out.
+  This is the mode that brings chats older than the default window: on a real
+  account it took one binding from 13 to 184 conversations.
 - Without it, the companion registers like a plain client and only the default
   recent window arrives. `chat sync` pages older messages per chat afterwards.
 
-The phone remains the authority: it decides what it sends, and the window is
+The account remains the authority: it decides what it sends, and the window is
 read only while registering, so changing it needs a new registration
 (`--force`).
 
@@ -80,34 +78,34 @@ read only while registering, so changing it needs a new registration
   call"), or `unknown` for anything else — so a chat whose history is all media
   still has an anchor for `chat sync`. Groups, broadcasts, status, and channels
   are not stored, and neither are edits, reactions, deletions, or poll votes.
-  A conversation registers its contact and chat only when it stored at least one
+  A conversation registers its peer and chat only when it stored at least one
   message or call, so `chat list` shows conversations rather than the
-  control-only shells WhatsApp sends for the account's address book.
+  control-only shells WhatsApp sends for the account's directory.
 - Every imported message is marked `sync`, with `unknown` origin and routing.
   It is never treated as if a person or the bot just wrote it.
 - The account's directory names arrive with the sync and name the peers
   Botflota already knows.
 - The import does not run the bot and does not reply. The bot filter does not
   apply: a chat outside `allowed_peers` is still stored.
-- The sync arrives in chunks. `bot pair` captures what it sees before it
+- The sync arrives in chunks. `bot bind` captures what it sees before it
   exits; `fleet run` captures the rest when it connects, so start the fleet
-  after pairing if the backlog does not appear at once. A sync delivered to a
+  after binding if the backlog does not appear at once. A sync delivered to a
   connection nobody captured is gone: the server sends it once.
-- Set `settings.history_sync: false` on a bot to store none of it.
+- Set `channel.options.history_sync: false` on a bot to store none of it.
 
-See which contacts arrived with `./bin/botflota chat list <bot>`, then read one
-thread with `./bin/botflota message list <bot> <phone>`. `chat list` shows the
-stored message total split into `SYNC` and `LIVE`, and the first and last
-activity.
+See which peers arrived with `./bin/botflota chat list <bot>`, then read one
+thread with `./bin/botflota message list <bot> --chat-id <id>`. `chat list`
+shows the stored message total split into `SYNC` and `LIVE`, and the first and
+last activity.
 
 ## Older messages on demand
 
 WhatsApp only delivers a window of history, so many chats stop at one anchor
-message. `chat sync` asks the phone for older messages of one chat:
+message. `chat sync` asks the account for older messages of one chat:
 
 ```bash
-./bin/botflota chat sync support-bot 5215500000000
-./bin/botflota chat sync --count 50 --timeout 120 support-bot 5215500000000
+./bin/botflota chat sync support-bot --chat-id 3
+./bin/botflota chat sync --count 50 --timeout 120 support-bot --chat-id 3
 ```
 
 To walk every chat instead of one, add `--all`; the command takes only the bot
@@ -120,8 +118,8 @@ chat and a total:
 
 ```
 syncing 184 chat(s) through the fleet...
-5218994330966   imported 52 (duplicate 0, skipped 2) [nothing older]
-5218998573061   imported 18 (duplicate 1, skipped 0) [no more access]
+3        imported 52 (duplicate 0, skipped 2) [nothing older]
+7        imported 18 (duplicate 1, skipped 0) [no more access]
 ...
 synced 184 chat(s), imported 1204 (duplicate 31, skipped 12), 0 failed
 ```
@@ -135,79 +133,79 @@ It is best effort, not a guarantee:
 - It runs on the live connection of `fleet run`, so **start the fleet first**;
   one phone number keeps one companion connection at a time.
 - It requests up to `--count` messages older than the chat's oldest stored
-  message and waits up to `--timeout` seconds for the phone to answer.
+  message and waits up to `--timeout` seconds for the account to answer.
 - A reply is imported like any other sync; a missing reply is reported, not
   retried automatically. Repeat it to page further back.
 - WhatsApp, not Botflota, decides whether and how much to send.
 
-## Address book
+## Directory
 
-An address book is not a conversation. WhatsApp Business knows every number in
+A directory is not a conversation. WhatsApp Business knows every number in
 the phone's directory, including people you only talk to from a personal
 account on the same phone, and it sends a control-only conversation shell for
 each of them. Those shells are skipped, so they never appear as chats.
 
-To copy the address book anyway, opt in per bot:
+To copy the directory anyway, opt in per bot:
 
 ```yaml
 bots:
   support-bot:
     graph: "support"
-    settings:
-      import_contacts: true
+    channel:
+      provider: "whatsapp"
+      mode: "native"
+      options:
+        import_contacts: true
 ```
 
-The import stores one record per number, keyed by bot, and never creates a chat
-or a contact:
+The import stores one entry per account identity, keyed by bot, and never
+creates a chat or a peer interaction:
 
 ```bash
-./bin/botflota address-book list support-bot
-./bin/botflota address-book list --limit 500 support-bot
+./bin/botflota directory list support-bot
+./bin/botflota directory list --limit 500 support-bot
 ```
 
-The name shown is the address-book name, falling back to the verified business
-name and then the push name. The import runs at `bot pair` and at `fleet run`,
+The name shown is the directory name, falling back to the verified business
+name and then the push name. The import runs at `bot bind` and at `fleet run`,
 like the history sync; a bot that never sets `import_contacts` answers with an
 empty list.
 
 ## List bots
 
 `./bin/botflota bot list` prints a compact table with the `BOT`, `SCOPE`,
-`PHONE`, `STATUS`, and `LAST CHANGE` columns. Status values are `paired`,
-`not paired`, or `unpaired`. `PHONE` shows the number only for `paired`;
-otherwise it shows `-`. `not paired` means there is no account record;
-`unpaired` means the record exists but its local credentials are missing.
-`LAST CHANGE` is the last confirmed transition, or `-` when no transition is
-recorded. It is shown in local time, using the same format as the logs. Running
-`bot list` does not update it.
-
-The timestamp is persisted by pairing, unpair, and fleet operations. It reflects
-when Botflota detected the transition, not necessarily when the phone changed it.
+`BINDING`, and `STATE` columns. `BINDING` shows `provider/subject` for a
+committed binding and `-` otherwise. `STATE` is the running channel's transport
+state (`connected`, `connecting`, `stopped`, `logged_out`, or `banned`), or `-`
+when the bot is configured but not running. `bot list` reads the running
+instance through the REST API, so `fleet run` must be up and the command
+changes no stored state.
 
 ## Run the bots
 
-`./bin/botflota fleet run` starts every
-paired bot, answers inbound messages with the configured pacing, and stops on
-Ctrl-C after draining the outbox.
+`./bin/botflota fleet run` starts every bound bot, answers inbound messages
+with the configured pacing, and stops on Ctrl-C after draining the outbox.
 
-Bots without a local pairing are not initialized. The fleet logs a
-`WARN` naming only `bot pair` and continues with the paired bots; the
-command's own usage explains its flags and arguments. If none are paired, the
-fleet stays idle until Ctrl-C instead of failing.
+Bots without a committed binding are not initialized. The fleet logs a
+`WARN` for each one (`bot not ready; skipping it`, with its scope, bot, and
+state) and continues with the bound bots. If none are bound, the fleet stays
+idle until Ctrl-C instead of failing.
 
 ## Human-like pacing
 
-Each bot paces replies through its `settings`. For one inbound message:
+Each bot paces replies through its shared settings and its channel options. For
+one inbound message:
 
-1. `read_receipt_delay` — wait, then mark the message read when `read_receipts`
-   is on.
-2. `reply_delay` — wait, showing "typing…" when `simulate_typing` is on.
+1. `channel.options.read_receipt_delay` — wait, then mark the message read when
+   `channel.options.read_receipts` is on.
+2. `channel.options.reply_delay` — wait, showing "typing…" when
+   `channel.options.simulate_typing` is on.
 3. Send the reply.
 
-Between consecutive outbound messages the outbox waits `queue_delay`, so a burst
-never leaves as one block. Every delay adds the shared random `jitter` in
-`[0, jitter]` ms, drawn again each time; the configured delay is the floor, so
-`jitter: 0` makes pacing deterministic.
+Between consecutive outbound messages the outbox waits `settings.queue_delay`,
+so a burst never leaves as one block. Every delay adds the shared random
+`settings.jitter` in `[0, jitter]` ms, drawn again each time; the configured
+delay is the floor, so `jitter: 0` makes pacing deterministic.
 
 Delays are milliseconds and per bot; `0` means no added wait. `queue_delay` does
 not delay the first message; `reply_delay` does.
@@ -216,19 +214,19 @@ not delay the first message; `reply_delay` does.
 
 Deterministic flow (a bot with no `llm`):
 
-- [ ] `bot pair` prints a QR, pairing succeeds, and the device credentials are
+- [ ] `bot bind` prints a QR, binding succeeds, and the device credentials are
   written under `data_dir`.
 - [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
-- [ ] With the fleet running, `bot list` reports the bot as `paired` with its
-  subject in the `PHONE` column.
+- [ ] With the fleet running, `bot list` reports the bot's binding
+  (`provider/subject`) and its transport state.
 - [ ] After linking, the imported backlog appears as `sync`/`unknown` for the
   peers in the sync, and none of it generated a reply.
 - [ ] The directory names arrive and name those peers.
 - [ ] `chat list <bot>` lists those peers with the stored total split into
   `SYNC` and `LIVE`, and the first and last activity.
-- [ ] With the fleet running, `chat sync <bot> <contact>` pages one request of
-  older messages back from the phone, or reports that it did not answer.
+- [ ] With the fleet running, `chat sync <bot> --chat-id <id>` pages one request
+  of older messages back from the account, or reports that it did not answer.
 - [ ] Digits and triggers route as configured; unmatched input takes the
   default edge or the graph fallback.
 - [ ] Send the same text from a second device after a history: routing still
