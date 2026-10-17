@@ -505,7 +505,7 @@ func (f *Fleet) now() time.Time {
 
 // StopBot stops one bot and waits for its full shutdown: the outbox drains,
 // the channel disconnects, and only then does the caller get a stopped bot
-// whose credentials may be removed — one phone keeps one connection (ADR
+// whose credentials may be removed — one account keeps one connection (ADR
 // 0011, ADR 0021). It waits for the run goroutine itself, not for the
 // running flag the goroutine clears on its way out, so a bot that began
 // stopping is never reported finished early. A bot that never started has

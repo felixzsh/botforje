@@ -99,7 +99,7 @@ func TestExternalReplyRestartsTheCountdown(t *testing.T) {
 	}
 }
 
-// TestAnExternalReplyDoesNotReleaseAManualHold: a reply from the phone renews
+// TestAnExternalReplyDoesNotReleaseAManualHold: a reply from the account renews
 // the countdown but never hands back a chat an operator is keeping (ADR 0043).
 func TestAnExternalReplyDoesNotReleaseAManualHold(t *testing.T) {
 	now := t0

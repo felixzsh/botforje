@@ -55,7 +55,7 @@ type PairingResult struct {
 type PairingSession struct {
 	Scope     string
 	Bot       string
-	Method    string // how the account links: "qr" for WhatsApp
+	Method    string // how the account links: "qr", a credential, or a profile
 	State     PairState
 	Code      string // the latest display challenge to present
 	StartedAt time.Time

@@ -104,7 +104,7 @@ func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
 	return sqlite.Open(filepath.Join(dir, "botflota.db"))
 }
 
-// openDevices: a nil logger keeps the whatsmeow store quiet.
+// openDevices: a nil logger keeps the adapter store quiet.
 func openDevices(
 	ctx context.Context, db *sqlite.DB, log *slog.Logger, depsLevel string,
 ) (*whatsapp.Devices, error) {

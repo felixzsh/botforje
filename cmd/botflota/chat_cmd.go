@@ -84,7 +84,7 @@ func newChatSyncCmd() *chatSyncCmd {
 		scope:   fs.String("scope", "", "`NAME` scope that owns the bot (needed if the name repeats)"),
 		chatID:  fs.Int64("chat-id", 0, "`ID` chat to sync (required unless --all)"),
 		count:   fs.Int("count", 0, "`N` older messages to import per chat (0 = all accessible)"),
-		timeout: fs.Int("timeout", 90, "`SECONDS` to wait for the primary device, per chat"),
+		timeout: fs.Int("timeout", 90, "`SECONDS` to wait for one sync answer, per chat"),
 		all:     fs.Bool("all", false, "sync every chat of the bot, one at a time"),
 	}
 }
@@ -159,7 +159,7 @@ func syncOneChat(
 		result.Received, result.Rounds, result.Imported, result.Duplicate, result.Skipped)
 	switch {
 	case result.Exhausted:
-		line += "; stopped: the phone reports no more access"
+		line += "; stopped: the account reports no more access"
 	case result.Stable:
 		line += "; stopped: nothing older to page"
 	}
@@ -259,7 +259,7 @@ func stopReason(result chatSyncResult) string {
 }
 
 // syncHTTPTimeout prices one batch per fifty requested entries plus headroom;
-// the phone decides how long a backfill takes, so an unbounded request gets a
+// the account decides how long a backfill takes, so an unbounded request gets a
 // generous ceiling.
 func syncHTTPTimeout(count int, perBatch time.Duration) time.Duration {
 	if count <= 0 {

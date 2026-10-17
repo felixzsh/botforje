@@ -62,7 +62,7 @@ func newAPIClient(cfg *config.Config) (*apiClient, error) {
 }
 
 // apiTimeout keeps a hung instance from hanging the terminal; a sync call
-// overrides it because the phone decides how long it takes.
+// overrides it because the account decides how long it takes.
 const apiTimeout = 10 * time.Second
 
 // get: a nil out discards the body.
@@ -91,7 +91,7 @@ func (c *apiClient) delete(
 }
 
 // post's timeout bounds the whole call, because some operations wait on the
-// phone.
+// account.
 func (c *apiClient) post(
 	ctx context.Context, path string, out any, timeout time.Duration,
 ) error {

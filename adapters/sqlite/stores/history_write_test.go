@@ -147,7 +147,7 @@ func TestMoveBotMovesTheChatWhole(t *testing.T) {
 			moved.sessions[0].ExpiresAt, t2)
 	}
 	// Address-book entries arrive, and the destination's own row for another
-	// phone stays.
+	// peer stays.
 	if len(moved.addressBook) != 2 {
 		t.Fatalf("address book = %+v, want both", moved.addressBook)
 	}

@@ -183,7 +183,7 @@ func sinceParam(r *http.Request) (time.Time, error) {
 	return time.UnixMilli(ms), nil
 }
 
-// A zero count means every entry the phone makes available.
+// A zero count means every entry the account makes available.
 func countParam(r *http.Request) (int, error) {
 	raw := r.URL.Query().Get("count")
 	if raw == "" {
@@ -196,7 +196,7 @@ func countParam(r *http.Request) (int, error) {
 	return count, nil
 }
 
-// The timeout is the seconds to wait for one answer from the phone.
+// The timeout is the seconds to wait for one answer from the account.
 func timeoutParam(r *http.Request) (time.Duration, error) {
 	raw := r.URL.Query().Get("timeout")
 	if raw == "" {

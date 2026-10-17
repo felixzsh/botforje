@@ -115,7 +115,7 @@ func (s *MessageStore) HasProviderID(
 }
 
 // Call rows are excluded: a call is not a position in the chat's own message
-// list, so the primary device cannot page back from it. Calls stay visible in
+// list, so paging older history cannot start from it. Calls stay visible in
 // the read API.
 func (s *MessageStore) Oldest(ctx context.Context, chatID int64) (*botflota.Message, error) {
 	const query = `SELECT ` + messageColumns +

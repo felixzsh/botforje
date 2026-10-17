@@ -1,6 +1,6 @@
 // Package botflota holds the core contracts shared by the engine and its
 // adapters: messages, persisted records, ports, errors, the structured logger,
-// and the template language. It never imports YAML, SQL, whatsmeow, or LLM
+// and the template language. It never imports YAML, SQL, or messaging or LLM
 // SDK types (ADR 0004, ADR 0034).
 package botflota
 
@@ -105,8 +105,8 @@ type OutgoingMessage struct {
 }
 
 // ExternalSend is a message that left a bot's linked account without Botflota
-// sending it: a human replied from the phone or another client, or another
-// automation on the same account sent it (ADR 0043). It carries the exact
+// sending it: a human replied from another client, or another automation on the
+// same account sent it (ADR 0043). It carries the exact
 // destination, never a raw device locator. It is an observation, not a
 // routable turn.
 type ExternalSend struct {

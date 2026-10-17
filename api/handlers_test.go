@@ -85,7 +85,7 @@ func TestChatSyncRejectsAnUnknownChat(t *testing.T) {
 }
 
 // TestChatSyncHidesUpstreamFailure: the caller learns that the sync failed,
-// not why — the detail names the phone, the device, or the provider and
+// not why — the detail names the account, the device, or the provider and
 // belongs in the server's log (ROADMAP Phase 13).
 func TestChatSyncHidesUpstreamFailure(t *testing.T) {
 	live := &fakeSyncFleet{

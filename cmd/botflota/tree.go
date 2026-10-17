@@ -124,7 +124,7 @@ func cliTree() *commandHelp {
 						summary: "bind a bot to its channel account",
 						long: "Drive the bot's neutral account setup: discover the method,\n" +
 							"begin a session, and answer its steps. Display steps render\n" +
-							"here (a QR code prints to the terminal); input steps prompt\n" +
+							"here (a display challenge prints to the terminal); input steps prompt\n" +
 							"for their typed values, which travel only toward the\n" +
 							"instance and are never printed back. While the instance\n" +
 							"runs it binds through the API of fleet run, so the bot\n" +
@@ -204,7 +204,7 @@ func cliTree() *commandHelp {
 			{
 				name:    "chat",
 				summary: "list a bot's chats and sync older history",
-				long:    "List the stored chats of one bot and ask the phone for older history.",
+				long:    "List the stored chats of one bot and ask the account for older history.",
 				usage:   "botflota chat <command> [options]",
 				examples: []string{
 					"botflota chat list support-bot",
@@ -231,8 +231,8 @@ func cliTree() *commandHelp {
 					},
 					{
 						name:    "sync",
-						summary: "ask the phone for older messages of one chat or all of them",
-						long: "Ask the primary device for older messages and import batches\n" +
+						summary: "ask the account for older messages of one chat or all of them",
+						long: "Ask the linked account for older messages and import batches\n" +
 							"until the cursor stops moving. --count limits the total per chat;\n" +
 							"zero means all accessible history. The running fleet owns the live\n" +
 							"connection, so this is an API client and fleet run must be up.\n" +
