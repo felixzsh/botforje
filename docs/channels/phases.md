@@ -526,7 +526,7 @@ implemented runtime rather than the accepted target.
   HTTP-style update source with processing confirmation. These are
   behavioral contrast cases, not new provider branches or SDK
   dependencies.
-- [ ] Add an independent test adapter using only its adapter files and
+- [x] Add an independent test adapter using only its adapter files and
   one registry entry. Prove setup with existing steps, strict option
   validation/schema, discovery, conversation reads, filters/holds,
   durable sends, restart, and detach work without editing shared
