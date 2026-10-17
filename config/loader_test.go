@@ -131,6 +131,35 @@ func TestStrictUnknownField(t *testing.T) {
 	}
 }
 
+// TestTopLevelDeviceNameHasNoAlias: device_name is an adapter-owned channel
+// option, so the retired instance-level key fails as an unknown field with no
+// alias or no-op (ADR 0054).
+func TestTopLevelDeviceNameHasNoAlias(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "alone",
+			body: "device_name: \"Acme\"\n",
+		},
+		{
+			name: "beside instance settings",
+			body: "port: 3000\ndevice_name: \"Acme\"\nscopes: {}\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTemp(t, t.TempDir(), "config.yml", tc.body)
+			_, err := testLoader().Load(path)
+			if err == nil || !strings.Contains(err.Error(), "device_name") ||
+				!strings.Contains(err.Error(), "not found") {
+				t.Fatalf("want a not-found device_name error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestSameNameAcrossScopes(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTemp(t, dir, "config.yml", `scopes:

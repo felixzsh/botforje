@@ -55,6 +55,7 @@ channel:
     simulate_typing: true
     history_sync: false
     import_contacts: true
+    device_name: "Acme Bots"
 settings:
   jitter: 250
 `)
@@ -75,6 +76,9 @@ settings:
 	}
 	if !options.ImportContacts {
 		t.Error("import_contacts: true must turn the import on")
+	}
+	if options.DeviceName != "Acme Bots" {
+		t.Errorf("device_name = %q, want %q", options.DeviceName, "Acme Bots")
 	}
 }
 
@@ -105,6 +109,17 @@ channel:
     reply_delay: -1
 `,
 			want: "must be >= 0",
+		},
+		{
+			name: "invalid device name",
+			doc: `graph: menu
+channel:
+  provider: whatsapp
+  mode: native
+  options:
+    device_name: [a]
+`,
+			want: "channel.options",
 		},
 	}
 	for _, tc := range cases {

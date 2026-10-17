@@ -503,8 +503,9 @@ the response that asks for it, never a log (ADR 0025).
 Linking a bot to WhatsApp is a separate step from running it: `bot pair` opens a
 channel, shows the QR code or the pairing code, and stores the resulting
 credentials in the shared SQLite file (ADR 0006). The companion registers under
-`device_name` (default `Botflota`), the name the phone shows in Linked devices;
-it is sent only when registering, so an existing link keeps its name.
+the bot's `channel.options.device_name` (default `Botflota`), the name the phone
+shows in Linked devices; it is sent only when registering, so an existing link
+keeps its name.
 Two key systems are involved,
 and only one is software: the companion identity (Noise and Signal keys, prekeys,
 registration id) lives in the device store and can run on a server, while a

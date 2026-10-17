@@ -15,7 +15,6 @@ log_level: "info"                 # debug, info, warn, error
 log_level_deps: "info"            # dependency logs; also accepts off
 default_timeout: 300              # Default graph session timeout in seconds
 data_dir: "~/.local/share/botflota"  # Database and credentials (XDG default when omitted)
-device_name: "Botflota"           # Name in the phone's Linked devices; brand it for a host
 rate_limit:                        # API budgets per fixed minute
   credential_per_minute: 600       # One budget per token; 0 = unlimited
   failed_per_minute: 60            # Attempts with no valid credential; 0 = unlimited
@@ -443,6 +442,7 @@ scopes:
             simulate_typing: true       # Show composing during reply_delay
             history_sync: true          # Import the WhatsApp backlog when linking
             import_contacts: false      # Copy the account's address book too
+            device_name: "Botflota"     # Linked-device name; brand it per bot
         settings:
           queue_delay: 1500           # Milliseconds between outbound messages
           jitter: 400                 # Extra random 0-400 ms per delay

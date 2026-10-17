@@ -49,10 +49,6 @@ type Config struct {
 	LogLevelDeps   string `yaml:"log_level_deps" json:"log_level_deps,omitempty"`
 	DefaultTimeout int    `yaml:"default_timeout" json:"default_timeout,omitempty"`
 	DataDir        string `yaml:"data_dir" json:"data_dir,omitempty"`
-	// DeviceName is the companion name WhatsApp shows in Linked devices. It is
-	// sent only when a bot registers a new pairing; an existing link keeps the
-	// name it was registered with. Empty uses the built-in default.
-	DeviceName string `yaml:"device_name" json:"device_name,omitempty"`
 	// RateLimit bounds the API per fixed minute; an omitted block uses the
 	// built-in budgets, and changing it requires a restart.
 	RateLimit *RateLimitSettings `yaml:"rate_limit" json:"rate_limit,omitempty"`

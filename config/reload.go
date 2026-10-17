@@ -99,7 +99,6 @@ func globalChanges(current, next *Config) []string {
 		{"default_timeout", fmt.Sprint(current.DefaultTimeout),
 			fmt.Sprint(next.DefaultTimeout)},
 		{"data_dir", current.DataDir, next.DataDir},
-		{"device_name", current.DeviceName, next.DeviceName},
 		{"rate_limit", fmt.Sprint(current.RateBudgets()),
 			fmt.Sprint(next.RateBudgets())},
 		{"exclusive_scopes", fmt.Sprint(current.ExclusiveScopes),

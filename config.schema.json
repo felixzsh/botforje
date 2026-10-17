@@ -145,6 +145,9 @@
             "options": {
               "additionalProperties": false,
               "properties": {
+                "device_name": {
+                  "type": "string"
+                },
                 "history_sync": {
                   "type": "boolean"
                 },
@@ -196,10 +199,6 @@
         },
         "default_timeout": {
           "type": "integer"
-        },
-        "device_name": {
-          "description": "DeviceName is the companion name WhatsApp shows in Linked devices. It is\nsent only when a bot registers a new pairing; an existing link keeps the\nname it was registered with. Empty uses the built-in default.",
-          "type": "string"
         },
         "exclusive_scopes": {
           "description": "ExclusiveScopes makes a scope grant exclusive: minting an access token\nthen refuses a scope another active token already holds, and startup\nrefuses to run while a scope is already granted to several active\ntokens, so a scope belongs to at most one active token. The default\nfalse lets any number of tokens share a scope; the owner token covers\nevery scope either way. Changing it requires a restart.",

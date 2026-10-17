@@ -410,7 +410,7 @@ func pairingManager(
 				Outbox:         db.Outbox(),
 				Log:            logger,
 				DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
-				DeviceName:     cfg.DeviceName,
+				DeviceName:     options.DeviceName,
 			}, nil
 		},
 		OnPaired: func(ctx context.Context, scope, botName string) error {

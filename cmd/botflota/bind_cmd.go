@@ -486,7 +486,7 @@ func runBind(args []string) int {
 	lock, err := ownInstance(configFile)
 	owned := err == nil
 	if err != nil && !errors.Is(err, instance.ErrOwned) {
-		reportOwned(err, "binding (one device cannot be connected twice)")
+		reportOwned(err, "binding (one account cannot be connected twice)")
 		return 1
 	}
 	cfg, code := loadConfig(configFile)
@@ -1066,7 +1066,7 @@ func offlinePairBuild(
 			Outbox:         db.Outbox(),
 			Log:            botflota.DiscardLogger(),
 			DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
-			DeviceName:     cfg.DeviceName,
+			DeviceName:     options.DeviceName,
 		}, nil
 	}
 }

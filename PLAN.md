@@ -396,7 +396,7 @@ Deliverables:
   reveal the value only to the consumer that sends it.
 - [ ] Reject a `${...}` that reaches any other string (ADR 0014): entities
   (llm, action, graph, bot) are scanned, but instance-level settings
-  (`address`, `data_dir`, `device_name`), `include` paths, and a scope's
+  (`address`, `data_dir`), `include` paths, and a scope's
   `display_name` are not.
 - [x] Config watch baseline (ADR 0009): poll the main YAML and its loaded
   includes; load, interpolate, and validate a complete candidate before use.

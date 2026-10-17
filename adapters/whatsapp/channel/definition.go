@@ -25,23 +25,29 @@ const (
 )
 
 // BotOptions is the decoded adapter-owned configuration of one WhatsApp bot:
-// the presence the channel applies and its import switches (ADR 0054).
+// the presence the channel applies, its import switches, and its companion
+// device name (ADR 0054).
 type BotOptions struct {
 	Settings       Settings
 	History        bool
 	ImportContacts bool
+	// DeviceName is the companion name WhatsApp shows in Linked devices. It is
+	// read only while registering; an existing link keeps its name, and empty
+	// uses the adapter's built-in default (ADR 0053).
+	DeviceName string
 }
 
 // rawOptions is the authored shape of channel.options. A pointer distinguishes
 // an absent switch from an explicit false, so the adapter's own defaults apply
 // only where the author said nothing (ADR 0054).
 type rawOptions struct {
-	ReadReceipts     *bool `yaml:"read_receipts" json:"read_receipts,omitempty"`
-	ReadReceiptDelay int   `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
-	ReplyDelay       int   `yaml:"reply_delay" json:"reply_delay,omitempty"`
-	SimulateTyping   *bool `yaml:"simulate_typing" json:"simulate_typing,omitempty"`
-	HistorySync      *bool `yaml:"history_sync" json:"history_sync,omitempty"`
-	ImportContacts   *bool `yaml:"import_contacts" json:"import_contacts,omitempty"`
+	ReadReceipts     *bool  `yaml:"read_receipts" json:"read_receipts,omitempty"`
+	ReadReceiptDelay int    `yaml:"read_receipt_delay" json:"read_receipt_delay,omitempty"`
+	ReplyDelay       int    `yaml:"reply_delay" json:"reply_delay,omitempty"`
+	SimulateTyping   *bool  `yaml:"simulate_typing" json:"simulate_typing,omitempty"`
+	HistorySync      *bool  `yaml:"history_sync" json:"history_sync,omitempty"`
+	ImportContacts   *bool  `yaml:"import_contacts" json:"import_contacts,omitempty"`
+	DeviceName       string `yaml:"device_name" json:"device_name,omitempty"`
 }
 
 // Definition is the pure declaration of this adapter: no device store opens
@@ -228,6 +234,7 @@ func builtOptions(raw rawOptions, common spec.BotSettings) BotOptions {
 	if raw.ImportContacts != nil {
 		options.ImportContacts = *raw.ImportContacts
 	}
+	options.DeviceName = raw.DeviceName
 	return options
 }
 
