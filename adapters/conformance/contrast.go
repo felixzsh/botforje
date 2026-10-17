@@ -52,8 +52,11 @@ func contrastGraph(t *testing.T, s Subject) {
 	target := supportedTarget(s)
 	channel := f.channel()
 	f.inject(target, "contrast-1", target.Thread)
+	// The reply is durable only once its provider id is recorded, which the
+	// outbox does after the channel's Send returns, so the store is the real
+	// barrier.
 	waitFor(t, "the contrast reply", func() bool {
-		return len(channel.Sent()) >= 1
+		return len(channel.Sent()) >= 1 && storedProviderID(f, target) != ""
 	})
 	delivered := channel.Sent()[0]
 	if got := botflota.ContentText(delivered.Content); got != "hello" {
