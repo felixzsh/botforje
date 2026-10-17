@@ -576,7 +576,25 @@ planned in `docs/current-plan.md` and settled in ADR 0042.
   message, timeout); a slow provider cannot stall other bots.
 - Bounded queues between the channel, the engine, and the outbox provide
   backpressure: a full inbound queue blocks the channel's event handler
-  instead of dropping the user's message (ADR 0040).
+  instead of dropping the user's message (ADR 0040). A shared source follows
+  the same rule: its adapter-owned reader keeps every logical view's buffer
+  bounded, so a full buffer couples the views' progress to that one source
+  rather than promising each view independent throughput. A wait on the
+  source is cancelable, and releasing one logical view frees that view's
+  waits without closing a peer's view. Shared transport health is never read
+  as a per-binding authorization revocation (ADR 0040, ADR 0052).
+- The acknowledgement and replay boundary is explicit, not inferred. A source
+  that can confirm gets the agreed processing outcome only after a committed
+  turn, an already-recorded duplicate, or a deliberate discard; handoff
+  confirms nothing, and a failed processing stays replayable (ADR 0004,
+  ADR 0040). Delivery is at-least-once from the durable outbox — a committed
+  turn stores its replies and the worker retries them across a restart — and
+  a send success means the channel accepted the message, never recipient
+  delivery (ADR 0040, ADR 0052). No durable inbox is added on top of that
+  queue, and a source that cannot replay is not promised losslessness.
+- Grouping, fairness, capacity, and any further durable buffering for a
+  shared source remain deployment decisions, not runtime guarantees
+  (ADR 0046, ADR 0054; `channels/open-decisions.md`).
 - No shared mutable state between bots; shared services are read-only or
   synchronized.
 - Reconnect uses capped exponential backoff with jitter; a bot that is logged

@@ -567,18 +567,26 @@ Recommended minimal schema direction, subject to that canonical ADR alignment:
   No migration, backfill, or legacy result shape survives; fresh-schema
   persistence, reopen, and detach-keeps-history gates pass. Its gate is
   checked in `docs/channels/phases.md`.
-- [ ] P4 — remote API and CLI integration (ADR 0053): public-contract decisions
-  are owner-approved on 2026-10-12 (`docs/channels/open-decisions.md`); code and
-  gates remain pending. Binding operations and discovery use scoped routes;
-  a scoped HTTP client completes binding and
-  reauthorization without filesystem access. Neutral views, webhooks, and
-  exports carry no universal phone field and no legacy output projection.
-- [ ] P5 — delivery and optional-operation semantics (ADR 0052): outbox
+- [x] P4 — remote API and CLI integration (ADR 0053): public-contract decisions
+  are owner-approved on 2026-10-12 (`docs/channels/open-decisions.md`). Binding
+  operations and discovery use scoped routes; a scoped HTTP client completes
+  binding and reauthorization without filesystem access. Neutral views,
+  webhooks, and exports carry no universal phone field and no legacy output
+  projection. Completed 2026-10-17: neutral scoped API/CLI routes and views,
+  the binding/setup lifecycle, binding compatibility before history migration,
+  and the HTTP end-to-end gate. Its gate is checked in
+  `docs/channels/phases.md`.
+- [x] P5 — delivery and optional-operation semantics (ADR 0052): outbox
   failure classes, binding-generation checks, and normalized
   history/external-reply contracts; a replacement account cannot send the
   previous account's pending entries (delivery, reception, and provenance
   contracts closed on 2026-10-17). Enforce declared support and dynamic
   eligibility for P2's card payload, with no phone rules in shared delivery.
+  Completed 2026-10-17: classified send outcomes, binding-generation delivery
+  gates, admission and delivery recheck, the message-ID space and dedup key,
+  receive/processing completion and replay, channel lifetime,
+  history/external-reply normalization, and shared-source backpressure. Every
+  item and gate is checked in `docs/channels/phases.md`.
 - [ ] P6 — regression gate and documentation: glossary, architecture, API,
   config examples/schema, and guides match the code; `make check`,
   `make test-race` where concurrency changed, and the WhatsApp manual

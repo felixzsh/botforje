@@ -414,8 +414,13 @@ Decision owner: ADR 0052, with ADR 0004, 0011, 0035, 0036, 0040,
 and 0044.
 
 Its delivery, reception, and provenance contracts closed with the owner on
-2026-10-17 (see [open-decisions.md](open-decisions.md)); the checkboxes below
-stay unchecked until their code and gates land.
+2026-10-17 (see [open-decisions.md](open-decisions.md)). P5 landed on
+2026-10-17: every implementation item and every gate below is checked, with
+the tests in `fleet`, `engine`, `adapters/whatsapp/channel`,
+`adapters/whatsapp/ingest`, `adapters/sqlite/stores`, `api`, `channels`, and
+`config` covering the send outcomes, binding gates, replay completion,
+message space, history and observation normalization, and shared-source
+backpressure.
 
 - [x] Enforce classified send outcomes: permanent invalid/unsupported
   input fails immediately; transient failures retry within bounds and
@@ -438,14 +443,14 @@ stay unchecked until their code and gates land.
   through documented translation, optional provider IDs, and
   at-least-once crash behavior; report uncertain timeout outcomes
   honestly.
-- [ ] Make channel lifetime work independently of SDK assumptions: one
+- [x] Make channel lifetime work independently of SDK assumptions: one
   inbound reader, concurrent serialized outbox sending, adapter-owned
   stream closure, bounded buffering, cancellation, partial-start
   cleanup, and bounded disconnect. Do not reuse stopped instances
   accidentally. This is a logical per-binding lifetime. A shared
   physical reader stays adapter-owned; releasing one view must not close
   peer views. Shared transport failure is not authorization revocation.
-- [ ] Normalize history/backfill and external-reply observations to the
+- [x] Normalize history/backfill and external-reply observations to the
   same conversation/binding values. Keep wire anchors opaque; no phone
   requirement or unconditional optional-feature calls. Preserve inert
   imports, peer-first-seen rules, own-send echo correlation, and held
@@ -467,7 +472,7 @@ stay unchecked until their code and gates land.
   The durable key is settled in ADR 0051/0026, so choose SQL constraints
   from it (see [open-decisions.md](open-decisions.md)); binding
   generation alone is not proof of the provider's message-ID namespace.
-- [ ] Exercise bounded routing from a shared source to a slow or stopped
+- [x] Exercise bounded routing from a shared source to a slow or stopped
   logical consumer. Document the coupled backpressure/replay boundary
   rather than promising independent progress or adding unapproved
   durable buffering. Deployment policy remains TBD in
@@ -485,22 +490,22 @@ stay unchecked until their code and gates land.
 
 Gate:
 
-- [ ] Permanent failure does not block FIFO through useless retries;
+- [x] Permanent failure does not block FIFO through useless retries;
   transient sends retry, account authorization loss is visible, and a
   replacement account sends none of the old queue.
-- [ ] Test restart around send/recording, reused message IDs in separate
+- [x] Test restart around send/recording, reused message IDs in separate
   destinations, own-send echoes versus human replies, held inbound
   recording, and channels without optional operations.
-- [ ] Slow/cancelled producers and partially started adapters exit
+- [x] Slow/cancelled producers and partially started adapters exit
   without leaks or dropped messages from full queues. Tests establish
   the actual acknowledgement/replay boundary, not an inferred
   exactly-once guarantee or recipient-delivery claim.
-- [ ] A replay-capable fake confirms only after the agreed processing
+- [x] A replay-capable fake confirms only after the agreed processing
   outcome; failed persistence remains replayable, and recorded
   duplicates and deliberate discards follow their explicit rules.
   Shared-source tests cover view teardown, context-selection races, and
   bounded backpressure.
-- [ ] A statically valid template whose resolved payload violates the
+- [x] A statically valid template whose resolved payload violates the
   consuming bot's declared limits fails before queue admission, as does
   equivalent API input. Delivery rechecks a dynamic eligibility change
   separately from declared support; unsupported queued content fails

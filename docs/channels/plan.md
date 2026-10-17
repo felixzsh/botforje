@@ -8,7 +8,8 @@ close runtime gates. P0 (documentation only) is complete and accepted;
 P1's implementation landed on 2026-10-11 (ADR 0051), and P2/P3 landed on
 2026-10-12 with their reviewed runtime gates closed. P4's public contracts
 were owner-approved on 2026-10-12 and P4 implementation landed with its
-reviewed runtime gates closed; P5/P6 remain pending.
+reviewed runtime gates closed; P5 landed on 2026-10-17 with its reviewed
+runtime gates closed, and P6 remains pending.
 [Open decisions](open-decisions.md) records the phase-local closures.
 
 **Owner decision — this preparation is new design, with no backward
@@ -27,8 +28,9 @@ and ADR 0042 the neutral ZIP/CSV format. These approved decisions authorized
 P4 implementation, whose code and gates are now checked in
 [phases.md](phases.md). P5's receive-completion,
 message-ID namespace, and delivery contracts closed with the owner on
-2026-10-17 (see [open-decisions.md](open-decisions.md)); their implementation
-remains pending.
+2026-10-17 (see [open-decisions.md](open-decisions.md)), and their
+implementation landed the same day, with its item and gate checkboxes checked
+in [phases.md](phases.md).
 
 Code baseline: `3544357`, inspected on 2026-10-08; this research review
 is not a new code audit.
