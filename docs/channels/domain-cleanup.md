@@ -201,6 +201,132 @@ compatibility"):
   API handlers, or engine branches. This demonstrates extension
   locality, not support for all imaginable future protocols.
 
+## P6 dependency and domain audit (item 3)
+
+Run on the main checkout at `d484cfa`, where P6 items 1, 2, and 4 had
+landed. Method: repository-wide literal searches plus the Go import graph,
+covering code, tests, docs, the generated schema, and config examples.
+Searches were `grep -rniE`/`git grep -IniE` from the repository root with
+`--include='*.go'` where noted; the filter `grep -v '^./adapters/whatsapp/'`
+keeps the adapter that legitimately owns the wire vocabulary.
+
+Patterns used:
+
+- Wire identities: `\b(jid|lid|pn)\b`, `phoneNumber`, `PhoneNumber`.
+- SDK names: `whatsmeow`, `go.mau.fi`, `botflota/adapters` in shared packages.
+- Phone leaks: `phone`, `Phone` (case-insensitive), `primary device`,
+  `companion`, `device_name`.
+- QR-only paths: `\bqr\b`, `qrcode`, `qr_code`, plus every `Readiness*`,
+  `SetupMethod`, and `SetupDisplay.Format` consumer.
+- Provider switches: `Provider ==`, `Mode ==`, `== "whatsapp"`,
+  `"native"`, and `switch` over a provider or mode value.
+- Store opening: `openDevices(`, `whatsappSelected(`, `openDatabase(`,
+  `runtimeCatalog(`, `pureCatalog()`, `offlineChannelCatalog(`.
+- Import graph: `go list -deps` and `go list -f '{{join .Imports "\n"}}'`
+  for the core root, `spec`, `config`, `channels`, `engine`, `fleet`,
+  `api`, and `webhook`.
+- Product names: `botsaas`, `botforje`, and provider-vendor names in
+  tracked files and in the last 200 commit subjects.
+
+Result by category:
+
+- Raw wire identities: clean. No JID/LID/PN token, `whatsmeow` type, or
+  `go.mau.fi` import exists outside `adapters/whatsapp/*`. Shared tests use
+  `whatsmeow` only as the open `Binding.Adapter` catalog value, which ADR 0051
+  and ADR 0052 define as an implementation label.
+- Phone-only routing and phone fields: clean. The only `phone` in shared Go is
+  `spec.ContactPhone` and the two validators that accept the ADR 0036 card
+  label; `config.schema.json` has no `phone` property; template roots are
+  `graph`, `node`, `peer`, `message`, `bot`, `input` (no `contact`/`phone`);
+  `fleet.Filter` compares the opaque `Sender.Subject` by equality; and no
+  shared code validates digits, strips a suffix, or parses a subject.
+- QR-only readiness: clean. Readiness is `BindingStatus.Condition` with the
+  four ADR 0053 values; a definition advertises a `SetupMethods` list and
+  `resolveSetupMethod` handles zero, one, or many; `SetupDisplay.Format`
+  renders `qr`, `uri`, and an unknown-format fallback. The WhatsApp method
+  string appears only inside the adapter and as the CLI's display-rendering
+  case, never as a readiness requirement.
+- Unconditional WhatsApp stores: clean. `cmd/botflota` opens the device store
+  only under `whatsappSelected(cfg)` in `fleet run` and inside the WhatsApp
+  entry of `installedOfflineAssemblies()`; the offline selection matches the
+  bot's `provider`/`mode`. `openDatabase` is the neutral SQLite database, and
+  `pureCatalog()` and definition construction open no store.
+- Provider switches: clean. Messaging provider/mode comparisons appear in
+  `cmd/botflota/channels.go` and `bind_cmd.go` (the registration boundary,
+  including the offline assemblies), in `api/send.go`, which checks that a
+  target's provider matches a bot's selected channel, and inside each adapter
+  package, which owns its own declaration. `config/validation.go` compares
+  only the LLM provider name. No `"whatsapp"` or `"native"` literal appears
+  in shared production code; the generated schema's
+  per-installed-definition `const` branches come from the catalog by design
+  (ADR 0054).
+- Transport, setup, support, storage: clean. The core root imports no
+  internal package; in the production graph `config` imports no adapter or
+  `engine`; `engine` imports `spec` only; `fleet` and `api` consume
+  `config`/`channels`/`spec` and the injected catalog, never an adapter; the
+  adapter splits transport
+  (`whatsapp/channel`), setup (`whatsapp` accounts/pairing), and ingest or
+  mapping (`whatsapp/ingest`), and the SQLite stores hold no phone or wire
+  column. Test files in three shared packages import an adapter for fixture
+  and gate reasons (`config/catalog_test.go`, `engine/catalog_test.go`,
+  `fleet/p1_gate_test.go`); the production dependency direction is unaffected
+  and no adapter imports a shared package in return.
+- Provider/product names: no forbidden external product, offering, or
+  branding name appears in tracked shared code, comments, commits, or docs.
+  Provider references that remain are the adapter package names, the open
+  `provider`/`Adapter` catalog values, provider-specific guides, ADR titles,
+  and research findings, which are their legitimate locations.
+
+Found and fixed (shared code and comments, no contract change):
+
+- Two user-facing CLI strings and shared help text named the linked account
+  as "the phone" or "the primary device": `cmd/botflota/chat_cmd.go` (the
+  `--timeout` flag help and the exhausted-sync line), `cmd/botflota/tree.go`
+  (`chat` and `chat sync` help, and the QR-only display wording), and
+  `cmd/botflota/bind_cmd.go` (the instance-owned message). All now say the
+  account.
+- Provider-specific wording in shared comments: `cmd/botflota/api_client.go`,
+  `cmd/botflota/chat_cmd.go`, `fleet/fleet.go`, `api/params.go`,
+  `message.go`, `pairing.go`, and `adapters/sqlite/stores/message.go` no
+  longer describe the account as a phone or primary device.
+- The `whatsmeow` SDK name in the core package doc (`message.go`) and in the
+  composition-root comment (`cmd/botflota/main.go`) is replaced by neutral
+  wording; the adapter still names its SDK only inside `adapters/whatsapp`.
+- Two shared test comments (`api/handlers_test.go`, `fleet/control_test.go`)
+  and one SQLite store fixture comment
+  (`adapters/sqlite/stores/history_write_test.go`) used the same provider
+  vocabulary.
+
+Resolved after the audit (owner decision 2026-10-17):
+
+- `config.Config.DeviceName` was the one leak the audit left open: a shared
+  `device_name` instance setting whose meaning is WhatsApp's companion-device
+  name. It moved into the WhatsApp adapter's own `channel.options` (ADR 0054).
+  The shared `Config` field, its `config/reload.go` comparison, and its
+  generated schema entry are gone; the adapter decodes `device_name` in
+  `rawOptions`/`BotOptions`, and `applyDeviceName` keeps the empty default
+  `Botflota` and the existing-link behavior. The old top-level key fails load
+  as an unknown field with no alias or no-op, and a bot that does not select
+  WhatsApp is unaffected. `config.schema.json` was regenerated from the
+  implemented Go types, and `docs/architecture.md`,
+  `config/examples/reference.yml`, and the `PLAN.md` instance-setting list
+  were updated. The P6 field/parameter/context/dependency audit then passed.
+
+Recorded for the item 5/6 documentation and schema alignment, not changed
+here: `docs/glossary.md` still defines a bot as "one WhatsApp account";
+`docs/scope.md` says an instance runs WhatsApp bots; `docs/architecture.md`
+still describes the core as avoiding `whatsmeow`; and
+`config/examples/reference.yml` still shows a `graph.owner_phone` example and
+comments that `to` is a phone number, that peer subjects are WhatsApp phone
+numbers, and that `external_reply_pause` follows a phone reply.
+`docs/guide/whatsapp.md` still names the retired `bot pair` command and a
+paired phone number. The
+retired `contact.*` template has no alias or universal phone value, so those
+are documentation drift, not runtime contracts.
+
+P6 item 3 is checked: every named category verified clean and the last open
+finding is resolved.
+
 ## ADR alignment before implementation
 
 The owner's cleanup steer is clear; concrete compatibility and

@@ -536,7 +536,7 @@ implemented runtime rather than the accepted target.
   Include the capability-consistency gates from plan.md §2 and P2/P4/P5
   so future content/operation extensions cannot bypass config checks,
   runtime/API admission, or per-bot discovery.
-- [ ] Review shared dependencies and hot paths: no SDK/wire identities,
+- [x] Review shared dependencies and hot paths: no SDK/wire identities,
   phone-only routing, QR-only readiness, unconditional WhatsApp stores,
   or provider switches outside registration
   boundaries. Apply
