@@ -63,7 +63,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	}
 	pn, ok := resolveFrom(event.Info, a.lookupPN)
 	if !ok {
-		a.log.Warn("dropping message: contact has no known phone number")
+		a.log.Warn("dropping message: peer has no known phone number")
 		return
 	}
 	from := pn.User
@@ -99,7 +99,7 @@ func (a *Adapter) onMessage(event *events.Message) {
 	select {
 	case a.incoming <- message:
 	case <-a.stop:
-		a.log.Debug("message not delivered; adapter stopped", "contact", from)
+		a.log.Debug("message not delivered; adapter stopped", "peer", from)
 	}
 }
 
@@ -142,7 +142,7 @@ func (a *Adapter) onOwnMessage(
 	case a.outbound <- message:
 	case <-a.stop:
 		a.log.Debug("own message not delivered; adapter stopped",
-			"contact", pn.User)
+			"peer", pn.User)
 	}
 }
 

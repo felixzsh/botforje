@@ -111,9 +111,13 @@ func (r *run) pickVariant(body spec.Text) string {
 	}
 }
 
-// A `to` override is a thread address in the inbound conversation's provider:
-// empty means the conversation itself, and a resolved empty is an error, never
-// a silent reply to the peer (ADR 0051).
+// A `to` override addresses a direct thread in the inbound conversation's
+// provider: empty means the conversation itself, and a resolved empty is an
+// error, never a silent reply to the peer (ADR 0051). The produced target
+// states provider, kind, thread, and the canonical absent topic explicitly,
+// but the template surface only needs a direct thread today: addressing a
+// group or a topic waits for the shared-conversation runtime policy
+// (docs/channels/open-decisions.md).
 func (r *run) target(to string) (botflota.ChatTarget, error) {
 	if to == "" {
 		return r.msg.Target, nil

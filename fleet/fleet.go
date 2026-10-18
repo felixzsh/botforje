@@ -405,8 +405,9 @@ func (f *Fleet) buildRuntime(
 		Log:            botLog,
 	})
 	filter := Filter{
-		Allowed: settings.AllowedPeers,
-		Ignored: settings.IgnoredPeers,
+		Provider: bot.Channel.Provider,
+		Allowed:  settings.AllowedPeers,
+		Ignored:  settings.IgnoredPeers,
 	}
 	return eng, filter, settings, nil
 }

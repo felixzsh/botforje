@@ -131,6 +131,21 @@ WhatsApp manual checklist pending operator exercise.
   mode, never per provider, with declared support, account authorization, and
   current eligibility kept separate.
 
+## Closed on 2026-10-18 — P1 `to` target surface
+
+The owner confirmed that the `to` override in a step stays a direct-thread
+address (ADR 0051). An empty `to` is the inbound conversation; a non-empty `to`
+names another direct thread in the inbound conversation's provider. The runtime
+still carries the complete target (`provider`, `kind`, `thread`, `topic`) on the
+message and on the queued delivery, so the P1 "carry kind/thread/topic
+explicitly" criterion holds at the contract level with no partial shape. Only
+the template surface is narrower than the target type.
+
+Addressing a group or a topic through a template is not part of that surface:
+it waits on the shared-conversation runtime policy, the same pattern as the
+`invite` step (above). No alias, extra field, or inferred kind is added before
+that policy exists.
+
 ## Reopened claims waiting on provider evidence
 
 - **Common optional phone metadata: keep or remove.** Closed on
