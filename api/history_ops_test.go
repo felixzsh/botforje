@@ -198,6 +198,16 @@ func TestHistoryMigrateMovesToAnotherBotOfTheScope(t *testing.T) {
 }
 
 func TestHistoryMigrateRefusals(t *testing.T) {
+	t.Run("a missing destination is refused", func(t *testing.T) {
+		server := newHistoryServer(t, &fakeHistory{})
+		recorder := migrateHistory(t, server, "support", testOwnerToken, "")
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+		}
+		if body := recorder.Body.String(); !strings.Contains(body, "invalid_request") {
+			t.Fatalf("body %s does not report invalid_request", body)
+		}
+	})
 	t.Run("the destination must exist in the same scope", func(t *testing.T) {
 		server := newHistoryServer(t, &fakeHistory{})
 		recorder := migrateHistory(t, server, "support", testOwnerToken, "nope")
@@ -208,8 +218,11 @@ func TestHistoryMigrateRefusals(t *testing.T) {
 	t.Run("a bot cannot move its history to itself", func(t *testing.T) {
 		server := newHistoryServer(t, &fakeHistory{})
 		recorder := migrateHistory(t, server, "support", testOwnerToken, "demo")
-		if recorder.Code != http.StatusUnprocessableEntity {
-			t.Fatalf("status = %d, want 422", recorder.Code)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+		}
+		if body := recorder.Body.String(); !strings.Contains(body, "invalid_request") {
+			t.Fatalf("body %s does not report invalid_request", body)
 		}
 	})
 	t.Run("a destination that holds history is a conflict", func(t *testing.T) {
@@ -473,7 +486,7 @@ func TestHistoryOperationsWithoutAStoreSaySo(t *testing.T) {
 }
 
 // TestHistoryOperationsHoldTheBotLock keeps one bot's write operations from
-// overlapping: a history request waits for the lock pairing and unpairing take,
+// overlapping: a history request waits for the lock pairing and unbinding take,
 // so neither can restart the bot the other is still working on (ADR 0042).
 // blockingHistory holds the move open once it starts, so a test can prove
 // an overlapping bot operation waits for the migration instead of slipping

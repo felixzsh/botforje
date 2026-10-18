@@ -130,12 +130,12 @@ func TestChatControlRefusals(t *testing.T) {
 		{
 			name: "a mode that is neither human nor auto", fleet: &chatControlFleet{},
 			scope: "support", token: testOwnerToken, chatID: 3,
-			mode: "paused", want: http.StatusUnprocessableEntity,
+			mode: "paused", want: http.StatusBadRequest, code: "invalid_request",
 		},
 		{
 			name: "an empty mode", fleet: &chatControlFleet{},
 			scope: "support", token: testOwnerToken, chatID: 3,
-			mode: "", want: http.StatusUnprocessableEntity,
+			mode: "", want: http.StatusBadRequest, code: "invalid_request",
 		},
 		{
 			name: "a bot that is not running", fleet: &chatControlFleet{

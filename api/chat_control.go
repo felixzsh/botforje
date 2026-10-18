@@ -41,7 +41,7 @@ func (s *Server) handleChatControl(w http.ResponseWriter, r *http.Request) {
 	case string(botflota.ChatAuto):
 		human = false
 	default:
-		writeError(w, http.StatusUnprocessableEntity, "invalid_config",
+		writeError(w, http.StatusBadRequest, "invalid_request",
 			"mode must be human or auto")
 		return
 	}

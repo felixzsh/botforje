@@ -38,7 +38,7 @@ func (s *Server) handleHistoryDelete(w http.ResponseWriter, r *http.Request) {
 			"history operations are not available")
 		return
 	}
-	// The bot lock keeps the operation away from pairing, unpairing, and a
+	// The bot lock keeps the operation away from pairing, unbinding, and a
 	// second history request: the bot stays stopped for all of it.
 	unlock := s.lockBot(scope, bot)
 	defer unlock()
@@ -72,12 +72,12 @@ func (s *Server) handleHistoryMigrate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.To == "" {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_config",
+		writeError(w, http.StatusBadRequest, "invalid_request",
 			"to is required")
 		return
 	}
 	if body.To == bot {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_config",
+		writeError(w, http.StatusBadRequest, "invalid_request",
 			"a bot cannot migrate its history to itself")
 		return
 	}
