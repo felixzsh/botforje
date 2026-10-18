@@ -222,6 +222,7 @@ func runDefinition(t *testing.T, s Subject) {
 				unsupported)
 		}
 	})
+	t.Run("card-variants", func(t *testing.T) { checkCardVariants(t, s) })
 }
 
 // checkOptions proves the strict decoder and the generated schema tell the same
@@ -308,16 +309,15 @@ func runCapabilities(t *testing.T, s Subject) {
 	def := s.declaration()
 	supported := supportedContent(t, def)
 	unsupported := unsupportedContent(t, def)
-	if unsupported == nil {
-		t.Skip("the definition declares every constructible kind")
-	}
 	target := supportedTarget(s)
 
 	if reasons := channels.AdmitSend(def, target, supported); len(reasons) > 0 {
 		t.Fatalf("admission refused the declared content: %v", reasons)
 	}
-	if reasons := channels.AdmitSend(def, target, unsupported); len(reasons) == 0 {
-		t.Fatal("admission accepted content the definition cannot send")
+	if unsupported != nil {
+		if reasons := channels.AdmitSend(def, target, unsupported); len(reasons) == 0 {
+			t.Fatal("admission accepted content the definition cannot send")
+		}
 	}
 	if def.ValidateTarget != nil {
 		if reasons := channels.AdmitSend(
@@ -331,6 +331,9 @@ func runCapabilities(t *testing.T, s Subject) {
 		catalog := mustCatalog(t, def)
 		if errs := config.Validate(supportedConfig(s, supported), catalog); len(errs) > 0 {
 			t.Fatalf("the supported action failed validation: %v", errs)
+		}
+		if unsupported == nil {
+			t.Skip("the definition declares every constructible kind")
 		}
 		errs := config.Validate(unsupportedConfig(s, unsupported), catalog)
 		if len(errs) == 0 {
@@ -378,7 +381,7 @@ func checkDiscovery(
 		t.Fatalf("discovery omits the sendable kind %s: %v",
 			botflota.ContentKind(supported), view.Capabilities.Send)
 	}
-	if containsString(
+	if unsupported != nil && containsString(
 		view.Capabilities.Send, string(botflota.ContentKind(unsupported)),
 	) {
 		t.Fatalf("discovery reports unsendable %s: %v",
@@ -387,6 +390,14 @@ func checkDiscovery(
 	if !sameStrings(view.Capabilities.Features, def.Capabilities.Features) {
 		t.Fatalf("discovery features = %v, want %v",
 			view.Capabilities.Features, def.Capabilities.Features)
+	}
+	wantVariants := make([]string, 0, len(def.Capabilities.CardVariants))
+	for _, variant := range def.Capabilities.CardVariants {
+		wantVariants = append(wantVariants, string(variant))
+	}
+	if !sameStrings(view.Capabilities.CardVariants, wantVariants) {
+		t.Fatalf("discovery card variants = %v, want %v",
+			view.Capabilities.CardVariants, wantVariants)
 	}
 }
 
@@ -402,12 +413,12 @@ func checkAPIAdmission(
 		t.Fatalf("queueing a supported send = %d, want 202: %s",
 			recorder.Code, recorder.Body.String())
 	}
+	if s.declaration().ValidateTarget == nil {
+		t.Skip("the definition declares no target rules, so there is no refusal")
+	}
 	unsupported := `{"bot":"bot","target":` + targetJSON(unsupportedTarget(s)) +
 		`,"body":"hello"}`
 	recorder = a.post(t, "/api/v1/scopes/conf/messages", unsupported)
-	if s.declaration().ValidateTarget == nil {
-		return
-	}
 	if recorder.Code != 422 {
 		t.Fatalf("admission of an unsupported target = %d, want 422: %s",
 			recorder.Code, recorder.Body.String())
@@ -432,7 +443,7 @@ func contentConfig(
 	s Subject, actionName string, content botflota.SendableContent,
 ) *config.Config {
 	def := s.declaration()
-	step := stepFor(botflota.ContentKind(content))
+	step := stepFor(def, botflota.ContentKind(content))
 	return &config.Config{Scopes: map[string]spec.Scope{
 		"conf": {
 			Actions: map[string]spec.Action{actionName: {Steps: []spec.Step{step}}},
