@@ -391,14 +391,15 @@ Every stored message carries its provenance (ADR 0026): `ingest_kind` says
 whether it came from live traffic, a history sync, or the API; `routing` says
 which matching layer or decision handled the inbound message; and `origin`
 says whether an outbound body is `preset`, `llm`, `operator`, or `api` (an
-API-origin send, ADR 0044). An imported message reports `sync` with `unknown`
-origin, because the past cannot say who wrote an outbound message outside
-Botflota.
+API-origin send, ADR 0044). An inbound import carries no origin, and an
+imported outbound message reports `sync` with `unknown` origin, because the
+past cannot say who wrote an outbound message outside Botflota (ADR 0026).
 
 The account-wide history sync WhatsApp delivers at link time is imported
 inertly (ADR 0035): `bot bind` and `fleet run` share one importer, every 1:1
 content message is kept under its kind (ADR 0036), and every row is `sync`
-with `unknown` origin and routing and no session run. The import never runs the
+with `unknown` routing and no session run; an inbound row carries no origin,
+and an imported outbound body is `unknown` origin. The import never runs the
 engine and ignores the bot filter, because it is not a conversation turn;
 `channel.options.history_sync: false` turns it off. A conversation registers its
 peer and chat only when it stored at least one message or call, so the
@@ -587,8 +588,10 @@ planned in `docs/next-plan.md` and settled in ADR 0042.
 - The tool loop runs inside the bot actor and is bounded (max tools per
   message, timeout); a slow provider cannot stall other bots.
 - Bounded queues between the channel, the engine, and the outbox provide
-  backpressure: a full inbound queue blocks the channel's event handler
-  instead of dropping the user's message (ADR 0040). A shared source follows
+  backpressure: while the adapter runs, a full inbound queue blocks the
+  channel's event handler instead of dropping the user's message (ADR 0040);
+  stopping the adapter releases a blocked handoff, dropping that message
+  rather than blocking shutdown. A shared source follows
   the same rule: its adapter-owned reader keeps every logical view's buffer
   bounded, so a full buffer couples the views' progress to that one source
   rather than promising each view independent throughput. A wait on the
