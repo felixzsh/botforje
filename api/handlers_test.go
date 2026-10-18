@@ -214,7 +214,7 @@ func TestMessagesAfterCursor(t *testing.T) {
 	}
 }
 
-func TestAddressBookEndpointUnknownBot(t *testing.T) {
+func TestRetiredContactsEndpointUnknownBot(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(),
 		"/api/v1/scopes/support/bots/ghost/contacts", testOwnerToken)

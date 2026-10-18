@@ -19,16 +19,16 @@ import (
 // fakeHistory serves the rows a test hands it, so the endpoint's archive can be
 // checked without a database, and records the delete and move it was asked for.
 type fakeHistory struct {
-	chats       []botflota.HistoryChat
-	sessions    []botflota.Session
-	messages    []botflota.Message
-	addressBook []botflota.DirectoryEntry
-	err         error
-	writeErr    error
-	deleted     []string
-	moved       []string
-	occupancy   map[string]bool
-	at          time.Time
+	chats     []botflota.HistoryChat
+	sessions  []botflota.Session
+	messages  []botflota.Message
+	directory []botflota.DirectoryEntry
+	err       error
+	writeErr  error
+	deleted   []string
+	moved     []string
+	occupancy map[string]bool
+	at        time.Time
 }
 
 func (f *fakeHistory) DeleteBot(
@@ -89,7 +89,7 @@ func (f *fakeHistory) ReadHistory(
 	if err := sink.BeginTable(botflota.TableDirectory); err != nil {
 		return err
 	}
-	for _, entry := range f.addressBook {
+	for _, entry := range f.directory {
 		if err := sink.DirectoryEntry(entry); err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func TestHistoryExportStreamsOneCsvPerTable(t *testing.T) {
 			Content: botflota.TextContent{Body: "hola, mundo"},
 			At:      testTime, Ingest: botflota.IngestLive,
 		}},
-		addressBook: []botflota.DirectoryEntry{{
+		directory: []botflota.DirectoryEntry{{
 			Scope: "support", Bot: "demo", PeerKey: waKey("5215500000000"),
 			SourceIdentity: waKey("5215500000000"), DisplayName: "Ana",
 			UpdatedAt: testTime,

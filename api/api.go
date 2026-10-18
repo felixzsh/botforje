@@ -25,7 +25,7 @@ import (
 type Fleet interface {
 	Status() []botflota.BotStatus
 	// StopBotForUnpair lets a send already in progress finish, but leaves
-	// the rest of the queue for the unpair operation to fail (ADR 0040).
+	// the rest of the queue for the detach operation to fail (ADR 0040).
 	StopBotForUnpair(scope, bot string) error
 }
 
@@ -138,7 +138,7 @@ func New(opts Options) (*Server, error) {
 		return nil, errors.New("api: no account setup resolver")
 	}
 	if opts.Bindings == nil {
-		return nil, errors.New("api: no linked-account store")
+		return nil, errors.New("api: no binding store")
 	}
 	if opts.Peers == nil {
 		return nil, errors.New("api: no peer store")
@@ -200,7 +200,7 @@ func (s *Server) config() *config.Config { return s.cfg.Current() }
 func (s *Server) savedConfig() *config.Config { return s.saved.Current() }
 
 // lockBot serializes the write operations of one bot — pairing start,
-// cancel, unpair, and the history operations that stop it — so they never
+// cancel, unbind, and the history operations that stop it — so they never
 // overlap, and one of them cannot restart a bot another is still working on
 // (ADR 0021, ADR 0039, ADR 0042). The caller releases the lock through the
 // return value.

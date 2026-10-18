@@ -40,7 +40,7 @@ var testGraph = spec.Graph{
 type fakeFleet struct {
 	statuses []botflota.BotStatus
 	stopped  []string
-	// onStop, when set, runs inside StopBot, so a test can hold an unpair
+	// onStop, when set, runs inside StopBot, so a test can hold an unbind
 	// open while it checks the operation lock.
 	onStop func()
 }
@@ -167,7 +167,7 @@ func (f fakeDirectory) List(
 // fakePeers serves the scope's identities and records the last list read,
 // so a test can assert the query parameters reached the store.
 type fakePeers struct {
-	contacts   map[string]botflota.Peer
+	peers      map[string]botflota.Peer
 	listPage   botflota.PeerPage
 	listErr    error
 	lastSince  time.Time
@@ -178,20 +178,20 @@ type fakePeers struct {
 func (f fakePeers) Get(
 	_ context.Context, scope string, key botflota.IdentityKey,
 ) (*botflota.Peer, error) {
-	contact, ok := f.contacts[scope+"/"+key.Subject]
+	peer, ok := f.peers[scope+"/"+key.Subject]
 	if !ok {
 		return nil, botflota.ErrNotFound
 	}
-	return &contact, nil
+	return &peer, nil
 }
 
 func (f fakePeers) GetByID(
 	_ context.Context, scope string, id int64,
 ) (*botflota.Peer, error) {
-	for _, contact := range f.contacts {
-		if contact.Scope == scope && contact.ID == id {
-			peer := contact
-			return &peer, nil
+	for _, peer := range f.peers {
+		if peer.Scope == scope && peer.ID == id {
+			found := peer
+			return &found, nil
 		}
 	}
 	return nil, botflota.ErrNotFound
@@ -465,16 +465,16 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 			Generation: 1,
 		},
 	}}
-	contact := botflota.Peer{
+	peer := botflota.Peer{
 		ID: 7, Scope: "support", Key: waKey("5215500000000"), DisplayName: "Ana",
 	}
 	chat := botflota.ChatSummary{
 		Chat: botflota.Chat{
-			ID: 3, Scope: "support", Bot: "demo", PeerID: contact.ID,
+			ID: 3, Scope: "support", Bot: "demo", PeerID: peer.ID,
 			Target:    waTarget("5215500000000"),
 			StartedAt: testTime, UpdatedAt: testTime, MessageCount: 2,
 		},
-		PeerKey: contact.Key, DisplayName: contact.DisplayName,
+		PeerKey: peer.Key, DisplayName: peer.DisplayName,
 		Messages: 5, Sync: 3, Live: 2,
 	}
 	quiet := botflota.Peer{
@@ -514,9 +514,9 @@ func testOptions(t *testing.T, live Fleet, cfg *config.Config) Options {
 			runner:    &stubSetupRunner{sessions: map[string]*botflota.SetupSession{}},
 		},
 		Bindings: &accounts,
-		Peers: &fakePeers{contacts: map[string]botflota.Peer{
-			"support/" + contact.Key.Subject: contact,
-			"support/" + quiet.Key.Subject:   quiet,
+		Peers: &fakePeers{peers: map[string]botflota.Peer{
+			"support/" + peer.Key.Subject:  peer,
+			"support/" + quiet.Key.Subject: quiet,
 		}},
 		Directory: fakeDirectory{entries: []botflota.DirectoryEntry{
 			{

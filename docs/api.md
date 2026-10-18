@@ -262,7 +262,7 @@ not current directory membership, reachability, or permission.
 
 `GET B/directory` reads that bot's retained directory snapshots (ADR 0037).
 Each entry carries the peer it describes as `provider` and `subject`, the
-account whose book supplied it as `source_provider` and `source_subject`, and
+account whose directory supplied it as `source_provider` and `source_subject`, and
 `scope`, `bot`, `display_name`, and `updated_at`. No phone projection or
 `/contacts` alias is retained. Both reads
 are available independently of the channel's current import capability.

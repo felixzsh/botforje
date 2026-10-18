@@ -328,10 +328,10 @@ Gate:
 
 ## P4 — Common API and CLI, not provider-specific control planes
 
-Change: `api/api.go`, account/pairing handlers, `views.go`, `params.go`,
+Change: `api/api.go`, `binding.go`, `views.go`, `params.go`,
 `send.go`, chat control/sync, history operations/export;
 `cmd/botflota/bot_cmd.go`, `chat_cmd.go`, `message_cmd.go`,
-`address_book_cmd.go`, client views, and help; peer-first-seen webhook
+`directory_cmd.go`, client views, and help; peer-first-seen webhook
 serialization.
 Decision owner: ADR 0053 and 0054, with ADR 0042, 0044, 0045, and 0046.
 
@@ -353,8 +353,8 @@ The checkboxes below are checked as that landed implementation.
 
 - [x] Wire neutral lifecycle/bind/capability dependencies into the API.
   Remove constructor requirements for WhatsApp pairing and unsupported
-  live features; distinguish reading already stored history/address
-  books from invoking a currently available channel operation.
+  live features; distinguish reading already stored history and
+  directory from invoking a currently available channel operation.
 - [x] Implement scoped channel/binding/method discovery and bind
   begin/read/input/cancel operations. Align public routes with
   ADR 0053 before changing endpoints; scope and bot

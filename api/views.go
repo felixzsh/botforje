@@ -65,13 +65,13 @@ type chatView struct {
 }
 
 // directoryEntryView is one imported directory entry (ADR 0037, ADR 0051):
-// the peer it describes and the account whose book supplied it, never a
+// the peer it describes and the account whose directory supplied it, never a
 // phone projection.
 type directoryEntryView struct {
 	Scope string `json:"scope"`
 	Bot   string `json:"bot"`
 	// Provider and Subject are the peer the entry describes; SourceProvider and
-	// SourceSubject are the account whose book supplied it.
+	// SourceSubject are the account whose directory supplied it.
 	Provider       string    `json:"provider,omitempty"`
 	Subject        string    `json:"subject,omitempty"`
 	SourceProvider string    `json:"source_provider,omitempty"`
