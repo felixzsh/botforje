@@ -417,28 +417,70 @@ func TestSourceWithoutConfirmerKeepsBehavior(t *testing.T) {
 }
 
 // TestReceiveConfirmationBoundaries proves the two negative boundaries:
-// an entry without a cursor settles nothing, and inbound handoff alone
-// settles nothing — only the agreed processing outcome does.
+// an entry without a cursor settles nothing, and the real channel handoff
+// alone settles nothing — only the agreed processing outcome does. Both
+// entries run through Bot.run, which consumes the channel's inbound queue,
+// and the commit stays gated so the assertion is not vacuous.
 func TestReceiveConfirmationBoundaries(t *testing.T) {
-	ctx := context.Background()
-	runner, channels, _ := buildReplayFleet(t, nil)
-	bot := replayBot(t, runner, "alpha")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	gate := &gatedTurn{
+		bot: "alpha", gate: make(chan struct{}), entered: make(chan struct{}),
+	}
+	runner, channels, store := buildReplayFleet(t, gate)
+	gate.memStore = store
 	channel := channels["alpha"]
 
-	bot.handleMessage(ctx, replayMsg("alpha", "bare-1", "", "m-bare"))
-	if n := channel.count(); n != 0 {
-		t.Fatalf("receipts for a cursorless entry = %d, want none", n)
-	}
+	runDone := make(chan error, 1)
+	go func() { runDone <- runner.Run(ctx) }()
 
-	msg := replayMsg("alpha", "bare-2", "upd-1", "m-handoff")
-	channel.incoming <- msg
+	channel.incoming <- replayMsg("alpha", "bare-2", "upd-1", "m-handoff")
+	select {
+	case <-gate.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the run loop never handed the message to processing")
+	}
 	if n := channel.count(); n != 0 {
 		t.Fatalf("receipts after handoff alone = %d, want none", n)
 	}
-	bot.handleMessage(ctx, msg)
-	if outcome, ok := channel.confirmed("upd-1"); !ok ||
-		outcome != botflota.ReceiveCommitted {
-		t.Fatalf("upd-1 after processing = %q, %v; want committed",
-			outcome, ok)
+	close(gate.gate)
+	waitConfirmed(t, channel, "upd-1")
+
+	// The cursorless entry settles nothing either: it is processed before the
+	// next cursor-bearing entry, whose confirmation proves the order, and it
+	// never produces a receipt of its own.
+	channel.incoming <- replayMsg("alpha", "bare-1", "", "m-bare")
+	channel.incoming <- replayMsg("alpha", "bare-3", "upd-2", "m-after")
+	waitConfirmed(t, channel, "upd-2")
+	if n := channel.count(); n != 2 {
+		t.Fatalf("receipts = %d, want only the two cursor-bearing entries", n)
+	}
+	if _, ok := channel.confirmed(""); ok {
+		t.Fatal("a cursorless entry was confirmed")
+	}
+
+	cancel()
+	if err := <-runDone; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+// waitConfirmed polls until the channel confirms cursor, failing if it never
+// reports the committed outcome within the deadline.
+func waitConfirmed(t *testing.T, channel *replayChannel, cursor string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if outcome, ok := channel.confirmed(cursor); ok {
+			if outcome != botflota.ReceiveCommitted {
+				t.Fatalf("%s after processing = %q, want committed", cursor,
+					outcome)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s was never confirmed after processing settled", cursor)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
