@@ -27,7 +27,14 @@ func AdmitSend(
 		return []string{fmt.Sprintf(
 			"channel %s cannot send %s", def.Provider, kind)}
 	}
-	if card, ok := content.(botflota.ContactContent); ok {
+	var card *botflota.ContactContent
+	switch value := content.(type) {
+	case botflota.ContactContent:
+		card = &value
+	case *botflota.ContactContent:
+		card = value
+	}
+	if card != nil {
 		for _, entry := range card.Entries {
 			variant := spec.ContactEntryKind(entry.Kind)
 			if variant.Valid() &&

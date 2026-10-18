@@ -109,3 +109,42 @@ func TestAdmitSendRefusesBeforeQueueAdmission(t *testing.T) {
 		})
 	}
 }
+
+// TestAdmitSendChecksCardVariantsThroughBothShapes proves the per-variant
+// admission check runs for a contact payload whether the caller passes the
+// value or a pointer to it (ADR 0052). A value receiver gives the pointer
+// the same method set, so a value-only type assertion would let a pointer
+// skip the variant checks.
+func TestAdmitSendChecksCardVariantsThroughBothShapes(t *testing.T) {
+	def := admitDefinition()
+	target := admitTarget()
+	unsupported := botflota.ContactContent{Name: "Ana",
+		Entries: []botflota.ContactEntry{
+			{Kind: "email", Value: "ana@example.test"},
+		}}
+	supported := botflota.ContactContent{Name: "Ana",
+		Entries: []botflota.ContactEntry{
+			{Kind: "phone", Value: "5215500000000"},
+		}}
+	tests := []struct {
+		name    string
+		content botflota.SendableContent
+		wantOK  bool
+	}{
+		{"value with an unsupported entry kind", unsupported, false},
+		{"pointer with an unsupported entry kind", &unsupported, false},
+		{"value with a supported entry kind", supported, true},
+		{"pointer with a supported entry kind", &supported, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reasons := AdmitSend(def, target, test.content)
+			if test.wantOK && len(reasons) > 0 {
+				t.Fatalf("AdmitSend refused a valid send: %q", reasons)
+			}
+			if !test.wantOK && len(reasons) == 0 {
+				t.Fatal("AdmitSend accepted an unsupported card variant")
+			}
+		})
+	}
+}
