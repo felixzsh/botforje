@@ -247,20 +247,21 @@ Result by category:
   renders `qr`, `uri`, and an unknown-format fallback. The WhatsApp method
   string appears only inside the adapter and as the CLI's display-rendering
   case, never as a readiness requirement.
-- Unconditional WhatsApp stores: clean. `cmd/botflota` opens the device store
-  only under `whatsappSelected(cfg)` in `fleet run` and inside the WhatsApp
-  entry of `installedOfflineAssemblies()`; the offline selection matches the
-  bot's `provider`/`mode`. `openDatabase` is the neutral SQLite database, and
-  `pureCatalog()` and definition construction open no store.
-- Provider switches: clean. Messaging provider/mode comparisons appear in
-  `cmd/botflota/channels.go` and `bind_cmd.go` (the registration boundary,
-  including the offline assemblies), in `api/send.go`, which checks that a
-  target's provider matches a bot's selected channel, and inside each adapter
-  package, which owns its own declaration. `config/validation.go` compares
-  only the LLM provider name. No `"whatsapp"` or `"native"` literal appears
-  in shared production code; the generated schema's
-  per-installed-definition `const` branches come from the catalog by design
-  (ADR 0054).
+- Unconditional adapter stores: clean. An adapter opens its own store only
+  through its registration (`channels.Installation.Install`), which
+  `cmd/botflota` calls when a bot selects it: `selected` for `fleet run` and
+  `serves` for the offline path match the bot's `provider`/`mode` against the
+  installed declaration. An unselected adapter never installs, `openDatabase`
+  is the neutral SQLite database, and `pureCatalog()` and definition
+  construction open no store.
+- Provider switches: clean. The only messaging provider/mode comparison in
+  `cmd/botflota` is `serves` in `channels.go`, which matches a bot's selector
+  against each installed declaration; `api/send.go` checks that a target's
+  provider matches a bot's selected channel, and each adapter package owns its
+  own declaration. `config/validation.go` compares only the LLM provider name.
+  No `"whatsapp"` or `"native"` literal appears in shared production code; the
+  generated schema's per-installed-definition `const` branches come from the
+  catalog by design (ADR 0054).
 - Transport, setup, support, storage: clean. The core root imports no
   internal package; in the production graph `config` imports no adapter or
   `engine`; `engine` imports `spec` only; `fleet` and `api` consume

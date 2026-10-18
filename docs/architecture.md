@@ -71,7 +71,11 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
   ports, one file per repository. `adapters/whatsapp` pairs a companion and
   owns its device store; `adapters/whatsapp/channel` holds the live connection
   and the `Adapter`, and `adapters/whatsapp/ingest` stores what WhatsApp
-  reports about the past (ADR 0035, ADR 0037).
+  reports about the past (ADR 0035, ADR 0037). `adapters/testchannel` is the
+  in-memory channel that proves onboarding stays adapter-local, and
+  `adapters/conformance` is the reusable suite an adapter runs against its own
+  definition. `adapters/installed` lists the shipped adapters, so `cmd/botflota`
+  iterates the registry and names none of them (ADR 0052, ADR 0054).
 - `instance` — the exclusive lock that makes one process the owner of an
   instance's data directory (ADR 0039).
 - `cmd/botflota` — argument parsing and assembly.

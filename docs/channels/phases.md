@@ -141,8 +141,10 @@ and 0036.
 
 Landed 2026-10-12 on the accepted P1 baseline: `channels` holds the immutable
 catalog and the definition type (provider, adapter kind, modes, capabilities,
-pure option decode, content validator, optional builder); `spec.Bot` names its
-channel explicitly and `BotSettings` keeps only the shared pacing/filter fields.
+option schema and strict decode, content and target validation, binding
+compatibility, message space, readiness and setup, and the optional builder);
+`spec.Bot` names its channel explicitly and `BotSettings` keeps only the shared
+pacing/filter fields.
 The WhatsApp adapter declares its options, schema, capabilities, and builder;
 config validation, schema generation, startup, the watcher, and publication all
 consume the same pure catalog. Items 1-4 and
@@ -205,7 +207,11 @@ per-bot capability and content-limit checks.
   channel I/O. Landed over 2026-10-12: the catalog builder, the adapter's
   `Prepare` join hook, and per-config assembly that opens the WhatsApp
   device store only when a bot selects it, with explicit no-remote-setup
-  and no-local-account surfaces otherwise.
+  and no-local-account surfaces otherwise. The 2026-10-17 remediation moved
+  that assembly into one neutral registration per adapter
+  (`channels.Installation`, listed in `adapters/installed`): the registration
+  opens, validates, and closes the adapter's own resources, and `cmd` iterates
+  the installed set without naming an adapter.
 - [x] Compare selectors, account modes, options, and binding-relevant
   references on reload. Preserve restart-required transport changes,
   saved/active differences, and isolation of peers. Config publication

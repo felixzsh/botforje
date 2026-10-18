@@ -2,18 +2,14 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/sqlite"
-	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/instance"
 	"github.com/felixzsh/botflota/spec"
@@ -102,16 +98,6 @@ func openDatabase(cfg *config.Config) (*sqlite.DB, error) {
 		return nil, err
 	}
 	return sqlite.Open(filepath.Join(dir, "botflota.db"))
-}
-
-// openDevices: a nil logger keeps the adapter store quiet.
-func openDevices(
-	ctx context.Context, db *sqlite.DB, log *slog.Logger, depsLevel string,
-) (*whatsapp.Devices, error) {
-	if log == nil {
-		log = botflota.DiscardLogger()
-	}
-	return whatsapp.OpenDevices(ctx, db.DB, log, botflota.ParseLogLevel(depsLevel))
 }
 
 // lockInstance takes the exclusive ownership that keeps a local write command

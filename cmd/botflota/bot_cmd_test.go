@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/felixzsh/botflota"
-	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/spec"
@@ -474,7 +472,7 @@ func (s *stubOfflineRunner) CancelSetup(
 }
 
 // TestResolveOfflineSetupUsesTheInstalledDefinition covers the offline path
-// without any device store: a non-WhatsApp definition resolves through the
+// without any device store: a registered definition resolves through the
 // catalog and drives the same session contract (ADR 0052, ADR 0053).
 func TestResolveOfflineSetupUsesTheInstalledDefinition(t *testing.T) {
 	lifecycle := &stubOfflineLifecycle{}
@@ -607,36 +605,36 @@ func TestBindForceUnsupportedMethodKeepsBinding(t *testing.T) {
 	}
 }
 
-func fakeOfflineAssemblies(
+// fakeOfflineInstallations registers one stateless fake adapter whose setup is
+// the stub pair, so the offline flow is driven through the real registry.
+func fakeOfflineInstallations(
 	lifecycle *stubOfflineLifecycle, runner *stubOfflineRunner, opened *bool,
-) []offlineAssembly {
-	return []offlineAssembly{{
-		provider: "fake", mode: "test",
-		open: func(_ *config.Config, _ *sqlite.DB, _ spec.Bot,
-			_ *slog.Logger,
-		) (*channels.Catalog, func(), error) {
+) []channels.Installation {
+	def := channels.Definition{
+		Provider: "fake",
+		Kind:     "fake",
+		Modes:    []string{"test"},
+		Decode: func(spec.Bot) (any, []string) {
+			return nil, nil
+		},
+		Setup: func(channels.Bind) (
+			botflota.AccountLifecycle, botflota.SetupRunner, error,
+		) {
+			return lifecycle, runner, nil
+		},
+	}
+	return []channels.Installation{{
+		Definition: def,
+		Install: func(context.Context, channels.Host) (channels.Installed, error) {
 			*opened = true
-			catalog, err := channels.New(channels.Definition{
-				Provider: "fake",
-				Kind:     "fake",
-				Modes:    []string{"test"},
-				Decode: func(spec.Bot) (any, []string) {
-					return nil, nil
-				},
-				Setup: func(channels.Bind) (
-					botflota.AccountLifecycle, botflota.SetupRunner, error,
-				) {
-					return lifecycle, runner, nil
-				},
-			})
-			return catalog, func() {}, err
+			return channels.Installed{Definition: def}, nil
 		},
 	}}
 }
 
 // TestBindOfflineUsesTheRegisteredAssembly drives the real offline bind
-// through the assembly registry: a non-WhatsApp channel assembles and
-// binds with no device store anywhere in the path (ADR 0052, ADR 0053).
+// through the adapter registry: a stateless adapter assembles and binds with
+// no device store anywhere in the path (ADR 0052, ADR 0053).
 func TestBindOfflineUsesTheRegisteredAssembly(t *testing.T) {
 	lifecycle := &stubOfflineLifecycle{}
 	runner := &stubOfflineRunner{session: &botflota.SetupSession{
@@ -651,7 +649,7 @@ func TestBindOfflineUsesTheRegisteredAssembly(t *testing.T) {
 	var out bytes.Buffer
 	code := bindOffline(&out, strings.NewReader(""), cfg,
 		"dev", "alpha", botSpec, bindOptions{}, false,
-		fakeOfflineAssemblies(lifecycle, runner, &opened))
+		fakeOfflineInstallations(lifecycle, runner, &opened))
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
@@ -687,7 +685,7 @@ func TestUnbindOfflineUsesTheRegisteredAssembly(t *testing.T) {
 	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
 	var out bytes.Buffer
 	code := unbindOffline(&out, cfg, "dev", "alpha", botSpec,
-		fakeOfflineAssemblies(lifecycle, runner, &opened))
+		fakeOfflineInstallations(lifecycle, runner, &opened))
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}

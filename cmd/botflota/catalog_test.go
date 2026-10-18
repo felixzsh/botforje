@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/felixzsh/botflota/channels"
-	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -20,40 +18,42 @@ func testCatalog(t *testing.T) *channels.Catalog {
 	return catalog
 }
 
-// TestWhatsappSelectedFollowsTheSelector guards the lazy assembly: only a bot on
-// the WhatsApp adapter makes the process open its device store, and a missing
-// selector keeps the documented WhatsApp default (ADR 0054).
-func TestWhatsappSelectedFollowsTheSelector(t *testing.T) {
-	cfgWith := func(bots ...spec.Bot) *config.Config {
-		scope := spec.Scope{Bots: map[string]spec.Bot{}}
-		for i, bot := range bots {
-			scope.Bots["bot"+fmt.Sprint(i)] = bot
-		}
-		return &config.Config{Scopes: map[string]spec.Scope{"dev": scope}}
+// TestSelectedKeysFollowsTheSelector guards the lazy assembly: only a bot whose
+// selector the installed catalog resolves makes the process open that
+// adapter's resources (ADR 0054).
+func TestSelectedKeysFollowsTheSelector(t *testing.T) {
+	installation := channels.Installation{Definition: channels.Definition{
+		Provider: "fake", Modes: []string{"text", "rich"},
+	}}
+	catalog, err := channels.New(installation.Definition)
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
 	cases := []struct {
 		name string
-		cfg  *config.Config
+		bots []spec.Channel
 		want bool
 	}{
-		{"no bots", cfgWith(), false},
-		{"another adapter only", cfgWith(spec.Bot{
-			Graph:   "menu",
-			Channel: spec.Channel{Provider: "fake", Mode: "text"},
-		}), false},
-		{"explicit whatsapp native", cfgWith(spec.Bot{
-			Graph:   "menu",
-			Channel: spec.Channel{Provider: "whatsapp", Mode: "native"},
-		}), true},
-		{"mixed fleet", cfgWith(
-			spec.Bot{Graph: "menu", Channel: spec.Channel{Provider: "fake", Mode: "text"}},
-			spec.Bot{Graph: "menu", Channel: spec.Channel{Provider: "whatsapp", Mode: "native"}},
-		), true},
+		{"no bots", nil, false},
+		{"another provider", []spec.Channel{
+			{Provider: "other", Mode: "text"},
+		}, false},
+		{"another mode of the same provider", []spec.Channel{
+			{Provider: "fake", Mode: "local"},
+		}, false},
+		{"an installed mode", []spec.Channel{
+			{Provider: "fake", Mode: "rich"},
+		}, true},
+		{"mixed fleet", []spec.Channel{
+			{Provider: "other", Mode: "text"},
+			{Provider: "fake", Mode: "text"},
+		}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := whatsappSelected(tc.cfg); got != tc.want {
-				t.Fatalf("whatsappSelected = %t, want %t", got, tc.want)
+			selected := selectedKeys(catalog, configWithBots(t, tc.bots...))
+			if got := selectedInstallation(installation, selected); got != tc.want {
+				t.Fatalf("selected = %t, want %t", got, tc.want)
 			}
 		})
 	}

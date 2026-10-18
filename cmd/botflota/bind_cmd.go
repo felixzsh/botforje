@@ -19,10 +19,8 @@ import (
 	"golang.org/x/term"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/installed"
 	"github.com/felixzsh/botflota/adapters/sqlite"
-	"github.com/felixzsh/botflota/adapters/testchannel"
-	"github.com/felixzsh/botflota/adapters/whatsapp"
-	"github.com/felixzsh/botflota/adapters/whatsapp/channel"
 	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/instance"
@@ -520,7 +518,7 @@ func runBind(args []string) int {
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	return bindOffline(os.Stdout, os.Stdin, cfg, scopeName, name, botSpec, opts,
-		*cmd.verbose, installedOfflineAssemblies())
+		*cmd.verbose, installed.Channels())
 }
 
 func runUnbind(args []string) int {
@@ -564,7 +562,7 @@ func runUnbind(args []string) int {
 	}
 	defer releaseInstance(lock, func(err error) { fmt.Fprintln(os.Stderr, err) })
 	return unbindOffline(os.Stdout, cfg, scopeName, name, botSpec,
-		installedOfflineAssemblies())
+		installed.Channels())
 }
 
 // unbindTimeout bounds the call: the instance stops the bot, draining its
@@ -684,96 +682,56 @@ func bindLogger(cfg *config.Config, verbose bool) *slog.Logger {
 	return botflota.NewLogger(cfg.LogLevel, os.Stderr)
 }
 
-// offlineAssembly opens one installed adapter's runtime dependencies and
-// returns its catalog with setup wired. The offline flow selects by channel,
-// so shipping another adapter registers one entry here instead of adding a
-// branch to the bind/unbind flow (ADR 0052, ADR 0053).
-type offlineAssembly struct {
-	provider, mode string
-	open           func(cfg *config.Config, db *sqlite.DB, bot spec.Bot,
-		log *slog.Logger) (*channels.Catalog, func(), error)
+// offlineStart refuses activation: a locked one-shot command has no fleet to
+// start the bot in, and the next `fleet run` builds it from the committed
+// binding (ADR 0022, ADR 0053).
+func offlineStart(context.Context, string, string) error {
+	return errors.New("fleet is not running")
 }
 
-// installedOfflineAssemblies lists the shipped adapters' offline assembly.
-// Tests register fakes through the same list.
-func installedOfflineAssemblies() []offlineAssembly {
-	return []offlineAssembly{
-		{
-			provider: channel.Provider, mode: channel.Mode,
-			open: openWhatsappOfflineCatalog,
-		},
-		{
-			provider: testchannel.Provider, mode: testchannel.Mode,
-			open: openTestchannelOfflineCatalog,
-		},
-	}
-}
-
-// openTestchannelOfflineCatalog wires the in-memory adapter for one bot; its
-// backend opens no store, so offline bind needs nothing beyond the database it
-// already holds (ADR 0052, ADR 0053).
-func openTestchannelOfflineCatalog(
-	_ *config.Config, db *sqlite.DB, _ spec.Bot, _ *slog.Logger,
-) (*channels.Catalog, func(), error) {
-	nop := func() {}
-	catalog, err := channels.New(testchannelDefinition(db.Bindings(), nil))
-	if err != nil {
-		return nil, nop, err
-	}
-	return catalog, nop, nil
-}
-
+// offlineChannelCatalog installs the adapter the bot selects and returns its
+// catalog with the neutral setup lifecycle wired. Opening is selected by the
+// bot's channel, so shipping another adapter adds its registry entry and no
+// branch here (ADR 0052, ADR 0053, ADR 0054).
 func offlineChannelCatalog(
-	cfg *config.Config, db *sqlite.DB, botSpec spec.Bot, logger *slog.Logger,
-	assemblies []offlineAssembly,
-) (*channels.Catalog, func(), error) {
-	for _, asm := range assemblies {
-		if botSpec.Channel.Provider == asm.provider &&
-			botSpec.Channel.Mode == asm.mode {
-			return asm.open(cfg, db, botSpec, logger)
+	ctx context.Context, cfg *config.Config, db *sqlite.DB, botSpec spec.Bot,
+	logger *slog.Logger, installations []channels.Installation,
+) (*channels.Catalog, *runtimeSet, error) {
+	// The pure catalog resolves the bot's selector to one installed key; the
+	// registration that provides it is the only one that opens
+	// (ADR 0052, ADR 0054).
+	pure, err := channels.New(pureDefinitions(installations)...)
+	if err != nil {
+		return nil, &runtimeSet{}, err
+	}
+	_, key, err := pure.Resolve(botSpec.Channel)
+	if err != nil {
+		// Nothing installed serves this channel: the pure catalog names
+		// the missing installation instead of inventing state.
+		return pure, &runtimeSet{}, nil
+	}
+	for _, installation := range installations {
+		if !serves(installation, key) {
+			continue
 		}
+		if installation.Install == nil {
+			catalog, err := channels.New(installation.Definition)
+			return catalog, &runtimeSet{}, err
+		}
+		runtime, err := installation.Install(ctx, channelHost(
+			cfg, db, logger, configBotLookup(cfg), offlineStart))
+		if err != nil {
+			return nil, &runtimeSet{}, err
+		}
+		set := &runtimeSet{installed: []channels.Installed{runtime}}
+		catalog, err := channels.New(runtime.Definition)
+		if err != nil {
+			set.Close()
+			return nil, &runtimeSet{}, err
+		}
+		return catalog, set, nil
 	}
-	// Nothing installed serves this channel: resolve against the pure
-	// catalog without opening any store, so the failure names the
-	// missing installation instead of inventing state.
-	catalog, err := pureCatalog()
-	return catalog, func() {}, err
-}
-
-// openWhatsappOfflineCatalog opens the device store and wires the WhatsApp
-// runtime catalog for one bot; no other channel touches these dependencies.
-func openWhatsappOfflineCatalog(
-	cfg *config.Config, db *sqlite.DB, _ spec.Bot, logger *slog.Logger,
-) (*channels.Catalog, func(), error) {
-	nop := func() {}
-	ctx := context.Background()
-	devices, err := openDevices(ctx, db, logger, cfg.LogLevelDeps)
-	if err != nil {
-		return nil, nop, err
-	}
-	manager := whatsapp.NewPairManager(whatsapp.PairManagerOptions{
-		Build: offlinePairBuild(cfg, db, devices),
-		OnPaired: func(context.Context, string, string) error {
-			return errors.New("fleet is not running")
-		},
-		Log: logger,
-	})
-	catalog, err := runtimeCatalog(channel.Deps{
-		Devices:      devices,
-		Bindings:     db.Bindings(),
-		Peers:        db.Peers(),
-		Chats:        db.Chats(),
-		Messages:     db.Messages(),
-		Directory:    db.Directory(),
-		Outbox:       db.Outbox(),
-		Pairs:        manager,
-		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
-	})
-	if err != nil {
-		manager.Close()
-		return nil, nop, err
-	}
-	return catalog, manager.Close, nil
+	return pure, &runtimeSet{}, nil
 }
 
 // resolveOfflineSetup selects the bot's installed definition through the
@@ -811,7 +769,7 @@ func resolveOfflineSetup(
 func bindOffline(
 	stdout io.Writer, stdin io.Reader, cfg *config.Config,
 	scopeName, botName string, botSpec spec.Bot, opts bindOptions, verbose bool,
-	assemblies []offlineAssembly,
+	installations []channels.Installation,
 ) int {
 	ctx := context.Background()
 	db, err := openDatabase(cfg)
@@ -821,13 +779,13 @@ func bindOffline(
 	}
 	defer db.Close()
 	logger := bindLogger(cfg, verbose)
-	catalog, cleanup, err := offlineChannelCatalog(
-		cfg, db, botSpec, logger, assemblies)
+	catalog, runtimes, err := offlineChannelCatalog(
+		ctx, cfg, db, botSpec, logger, installations)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer cleanup()
+	defer runtimes.Close()
 	lifecycle, runner, err := resolveOfflineSetup(
 		catalog, scopeName, botName, botSpec, logger)
 	if err != nil {
@@ -840,7 +798,7 @@ func bindOffline(
 
 func unbindOffline(
 	w io.Writer, cfg *config.Config, scopeName, botName string, botSpec spec.Bot,
-	assemblies []offlineAssembly,
+	installations []channels.Installation,
 ) int {
 	ctx := context.Background()
 	db, err := openDatabase(cfg)
@@ -850,13 +808,13 @@ func unbindOffline(
 	}
 	defer db.Close()
 	logger := bindLogger(cfg, false)
-	catalog, cleanup, err := offlineChannelCatalog(
-		cfg, db, botSpec, logger, assemblies)
+	catalog, runtimes, err := offlineChannelCatalog(
+		ctx, cfg, db, botSpec, logger, installations)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer cleanup()
+	defer runtimes.Close()
 	lifecycle, _, err := resolveOfflineSetup(
 		catalog, scopeName, botName, botSpec, logger)
 	if err != nil {
@@ -1027,44 +985,4 @@ func setupSessionOf(session *botflota.SetupSession) *setupSession {
 		view.Step = step
 	}
 	return view
-}
-
-// offlinePairBuild resolves one bot's local pairing settings from the config
-// file the locked command already holds, so a reload cannot move them
-// mid-bind.
-func offlinePairBuild(
-	cfg *config.Config, db *sqlite.DB, devices *whatsapp.Devices,
-) func(scope, bot string, fullHistory bool) (whatsapp.PairOptions, error) {
-	return func(scope, botName string, fullHistory bool) (whatsapp.PairOptions, error) {
-		scopeCfg, ok := cfg.Scopes[scope]
-		if !ok {
-			return whatsapp.PairOptions{}, fmt.Errorf("unknown scope %q", scope)
-		}
-		bot, ok := scopeCfg.Bots[botName]
-		if !ok {
-			return whatsapp.PairOptions{}, fmt.Errorf(
-				"bot %q not found in scope %q", botName, scope)
-		}
-		options, err := whatsappOptions(bot)
-		if err != nil {
-			return whatsapp.PairOptions{}, err
-		}
-		return whatsapp.PairOptions{
-			Scope:          scope,
-			Bot:            botName,
-			Devices:        devices,
-			Bindings:       db.Bindings(),
-			Peers:          db.Peers(),
-			Chats:          db.Chats(),
-			Messages:       db.Messages(),
-			History:        options.History,
-			FullHistory:    fullHistory,
-			Directory:      db.Directory(),
-			ImportContacts: options.ImportContacts,
-			Outbox:         db.Outbox(),
-			Log:            botflota.DiscardLogger(),
-			DepsLogLevel:   botflota.ParseLogLevel(cfg.LogLevelDeps),
-			DeviceName:     options.DeviceName,
-		}, nil
-	}
 }
