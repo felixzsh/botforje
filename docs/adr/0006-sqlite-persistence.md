@@ -20,9 +20,15 @@ Graph and node contexts are stored as JSON on the session. The domain depends
 on repository interfaces, not on SQL.
 
 The driver is pure Go (`modernc.org/sqlite`) so builds stay static; each
-connection enables WAL, foreign keys, a busy timeout, and
-`synchronous=NORMAL` (validated in the Phase 0 spike). Writers stay bounded
-by the per-bot actor model.
+connection enables WAL, foreign keys, a 30-second busy timeout, and
+`synchronous=NORMAL` (validated in the Phase 0 spike). Each bot is one writer
+actor, but a fleet has many, so the process caps its pool at 8 connections:
+SQLite admits one writer at a time, and extra connections add page caches and
+lock contention without adding write throughput. The busy timeout decides
+whether a queued turn waits or fails; a failed turn is reported and stays
+replayable, never silently dropped. Both bounds are what let a fleet of
+hundreds of bots stay inside its memory and latency budgets
+(`docs/channels/load-testing-plan.md`, section 6).
 
 ## Consequences
 

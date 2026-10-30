@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/felixzsh/botflota/adapters/sqlite/stores"
 
@@ -195,6 +196,19 @@ var schema = []string{
 		ON webhook_deliveries (state, next_attempt, id)`,
 }
 
+const (
+	// busyTimeoutMS is how long one statement waits for a held write lock
+	// before returning SQLITE_BUSY. A turn that waits is still committed later;
+	// failing at 5s under a busy fleet discarded work that fit, so the timeout
+	// covers the queue that fleet produces instead of the disk's own latency.
+	busyTimeoutMS = 30000
+	// maxOpenConns bounds the process's SQLite connections. SQLite admits one
+	// writer at a time, so extra connections add page caches (about a gigabyte
+	// at 500 bots) and contention without adding write throughput; the Go pool
+	// holds the queue instead.
+	maxOpenConns = 8
+)
+
 // DB is an open SQLite database with its schema applied.
 type DB struct{ *sql.DB }
 
@@ -209,12 +223,14 @@ func Open(path string) (*DB, error) {
 	dsn := "file:" + path +
 		"?_pragma=journal_mode(WAL)" +
 		"&_pragma=foreign_keys(1)" +
-		"&_pragma=busy_timeout(5000)" +
+		"&_pragma=busy_timeout(" + strconv.Itoa(busyTimeoutMS) + ")" +
 		"&_pragma=synchronous(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open: %w", err)
 	}
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxOpenConns)
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("sqlite: ping: %w", err)

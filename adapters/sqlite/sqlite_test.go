@@ -126,3 +126,21 @@ func TestOpenCreatesNeutralIdentitySchema(t *testing.T) {
 		t.Fatalf("rows = %#v, want both destinations", got)
 	}
 }
+
+// TestConnectionPolicy covers the two runtime bounds the load measurements
+// required (odd/tasks/sqlite-connection-policy.md): a turn waits for the write
+// lock instead of failing after 5s, and the process never opens more SQLite
+// connections than it can use, since each one carries its own page cache.
+func TestConnectionPolicy(t *testing.T) {
+	db := open(t, filepath.Join(t.TempDir(), "app.db"))
+	var timeout int
+	if err := db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
+		t.Fatalf("busy_timeout: %v", err)
+	}
+	if timeout != 30000 {
+		t.Fatalf("busy_timeout = %d, want 30000", timeout)
+	}
+	if got := db.Stats().MaxOpenConnections; got != 8 {
+		t.Fatalf("MaxOpenConnections = %d, want 8", got)
+	}
+}
