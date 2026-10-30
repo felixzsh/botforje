@@ -59,8 +59,15 @@ type Channel struct {
 	mu       sync.Mutex
 	sent     []botflota.OutgoingMessage
 	receipts []botflota.ReceiveReceipt
-	nextID   int64
-	state    string
+
+	sentCount    int
+	receiptCount int
+	// retain caps the samples kept for later inspection; 0 keeps every one.
+	// Counts stay exact either way, so a long run observes a bounded history.
+	retain int
+	onSend func(botflota.OutgoingMessage)
+	nextID int64
+	state  string
 }
 
 // Connect marks the view live. A testchannel account needs no handshake.
@@ -82,11 +89,65 @@ func (c *Channel) Send(
 	_ context.Context, msg botflota.OutgoingMessage,
 ) (string, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.nextID++
 	id := fmt.Sprintf("%s-%d", c.bot, c.nextID)
 	c.sent = append(c.sent, msg)
+	c.sentCount++
+	c.trimLocked()
+	observer := c.onSend
+	c.mu.Unlock()
+	if observer != nil {
+		observer(msg)
+	}
 	return id, nil
+}
+
+// OnSend registers one observer called after every recorded delivery. It lets a
+// long run measure each send as it happens instead of retaining the history,
+// and it must not block: the observing bot's send already happened.
+func (c *Channel) OnSend(observer func(botflota.OutgoingMessage)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onSend = observer
+}
+
+// Retain caps how many sent messages and receipts this view keeps for later
+// inspection. A non-positive value keeps every one, which is what a short
+// behavioral test expects; a run over hundreds of bots keeps a small sample.
+func (c *Channel) Retain(samples int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.retain = samples
+	c.trimLocked()
+}
+
+// SentCount reports how many deliveries this view recorded, including any
+// dropped from the retained sample.
+func (c *Channel) SentCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sentCount
+}
+
+// ReceiptCount reports how many processing outcomes this view recorded,
+// including any dropped from the retained sample.
+func (c *Channel) ReceiptCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.receiptCount
+}
+
+// trimLocked drops the oldest samples beyond the retention limit.
+func (c *Channel) trimLocked() {
+	if c.retain <= 0 {
+		return
+	}
+	if len(c.sent) > c.retain {
+		c.sent = append(c.sent[:0], c.sent[len(c.sent)-c.retain:]...)
+	}
+	if len(c.receipts) > c.retain {
+		c.receipts = append(c.receipts[:0], c.receipts[len(c.receipts)-c.retain:]...)
+	}
 }
 
 // Incoming is the stream a caller injects into.
@@ -108,6 +169,8 @@ func (c *Channel) ConfirmReceive(
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.receipts = append(c.receipts, receipt)
+	c.receiptCount++
+	c.trimLocked()
 	return nil
 }
 
@@ -115,6 +178,28 @@ func (c *Channel) ConfirmReceive(
 // fills its own message space and, when the caller supplied none, a receive
 // cursor, so a test only writes the neutral fields shared code understands.
 func (c *Channel) Inject(msg botflota.IncomingMessage) {
+	// A behavioral test has no deadline of its own; a load generator uses
+	// InjectContext so a stopped fleet cannot trap its sender.
+	_ = c.InjectContext(context.Background(), msg)
+}
+
+// InjectContext delivers one inbound message and gives up when ctx ends,
+// reporting ctx's error. It is the cancellable form a long or bounded run
+// needs: a full inbound buffer blocks until the bot drains it.
+func (c *Channel) InjectContext(
+	ctx context.Context, msg botflota.IncomingMessage,
+) error {
+	msg = c.prepare(msg)
+	select {
+	case c.incoming <- msg:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// prepare fills the adapter-owned fields of one inbound message.
+func (c *Channel) prepare(msg botflota.IncomingMessage) botflota.IncomingMessage {
 	if msg.Bot == "" {
 		msg.Bot = c.bot
 	}
@@ -124,7 +209,7 @@ func (c *Channel) Inject(msg botflota.IncomingMessage) {
 	if msg.ReceiveCursor == "" {
 		msg.ReceiveCursor = "cursor-" + msg.ProviderMessageID
 	}
-	c.incoming <- msg
+	return msg
 }
 
 // Sent returns a copy of what the channel delivered, oldest first.
