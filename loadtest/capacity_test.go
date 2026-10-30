@@ -32,6 +32,9 @@ type params struct {
 	MaxPending    int
 	Seed          int64
 	InjectTimeout time.Duration
+	QueueDelayMS  int
+	JitterMS      int
+	MaxPerMinute  int
 	JSON          string
 }
 
@@ -54,6 +57,9 @@ func paramsFromEnv(t *testing.T) (params, bool) {
 		MaxPending:    envInt(t, "BOTFLOATA_LOAD_MAX_PENDING", 64),
 		Seed:          int64(envInt(t, "BOTFLOATA_LOAD_SEED", 1)),
 		InjectTimeout: envDuration(t, "BOTFLOATA_LOAD_INJECT_TIMEOUT", 5*time.Second),
+		QueueDelayMS:  envInt(t, "BOTFLOATA_LOAD_QUEUE_DELAY_MS", 0),
+		JitterMS:      envInt(t, "BOTFLOATA_LOAD_JITTER_MS", 0),
+		MaxPerMinute:  envInt(t, "BOTFLOATA_LOAD_MAX_PER_MINUTE", 0),
 		JSON:          os.Getenv("BOTFLOATA_LOAD_JSON"),
 	}
 	p.Bots = envInt(t, "BOTFLOATA_LOAD_BOTS", 0)
@@ -72,7 +78,11 @@ func TestCapacity(t *testing.T) {
 			"_WARMUP, _DRAIN, _PAYLOAD, _MAX_PENDING, _SEED, _JSON")
 	}
 
-	l := layout{Scopes: p.Scopes, Bots: p.Bots, Chats: p.Chats}
+	l := layout{
+		Scopes: p.Scopes, Bots: p.Bots, Chats: p.Chats,
+		QueueDelayMS: p.QueueDelayMS, JitterMS: p.JitterMS,
+		MaxPerMinute: p.MaxPerMinute,
+	}
 	h := newHarness(t, l)
 	defer h.stop()
 	for i := 0; i < l.Bots; i++ {
@@ -121,6 +131,9 @@ func TestCapacity(t *testing.T) {
 			Bots: p.Bots, Scopes: p.Scopes, Chats: p.Chats,
 			RatePerBot: p.Rate, PayloadBytes: p.Payload, Seed: p.Seed,
 			MaxPendingPerBot: p.MaxPending,
+			QueueDelayMS:     p.QueueDelayMS,
+			JitterMS:         p.JitterMS,
+			MaxPerMinute:     p.MaxPerMinute,
 		},
 		Measurement: measurement{
 			counters:    counts,
@@ -199,6 +212,9 @@ type workload struct {
 	PayloadBytes     int     `json:"payload_bytes"`
 	Seed             int64   `json:"seed"`
 	MaxPendingPerBot int     `json:"max_pending_per_bot"`
+	QueueDelayMS     int     `json:"queue_delay_ms"`
+	JitterMS         int     `json:"jitter_ms"`
+	MaxPerMinute     int     `json:"max_messages_per_minute"`
 }
 
 type measurement struct {
@@ -239,6 +255,9 @@ func (r report) String() string {
 			"payload=%dB db=%.1fMB",
 			r.Workload.Bots, r.Workload.Scopes, r.Workload.Chats,
 			r.Workload.RatePerBot, r.Workload.PayloadBytes, r.Resources.DBSizeMB),
+		fmt.Sprintf("pacing: queue_delay=%dms jitter=%dms max_per_minute=%d",
+			r.Workload.QueueDelayMS, r.Workload.JitterMS,
+			r.Workload.MaxPerMinute),
 		fmt.Sprintf("measurement: wall=%.1fs completed/s=%.1f failures=%d %s",
 			r.Measurement.WallSeconds, r.Measurement.Throughput,
 			r.Measurement.Failures, fmtCounters(r.Measurement.counters)),

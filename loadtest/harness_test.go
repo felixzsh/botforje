@@ -34,6 +34,11 @@ type layout struct {
 	// Shared puts every bot in one adapter-declared message space, so a test
 	// can prove two bots never share dedup or history through it.
 	Shared bool
+	// Pacing mirrors the production outbox settings; zero means immediate
+	// delivery, which is what a capacity run without pacing measures.
+	QueueDelayMS int
+	JitterMS     int
+	MaxPerMinute int
 }
 
 // harness is one running fleet over a temporary database.
@@ -180,6 +185,7 @@ func (l layout) config(t *testing.T) *config.Config {
 				Mode:     testchannel.Mode,
 				Options:  l.options(t, i),
 			},
+			Settings: l.pacing(),
 		}
 		scopes[l.scopeName(l.scopeOf(i))] = scope
 	}
@@ -204,6 +210,19 @@ func (l layout) binding(i int) botflota.Binding {
 		Identity: botflota.IdentityKey{
 			Provider: testchannel.Provider, Subject: "acct-" + l.bot(i),
 		},
+	}
+}
+
+// pacing is the outbox configuration every bot shares; nil when the layout
+// asks for immediate delivery.
+func (l layout) pacing() *spec.BotSettings {
+	if l.QueueDelayMS == 0 && l.JitterMS == 0 && l.MaxPerMinute == 0 {
+		return nil
+	}
+	return &spec.BotSettings{
+		QueueDelay:      l.QueueDelayMS,
+		Jitter:          l.JitterMS,
+		MaxMsgPerMinute: l.MaxPerMinute,
 	}
 }
 

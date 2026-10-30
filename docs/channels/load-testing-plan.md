@@ -118,8 +118,16 @@ fresh run (`-count=1`), and the short revision it was built from.
 | `BOTFLOATA_LOAD_MAX_PENDING` | `64` | Bounded in-flight inputs per bot. |
 | `BOTFLOATA_LOAD_SEED` | `1` | Seed for the generated traffic. |
 | `BOTFLOATA_LOAD_INJECT_TIMEOUT` | `5s` | Deadline for one injected input. |
+| `BOTFLOATA_LOAD_QUEUE_DELAY_MS` | `0` | Outbox delay before each send. |
+| `BOTFLOATA_LOAD_JITTER_MS` | `0` | Random delay added per send. |
+| `BOTFLOATA_LOAD_MAX_PER_MINUTE` | `0` | Outbox send ceiling per bot. |
 | `BOTFLOATA_LOAD_JSON` | none | Report path; no file is written when empty. |
 | `BOTFLOATA_LOAD_REVISION` | short `HEAD` via `git` | Revision recorded in the report. |
+
+Set the three pacing variables to the deployment's own outbox settings. With
+them at zero a reply leaves as soon as its turn commits, so the run measures the
+write ceiling; with pacing configured it measures what an operator sees. The
+report records the values used.
 
 Durations use Go syntax (`45s`, `2m`); rates, sizes, and the seed are numbers.
 An absent `BOTFLOATA_LOAD_BOTS` skips the run instead of failing it. Start small
