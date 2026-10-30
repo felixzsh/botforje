@@ -26,6 +26,8 @@ Map of the documentation.
 For contributors and agents working on this repository:
 
 - `architecture.md` — components, boundaries, message lifecycle.
+- `channels/load-testing-plan.md` — planned multi-bot integration tests and adjustable
+  synthetic capacity experiments; not implemented behavior or measured capacity.
 - `adr/` — why each decision was made.
 
 ### Channel adapter findings
