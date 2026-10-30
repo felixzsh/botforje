@@ -87,3 +87,14 @@ in the SQLite VM and B-tree, 9% in its libc helpers, 6-8% syscalls, 8-9% runtime
 and under 0.1% in Botflota's own Go code. Postgres would move and parallelize
 that SQL work, not remove it; scope sharding is the cheaper path to 1000 bots in
 one process, and 300 per instance is the accepted target for now.
+
+L8 — Verifier's final verdict: unsound as committed (`6c27bee`) because of the
+export starvation, now guarded in `1e5a182`; no nested-connection deadlock in
+the audited paths. Follow-ups applied: the policy test now reserves all eight
+connections, checks the timeout on each, and requires eight idle connections
+kept warm (`8b026b8`); the ADR states that the busy wait is a per-statement lock
+wait that cannot observe a cancelled context. Not applied, on purpose: an idle
+lifetime for the pool and a server WriteTimeout, neither justified by evidence
+yet. The verifier's scratch copy stays at `/tmp/botflota-sqlite-verify.jZkRhD`
+because its module cache files are read-only; deleting it needs `chmod -R u+w`
+and is left to the operator.
