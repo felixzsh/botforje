@@ -36,9 +36,9 @@ to named hardware, workload, and pacing, never as a universal maximum.
 
 | ID | Specs | Route | Commit | State |
 | --- | --- | --- | --- | --- |
-| T1 | S3 | inline | | pending |
-| T2 | S1, S2 | inline | | pending |
-| T3 | S2, S3, S4 | inline | | pending |
+| T1 | S3 | inline | c56879f | done |
+| T2 | S1, S2 | inline | 0ef0daf | done |
+| T3 | S2, S3, S4 | inline | 0c71b13 | done |
 | T4 | S3, S4 | inline | | pending |
 | T5 | S5 | inline | | pending |
 
@@ -85,3 +85,22 @@ injection. Outbox retry and permanent-failure semantics are already pinned by
 `fleet/outbox_test.go`; duplicating them at scale would add test-only
 machinery without new coverage. The slow/degraded-channel item of the plan
 stays documented as a follow-up, not silently claimed.
+
+L6 — Finding while running the 48-bot burst under `-race`: concurrent turns can
+fail with `SQLITE_BUSY` (peer, chat, or session writes). Every store uses
+`BeginTx(ctx, nil)`, a deferred transaction, and a read-then-write upgrade can
+return busy without honoring `busy_timeout`. A failed turn is reported, stores
+nothing, and leaves the receive cursor unconfirmed, so it stays replayable.
+Decision: not fixed here. Changing transaction mode (`BEGIN IMMEDIATE`) is a
+store-semantics change outside this harness and remains an owner decision.
+
+L7 — Finding: a reply whose send succeeded but whose provider id could not be
+recorded is retried, so the same synthetic input can be delivered twice. This
+is the documented at-least-once behavior (channels plan), not a new defect. The
+functional suite therefore asserts exactly-once only below the contention
+regime, and the burst test asserts correlated ownership, no silent loss, and
+duplicates only alongside a reported failure.
+
+L8 — Evidence correction: `runtime/metrics` `/cpu/classes/total:cpu-seconds`
+reported zero in this environment, so process CPU is read from `getrusage`
+(with a portable fallback) instead of an unusable metric.
