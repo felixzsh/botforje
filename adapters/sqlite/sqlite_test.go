@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -131,16 +132,38 @@ func TestOpenCreatesNeutralIdentitySchema(t *testing.T) {
 // required (odd/tasks/sqlite-connection-policy.md): a turn waits for the write
 // lock instead of failing after 5s, and the process never opens more SQLite
 // connections than it can use, since each one carries its own page cache.
+// PRAGMAs are per connection, so the timeout is checked on every connection the
+// pool opens, not only on the first.
 func TestConnectionPolicy(t *testing.T) {
 	db := open(t, filepath.Join(t.TempDir(), "app.db"))
-	var timeout int
-	if err := db.QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
-		t.Fatalf("busy_timeout: %v", err)
+	ctx := context.Background()
+	conns := make([]*sql.Conn, 0, 8)
+	for i := 0; i < 8; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatalf("connection %d: %v", i, err)
+		}
+		conns = append(conns, conn)
 	}
-	if timeout != 30000 {
-		t.Fatalf("busy_timeout = %d, want 30000", timeout)
+	for i, conn := range conns {
+		var timeout int
+		if err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeout); err != nil {
+			t.Fatalf("busy_timeout on connection %d: %v", i, err)
+		}
+		if timeout != 30000 {
+			t.Fatalf("connection %d busy_timeout = %d, want 30000", i, timeout)
+		}
 	}
-	if got := db.Stats().MaxOpenConnections; got != 8 {
-		t.Fatalf("MaxOpenConnections = %d, want 8", got)
+	for i, conn := range conns {
+		if err := conn.Close(); err != nil {
+			t.Fatalf("close connection %d: %v", i, err)
+		}
+	}
+	stats := db.Stats()
+	if stats.MaxOpenConnections != 8 {
+		t.Fatalf("MaxOpenConnections = %d, want 8", stats.MaxOpenConnections)
+	}
+	if stats.Idle != 8 {
+		t.Fatalf("idle connections = %d, want the 8 kept warm", stats.Idle)
 	}
 }

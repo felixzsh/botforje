@@ -26,9 +26,14 @@ actor, but a fleet has many, so the process caps its pool at 8 connections:
 SQLite admits one writer at a time, and extra connections add page caches and
 lock contention without adding write throughput. The busy timeout decides
 whether a queued turn waits or fails; a failed turn is reported and stays
-replayable, never silently dropped. Both bounds are what let a fleet of
-hundreds of bots stay inside its memory and latency budgets
+replayable, never silently dropped. Up to eight connections stay idle for
+reuse, so a burst does not reopen and reconfigure them. Both bounds are what let
+a fleet of hundreds of bots stay inside its memory and latency budgets
 (`docs/channels/load-testing-plan.md`, section 6).
+
+The timeout is a per-statement lock wait, not an operation deadline. SQLite's
+busy handler cannot observe Go's context, so a cancelled request still waits out
+the remaining timeout; callers that need prompt cancellation cannot rely on it.
 
 ## Consequences
 
