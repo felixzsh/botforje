@@ -110,3 +110,18 @@ reported `nativeRisk: medium` (executable change in the synthetic adapter) and
 `reviewDue: false` with reason `under_budget`, so no review lineage was started.
 The work-unit commits stay independently reviewable; the accumulated branch is
 not a review candidate.
+
+L10 — Experiment: `_txlock=immediate` in a scratch copy changed nothing
+(99.6% completed at 100 bots, 49 failed turns, ~95 turns/s), so the busy errors
+are not a deferred-transaction upgrade. Raising `busy_timeout` from 5s to 30s
+in a second scratch copy removed every failure at the same offered load
+(3000/3000 completed, ~96.8 turns/s), at the cost of exposing the write queue
+as latency (p50 1.3s, p95 9.5s). The 5s timeout decides whether overload
+surfaces as failed turns or as queueing, not how much work fits.
+
+L11 — Experiment: capping the SQLite pool at 8 connections with 500 bots cut
+peak RSS from 994MB to 96MB, removed all failed turns, and raised completed
+turns/s from 14.8 to 101.9. The 1GB peak was the unlimited connection pool, not
+the Go heap (peak 34MB). Both fixes are production adapter settings, not test
+code; adopting them is an owner decision recorded in the plan document, not
+applied on this branch.
