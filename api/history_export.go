@@ -40,6 +40,13 @@ var historyExportFiles = map[botflota.HistoryTable]struct {
 	}},
 }
 
+// maxConcurrentExports is how many history exports may hold a read snapshot at
+// once. Each export holds one pooled connection for the whole archive, and a
+// client that stops reading keeps it; allowing every client its own snapshot
+// let a handful of stalled responses exhaust the pool and fail unrelated
+// requests. One at a time leaves the fleet's writers their connections.
+const maxConcurrentExports = 1
+
 // handleHistoryExport streams one bot's history as a zip of CSVs. The rows are
 // written as they are read, so a conversation of several megabytes costs no
 // more memory than a small one, and the whole read is one snapshot in the store
@@ -56,6 +63,14 @@ func (s *Server) handleHistoryExport(w http.ResponseWriter, r *http.Request) {
 	if s.history == nil {
 		writeError(w, http.StatusNotImplemented, "unsupported_operation",
 			"history export is not available")
+		return
+	}
+	// Acquire before the first byte: a client that is already gone while
+	// waiting must not start a snapshot it will never read.
+	select {
+	case s.exports <- struct{}{}:
+		defer func() { <-s.exports }()
+	case <-r.Context().Done():
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")

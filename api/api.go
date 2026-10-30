@@ -104,11 +104,15 @@ type Server struct {
 	sends     botflota.SendStore
 	channels  *channels.Catalog
 	history   botflota.HistoryStore
-	pauser    BotPauser
-	tokens    botflota.AccessTokenStore
-	resolver  PrincipalResolver
-	log       *slog.Logger
-	limiter   *rateLimiter
+	// exports bounds concurrent history exports. Each one holds a pooled
+	// connection until its client finishes the archive, so a few stalled
+	// clients must not take the connections the fleet writes through.
+	exports  chan struct{}
+	pauser   BotPauser
+	tokens   botflota.AccessTokenStore
+	resolver PrincipalResolver
+	log      *slog.Logger
+	limiter  *rateLimiter
 	// opsMu guards the per-bot operation locks pairing, account, and history
 	// operations share (ADR 0021, ADR 0039, ADR 0042).
 	opsMu sync.Mutex
@@ -180,6 +184,7 @@ func New(opts Options) (*Server, error) {
 		sessions: opts.Sessions, messages: opts.Messages, sends: opts.Sends,
 		channels: opts.Channels,
 		history:  opts.History,
+		exports:  make(chan struct{}, maxConcurrentExports),
 		pauser:   opts.Pauser,
 		tokens:   opts.Tokens, resolver: opts.Resolver, log: logger,
 		limiter: newRateLimiter(opts.RateBudgets), started: time.Now(),
