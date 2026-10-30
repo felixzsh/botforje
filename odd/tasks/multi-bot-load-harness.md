@@ -39,7 +39,7 @@ to named hardware, workload, and pacing, never as a universal maximum.
 | T1 | S3 | inline | c56879f | done |
 | T2 | S1, S2 | inline | 0ef0daf | done |
 | T3 | S2, S3, S4 | inline | 0c71b13 | done |
-| T4 | S3, S4 | inline | | pending |
+| T4 | S3, S4 | delegated | e3a5cbc | done |
 | T5 | S5 | inline | | pending |
 
 T1 — Cancellable inbound injection and bounded observation in the synthetic
