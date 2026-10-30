@@ -29,7 +29,8 @@ digmaos a lo mucho unos 6 segundos entonces po rbot 10 mensajes por minuto".
 | --- | --- | --- | --- | --- |
 | T1 | S1, S2 | inline | 3dd05d3 | done |
 | T2 | S3 | inline | | pending |
-| T3 | S4 | inline | | pending |
+| T3 | S4 | inline | aed7107 | done |
+| T4 | S1 | inline | 1e5a182 | done |
 
 T1 — RED tests for the timeout and the pool bound, then the two settings and the
 ADR 0006 update. Its own commit: the Risk line names a high-risk item
@@ -40,6 +41,9 @@ code, separate commit.
 
 T3 — Measure 300 and 500 bots with pacing, repeat each point, and record the
 per-message latency against the 6 s budget.
+
+T4 — Guard the bounded pool against the starvation the verifier reproduced: a
+history export holds a read snapshot for the whole HTTP stream.
 
 ## Log
 
@@ -60,3 +64,26 @@ L4 — Review disposition: native assess over `101e3f5..HEAD` reported
 reason `under_budget`, so no review lineage was started. The change is still
 treated as high risk for concurrency: an independent read-only verifier checks
 pool starvation, timeout interaction, test strength, and ADR consistency.
+
+L5 — Independent verification of `6c27bee` reproduced a new starvation, absent in
+its parent: eight stalled HTTP history exports hold all eight connections, and an
+unrelated `SELECT 1` then fails its 100ms deadline. Fixed in `1e5a182` by
+allowing one export at a time, acquired before the first byte, with a test that
+fails at two concurrent reads. Two further findings: SQLite's busy handler
+cannot observe a Go context, so a cancelled write still waits out the 30s bound
+(the old 5s bound was shorter, not cancellable either); and
+`TestSetupConcurrentMutationsStaySerialized` shows a pre-existing race on both
+the parent and the candidate, so it is advisory and unrelated.
+
+L6 — Paced measurements (10 messages per minute per bot, outbox capped at 20/min,
+two runs each): 300 bots completed 1500/1500 and 1499/1499 with zero failures,
+p50 13-16ms, p95 132-154ms, 64-67MB RSS, about 0.9 core; 500 bots completed
+2500/2500 twice with zero failures but p50 3.7-7.8s and p95 8.5-14.4s, because
+at that fleet size the engine sustains about 70 turns/s and the demand queues.
+300 bots meet the 6s budget with margin; 500 do not.
+
+L7 — Profile of a saturated 100-bot run and a paced 500-bot run: about 43% of CPU
+in the SQLite VM and B-tree, 9% in its libc helpers, 6-8% syscalls, 8-9% runtime,
+and under 0.1% in Botflota's own Go code. Postgres would move and parallelize
+that SQL work, not remove it; scope sharding is the cheaper path to 1000 bots in
+one process, and 300 per instance is the accepted target for now.

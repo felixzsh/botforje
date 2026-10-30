@@ -259,7 +259,32 @@ Envelope for this machine and workload: roughly 50 turns/s (50 bots at one
 message per second) is comfortable, with p95 under 200ms on disk and about one
 CPU core. The write path plateaus near 95-100 turn commits per second regardless
 of storage or bot count. Beyond that, latency grows with the queue and, with
-the current 5s busy timeout, a small share of turns fails and stays replayable.
+the 5s busy timeout then in place, a small share of turns failed and stayed
+replayable.
+
+### Paced runs
+
+300 and 500 bots with a paced outbox (`max_messages_per_minute=20`, no added
+delay), two runs each, at ten offered messages per minute per bot:
+
+| Bots | Completed | Failed | p50 | p95 | Peak RSS |
+| --- | --- | --- | --- | --- | --- |
+| 300 | 1500/1500, 1499/1499 | 0 | 13-16ms | 132-154ms | 64-67MB |
+| 500 | 2500/2500, 2500/2500 | 0 | 3.7-7.8s | 8.5-14.4s | 78-82MB |
+
+300 bots at that cadence fit comfortably inside a six-second reply budget. 500
+do not: at that fleet size the engine sustains about 70 turns per second, so the
+extra demand queues. Bot count alone is not the limit; aggregate turns per
+second is.
+
+### Where the CPU goes
+
+A CPU profile of the saturated 100-bot run and of the paced 500-bot run shows
+the same split: about 43% in the SQLite VM and B-tree code, 9% in its libc
+helpers, 6-8% in syscalls, 8-9% in runtime scheduling, and under 0.1% in
+Botflota's own Go code. The cost is the SQL each turn issues, not templating or
+engine logic. Another database would move and parallelize that work; it would
+not make it disappear.
 
 ### Isolating experiments
 
@@ -282,12 +307,18 @@ Each change below was applied alone in a scratch copy, never committed.
   from 14.8 to 101.9. The 1GB peak was the unlimited connection pool, not the Go
   heap (34MB peak).
 
-### Candidate adapter settings, not applied
+### Adapter settings adopted
 
-A longer `busy_timeout` and a bounded connection pool are settings in
-`adapters/sqlite`, not test code. They are not applied on this branch: they
-change runtime behavior for every deployment and belong in their own change,
-with tests and this before/after record.
+Both settings are now in `adapters/sqlite`: a 30s busy timeout and a pool bound
+of 8 connections (ADR 0006). The bound exposed one hazard, reproduced by an
+independent verifier before it shipped: a history export holds a read snapshot
+for the whole HTTP stream, so a few stalled clients could take every connection
+and fail unrelated requests. Exports now run one at a time, acquired before the
+first byte, which leaves the fleet's writers their connections.
+
+One trade-off is recorded: SQLite's busy handler cannot observe a Go context, so
+a cancelled request still waits out the timeout. The 30s bound is the worst
+case, and it only applies while a write lock is held for seconds.
 
 ## 7. Implementation sequence and acceptance
 
