@@ -1,8 +1,10 @@
 # Multi-bot integration and capacity testing plan
 
-Status: planned, not implemented. This document defines follow-up testing on
-one Botflota process with many synthetic messaging accounts. It does not
-claim a measured capacity or authorize runtime contract changes.
+Status: bounded synthetic driving, the functional integration suite, and the
+opt-in capacity runner are implemented. No measurement has been published:
+results from that runner are descriptive evidence, not a capacity claim. This
+document defines testing on one Botflota process with many synthetic messaging
+accounts and does not authorize runtime contract changes.
 
 ## Outcome
 
@@ -28,12 +30,11 @@ are separate results: a fast run with incorrect replies is not successful.
 - Do not change shared ports, storage contracts, pacing defaults, or resource
   policy merely to make a benchmark faster. Findings may propose separate work.
 
-The existing fake retains every outgoing message and processing receipt, and
-its observation methods copy their full histories. Its inbound injection also
-blocks without cancellation. Before sustained-load use, provide bounded,
-observable instrumentation and cancellable injection without breaking the
-existing conformance tests. Otherwise the harness can dominate memory and
-shutdown behavior.
+The synthetic adapter now keeps bounded observations: each bot caps how many
+sent messages and processing receipts it retains, counts every delivery even
+when its sample is trimmed, and reports sends through a per-send observer. Its
+inbound injection honors cancellation, so shutdown under load does not hang.
+The existing conformance tests still pass with those defaults.
 
 [Channel preparation](plan.md) owns the architectural gates. Its pending
 WhatsApp operational checklist remains independent of this synthetic work.
@@ -67,8 +68,8 @@ detector, separately from capacity measurements.
 
 ## 2. Adjustable workload
 
-Expose these controls in the future test runner; their spelling and invocation
-will be documented with its implementation, not presented as existing commands.
+The opt-in capacity runner takes these controls from its environment; [Running
+it](#running-it) documents their exact spelling, defaults, and invocation.
 
 | Control | Purpose |
 | --- | --- |
@@ -79,7 +80,12 @@ will be documented with its implementation, not presented as existing commands.
 | Duration, warm-up, and drain deadline | Separate steady state from startup and completion. |
 | Traffic pattern and seed | Reproduce steady traffic and synchronized bursts. |
 | Payload size | Keep message-memory and storage costs explicit. |
-| Simulated send latency and failure schedule | Exercise slower channels and controlled failures. |
+| Simulated send latency and failure schedule | Follow-up, not a runner control. |
+
+Every control except the last is implemented as an environment variable.
+Simulated send latency and failures stay a documented follow-up: outbox retry
+and permanent-failure semantics are already pinned by existing fleet tests, so
+the runner does not duplicate them at scale with test-only machinery.
 
 Record the graph, reply count per input, and effective outbox pacing with each
 run. Keep production pacing for the baseline. Any separately configured pacing
@@ -90,6 +96,64 @@ offering the next input. Record scheduling lag and missed offers when the
 injector cannot sustain the requested rate. Bound generator concurrency and
 buffers; never create an unbounded goroutine or queue per offered message.
 A generator bottleneck makes the intended load unproven, not supported.
+
+## Running it
+
+The capacity run is `TestCapacity` in the test-only `loadtest` package. It is
+skipped unless `BOTFLOATA_LOAD_BOTS` is set, so no ordinary test command
+measures capacity. `make load` runs it with an explicit `-timeout 30m`, a
+fresh run (`-count=1`), and the short revision it was built from.
+
+| Variable | Default | Control |
+| --- | --- | --- |
+| `BOTFLOATA_LOAD_BOTS` | none, required | Independently running bots in one fleet. |
+| `BOTFLOATA_LOAD_SCOPES` | `1` | Scopes the bots are distributed across. |
+| `BOTFLOATA_LOAD_CHATS` | `1` | Active chats per bot. |
+| `BOTFLOATA_LOAD_RATE` | `1` | Offered messages per second per bot. |
+| `BOTFLOATA_LOAD_DURATION` | `30s` | Measurement phase length. |
+| `BOTFLOATA_LOAD_WARMUP` | `5s` | Traffic before measurement, then drained. |
+| `BOTFLOATA_LOAD_DRAIN` | `30s` | Deadline for unfinished work to drain. |
+| `BOTFLOATA_LOAD_PAYLOAD` | `64` | Payload size in bytes. |
+| `BOTFLOATA_LOAD_MAX_PENDING` | `64` | Bounded in-flight inputs per bot. |
+| `BOTFLOATA_LOAD_SEED` | `1` | Seed for the generated traffic. |
+| `BOTFLOATA_LOAD_INJECT_TIMEOUT` | `5s` | Deadline for one injected input. |
+| `BOTFLOATA_LOAD_JSON` | none | Report path; no file is written when empty. |
+| `BOTFLOATA_LOAD_REVISION` | short `HEAD` via `git` | Revision recorded in the report. |
+
+Durations use Go syntax (`45s`, `2m`); rates, sizes, and the seed are numbers.
+An absent `BOTFLOATA_LOAD_BOTS` skips the run instead of failing it. Start small
+and step one control up at a time:
+
+```sh
+BOTFLOATA_LOAD_BOTS=50 BOTFLOATA_LOAD_JSON=/tmp/bots50.json make load
+make load BOTFLOATA_LOAD_BOTS=100 BOTFLOATA_LOAD_CHATS=2 \
+	BOTFLOATA_LOAD_DURATION=2m BOTFLOATA_LOAD_JSON=/tmp/bots100.json
+```
+
+Both forms pass the workload through: `make load` hands every
+`BOTFLOATA_LOAD_*` value from the environment or the make command line to the
+test binary, and an operator-set `BOTFLOATA_LOAD_REVISION` is not overridden by
+the value derived from `git`. Heavy stress runs stay opt-in: `make load` is not
+part of `make check`, `make test`, or `make test-race`, and no CI run enforces
+a throughput or latency threshold.
+
+Write the JSON report to a path outside the repository, such as `/tmp`, so
+measurement evidence is never committed by accident. Each report carries the
+revision, seed, workload, machine, phase durations, offered/admitted/completed
+counts, latency percentiles, process CPU and resident memory, heap and GC
+statistics, goroutines, database size, and pending-work samples.
+
+Profiles use the standard `go test` flags rather than runner options, and stay
+separate from baseline runs because they distort the numbers:
+
+```sh
+BOTFLOATA_LOAD_BOTS=100 go test ./loadtest -run TestCapacity -v \
+	-timeout 30m -cpuprofile /tmp/cpu.out -memprofile /tmp/mem.out
+```
+
+`-blockprofile` and `-mutexprofile` are available the same way when diagnosing
+contention. A few seconds of traffic with a payload that stays close to the
+defaults is enough for a first smoke run.
 
 ## 3. Capacity experiments
 
@@ -132,9 +196,10 @@ method. Disclose harness overhead because generator and runtime may share the
 process and machine. Large-scale correctness checks should use bounded
 correlation/accounting rather than retain every complete payload indefinitely.
 
-Offer optional CPU and heap profiles and, when diagnosing contention, Go block
-or mutex profiles. Keep profile runs separate from baseline measurements and
-label their overhead. Profiling is diagnostic, not a prerequisite for every run.
+CPU and heap profiles come from the standard `go test` flags, as do Go block or
+mutex profiles when diagnosing contention. Keep profile runs separate from
+baseline measurements and label their overhead. Profiling is diagnostic, not a
+prerequisite for every run.
 
 ## 5. Interpreting reasonable capacity
 
@@ -157,20 +222,24 @@ separately before translating runtime capacity into deployment expectations.
 
 ## 6. Implementation sequence and acceptance
 
-All items below are future work; no benchmark or capacity result exists yet.
+The implementation items are complete; no benchmark or capacity result exists
+yet.
 
-- [ ] Add cancellation-safe synthetic driving and bounded load observations;
+- [x] Add cancellation-safe synthetic driving and bounded load observations;
   existing adapter conformance tests continue passing.
-- [ ] Implement the functional scenarios with exact correlated assertions,
+- [x] Implement the functional scenarios with exact correlated assertions,
   isolated databases, deadlines, and race-detector coverage.
-- [ ] Add an opt-in configurable load runner with bounded open-loop generation,
-  explicit startup/warm-up/measurement/drain phases, and honest overload accounting.
-- [ ] Add summary and machine-readable evidence plus optional Go profiles;
+- [x] Add an opt-in configurable load runner with bounded open-loop generation,
+  explicit startup/warm-up/measurement/drain phases, and honest overload
+  accounting.
+- [x] Add summary and machine-readable evidence plus optional Go profiles;
   distinguish runtime cost from harness overhead.
-- [ ] Document runnable examples and Make targets alongside their implementation;
+- [x] Document runnable examples and Make targets alongside their implementation;
   heavy stress runs remain opt-in rather than part of ordinary `make check`.
 - [ ] Execute and record a baseline and incremental sweep on named hardware;
   report limitations and candidate operating envelopes, not unsupported maxima.
 
-Next step: implement the synthetic-driving prerequisite and functional suite
-before using throughput or profiling output to draw capacity conclusions.
+Next step: run the baseline and incremental sweep on named hardware, then record
+the operating envelope [section 5](#5-interpreting-reasonable-capacity)
+requires. Until that run exists, the runner's output is evidence about
+correctness and cost, never a capacity conclusion.

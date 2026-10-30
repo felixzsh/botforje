@@ -6,9 +6,11 @@ DEV_CONFIG ?= .dev-data/config.yml
 DEV_DATA ?= .dev-data
 ARGS ?=
 LINE_MAX := 100
+LOAD_REVISION ?= $(or $(BOTFLOATA_LOAD_REVISION),\
+	$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown))
 
 .DEFAULT_GOAL := help
-.PHONY: help build run dev dev-reset test test-race vet fmt fmt-check \
+.PHONY: help build run dev dev-reset test test-race load vet fmt fmt-check \
 	lines-check check schema validate install-service install-service-system \
 	tidy clean
 
@@ -34,6 +36,13 @@ test: ## Run all tests
 
 test-race: ## Run all tests with the race detector
 	$(GO) test -race ./...
+
+# Opt-in capacity run, never part of check, test, or test-race. Every
+# BOTFLOATA_LOAD_* variable from the environment passes through, and an
+# operator-set BOTFLOATA_LOAD_REVISION is not overridden.
+load: ## Run the opt-in capacity test: make load BOTFLOATA_LOAD_BOTS=100
+	BOTFLOATA_LOAD_REVISION=$(LOAD_REVISION) \
+		$(GO) test ./loadtest -run TestCapacity -v -count=1 -timeout 30m
 
 vet: ## Run go vet
 	$(GO) vet ./...
