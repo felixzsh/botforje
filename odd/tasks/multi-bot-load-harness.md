@@ -104,3 +104,9 @@ duplicates only alongside a reported failure.
 L8 — Evidence correction: `runtime/metrics` `/cpu/classes/total:cpu-seconds`
 reported zero in this environment, so process CPU is read from `getrusage`
 (with a portable fallback) instead of an unusable metric.
+
+L9 — Review disposition: native assess over the committed range `a960a55..HEAD`
+reported `nativeRisk: medium` (executable change in the synthetic adapter) and
+`reviewDue: false` with reason `under_budget`, so no review lineage was started.
+The work-unit commits stay independently reviewable; the accumulated branch is
+not a review candidate.
