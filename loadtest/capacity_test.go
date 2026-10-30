@@ -35,6 +35,7 @@ type params struct {
 	QueueDelayMS  int
 	JitterMS      int
 	MaxPerMinute  int
+	DeviceChurn   bool
 	JSON          string
 }
 
@@ -60,6 +61,7 @@ func paramsFromEnv(t *testing.T) (params, bool) {
 		QueueDelayMS:  envInt(t, "BOTFLOATA_LOAD_QUEUE_DELAY_MS", 0),
 		JitterMS:      envInt(t, "BOTFLOATA_LOAD_JITTER_MS", 0),
 		MaxPerMinute:  envInt(t, "BOTFLOATA_LOAD_MAX_PER_MINUTE", 0),
+		DeviceChurn:   os.Getenv("BOTFLOATA_LOAD_DEVICE_CHURN") == "1",
 		JSON:          os.Getenv("BOTFLOATA_LOAD_JSON"),
 	}
 	p.Bots = envInt(t, "BOTFLOATA_LOAD_BOTS", 0)
@@ -81,7 +83,7 @@ func TestCapacity(t *testing.T) {
 	l := layout{
 		Scopes: p.Scopes, Bots: p.Bots, Chats: p.Chats,
 		QueueDelayMS: p.QueueDelayMS, JitterMS: p.JitterMS,
-		MaxPerMinute: p.MaxPerMinute,
+		MaxPerMinute: p.MaxPerMinute, DeviceChurn: p.DeviceChurn,
 	}
 	h := newHarness(t, l)
 	defer h.stop()
@@ -134,6 +136,7 @@ func TestCapacity(t *testing.T) {
 			QueueDelayMS:     p.QueueDelayMS,
 			JitterMS:         p.JitterMS,
 			MaxPerMinute:     p.MaxPerMinute,
+			DeviceChurn:      p.DeviceChurn,
 		},
 		Measurement: measurement{
 			counters:    counts,
@@ -215,6 +218,7 @@ type workload struct {
 	QueueDelayMS     int     `json:"queue_delay_ms"`
 	JitterMS         int     `json:"jitter_ms"`
 	MaxPerMinute     int     `json:"max_messages_per_minute"`
+	DeviceChurn      bool    `json:"device_store_churn"`
 }
 
 type measurement struct {

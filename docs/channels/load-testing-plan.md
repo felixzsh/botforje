@@ -121,6 +121,7 @@ fresh run (`-count=1`), and the short revision it was built from.
 | `BOTFLOATA_LOAD_QUEUE_DELAY_MS` | `0` | Outbox delay before each send. |
 | `BOTFLOATA_LOAD_JITTER_MS` | `0` | Random delay added per send. |
 | `BOTFLOATA_LOAD_MAX_PER_MINUTE` | `0` | Outbox send ceiling per bot. |
+| `BOTFLOATA_LOAD_DEVICE_CHURN` | `0` | Also write whatsmeow's per-message device store. |
 | `BOTFLOATA_LOAD_JSON` | none | Report path; no file is written when empty. |
 | `BOTFLOATA_LOAD_REVISION` | short `HEAD` via `git` | Revision recorded in the report. |
 
@@ -276,6 +277,28 @@ delay), two runs each, at ten offered messages per minute per bot:
 do not: at that fleet size the engine sustains about 70 turns per second, so the
 extra demand queues. Bot count alone is not the limit; aggregate turns per
 second is.
+
+### WhatsApp device-store churn
+
+The synthetic channel says nothing about what the WhatsApp adapter persists for
+each inbound message. `BOTFLOATA_LOAD_DEVICE_CHURN=1` makes every turn read and
+write a Signal session through the real whatsmeow store, and every tenth turn
+also touch a sender key, in the fleet's own database. At twelve messages per
+minute per bot:
+
+| Bots | Device churn | Turns/s | CPU | p50 | p95 | Peak RSS |
+| --- | --- | --- | --- | --- | --- | --- |
+| 250 | off | 42.9 | 35.8s (1.02 core) | 17ms | 207ms | 63MB |
+| 250 | on | 42.9 | 39.0s (1.11 core) | 19ms | 167ms | 63MB |
+| 200 | on | 34.3 | 29.5s (0.84 core) | 15ms | 74ms | 54MB |
+| 300 | on | 51.5 | 46.1s (1.32 core) | 23ms | 531ms | 68MB |
+
+The device store adds about 9% CPU at this cadence, and no measurable latency or
+memory. Still outside this simulation: the websocket and its goroutines, Signal
+encryption itself, connect handshakes, history sync after a restart, read
+receipts and presence, and media. Expect a modest addition to the measured
+figures and a real burst at startup; that burst, not steady state, is what the
+instance's CPU limit must absorb.
 
 ### Where the CPU goes
 

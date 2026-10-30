@@ -39,6 +39,9 @@ type layout struct {
 	QueueDelayMS int
 	JitterMS     int
 	MaxPerMinute int
+	// DeviceChurn also performs whatsmeow's per-message device-store work in
+	// the same database, so a run includes what the WhatsApp adapter persists.
+	DeviceChurn bool
 }
 
 // harness is one running fleet over a temporary database.
@@ -51,6 +54,7 @@ type harness struct {
 	fleet   *fleet.Fleet
 	cancel  context.CancelFunc
 	done    chan error
+	churn   *deviceChurn
 
 	mu       sync.Mutex
 	errCount int
@@ -107,6 +111,13 @@ func newHarnessAt(t *testing.T, l layout, path string) *harness {
 
 	h := &harness{t: t, layout: l, path: path, db: db,
 		backend: testchannel.NewBackend()}
+	if l.DeviceChurn {
+		churn, err := newDeviceChurn(db)
+		if err != nil {
+			t.Fatalf("device churn: %v", err)
+		}
+		h.churn = churn
+	}
 	cfg := l.config(t)
 	cfg.DataDir = filepath.Dir(path)
 	for i := 0; i < l.Bots; i++ {
@@ -285,6 +296,11 @@ func (h *harness) injectCtx(
 		Content:           botflota.TextContent{Body: id},
 		ProviderMessageID: id,
 		At:                time.Now(),
+	}
+	if h.churn != nil {
+		if err := h.churn.turn(ctx, h.layout.bot(i), peerName(chat)); err != nil {
+			return err
+		}
 	}
 	return h.channel(i).InjectContext(ctx, msg)
 }
