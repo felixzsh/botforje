@@ -1,8 +1,9 @@
 # Multi-bot integration and capacity testing plan
 
 Status: bounded synthetic driving, the functional integration suite, and the
-opt-in capacity runner are implemented. No measurement has been published:
-results from that runner are descriptive evidence, not a capacity claim. This
+opt-in capacity runner are implemented, and section 6 records one sweep on the
+development machine. That record is descriptive evidence, not a published
+capacity claim. This
 document defines testing on one Botflota process with many synthetic messaging
 accounts and does not authorize runtime contract changes.
 
@@ -220,10 +221,70 @@ not include a real messaging SDK's sockets, encryption, synchronization,
 reconnects, upstream rate limits, or media traffic. Measure real adapters
 separately before translating runtime capacity into deployment expectations.
 
-## 6. Implementation sequence and acceptance
+## 6. Recorded runs on this machine (2026-10-30)
 
-The implementation items are complete; no benchmark or capacity result exists
-yet.
+One observation, not a capacity claim: 8 vCPU, 15.6 GB RAM, Linux x86-64,
+Go 1.27.3, btrfs root filesystem, the synthetic adapter, an echo graph with one
+reply per input, two direct chats per bot, a 64-byte payload, production
+pacing, and harness revision `0c71b13` (unchanged since). Each row is a single
+run with a 5s warm-up, 30s measurement, and a 30-45s drain deadline. Variance
+between repeats is not characterized yet.
+
+`/tmp` on this machine is tmpfs, so the tmpfs rows measure an idealized
+in-memory database. The btrfs rows put the database on the real filesystem
+through `TMPDIR`.
+
+| Storage | Bots | Rate | Offered | Done | Failed | Pending | Turns/s | p50 | p95 | RSS |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| tmpfs | 50 | 1/s | 1500 | 1500 | 0 | 0 | 48.4 | 14ms | 131ms | 40MB |
+| tmpfs | 100 | 0.5/s | 1500 | 1500 | 0 | 0 | 46.9 | 19ms | 280ms | 55MB |
+| tmpfs | 100 | 1/s | 3000 | 2964 | 36 | 36 | 95.6 | 748ms | 10963ms | 79MB |
+| tmpfs | 200 | 1/s | 5627 | 3258 | 951 | 2317 | 94.2 | 16392ms | 41189ms | 134MB |
+| tmpfs | 500 | 1/s | 11179 | 517 | 3708 | 9772 | 14.8 | 31498ms | 49688ms | 994MB |
+| btrfs | 50 | 1/s | 1500 | 1500 | 0 | 0 | 48.4 | 19ms | 160ms | 40MB |
+| btrfs | 100 | 1/s | 3000 | 2946 | 54 | 54 | 95.0 | 2712ms | 16183ms | 80MB |
+
+Idle overhead with 500 started bots and no traffic: 62MB RSS, 15MB heap, and
+1004 goroutines, about two per bot.
+
+Envelope for this machine and workload: roughly 50 turns/s (50 bots at one
+message per second) is comfortable, with p95 under 200ms on disk and about one
+CPU core. The write path plateaus near 95-100 turn commits per second regardless
+of storage or bot count. Beyond that, latency grows with the queue and, with
+the current 5s busy timeout, a small share of turns fails and stays replayable.
+
+### Isolating experiments
+
+Each change below was applied alone in a scratch copy, never committed.
+
+| Change | Bots | Completed | Failed | Unfinished | Turns/s | p95 | Peak RSS |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_txlock=immediate` | 100 | 2951 | 49 | 49 | 95.2 | 11430ms | 78MB |
+| `busy_timeout=30s` | 100 | 3000 | 0 | 0 | 96.8 | 9542ms | 80MB |
+| `SetMaxOpenConns(8)` | 500 | 3565 | 0 | 6605 | 101.9 | 68627ms | 97MB |
+
+- The immediate transaction mode changed nothing, so the busy failures are not
+  a deferred-transaction upgrade.
+- Raising the busy timeout removes the failures at the same offered load: the
+  work fits, but the queue surfaces as multi-second latency. The 5s timeout
+  decides whether overload appears as failed turns or as waiting, not how much
+  work fits.
+- Capping the SQLite pool at 8 connections cut peak RSS at 500 bots from 994MB
+  to 97MB, removed every failed turn, and raised completed turns per second
+  from 14.8 to 101.9. The 1GB peak was the unlimited connection pool, not the Go
+  heap (34MB peak).
+
+### Candidate adapter settings, not applied
+
+A longer `busy_timeout` and a bounded connection pool are settings in
+`adapters/sqlite`, not test code. They are not applied on this branch: they
+change runtime behavior for every deployment and belong in their own change,
+with tests and this before/after record.
+
+## 7. Implementation sequence and acceptance
+
+The implementation items are complete. Section 6 records one sweep; it is a
+single observation per point, not a stable guarantee.
 
 - [x] Add cancellation-safe synthetic driving and bounded load observations;
   existing adapter conformance tests continue passing.
@@ -236,10 +297,10 @@ yet.
   distinguish runtime cost from harness overhead.
 - [x] Document runnable examples and Make targets alongside their implementation;
   heavy stress runs remain opt-in rather than part of ordinary `make check`.
-- [ ] Execute and record a baseline and incremental sweep on named hardware;
-  report limitations and candidate operating envelopes, not unsupported maxima.
+- [x] Execute and record a baseline and incremental sweep on named hardware;
+  report limitations and candidate operating envelopes, not unsupported maxima
+  (section 6, one run per point).
 
-Next step: run the baseline and incremental sweep on named hardware, then record
-the operating envelope [section 5](#5-interpreting-reasonable-capacity)
-requires. Until that run exists, the runner's output is evidence about
-correctness and cost, never a capacity conclusion.
+Next step: decide on the two candidate SQLite settings, repeat each sweep point
+more than once, and measure a real adapter before translating these synthetic
+numbers into deployment expectations.

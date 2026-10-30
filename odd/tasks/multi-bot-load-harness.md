@@ -40,7 +40,7 @@ to named hardware, workload, and pacing, never as a universal maximum.
 | T2 | S1, S2 | inline | 0ef0daf | done |
 | T3 | S2, S3, S4 | inline | 0c71b13 | done |
 | T4 | S3, S4 | delegated | e3a5cbc | done |
-| T5 | S5 | inline | | pending |
+| T5 | S5 | inline | 02d8719 | done |
 
 T1 — Cancellable inbound injection and bounded observation in the synthetic
 adapter, keeping the existing conformance suite green.
@@ -125,3 +125,12 @@ turns/s from 14.8 to 101.9. The 1GB peak was the unlimited connection pool, not
 the Go heap (peak 34MB). Both fixes are production adapter settings, not test
 code; adopting them is an owner decision recorded in the plan document, not
 applied on this branch.
+
+L12 — Measured envelope on this machine (2026-10-30, 8 vCPU, 15.6GB, btrfs):
+50 turns/s is comfortable (p95 160ms on disk, one core, 40MB RSS); the write
+path plateaus near 95-100 turn commits/s on both tmpfs and disk; beyond it the
+queue grows and the 5s busy timeout fails a small share of turns. 500 idle bots
+cost 62MB RSS and 1004 goroutines. The two candidate adapter settings (longer
+busy timeout, bounded SQLite pool) cut failures and the 1GB RSS peak to under
+100MB in isolated scratch runs. Adopting them is an owner decision: this branch
+keeps them out of production code and records the evidence instead.
