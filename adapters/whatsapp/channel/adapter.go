@@ -33,6 +33,11 @@ const (
 	StateConnected  State = "connected"
 	StateLoggedOut  State = "logged_out"
 	StateBanned     State = "banned"
+	// StatePasskeyRequired and StateReachoutTimelock are rejections no retry
+	// can fix: the account needs a ceremony on the owner's device, or its
+	// reachout is locked for a while (ADR 0028).
+	StatePasskeyRequired  State = "passkey_required"
+	StateReachoutTimelock State = "reachout_timelock"
 )
 
 // Settings controls presence and pacing for one bot (ADR 0011).
@@ -313,7 +318,7 @@ func (a *Adapter) setState(state State) {
 		return
 	}
 	switch state {
-	case StateLoggedOut, StateBanned:
+	case StateLoggedOut, StateBanned, StatePasskeyRequired, StateReachoutTimelock:
 		a.log.Warn("channel state", "state", string(state))
 	default:
 		a.log.Info("channel state", "state", string(state))

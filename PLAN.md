@@ -370,9 +370,9 @@ Deliverables:
   removes the adapter credentials; `bot unbind` drives it while the instance is
   owned and works locally when it is not, and `bot bind --force` replaces
   through the same path (ADR 0021, ADR 0039).
-- [ ] Account states beyond binding: a connection rejected with 428 (passkey
-  required) or 463 (reachout timelock) stops the bot and is visible in
-  `bot list` (ADR 0028).
+- [x] Account states beyond binding: a connection rejected with 428 (passkey
+  required) or 463 (reachout timelock) stops the bot as `passkey_required` or
+  `reachout_timelock` and is visible in `bot list` (ADR 0028).
 - [x] Owner token auth: generated on first run, hashed in SQLite, written once
   to a `0600` file under `data_dir` for the CLI, and regenerable with
   `fleet run --new-owner-token`. Every request resolves one principal behind a

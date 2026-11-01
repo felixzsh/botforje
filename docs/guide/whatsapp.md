@@ -176,8 +176,12 @@ empty list.
 `./bin/botflota bot list` prints a compact table with the `BOT`, `SCOPE`,
 `BINDING`, and `STATE` columns. `BINDING` shows `provider/subject` for a
 committed binding and `-` otherwise. `STATE` is the running channel's transport
-state (`connected`, `connecting`, `stopped`, `logged_out`, or `banned`), or `-`
-when the bot is configured but not running. `bot list` reads the running
+state — `connected`, `connecting`, `stopped`, `logged_out`, `banned`,
+`passkey_required`, or `reachout_timelock` — or `-` when the bot is configured
+but not running. A rejection no retry can fix stops the bot in its own state
+instead of looping: `passkey_required` means the account needs the passkey
+ceremony on the owner's device, and `reachout_timelock` means the provider
+locked new conversations for now (ADR 0028). `bot list` reads the running
 instance through the REST API, so `fleet run` must be up and the command
 changes no stored state.
 

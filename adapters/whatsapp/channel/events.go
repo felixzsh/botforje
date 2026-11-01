@@ -34,6 +34,31 @@ func (a *Adapter) handleEvent(raw any) {
 	case *events.StreamReplaced:
 		a.setState(StateStopped)
 		a.stopReconnecting()
+	case *events.ConnectFailure:
+		a.onConnectFailure(event)
+	}
+}
+
+// Connect-failure reasons that leave nothing to retry. whatsmeow reports them
+// as the raw reason the server sent, so they are named here (ADR 0028).
+const (
+	connectFailurePasskeyRequired  = 428
+	connectFailureReachoutTimelock = 463
+)
+
+// onConnectFailure stops the bot on a rejection no retry can fix, so it is
+// reported in bot list instead of looped forever (ADR 0011, ADR 0028). Every
+// other reason keeps the connection logic in charge.
+func (a *Adapter) onConnectFailure(event *events.ConnectFailure) {
+	switch int(event.Reason) {
+	case connectFailurePasskeyRequired:
+		a.setState(StatePasskeyRequired)
+		a.stopReconnecting()
+	case connectFailureReachoutTimelock:
+		a.setState(StateReachoutTimelock)
+		a.stopReconnecting()
+	default:
+		a.log.Warn("connect failure", "reason", int(event.Reason), "message", event.Message)
 	}
 }
 

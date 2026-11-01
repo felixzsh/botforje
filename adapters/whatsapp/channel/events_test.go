@@ -295,6 +295,50 @@ func TestLoggedOutReportsTheNeutralState(t *testing.T) {
 	}
 }
 
+// TestConnectFailuresThatStopTheBot: 428 and 463 leave nothing to retry, so the
+// bot stops in its own state and is reported, while an ordinary failure keeps
+// the reconnection logic in charge (ADR 0011, ADR 0028).
+func TestConnectFailuresThatStopTheBot(t *testing.T) {
+	cases := []struct {
+		name   string
+		reason events.ConnectFailureReason
+		want   State
+	}{
+		{"passkey required", events.ConnectFailureReason(428), StatePasskeyRequired},
+		{"reachout timelock", events.ConnectFailureReason(463), StateReachoutTimelock},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestAdapter()
+			a.stop = make(chan struct{})
+			a.handleEvent(&events.ConnectFailure{Reason: tc.reason})
+			if got := a.State(); got != tc.want {
+				t.Fatalf("state = %q, want %q", got, tc.want)
+			}
+			select {
+			case <-a.stop:
+			default:
+				t.Fatal("the bot kept its reconnection loop")
+			}
+		})
+	}
+
+	t.Run("an ordinary failure is not fatal", func(t *testing.T) {
+		a := newTestAdapter()
+		a.stop = make(chan struct{})
+		a.setState(StateConnecting)
+		a.handleEvent(&events.ConnectFailure{Reason: events.ConnectFailureServiceUnavailable})
+		if got := a.State(); got != StateConnecting {
+			t.Fatalf("state = %q, want it unchanged", got)
+		}
+		select {
+		case <-a.stop:
+			t.Fatal("an ordinary failure stopped the bot")
+		default:
+		}
+	})
+}
+
 // TestLiveIngressNeverBecomesATextTurn is the ingest-boundary conformance
 // check for unsupported interactions: control traffic (reactions, edits,
 // poll votes, protocol messages), receipts, and payloads the adapter cannot
