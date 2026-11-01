@@ -398,10 +398,9 @@ Deliverables:
 - [x] Secret policy (ADR 0014): resolve `${ENV_VAR}` only in model `api_key`
   and request header values, keep the placeholder when serializing, and
   reveal the value only to the consumer that sends it.
-- [ ] Reject a `${...}` that reaches any other string (ADR 0014): entities
-  (llm, action, graph, bot) are scanned, but instance-level settings
-  (`address`, `data_dir`), `include` paths, and a scope's
-  `display_name` are not.
+- [x] Reject a `${...}` that reaches any other string (ADR 0014): entities,
+  instance settings (`address`, `data_dir`), `include` paths, and a scope's
+  `display_name` are all scanned, and the refusal names the site.
 - [x] Config watch baseline (ADR 0009): poll the main YAML and its loaded
   includes; load, interpolate, and validate a complete candidate before use.
   Invalid edits keep the active configuration.

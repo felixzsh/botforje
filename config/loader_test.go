@@ -377,6 +377,80 @@ func TestSecretRefOutsideSecretFieldRejected(t *testing.T) {
 	}
 }
 
+// TestSecretRefInUnownedSettingsRejected: instance settings and a scope's
+// visible label are not interpolated either, so a reference there is refused
+// with the same rule (ADR 0014).
+func TestSecretRefInUnownedSettingsRejected(t *testing.T) {
+	const scope = `scopes:
+  default:
+    actions:
+      call:
+        steps: [{message: {body: "hi"}}]
+`
+	cases := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{
+			name: "instance address",
+			doc:  "address: \"${API_TOKEN}\"\n" + scope,
+			want: "address",
+		},
+		{
+			name: "data dir",
+			doc:  "data_dir: \"${API_TOKEN}\"\n" + scope,
+			want: "data_dir",
+		},
+		{
+			name: "scope display name",
+			doc: `scopes:
+  default:
+    display_name: "${API_TOKEN}"
+    actions:
+      call:
+        steps: [{message: {body: "hi"}}]
+`,
+			want: "display_name",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTemp(t, t.TempDir(), "config.yml", tc.doc)
+			cfg, err := testLoader().Load(path)
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			errs := Validate(cfg, testCatalog(t))
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e.Error(), tc.want) &&
+					strings.Contains(e.Error(), "secret reference") {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("errors = %v, want one naming %q", errs, tc.want)
+			}
+		})
+	}
+}
+
+// TestIncludeWithSecretRefRejected: an include path is not interpolated, so a
+// reference in it is refused before the path is resolved.
+func TestIncludeWithSecretRefRejected(t *testing.T) {
+	path := writeTemp(t, t.TempDir(), "config.yml",
+		"include:\n  - \"${DIR}/scopes.yml\"\n")
+	_, err := testLoader().Load(path)
+	if err == nil {
+		t.Fatal("want the reference in an include path refused")
+	}
+	if !strings.Contains(err.Error(), "secret reference") ||
+		!strings.Contains(err.Error(), "include") {
+		t.Fatalf("error = %v, want a secret-reference refusal naming the include", err)
+	}
+}
+
 // TestSecretRefMissingVariable checks that a malformed or unset reference in a
 // secret field fails at load instead of being sent literally.
 func TestSecretRefMissingVariable(t *testing.T) {

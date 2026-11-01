@@ -78,10 +78,16 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 		}
 	}
 	validateWebhooks(cfg.Webhooks, add)
+	// Settings no scope owns are never interpolated either, so a reference in
+	// one of them can only reach the runtime untouched (ADR 0014).
+	checkSecretRefValue(add, "", "config", "address", cfg.Address)
+	checkSecretRefValue(add, "", "config", "data_dir", cfg.DataDir)
 	validateLabels(cfg, addScope)
 	for _, scopeName := range SortedKeys(cfg.Scopes) {
 		scope := cfg.Scopes[scopeName]
 		scoped := addScope(scopeName)
+		checkSecretRefValue(scoped, cfg.DisplayNameOrigin(scopeName),
+			fmt.Sprintf("scope %q", scopeName), "display_name", scope.DisplayName)
 		for _, name := range SortedKeys(scope.LLMs) {
 			validateLLM(cfg, scopeName, name, scope.LLMs[name], scoped)
 			checkSecretRefs(cfg, scoped, "llm", scopeName, name, scope.LLMs[name])

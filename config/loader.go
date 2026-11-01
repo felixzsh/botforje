@@ -84,6 +84,12 @@ func (s *includeState) runIncludes(
 ) error {
 	dir := filepath.Dir(from)
 	for _, inc := range includes {
+		if strings.Contains(inc, "${") {
+			// An include path is never interpolated, so a reference here could
+			// only be meant as a secret and resolved as a literal (ADR 0014).
+			return fmt.Errorf("%s: include %q: a secret reference is only "+
+				"allowed in a model api_key and request header values", from, inc)
+		}
 		s.watchDirs = append(s.watchDirs, includeWatchDir(dir, inc))
 		files, err := resolveInclude(dir, inc, reader)
 		if err != nil {
