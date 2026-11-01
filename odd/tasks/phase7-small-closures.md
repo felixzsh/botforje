@@ -51,3 +51,13 @@ items, keeping every behaviour deterministic under the existing gates.
   was ever pushed, so the accumulated-diff count of the branch says nothing. The
   reviewable slice is this branch's own commits, one per unit, each on top of the
   commit that completed the unit before it.
+- L4 — T1 committed as `7303f39`, T2 as `6251e9f`, T4 as `ec9ce7d`, and T5 as
+  `7d476fe`. T2 needed a public code of its own: a chat with no history anchor
+  answered the same `sync_failed` as an upstream failure, so the walk could not
+  tell a state from a failure. The core now carries `ErrNoAnchor`, the API
+  answers `422 no_anchor`, and `chat sync --all` prints one line per outcome plus
+  a final count of answered, skipped, timed out, and failed.
+- L5 — T3 (completion for bash, zsh, and fish) is delegated to a bounded writer
+  because it is the largest unit and touches only `cmd/botflota/completion.go`,
+  `cmd/botflota/completion_test.go`, and the command tree. The parent reviews,
+  checks, and commits it.
