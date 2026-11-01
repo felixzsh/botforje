@@ -47,3 +47,7 @@ items, keeping every behaviour deterministic under the existing gates.
 - L2 — Preceding context: the load-testing branch was merged into `main` by
   fast-forward after `make check` passed, and `origin/main` is 405 commits
   behind because nothing was ever pushed.
+- L3 — Slice boundary: `origin/main` is 405 commits behind `main` because nothing
+  was ever pushed, so the accumulated-diff count of the branch says nothing. The
+  reviewable slice is this branch's own commits, one per unit, each on top of the
+  commit that completed the unit before it.

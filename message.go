@@ -12,6 +12,11 @@ import (
 // ErrNotFound reports a persisted record that does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrNoAnchor reports a chat with nothing to page history back from: it has no
+// stored message carrying a provider cursor yet (ADR 0035). It is a state of
+// that chat, not a failed request, so a batch sync skips it and keeps walking.
+var ErrNoAnchor = errors.New("chat has no history anchor")
+
 // ErrNoLLM reports an LLM-only operation with no provider configured.
 var ErrNoLLM = errors.New("no LLM configured")
 

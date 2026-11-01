@@ -237,8 +237,9 @@ func cliTree() *commandHelp {
 							"zero means all accessible history. The running fleet owns the live\n" +
 							"connection, so this is an API client and fleet run must be up.\n" +
 							"--all walks every chat of the bot, newest activity first, one at a\n" +
-							"time, printing a line per chat and a final total; the command takes\n" +
-							"only the bot, and a chat that fails is reported and skipped.",
+							"time, and ends with how many chats answered, were skipped for\n" +
+							"having nothing to page back from, timed out, or failed. A chat\n" +
+							"without an anchor or with an error never stops the walk.",
 						usage: "botflota chat sync [options] <bot>",
 						examples: []string{
 							"botflota chat sync support-bot --chat-id 3",

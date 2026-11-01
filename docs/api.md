@@ -216,7 +216,10 @@ field. Chat views report effective `control` (`auto`, `paused`, or `human`) and
 `paused_till` while a pause counts down. Control state is live runtime state:
 a restart returns every chat to `auto`, and held messages are not replayed.
 Chat sync uses `POST B/chats/sync?chat_id=<id>` with the same scoped lookup; it refuses
-an unsupported live operation instead of guessing a target from a peer.
+an unsupported live operation instead of guessing a target from a peer. A chat
+that has no stored message to page back from yet answers `422` with code
+`no_anchor`: that is a state of the chat, not a failed request, so a caller
+walking several chats skips it and keeps going.
 
 The `fleet run` process remains under the host supervisor. A future
 owner-only dashboard/API action may request a process restart through that

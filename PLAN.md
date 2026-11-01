@@ -454,8 +454,10 @@ Deliverables:
 - [x] `chat sync --all` (ADR 0035): after those anchors exist, request one
   bounded page per known chat over the running fleet's connection, in
   sequence and never in parallel, keeping the walk going when one chat fails.
-- [ ] The `chat sync --all` summary: report answered, timed-out, and skipped
-  counts, and skip a chat with no anchor instead of failing the batch.
+- [x] The `chat sync --all` summary: report answered, timed-out, and skipped
+  counts, and skip a chat with no anchor instead of failing the batch. A chat
+  with nothing to page from answers its own public code (`no_anchor`), so the
+  command counts it apart from a timeout and a failure.
 - [x] Capacity envelope (a measurement, not a Phase 7 capability): an opt-in
   multi-bot load harness drives the real fleet and stores through the synthetic
   channel, and the envelope one instance is planned around is recorded —

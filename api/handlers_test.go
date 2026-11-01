@@ -107,6 +107,30 @@ func TestChatSyncHidesUpstreamFailure(t *testing.T) {
 	}
 }
 
+// TestChatSyncNoAnchorIsAState: a chat with nothing to page from answers its
+// own code, so a batch sync can skip it instead of counting a failure, and the
+// upstream detail still stays in the log.
+func TestChatSyncNoAnchorIsAState(t *testing.T) {
+	live := &fakeSyncFleet{
+		err: fmt.Errorf("whatsapp: chat with 5215500000000 has no message to "+
+			"page from yet: %w", botflota.ErrNoAnchor),
+	}
+	server := testServerWithFleet(t, live)
+	recorder := post(t, server.Handler(),
+		"/api/v1/scopes/support/bots/demo/chats/sync?chat_id=3",
+		testOwnerToken)
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", recorder.Code)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "no_anchor") {
+		t.Fatalf("body = %s, want the no_anchor code", body)
+	}
+	if strings.Contains(body, "5215500000000") {
+		t.Fatalf("upstream detail leaked to the caller: %s", body)
+	}
+}
+
 func TestConfigEndpointMasksSecrets(t *testing.T) {
 	server := testServer(t)
 	recorder := get(t, server.Handler(), "/api/v1/config", testOwnerToken)

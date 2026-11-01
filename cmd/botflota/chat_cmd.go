@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -184,27 +185,53 @@ func syncEveryChat(
 	}
 	fmt.Fprintf(w, "syncing %d chat(s) through the fleet...\n", len(ids))
 	total := chatSyncResult{}
-	failed := 0
+	answered, skipped, timedOut, failed := 0, 0, 0, 0
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
 		result, err := requestChatSync(ctx, client, scope, bot, id, count, timeoutSeconds)
-		if err != nil {
+		switch {
+		case err == nil:
+			answered++
+			total.Imported += result.Imported
+			total.Duplicate += result.Duplicate
+			total.Skipped += result.Skipped
+			fmt.Fprintf(w, "%-8d imported %d (duplicate %d, skipped %d)%s\n",
+				id, result.Imported, result.Duplicate, result.Skipped, stopReason(result))
+		case isNoAnchor(err):
+			skipped++
+			fmt.Fprintf(w, "%-8d skipped: nothing to page back from yet\n", id)
+		case isTimeout(err):
+			timedOut++
+			fmt.Fprintf(w, "%-8d timed out: %v\n", id, err)
+		default:
 			failed++
 			fmt.Fprintf(w, "%-8d failed: %v\n", id, err)
-			continue
 		}
-		total.Imported += result.Imported
-		total.Duplicate += result.Duplicate
-		total.Skipped += result.Skipped
-		fmt.Fprintf(w, "%-8d imported %d (duplicate %d, skipped %d)%s\n",
-			id, result.Imported, result.Duplicate, result.Skipped, stopReason(result))
 	}
-	fmt.Fprintf(w, "synced %d chat(s), imported %d (duplicate %d, skipped %d), %d failed\n",
-		len(ids)-failed, total.Imported, total.Duplicate, total.Skipped, failed)
+	fmt.Fprintf(w, "walked %d chat(s): %d answered, %d skipped (no anchor), "+
+		"%d timed out, %d failed\n", len(ids), answered, skipped, timedOut, failed)
+	fmt.Fprintf(w, "imported %d message(s) (duplicate %d, skipped %d)\n",
+		total.Imported, total.Duplicate, total.Skipped)
 	return 0
+}
+
+// isNoAnchor reports the answer for a chat that has nothing to page back from
+// yet; it is a state, so the walk goes on (ADR 0035).
+func isNoAnchor(err error) bool {
+	var callErr *apiCallError
+	return errors.As(err, &callErr) && callErr.Code == "no_anchor"
+}
+
+// isTimeout reports a request that ran out of time instead of being refused.
+func isTimeout(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var timeout interface{ Timeout() bool }
+	return errors.As(err, &timeout) && timeout.Timeout()
 }
 
 func requestChatSync(

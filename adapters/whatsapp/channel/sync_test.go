@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
+	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/adapters/whatsapp/ingest"
 	"google.golang.org/protobuf/proto"
 )
@@ -214,4 +216,51 @@ func (f fakeLIDStore) GetManyLIDsForPNs(
 	context.Context, []types.JID,
 ) (map[types.JID]types.JID, error) {
 	return nil, nil
+}
+
+// anchorChats answers the chat lookup oldestCursor depends on.
+type anchorChats struct {
+	botflota.ChatStore
+	chat *botflota.Chat
+}
+
+func (f anchorChats) ForTarget(
+	context.Context, string, string, botflota.ChatTarget,
+) (*botflota.Chat, error) {
+	return f.chat, nil
+}
+
+// anchorMessages answers the oldest-message read oldestCursor depends on.
+type anchorMessages struct {
+	botflota.MessageStore
+	message *botflota.Message
+	err     error
+}
+
+func (f anchorMessages) Oldest(context.Context, int64) (*botflota.Message, error) {
+	return f.message, f.err
+}
+
+// TestOldestCursorWithoutMessageIsNoAnchor: a chat with no stored cursor is a
+// state the batch sync skips, so it must be distinguishable from a failure.
+func TestOldestCursorWithoutMessageIsNoAnchor(t *testing.T) {
+	_, err := oldestCursor(context.Background(), "support", "demo",
+		botflota.ChatTarget{},
+		anchorChats{chat: &botflota.Chat{ID: 3}},
+		anchorMessages{err: botflota.ErrNotFound})
+	if !errors.Is(err, botflota.ErrNoAnchor) {
+		t.Fatalf("error = %v, want ErrNoAnchor", err)
+	}
+}
+
+// TestOldestCursorWithoutProviderCursorIsNoAnchor: the same holds for a stored
+// row that carries no provider id, which cannot anchor a request either.
+func TestOldestCursorWithoutProviderCursorIsNoAnchor(t *testing.T) {
+	_, err := oldestCursor(context.Background(), "support", "demo",
+		botflota.ChatTarget{},
+		anchorChats{chat: &botflota.Chat{ID: 3}},
+		anchorMessages{message: &botflota.Message{At: time.Now()}})
+	if !errors.Is(err, botflota.ErrNoAnchor) {
+		t.Fatalf("error = %v, want ErrNoAnchor", err)
+	}
 }

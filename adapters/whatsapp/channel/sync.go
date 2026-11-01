@@ -105,14 +105,16 @@ func oldestCursor(
 	if errors.Is(err, botflota.ErrNotFound) {
 		return nil, fmt.Errorf(
 			"whatsapp: chat with %s has no message to page from yet; "+
-				"only calls, control entries, or nothing arrived for it", target.Thread)
+				"only calls, control entries, or nothing arrived for it: %w",
+			target.Thread, botflota.ErrNoAnchor)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: read oldest message: %w", err)
 	}
 	if message.ProviderMessageID == "" || message.At.IsZero() {
 		return nil, fmt.Errorf(
-			"whatsapp: oldest message of %s carries no provider cursor", target.Thread)
+			"whatsapp: oldest message of %s carries no provider cursor: %w",
+			target.Thread, botflota.ErrNoAnchor)
 	}
 	return &historyCursor{
 		ID:     message.ProviderMessageID,

@@ -167,6 +167,16 @@ func (s *Server) handleChatSync(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := syncer.HistorySync(r.Context(), scope, bot,
 		chat.Target, count, timeout)
+	if errors.Is(err, botflota.ErrNoAnchor) {
+		// A chat with nothing to page from is a state of that chat, so the
+		// caller can skip it instead of treating the batch as failed; the
+		// message names no peer or provider detail.
+		s.log.Info("history sync skipped", "operation", "history sync",
+			"scope", scope, "bot", bot, "chat_id", chat.ID, "error", err)
+		writeError(w, http.StatusUnprocessableEntity, "no_anchor",
+			"the chat has no stored message to page history from yet")
+		return
+	}
 	if err != nil {
 		// The upstream failure names the peer, the device, or the provider;
 		// the caller gets the shape, the log gets the detail.

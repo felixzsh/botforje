@@ -154,14 +154,30 @@ func (c *apiClient) do(
 	return answer, nil
 }
 
+// apiCallError is a non-2xx answer. The code is the public classification a
+// caller may act on; the message is the server's, which never carries upstream
+// detail (docs/api.md).
+type apiCallError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *apiCallError) Error() string {
+	return fmt.Sprintf("api: %s (%s)", e.Message, http.StatusText(e.Status))
+}
+
 func apiError(status int, body []byte) error {
 	var parsed struct {
 		Error struct {
+			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
-		return fmt.Errorf("api: %s (%s)", parsed.Error.Message, http.StatusText(status))
+		return &apiCallError{
+			Status: status, Code: parsed.Error.Code, Message: parsed.Error.Message,
+		}
 	}
 	return fmt.Errorf("api: unexpected response %d", status)
 }
