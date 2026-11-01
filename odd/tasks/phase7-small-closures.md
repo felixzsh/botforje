@@ -61,3 +61,8 @@ items, keeping every behaviour deterministic under the existing gates.
   because it is the largest unit and touches only `cmd/botflota/completion.go`,
   `cmd/botflota/completion_test.go`, and the command tree. The parent reviews,
   checks, and commits it.
+- L6 — T3 landed from the bounded writer and was reviewed before commit: the
+  zsh script ended with an unguarded `_botflota "$@"`, which recurses forever
+  when zsh autoloads the file as the function body. Replaced with the
+  autoload/source guard (`$funcstack[1]`) and pinned by a test. `make check`
+  passes, and `bash -n` accepts the generated bash script.

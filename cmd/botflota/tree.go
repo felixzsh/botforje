@@ -32,6 +32,7 @@ func cliTree() *commandHelp {
 			"botflota peer list",
 			"botflota graph-run list support-bot --chat-id 3",
 			"botflota message tail support-bot --chat-id 3 --follow",
+			"botflota completion bash",
 		},
 		flags: func() *flag.FlagSet {
 			fs := flag.NewFlagSet("botflota", flag.ContinueOnError)
@@ -399,6 +400,21 @@ func cliTree() *commandHelp {
 						run:   runMessageTail,
 					},
 				},
+			},
+			{
+				name:    "completion",
+				summary: "print a shell completion script",
+				long: "Print the completion script of the shell named on the command\n" +
+					"line: bash, zsh, or fish. Source it from that shell's startup file\n" +
+					"or save it where the shell reads its completions.",
+				usage: "botflota completion <shell>",
+				examples: []string{
+					"botflota completion bash",
+					"botflota completion zsh",
+					"botflota completion fish",
+				},
+				flags: func() *flag.FlagSet { return newCompletionCmd().fs },
+				run:   runCompletion,
 			},
 		},
 	}
