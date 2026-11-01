@@ -331,7 +331,8 @@ Deliverables:
 - [ ] TBD — aggregate resource policy: decide whether it belongs in Botflota,
   exact enforcement requirements, and the smallest runtime mechanism justified
   by them. Limit sets, periods, catalogs, and policy storage are not approved
-  implementation requirements (`docs/access-policy.md`).
+  implementation requirements (`docs/access-policy.md`). The measured envelope
+  above is the evidence a bound would have to be justified against.
 - [ ] TBD — technical protections: justify structural and history-import
   bounds by execution safety and settle defaults before adding config fields.
   Storage exhaustion and retention require a separate explicit decision
@@ -455,6 +456,14 @@ Deliverables:
   sequence and never in parallel, keeping the walk going when one chat fails.
 - [ ] The `chat sync --all` summary: report answered, timed-out, and skipped
   counts, and skip a chat with no anchor instead of failing the batch.
+- [x] Capacity envelope (a measurement, not a Phase 7 capability): an opt-in
+  multi-bot load harness drives the real fleet and stores through the synthetic
+  channel, and the envelope one instance is planned around is recorded —
+  250–300 bots at roughly 40–50 turn commits per second, with the write path
+  plateauing near 95–100 per second and device-store churn adding about a tenth
+  of a core (`docs/channels/load-testing-plan.md`, section 6). ADR 0006's pool
+  bound and busy timeout come from the same runs. One observation per point,
+  not a capacity guarantee.
 
 Channel-neutral preparation (`docs/channels/plan.md`; decisions in ADR
 0051–0054). Every slice keeps WhatsApp runnable:

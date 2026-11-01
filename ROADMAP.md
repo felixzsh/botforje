@@ -308,7 +308,10 @@ Deliverables:
   port is provider agnostic and the dashboard is not WhatsApp-specific.
 - [ ] Instance sharding: several instances, one identity each, and documented
   guidance for spreading scopes across instances; aggregation **across
-  instances** lives outside Botflota.
+  instances** lives outside Botflota. The guidance starts from the measured
+  single-instance envelope (250–300 bots, aggregate turn commits near 95–100
+  per second; `docs/channels/load-testing-plan.md`, section 6) and adds the
+  connect burst a real channel pays that the synthetic harness does not.
 - [ ] Document that the host owns cross-instance coordination and policy.
   No limit-set implementation or aggregate enforcement model is assumed.
 - [ ] Each channel maps its own settings from `config.BotSettings` (the CLI
@@ -400,6 +403,12 @@ beyond an HTTP request. A script capability still needs its own safety decision.
 - One instance can carry many scopes; sharding is an operations decision, not
   a code branch. Group scopes by volume and risk; how a host maps its accounts
   to instances is its own concern.
+- The measured envelope is what sharding is planned against: on 8 vCPU and
+  15.6 GB, one process carries 250–300 bots at a paced cadence, and aggregate
+  turn commits plateau near 95–100 per second because the cost is the SQL each
+  turn issues (`docs/channels/load-testing-plan.md`, section 6). More bots per
+  instance means a longer reply queue, not more throughput, so scale out when
+  aggregate turns per second, not bot count, stops fitting.
 
 ## Ordering and dependencies
 

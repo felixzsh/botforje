@@ -1,11 +1,12 @@
 # Multi-bot integration and capacity testing plan
 
 Status: bounded synthetic driving, the functional integration suite, and the
-opt-in capacity runner are implemented, and section 6 records one sweep on the
-development machine. That record is descriptive evidence, not a published
-capacity claim. This
-document defines testing on one Botflota process with many synthetic messaging
-accounts and does not authorize runtime contract changes.
+opt-in capacity runner are implemented. Section 6 records the sweeps taken on the
+development machine, including the paced and device-churn runs that produced the
+operating envelope an instance is planned around. That record is descriptive
+evidence, not a published capacity claim. This document defines testing on one
+Botflota process with many synthetic messaging accounts and does not authorize
+runtime contract changes.
 
 ## Outcome
 
@@ -363,6 +364,12 @@ single observation per point, not a stable guarantee.
   report limitations and candidate operating envelopes, not unsupported maxima
   (section 6, one run per point).
 
-Next step: decide on the two candidate SQLite settings, repeat each sweep point
-more than once, and measure a real adapter before translating these synthetic
-numbers into deployment expectations.
+The two candidate SQLite settings are decided and implemented in
+`adapters/sqlite` (ADR 0006): a 30-second busy timeout and a pool bound of eight
+connections, with history exports serialized so a stalled client cannot take
+every connection. The paced and device-churn runs in section 6 are what the
+operator plan uses; `PLAN.md`, `ROADMAP.md`, and `access-policy.md` cite them.
+
+Next step: repeat each sweep point more than once to characterize variance, and
+measure a real adapter's connect, encryption, and receipt costs before
+translating these synthetic numbers into deployment expectations.

@@ -33,7 +33,9 @@ Botflota gains an optional, owner-managed **egress policy** for outbound HTTP.
   redirect is re-checked or refused. A dialer that can be trusted to check the
   address it actually connects to is the mechanism.
 - It covers every configurable outbound fetch the runtime makes, including a
-  `request` step and media fetched by `url`; it never relies on `request` alone.
+  `request` step, media fetched by `url`, and the model endpoint of a scope's
+  `system_one` or `llms` profile, whose `base_url` is a destination like any
+  other; it never relies on `request` alone.
 - A blocked destination fails the action with an error that names neither
   internal topology nor another scope.
 - It is a policy, not a sandbox. It does not bound secrets (ADR 0049), response
@@ -53,6 +55,11 @@ Botflota gains an optional, owner-managed **egress policy** for outbound HTTP.
   public address, or keeps the policy open and accepts the risk deliberately.
 - The policy is per instance, not per scope; a host with scopes that need
   different reach separates them into instances.
+- A local model server is a loopback or private destination, so under
+  `public_only` a `base_url` such as `http://localhost:11434` is refused like
+  any other internal service. A scope that needs a private model endpoint runs
+  on an instance with `open`, or reaches the model through a public gateway,
+  which is an ordinary `llms` profile with a `base_url` (ADR 0046).
 - Blocked calls and redirects are reported honestly, so an author can tell a
   refused destination from a network failure, without learning the internal
   network.

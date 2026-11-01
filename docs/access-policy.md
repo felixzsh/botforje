@@ -7,6 +7,15 @@ Publication and account history remain independent capabilities
 
 ## Decisions requiring creator approval
 
+Nothing below is settled; the measured operating envelope is evidence for these
+choices, not a policy. `channels/load-testing-plan.md` (section 6) records it: on
+8 vCPU and 15.6 GB, one process carries 250–300 bots at the paced cadence an
+instance is planned around, aggregate turn commits plateau near 95–100 per
+second on both tmpfs and btrfs, and the cost is the SQL each turn issues rather
+than Botflota's own code. Bot count is not the limit; turns per second is, so an
+aggregate ceiling has to be justified against throughput, not only against a
+count of bots or scopes.
+
 - **TBD — aggregate policy ownership and mechanism.** Whether Botflota needs
   aggregate ceilings at all, and which independently useful enforcement
   primitives it should expose. No mandatory limit-set catalog is approved.
