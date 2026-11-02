@@ -217,9 +217,9 @@ Deliverables:
   group and subcommand; `--help` exits 0 and usage errors exit 2.
 - [x] CLI `--version` and a decision on global versus per-subcommand flags.
 - [x] `--json` for `bot list` and `fleet status`.
-- [x] Optional: `completion` for bash, zsh, and fish. The scripts are
-  rendered from the CLI tree and each command's own flag set, so a new command
-  or flag cannot leave them stale.
+- [x] Optional: `completion` for bash. The script is rendered from the CLI
+  tree and each command's own flag set, so a new command or flag cannot leave
+  it stale.
 - [x] `config init`: create `config_dir` with a minimal `config.yml` and a
   `config.schema.json` generated at runtime; do not overwrite without
   `--force`. Generation must not depend on the working directory: the Go doc

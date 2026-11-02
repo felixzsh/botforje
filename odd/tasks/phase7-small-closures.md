@@ -9,7 +9,7 @@ items, keeping every behaviour deterministic under the existing gates.
 - S1 — `PLAN.md`, Phase 7: "The `chat sync --all` summary: report answered,
   timed-out, and skipped counts, and skip a chat with no anchor instead of
   failing the batch."
-- S2 — `PLAN.md`, Phase 7: "Optional: `completion` for bash, zsh, and fish."
+- S2 — `PLAN.md`, Phase 7: "Optional: `completion` for bash."
 - S3 — `PLAN.md`, Phase 7: "Reject a `${...}` that reaches any other string
   (ADR 0014): entities (llm, action, graph, bot) are scanned, but
   instance-level settings (`address`, `data_dir`), `include` paths, and a
@@ -32,8 +32,8 @@ items, keeping every behaviour deterministic under the existing gates.
   and ADR 0049 to the model endpoints Phase 8 introduces. S5, S6.
 - T2 — `chat sync --all` counts answered, timed out, skipped, and failed, and a
   chat without an anchor is skipped rather than failed. S1.
-- T3 — `botflota completion <shell>` renders bash, zsh, and fish from the CLI
-  tree. S2.
+- T3 — `botflota completion bash` renders the bash script from the CLI tree and
+  each node's flag set. S2.
 - T4 — a `${...}` anywhere outside a secret field is rejected, including
   instance settings, `include` paths, and a scope's `display_name`. S3.
 - T5 — WhatsApp connect failures 428 and 463 stop the bot and surface as their
@@ -57,12 +57,14 @@ items, keeping every behaviour deterministic under the existing gates.
   tell a state from a failure. The core now carries `ErrNoAnchor`, the API
   answers `422 no_anchor`, and `chat sync --all` prints one line per outcome plus
   a final count of answered, skipped, timed out, and failed.
-- L5 — T3 (completion for bash, zsh, and fish) is delegated to a bounded writer
+- L5 — T3 (bash completion) is delegated to a bounded writer
   because it is the largest unit and touches only `cmd/botflota/completion.go`,
   `cmd/botflota/completion_test.go`, and the command tree. The parent reviews,
   checks, and commits it.
 - L6 — T3 landed from the bounded writer and was reviewed before commit: the
-  zsh script ended with an unguarded `_botflota "$@"`, which recurses forever
-  when zsh autoloads the file as the function body. Replaced with the
-  autoload/source guard (`$funcstack[1]`) and pinned by a test. `make check`
-  passes, and `bash -n` accepts the generated bash script.
+  generated script must be safe both when sourced and when the shell loads it
+  as a function body, so it registers itself instead of calling itself, pinned
+  by a test. `make check` passes and `bash -n` accepts the generated script.
+- L7 — the owner narrowed T3 to bash: no other shell is in scope, so the extra
+  generators were removed. S2 and T3 now read "bash" and the command rejects
+  any other shell with exit 2, pinned by a test.
