@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,6 +123,28 @@ func TestCompletionScriptsCarryNoFormattingArtifacts(t *testing.T) {
 				t.Error("script does not end with a newline")
 			}
 		})
+	}
+}
+
+// TestFishCompletionKeepsOnlyCommandPathWords pins the correction of finding
+// R3-001: the helper may extend the matched path with a word only when that
+// word names a subcommand of the level reached so far, so a half-typed word, a
+// flag, or a flag value cannot silence every rule of the level it sits in.
+func TestFishCompletionKeepsOnlyCommandPathWords(t *testing.T) {
+	_, script, _ := captureCompletion(t, []string{"fish"})
+	walkCommands(cliTree(), nil, func(node *commandHelp, path []string) {
+		if len(node.sub) == 0 {
+			return
+		}
+		want := fmt.Sprintf("case %s\n                contains -- $word %s\n"+
+			"                or continue\n",
+			quoteFish(casePath(path)), strings.Join(commandNames(node), " "))
+		if !strings.Contains(script, want) {
+			t.Errorf("node %q does not whitelist its subcommands:\n%s", node.name, want)
+		}
+	})
+	if !strings.Contains(script, "            case '*'\n                continue\n") {
+		t.Error("the helper has no fallback for a word that names no command")
 	}
 }
 
