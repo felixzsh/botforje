@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,112 +43,57 @@ func captureCompletion(t *testing.T, args []string) (int, string, string) {
 	return code, string(stdout), string(stderr)
 }
 
-// TestCompletionScriptsFollowTheTree pins the scripts to the CLI tree: every
+// TestBashCompletionFollowsTheTree pins the script to the CLI tree: every
 // command, and every flag of every command, must reach the shell on its own.
-func TestCompletionScriptsFollowTheTree(t *testing.T) {
-	cases := []struct {
-		shell  string
-		prefix string
-		marker string
-		sigil  string
-	}{
-		{shell: "bash", marker: "complete -F _botflota_complete botflota", sigil: "--force"},
-		{shell: "zsh", prefix: "#compdef botflota", sigil: "--force"},
-		{shell: "fish", marker: "complete -c botflota", sigil: "-l force"},
+func TestBashCompletionFollowsTheTree(t *testing.T) {
+	code, script, stderr := captureCompletion(t, []string{"bash"})
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
 	}
-	for _, tc := range cases {
-		t.Run(tc.shell, func(t *testing.T) {
-			code, script, stderr := captureCompletion(t, []string{tc.shell})
-			if code != 0 {
-				t.Fatalf("exit = %d, want 0 (stderr: %s)", code, stderr)
-			}
-			if stderr != "" {
-				t.Errorf("stderr = %q, want silence on a successful run", stderr)
-			}
-			if tc.prefix != "" && !strings.HasPrefix(script, tc.prefix) {
-				t.Errorf("script starts with %q, want %q",
-					strings.SplitN(script, "\n", 2)[0], tc.prefix)
-			}
-			if tc.marker != "" && !strings.Contains(script, tc.marker) {
-				t.Errorf("script is missing %q", tc.marker)
-			}
-			walkCommands(cliTree(), nil, func(node *commandHelp, path []string) {
-				if !strings.Contains(script, node.name) {
-					t.Errorf("script never mentions the command %q (%s)",
-						node.name, casePath(path))
-				}
-				for _, f := range flagsOf(node) {
-					if !strings.Contains(script, f.Name) {
-						t.Errorf("script never mentions flag %q of %q",
-							f.Name, node.name)
-					}
-				}
-			})
-			if !strings.Contains(script, tc.sigil) {
-				t.Errorf("script is missing the leaf flag %q", tc.sigil)
-			}
-			if !strings.Contains(script, "help") {
-				t.Error("script is missing the help flag")
-			}
-			if tc.shell == "zsh" &&
-				!strings.Contains(script, `"$funcstack[1]" = "_botflota"`) {
-				// Without the guard an autoloaded file calls itself forever.
-				t.Error("zsh script has no autoload guard")
-			}
-		})
+	if stderr != "" {
+		t.Errorf("stderr = %q, want silence on a successful run", stderr)
 	}
-}
-
-// TestCompletionScriptsCarryNoFormattingArtifacts guards the templates: a tab
-// from their indentation or a failed format verb would reach the shell as
-// garbage, and an unexpected expansion would be a literal dollar expanded.
-func TestCompletionScriptsCarryNoFormattingArtifacts(t *testing.T) {
-	for _, shell := range completionShells() {
-		t.Run(shell, func(t *testing.T) {
-			_, script, _ := captureCompletion(t, []string{shell})
-			for _, unwanted := range []string{"\t", "%!", "{{", "}}", "\\$", "\r"} {
-				if strings.Contains(script, unwanted) {
-					t.Errorf("script contains %q", unwanted)
-				}
-			}
-			// bash needs one array subscript; anything else that opens an
-			// expansion is an artifact of the generator.
-			rest := strings.ReplaceAll(script, "${COMP_WORDS[i]}", "")
-			if i := strings.Index(rest, "${"); i >= 0 {
-				t.Errorf("script has an unexpected expansion: %q",
-					rest[i:min(i+16, len(rest))])
-			}
-			if !strings.HasSuffix(script, "\n") {
-				t.Error("script does not end with a newline")
-			}
-		})
+	const register = "complete -F _botflota_complete botflota"
+	if !strings.Contains(script, register) {
+		t.Errorf("script is missing %q", register)
 	}
-}
-
-// TestFishCompletionKeepsOnlyCommandPathWords pins the correction of finding
-// R3-001: the helper may extend the matched path with a word only when that
-// word names a subcommand of the level reached so far, so a half-typed word, a
-// flag, or a flag value cannot silence every rule of the level it sits in.
-func TestFishCompletionKeepsOnlyCommandPathWords(t *testing.T) {
-	_, script, _ := captureCompletion(t, []string{"fish"})
 	walkCommands(cliTree(), nil, func(node *commandHelp, path []string) {
-		if len(node.sub) == 0 {
-			return
+		if !strings.Contains(script, node.name) {
+			t.Errorf("script never mentions the command %q (%s)",
+				node.name, casePath(path))
 		}
-		want := fmt.Sprintf("case %s\n                contains -- $word %s\n"+
-			"                or continue\n",
-			quoteFish(casePath(path)), strings.Join(commandNames(node), " "))
-		if !strings.Contains(script, want) {
-			t.Errorf("node %q does not whitelist its subcommands:\n%s", node.name, want)
+		for _, f := range flagsOf(node) {
+			if !strings.Contains(script, f.Name) {
+				t.Errorf("script never mentions flag %q of %q", f.Name, node.name)
+			}
 		}
 	})
-	if !strings.Contains(script, "            case '*'\n                continue\n") {
-		t.Error("the helper has no fallback for a word that names no command")
+	// A representative leaf: its own flag and help must both be offered.
+	for _, want := range []string{"--force", "-h", "--help"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("script is missing %q", want)
+		}
 	}
-	// One path word per line, or the caller's command substitution receives
-	// the joined path as a single element and every nested rule stops matching.
-	if !strings.Contains(script, "    for part in $path\n        echo $part\n") {
-		t.Error("the helper does not emit one path word per line")
+}
+
+// TestBashCompletionCarriesNoFormattingArtifacts guards the generator: a tab
+// from its indentation or a failed format verb would reach the shell as
+// garbage, and an unexpected expansion would be a literal dollar expanded.
+func TestBashCompletionCarriesNoFormattingArtifacts(t *testing.T) {
+	_, script, _ := captureCompletion(t, []string{"bash"})
+	for _, unwanted := range []string{"\t", "%!", "{{", "}}", "\\$", "\r"} {
+		if strings.Contains(script, unwanted) {
+			t.Errorf("script contains %q", unwanted)
+		}
+	}
+	// The array subscript is the only expansion the script needs; anything
+	// else that opens one is an artifact of the generator.
+	rest := strings.ReplaceAll(script, "${COMP_WORDS[i]}", "")
+	if i := strings.Index(rest, "${"); i >= 0 {
+		t.Errorf("script has an unexpected expansion: %q", rest[i:min(i+16, len(rest))])
+	}
+	if !strings.HasSuffix(script, "\n") {
+		t.Error("script does not end with a newline")
 	}
 }
 
@@ -159,6 +103,7 @@ func TestCompletionUsageErrors(t *testing.T) {
 		args []string
 	}{
 		{name: "unknown shell", args: []string{"powershell"}},
+		{name: "shell without a script", args: []string{"zsh"}},
 		{name: "missing shell", args: nil},
 	}
 	for _, tc := range cases {
@@ -173,8 +118,8 @@ func TestCompletionUsageErrors(t *testing.T) {
 			if !strings.Contains(stderr, "usage: botflota completion") {
 				t.Errorf("stderr is missing the command help: %q", stderr)
 			}
-			if !strings.Contains(stderr, "bash, zsh, fish") {
-				t.Errorf("stderr does not name the accepted shells: %q", stderr)
+			if !strings.Contains(stderr, "bash") {
+				t.Errorf("stderr does not name the accepted shell: %q", stderr)
 			}
 		})
 	}

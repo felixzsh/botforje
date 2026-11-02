@@ -403,15 +403,14 @@ func cliTree() *commandHelp {
 			},
 			{
 				name:    "completion",
-				summary: "print a shell completion script",
-				long: "Print the completion script of the shell named on the command\n" +
-					"line: bash, zsh, or fish. Source it from that shell's startup file\n" +
-					"or save it where the shell reads its completions.",
+				summary: "print a bash completion script",
+				long: "Print the bash completion script. Source it from the shell's\n" +
+					"startup file or save it where bash reads its completions. The\n" +
+					"script is generated from this command tree, so it follows every\n" +
+					"command and flag.",
 				usage: "botflota completion <shell>",
 				examples: []string{
 					"botflota completion bash",
-					"botflota completion zsh",
-					"botflota completion fish",
 				},
 				flags: func() *flag.FlagSet { return newCompletionCmd().fs },
 				run:   runCompletion,
