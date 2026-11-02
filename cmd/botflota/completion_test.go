@@ -146,6 +146,11 @@ func TestFishCompletionKeepsOnlyCommandPathWords(t *testing.T) {
 	if !strings.Contains(script, "            case '*'\n                continue\n") {
 		t.Error("the helper has no fallback for a word that names no command")
 	}
+	// One path word per line, or the caller's command substitution receives
+	// the joined path as a single element and every nested rule stops matching.
+	if !strings.Contains(script, "    for part in $path\n        echo $part\n") {
+		t.Error("the helper does not emit one path word per line")
+	}
 }
 
 func TestCompletionUsageErrors(t *testing.T) {

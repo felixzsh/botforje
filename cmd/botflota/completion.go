@@ -192,6 +192,7 @@ func writeZshCompletion(b *strings.Builder, root *commandHelp) {
 func writeFishPathHelper(b *strings.Builder, root *commandHelp) {
 	b.WriteString("function __botflota_path\n")
 	b.WriteString("    set -l key \" \"\n")
+	b.WriteString("    set -l path\n")
 	b.WriteString("    set -l words (commandline -opc)\n")
 	b.WriteString("    set -e words[1]\n")
 	b.WriteString("    for word in $words\n")
@@ -208,9 +209,14 @@ func writeFishPathHelper(b *strings.Builder, root *commandHelp) {
 	b.WriteString("            case '*'\n")
 	b.WriteString("                continue\n")
 	b.WriteString("        end\n")
+	b.WriteString("        set -a path $word\n")
 	b.WriteString("        set key \"$key$word \"\n")
 	b.WriteString("    end\n")
-	b.WriteString("    echo (string trim $key)\n")
+	// One word per line: a command substitution splits on newlines, so the
+	// caller receives one path element per word instead of the joined path.
+	b.WriteString("    for part in $path\n")
+	b.WriteString("        echo $part\n")
+	b.WriteString("    end\n")
 	b.WriteString("end\n\n")
 	b.WriteString("function __botflota_at\n")
 	b.WriteString("    set -l path (__botflota_path)\n")
