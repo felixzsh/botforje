@@ -23,7 +23,7 @@ func runCompletion(args []string) int {
 		return code
 	}
 	if cmd.fs.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "completion needs a shell: %s\n\n",
+		fmt.Fprintf(os.Stderr, "completion needs one shell: %s\n\n",
 			strings.Join(completionShells(), ", "))
 		printHelp(os.Stderr, "completion")
 		return 2
@@ -31,7 +31,7 @@ func runCompletion(args []string) int {
 	shell := cmd.fs.Arg(0)
 	script, ok := completionScript(shell)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "unknown shell %q; want %s\n\n",
+		fmt.Fprintf(os.Stderr, "unknown shell %q: want %s\n\n",
 			shell, strings.Join(completionShells(), ", "))
 		printHelp(os.Stderr, "completion")
 		return 2
