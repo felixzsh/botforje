@@ -622,3 +622,45 @@ func TestRecoverWithoutAJournalDoesNothing(t *testing.T) {
 func writeTreeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
 }
+
+// TestWriterKeepsTheFileRoots: a publication replaces a scope, never the
+// owner's file_roots, which only the main config file declares (ADR 0047).
+func TestWriterKeepsTheFileRoots(t *testing.T) {
+	main := writerTree(t)
+	root := filepath.Join(filepath.Dir(main), "private")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(main, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("file_roots:\n  support: " + root + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := NewWriter(main, testCatalog(t))
+	if err != nil {
+		t.Fatalf("NewWriter: %v", err)
+	}
+	current := loadWriterTree(t, main)
+	next := copyScope(current.Scopes["support"])
+	next.DisplayName = "Support desk"
+	if _, err := writer.Publish(context.Background(), Publication{
+		Scopes: map[string]ScopeWrite{
+			"support": {Version: scopeVersion(t, current, "support"), Scope: next},
+		},
+	}); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	after := loadWriterTree(t, main)
+	if got := after.FileRoots["support"]; got != root {
+		t.Fatalf("file root after publication = %q, want %q", got, root)
+	}
+	if after.Scopes["support"].DisplayName != "Support desk" {
+		t.Fatal("the publication did not land")
+	}
+}

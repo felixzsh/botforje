@@ -100,6 +100,9 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 				Events: []string{"contact.first_seen"},
 			}}
 		}, []string{"global setting webhooks"}},
+		{"file roots", func(c *Config) {
+			c.FileRoots = map[string]string{"support": "/srv/scopes/support"}
+		}, []string{"global setting file_roots"}},
 	}
 
 	for _, tc := range cases {
@@ -140,5 +143,28 @@ func TestPlanReloadChangesOnlyTheEditedScope(t *testing.T) {
 	active := WithScopes(current, next, plan.Scopes)
 	if !reflect.DeepEqual(active.Scopes["b"], current.Scopes["b"]) {
 		t.Fatal("unchanged scope b was changed in the active snapshot")
+	}
+}
+
+// TestWithScopesKeepsTheActiveFileRoots: adopting a scope never adopts the
+// candidate's roots, because a file root is owner-managed and restart-required
+// (ADR 0047).
+func TestWithScopesKeepsTheActiveFileRoots(t *testing.T) {
+	current := &Config{
+		FileRoots: map[string]string{"a": "/srv/scopes/a"},
+		Scopes:    map[string]spec.Scope{"a": {}},
+	}
+	next := &Config{
+		FileRoots: map[string]string{"a": "/srv/scopes/a", "b": "/srv/scopes/b"},
+		Scopes:    map[string]spec.Scope{"a": {}, "b": {}},
+	}
+	plan := PlanReload(current, next)
+	active := WithScopes(current, next, plan.Scopes)
+	if !reflect.DeepEqual(active.FileRoots, current.FileRoots) {
+		t.Fatalf("active file roots = %v, want the running %v",
+			active.FileRoots, current.FileRoots)
+	}
+	if !slices.Contains(plan.Global, "global setting file_roots") {
+		t.Fatalf("global changes = %v, want file_roots restart-required", plan.Global)
 	}
 }

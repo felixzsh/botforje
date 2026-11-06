@@ -55,6 +55,9 @@ sign-in is optional future work, not a required step in the flow above.
   Do not operate directly on the running instance's files or database.
 - Deduplicate webhook deliveries by event ID. Only `peer.first_seen` exists
   today; other lifecycle and usage events are planned, not available contracts.
+- Set each scope's file root yourself in the main config file. It is owner
+  policy, restart-required, and no publication can set, change, or remove it
+  (ADR 0047).
 - The host owns backups and deployment of the instances it operates, using the
   documented runtime procedures rather than independent writes to live stores.
 
@@ -141,6 +144,8 @@ read, and a signed webhook, without waiting for a dashboard or delegated login.
 Use a fake channel for deterministic authorization and publication tests; real
 account onboarding is a separate operational check. Onboarding authors who are
 not fully trusted uses the owner controls above: a file root, `egress:
-public_only`, and a secret catalog per scope (ADRs 0047–0049); until they exist,
-share an instance only with authors you would let read the server's files and
-environment.
+public_only`, and a secret catalog per scope (ADRs 0047–0049). A file root is
+available: `file_roots` in the main config file bounds one scope's local reads,
+and a scope without one still reads any file the process can. Until an egress
+policy and a secret catalog exist, share an instance only with authors you would
+let reach the server's network and environment.

@@ -59,6 +59,14 @@ type Config struct {
 	// false lets any number of tokens share a scope; the owner token covers
 	// every scope either way. Changing it requires a restart.
 	ExclusiveScopes bool `yaml:"exclusive_scopes" json:"exclusive_scopes,omitempty"`
+	// FileRoots bounds the local files one scope's steps may read, keyed by
+	// scope: a media step's local path is then relative to that root and may
+	// not leave it. A scope without an entry reads any file the process can.
+	// Only the main config file declares it, and only the owner sets it; each
+	// root must be an absolute existing directory that no other root contains
+	// or is contained by. Changing it requires a restart. It bounds local
+	// reads only, not network destinations, secrets, or resource use.
+	FileRoots map[string]string `yaml:"file_roots" json:"file_roots,omitempty"`
 	// Webhooks are the outbound event deliveries this instance sends; see
 	// WebhookSettings.
 	Webhooks []WebhookSettings     `yaml:"webhooks" json:"webhooks,omitempty"`

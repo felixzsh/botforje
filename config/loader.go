@@ -57,7 +57,65 @@ func (l Loader) Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: missing environment variable(s): %s",
 			path, strings.Join(misses, ", "))
 	}
+	if err := validateFileRoots(cfg.FileRoots, reader); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	return cfg, nil
+}
+
+// validateFileRoots rejects a root that is not an absolute existing directory
+// and roots that overlap, so one scope's root can never contain another's
+// (ADR 0047). The directories are the operator's to provision; load only reads
+// them.
+func validateFileRoots(roots map[string]string, files fileReader) error {
+	resolved := make(map[string]string, len(roots))
+	names := SortedKeys(roots)
+	for _, name := range names {
+		root := roots[name]
+		if !filepath.IsAbs(root) {
+			return fmt.Errorf("file_roots[%q]: %q must be an absolute directory",
+				name, root)
+		}
+		info, err := files.stat(root)
+		if err != nil {
+			return fmt.Errorf("file_roots[%q]: %w", name, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("file_roots[%q]: %q is not a directory", name, root)
+		}
+		real, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return fmt.Errorf("file_roots[%q]: %w", name, err)
+		}
+		resolved[name] = real
+	}
+	for i, outer := range names {
+		for _, inner := range names[i+1:] {
+			if directoriesOverlap(resolved[outer], resolved[inner]) {
+				return fmt.Errorf(
+					"file_roots[%q] and file_roots[%q] overlap: %q and %q",
+					outer, inner, roots[outer], roots[inner])
+			}
+		}
+	}
+	return nil
+}
+
+// directoriesOverlap reports whether one directory is the other or lies inside
+// it.
+func directoriesOverlap(a, b string) bool {
+	return containsDirectory(a, b) || containsDirectory(b, a)
+}
+
+func containsDirectory(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		// Unrelated volumes (a Windows drive letter): neither contains the
+		// other, and the open still confines within each root.
+		return false
+	}
+	return rel == "." || (rel != ".." &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 // includeState tracks loaded files so diamond includes merge once and cycles

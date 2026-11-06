@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/felixzsh/botflota"
@@ -78,6 +79,13 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 		}
 	}
 	validateWebhooks(cfg.Webhooks, add)
+	// A root names a scope the instance runs: a key that matches no scope is a
+	// typo that would silently leave that scope unbounded (ADR 0047).
+	for _, name := range SortedKeys(cfg.FileRoots) {
+		if _, ok := cfg.Scopes[name]; !ok {
+			add("", "config", "file_roots names unknown scope %q", name)
+		}
+	}
 	// Settings no scope owns are never interpolated either, so a reference in
 	// one of them can only reach the runtime untouched (ADR 0014).
 	checkSecretRefValue(add, "", "config", "address", cfg.Address)
@@ -220,11 +228,11 @@ func validateAction(cfg *Config, scope, name string, a spec.Action, add addError
 	if len(a.Steps) == 0 {
 		add(file, entity, "no steps")
 	}
-	validateSteps(file, entity, a.Steps, add, "")
-	validateGuards(file, entity, a.Guards, add)
+	validateSteps(file, entity, a.Steps, add, "", cfg.FileRoots[scope])
+	validateGuards(file, entity, a.Guards, add, cfg.FileRoots[scope])
 }
 
-func validateGuards(file, entity string, guards *spec.Guards, add addError) {
+func validateGuards(file, entity string, guards *spec.Guards, add addError, root string) {
 	if guards == nil {
 		return
 	}
@@ -232,7 +240,7 @@ func validateGuards(file, entity string, guards *spec.Guards, add addError) {
 		if cd.Duration <= 0 {
 			add(file, entity, "cooldown duration must be > 0")
 		}
-		validateSteps(file, entity, cd.OnBlocked, add, "cooldown.on_blocked")
+		validateSteps(file, entity, cd.OnBlocked, add, "cooldown.on_blocked", root)
 	}
 	if rl := guards.RateLimit; rl != nil {
 		if rl.Limit <= 0 {
@@ -241,11 +249,11 @@ func validateGuards(file, entity string, guards *spec.Guards, add addError) {
 		if rl.Window <= 0 {
 			add(file, entity, "rate_limit window must be > 0")
 		}
-		validateSteps(file, entity, rl.OnBlocked, add, "rate_limit.on_blocked")
+		validateSteps(file, entity, rl.OnBlocked, add, "rate_limit.on_blocked", root)
 	}
 }
 
-func validateSteps(file, entity string, steps []spec.Step, add addError, where string) {
+func validateSteps(file, entity string, steps []spec.Step, add addError, where, root string) {
 	prefix := ""
 	if where != "" {
 		prefix = where + ": "
@@ -266,7 +274,7 @@ func validateSteps(file, entity string, steps []spec.Step, add addError, where s
 		}
 		if step.Media != nil {
 			count++
-			validateMedia(file, entity, prefix, i, *step.Media, add)
+			validateMedia(file, entity, prefix, i, *step.Media, add, root)
 		}
 		if step.Contact != nil {
 			count++
@@ -289,7 +297,7 @@ var mediaKinds = map[string]bool{
 	"image": true, "video": true, "audio": true, "document": true, "sticker": true,
 }
 
-func validateMedia(file, entity, prefix string, i int, m spec.Media, add addError) {
+func validateMedia(file, entity, prefix string, i int, m spec.Media, add addError, root string) {
 	if !mediaKinds[m.Kind] {
 		add(file, entity,
 			"%sstep %d: media kind %q must be image, video, audio, document, or sticker",
@@ -300,6 +308,14 @@ func validateMedia(file, entity, prefix string, i int, m spec.Media, add addErro
 		add(file, entity, "%sstep %d: media needs a url or a path", prefix, i)
 	case m.URL != "" && m.Path != "":
 		add(file, entity, "%sstep %d: media cannot set both url and path", prefix, i)
+	}
+	// A templated path resolves later; the reader refuses it at the open. A
+	// literal absolute one is already wrong under a root (ADR 0047).
+	if root != "" && m.Path != "" && !strings.Contains(m.Path, "${") &&
+		filepath.IsAbs(m.Path) {
+		add(file, entity,
+			"%sstep %d: media path %q is absolute; it is read relative to the scope's file root",
+			prefix, i, m.Path)
 	}
 }
 

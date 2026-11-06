@@ -320,6 +320,7 @@ func Builder(deps Deps) func(channels.Bind) (botflota.MessageChannel, error) {
 		return New(Options{
 			Scope:          bind.Scope,
 			Bot:            bind.Bot,
+			FileRoot:       bind.FileRoot,
 			Devices:        deps.Devices,
 			Bindings:       deps.Bindings,
 			Peers:          deps.Peers,
