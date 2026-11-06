@@ -240,6 +240,13 @@
           },
           "type": "object"
         },
+        "secret_files": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "SecretFiles names the owner-managed secret catalog of a scope, by scope\nkey: a ${NAME} in one of that scope's definitions then resolves only\nfrom this file, with no fallback to the process environment, and a name\nthe file does not hold is an error. The file holds NAME=value lines and\n`#` comments; it is read as data, never executed. Only the main config\nfile declares it and only the owner sets it, so a published scope can\nnever set or change it. A relative path is relative to the main config\nfile, and the file must sit outside every file root so it can never be\nsent as media. A scope without an entry keeps resolving from the process\nenvironment. Changing it requires a restart.",
+          "type": "object"
+        },
         "webhooks": {
           "description": "Webhooks are the outbound event deliveries this instance sends; see\nWebhookSettings.",
           "items": {

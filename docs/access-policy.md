@@ -38,11 +38,12 @@ count of bots or scopes.
   timeouts, and backpressure must be justified by execution safety, not by an
   external offering. Proposed new configuration fields are not available yet.
 
-Local files (ADR 0047) and outbound HTTP egress (ADR 0048) are implemented as
-instance settings: the `file_roots` map in the main config file is owner-managed,
-restart-required, and bounds one scope's local reads, and the `egress` setting
-bounds which destinations a call may reach, not the resources it uses. A scope's
-secret names (ADR 0049) are a settled decision still awaiting implementation.
+Local files (ADR 0047), outbound HTTP egress (ADR 0048), and a scope's secret
+names (ADR 0049) are implemented as instance settings: the `file_roots` map in
+the main config file is owner-managed, restart-required, and bounds one scope's
+local reads, the `egress` setting bounds which destinations a call may reach,
+not the resources it uses, and the `secret_files` map gives a scope a catalog of
+the names it may resolve, with no fallback to the process environment.
 Shared resource use and optional implicit-scope syntax remain TBD in
 `integration.md` and `PLAN.md`; no new implementation starts until the relevant
 decision is accepted in an ADR.

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -35,7 +34,9 @@ func (l Loader) lookup(name string) (string, bool) {
 }
 
 // Load reads the main file, merges its includes (recursively), and expands
-// ${ENV_VAR}. It does not run semantic validation; call Validate for that.
+// ${NAME} in every secret field, from the process environment or from a scope's
+// secret catalog (ADR 0014, ADR 0049). It does not run semantic validation; call
+// Validate for that.
 func (l Loader) Load(path string) (*Config, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -52,53 +53,57 @@ func (l Loader) Load(path string) (*Config, error) {
 	cfg.watchPaths = append(cfg.watchPaths, state.watchDirs...)
 	sort.Strings(cfg.watchPaths)
 	cfg.watchPaths = slices.Compact(cfg.watchPaths)
-	if misses := expandValue(reflect.ValueOf(cfg).Elem(), l.lookup); len(misses) > 0 {
-		sort.Strings(misses)
-		return nil, fmt.Errorf("%s: missing environment variable(s): %s",
-			path, strings.Join(misses, ", "))
+	roots, err := resolveFileRoots(cfg.FileRoots, reader)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := validateFileRoots(cfg.FileRoots, reader); err != nil {
+	catalogs, err := readSecretCatalogs(cfg, abs, roots, reader)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	cfg.catalogs = catalogs
+	if err := expandSecrets(cfg, l.lookup, catalogs); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
 }
 
-// validateFileRoots rejects a root that is not an absolute existing directory
+// resolveFileRoots rejects a root that is not an absolute existing directory
 // and roots that overlap, so one scope's root can never contain another's
-// (ADR 0047). The directories are the operator's to provision; load only reads
-// them.
-func validateFileRoots(roots map[string]string, files fileReader) error {
+// (ADR 0047). It returns each root's resolved path. The directories are the
+// operator's to provision; load only reads them.
+func resolveFileRoots(roots map[string]string, files fileReader) (map[string]string, error) {
 	resolved := make(map[string]string, len(roots))
 	names := SortedKeys(roots)
 	for _, name := range names {
 		root := roots[name]
 		if !filepath.IsAbs(root) {
-			return fmt.Errorf("file_roots[%q]: %q must be an absolute directory",
+			return nil, fmt.Errorf("file_roots[%q]: %q must be an absolute directory",
 				name, root)
 		}
 		info, err := files.stat(root)
 		if err != nil {
-			return fmt.Errorf("file_roots[%q]: %w", name, err)
+			return nil, fmt.Errorf("file_roots[%q]: %w", name, err)
 		}
 		if !info.IsDir() {
-			return fmt.Errorf("file_roots[%q]: %q is not a directory", name, root)
+			return nil, fmt.Errorf("file_roots[%q]: %q is not a directory", name, root)
 		}
 		real, err := filepath.EvalSymlinks(root)
 		if err != nil {
-			return fmt.Errorf("file_roots[%q]: %w", name, err)
+			return nil, fmt.Errorf("file_roots[%q]: %w", name, err)
 		}
 		resolved[name] = real
 	}
 	for i, outer := range names {
 		for _, inner := range names[i+1:] {
 			if directoriesOverlap(resolved[outer], resolved[inner]) {
-				return fmt.Errorf(
+				return nil, fmt.Errorf(
 					"file_roots[%q] and file_roots[%q] overlap: %q and %q",
 					outer, inner, roots[outer], roots[inner])
 			}
 		}
 	}
-	return nil
+	return resolved, nil
 }
 
 // directoriesOverlap reports whether one directory is the other or lies inside

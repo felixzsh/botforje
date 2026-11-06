@@ -321,10 +321,14 @@ Deliverables:
   `public_only` refuses a non-public destination on the connection the call
   actually makes and re-checks or refuses each redirect; it covers `request`
   steps and media fetched by `url`.
-- [ ] Scope secret catalog (ADR 0049, not implemented): an owner-managed
-  `secret_files` map. A scope with one resolves `${NAME}` only from that file,
-  which must sit outside its file root, with no fallback to the process
-  environment.
+- [x] Scope secret catalog (ADR 0049): an owner-managed `secret_files` map in
+  the main config file gives a scope a catalog of the names it may resolve. A
+  scope with one resolves `${NAME}` only from that file, with no fallback to the
+  process environment, and a name it lacks fails with the name; the file holds
+  `NAME=value` lines and `#` comments, is read as data, and must sit outside
+  every file root. A scope without an entry keeps today's behavior; scoped
+  publication cannot set it, and declaring or rotating a catalog requires a
+  restart.
 - [ ] TBD — shared resource use between scopes: CPU, memory, fairness, and fetch
   bounds beyond the media cap (`docs/integration.md`).
 - [ ] TBD — owner scope provisioning and grant lifecycle: decide minimal
@@ -754,8 +758,6 @@ and application-level evolution are outside its commitments (ADR 0046).
   provisioning contracts (Phase 7; `docs/access-policy.md`).
 - TBD — shared resource use between scopes: CPU, memory, and fairness
   (`docs/integration.md`).
-- Implementation: scope file root (ADR 0047) and scope secret catalog
-  (ADR 0049) — `PLAN.md`, Phase 7.
 - TBD — implicit scope for simple YAML: whether to add root-level entities,
   ambiguity rules with explicit scopes/includes, and stable persisted identity.
   ADR 0016 still requires explicit scopes; `default` is an ordinary name.
