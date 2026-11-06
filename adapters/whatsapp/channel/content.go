@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"go.mau.fi/whatsmeow"
@@ -287,8 +286,15 @@ func (a *Adapter) readMedia(
 		}
 		return readLimited(response.Body)
 	case content.Path != "":
-		file, err := os.Open(content.Path)
+		// The scope's file root is enforced here, at the open, so a step can
+		// never read past it through "..", an absolute path, or a symbolic
+		// link (ADR 0047). A refusal is permanent; a retry cannot fix it.
+		file, err := botflota.OpenLocalFile(a.fileRoot, content.Path)
 		if err != nil {
+			if errors.Is(err, botflota.ErrOutsideFileRoot) {
+				return nil, botflota.PermanentSendFailure(
+					fmt.Errorf("whatsapp: open media: %w", err))
+			}
 			return nil, botflota.TransientSendFailure(
 				fmt.Errorf("whatsapp: open media: %w", err), 0)
 		}

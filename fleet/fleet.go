@@ -242,7 +242,8 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 			def.Provider, def.Kind)
 	}
 	channel, err := def.Build(channels.Bind{
-		Scope: scopeName, Bot: botName, Options: options, Log: botLog,
+		Scope: scopeName, Bot: botName, Options: options,
+		FileRoot: cfg.FileRoots[scopeName], Log: botLog,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)

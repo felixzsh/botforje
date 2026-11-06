@@ -170,7 +170,11 @@ type Bind struct {
 	Scope   string
 	Bot     string
 	Options any
-	Log     *slog.Logger
+	// FileRoot is the scope's owner-set root for local file reads, empty when
+	// the owner set none. A channel that opens a local path passes it to
+	// botflota.OpenLocalFile instead of opening the path itself (ADR 0047).
+	FileRoot string
+	Log      *slog.Logger
 }
 
 // Definition is one installed channel implementation.

@@ -68,6 +68,9 @@ type Options struct {
 	// ImportContacts is off by default: the book may hold people this account
 	// never wrote to.
 	ImportContacts bool
+	// FileRoot bounds this bot's local media reads; empty means no root and
+	// the process's own file permissions (ADR 0047).
+	FileRoot string
 	// HTTPClient defaults to http.DefaultClient; it fetches remote media.
 	HTTPClient *http.Client
 	Settings   Settings
@@ -111,6 +114,7 @@ type Adapter struct {
 	peers           botflota.PeerStore
 	chats           botflota.ChatStore
 	messages        botflota.MessageStore
+	fileRoot        string
 	importer        *ingest.HistoryImporter
 	addressBook     *ingest.AddressBookImporter
 	addressBookOnce sync.Once
@@ -192,6 +196,7 @@ func New(opts Options) (*Adapter, error) {
 		peers:     opts.Peers,
 		chats:     opts.Chats,
 		messages:  opts.Messages,
+		fileRoot:  opts.FileRoot,
 		incoming:  make(chan botflota.IncomingMessage, queue),
 		outbound:  make(chan botflota.ExternalSend, queue),
 		state:     StateStopped,

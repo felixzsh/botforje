@@ -311,12 +311,12 @@ Deliverables:
 - [x] Runtime/host boundary: preserve generic API publication, scopes, and
   tokens; separate host applications from optional operator tooling (ADR 0046;
   `docs/integration.md`). This documentation decision changes no runtime code.
-- [ ] Scope file root (ADR 0047, not implemented): an owner-managed
-  `file_roots` map in the main config file bounds the local files one scope's
-  steps may read. A scope without a root keeps today's behavior; scoped
-  publication cannot set it; the component that reads the bytes enforces
-  confinement after templates resolve; load rejects an absolute path under a
-  root and overlapping roots.
+- [x] Scope file root (ADR 0047): an owner-managed `file_roots` map in the main
+  config file bounds the local files one scope's steps may read. A scope without
+  a root keeps today's behavior; scoped publication cannot set it; the component
+  that reads the bytes enforces confinement after templates resolve; load rejects
+  a relative or missing root and overlapping roots, and validation rejects a
+  literal absolute media path under a root.
 - [ ] Egress policy (ADR 0048, not implemented): an owner-managed `egress`
   instance setting. `public_only` refuses a non-public destination on the
   connection the call actually makes and re-checks or refuses each redirect; it

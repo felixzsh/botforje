@@ -39,8 +39,11 @@ count of bots or scopes.
   external offering. Proposed new configuration fields are not available yet.
 
 Local files (ADR 0047), outbound HTTP egress (ADR 0048), and a scope's secret
-names (ADR 0049) are settled separately. Shared resource use and optional
-implicit-scope syntax remain TBD in `integration.md` and `PLAN.md`. No new
+names (ADR 0049) are settled separately. The file root is implemented: the
+`file_roots` map in the main config file is owner-managed, restart-required, and
+bounds one scope's local reads. The egress policy and the secret catalog are
+settled decisions still awaiting implementation. Shared resource use and optional
+implicit-scope syntax remain TBD in `integration.md` and `PLAN.md`; no new
 implementation starts until the relevant decision is accepted in an ADR.
 
 ## Candidate design for evaluation only
