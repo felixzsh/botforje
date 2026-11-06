@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -135,6 +136,21 @@ func TestGuardedDialRefusesBlockedDestinations(t *testing.T) {
 		{name: "ipv6 unspecified literal", address: "[::]:80"},
 		{name: "ipv4 multicast literal", address: "224.0.0.1:80"},
 		{name: "ipv6 multicast literal", address: "[ff02::1]:80"},
+		{name: "ipv6 interface local multicast literal", address: "[ff01::1]:80"},
+		{name: "ipv4 this network host", address: "0.1.2.3:80"},
+		{name: "ipv4 shared address space", address: "100.100.100.100:80"},
+		{name: "ipv4 benchmarking", address: "198.19.1.1:80"},
+		{name: "ipv4 reserved", address: "240.0.0.1:80"},
+		{name: "ipv4 limited broadcast", address: "255.255.255.255:80"},
+		{name: "ipv4 documentation", address: "192.0.2.10:80"},
+		{name: "ipv6 site local", address: "[fec0::1]:80"},
+		{name: "ipv6 discard only", address: "[100::1]:80"},
+		{name: "ipv6 documentation", address: "[2001:db8::1]:80"},
+		{name: "ipv6 ietf assignment", address: "[2001:2::1]:80"},
+		{name: "ipv4 mapped loopback", address: "[::ffff:127.0.0.1]:80"},
+		{name: "nat64 mapped private", address: "[64:ff9b::10.0.0.5]:80"},
+		{name: "nat64 local use mapped private", address: "[64:ff9b:1::10.0.0.5]:80"},
+		{name: "six to four private", address: "[2002:0a00:0005::1]:80"},
 		{
 			name:    "name resolving to a private address",
 			address: "internal.example.test:80",
@@ -170,21 +186,34 @@ func TestGuardedDialRefusesBlockedDestinations(t *testing.T) {
 
 func TestGuardedDialDialsTheCheckedAddress(t *testing.T) {
 	resolver := &fakeResolver{answers: map[string][]string{
-		"public.example.test": {"93.184.216.34"},
+		"public.example.test":  {"93.184.216.34", "2606:4700::1111"},
+		"public6.example.test": {"2606:4700::1111"},
 	}}
 	for _, tc := range []struct {
 		name    string
+		network string
 		address string
 		want    string
 	}{
-		{name: "public literal", address: "93.184.216.34:443", want: "93.184.216.34:443"},
-		{name: "public name", address: "public.example.test:443",
-			want: "93.184.216.34:443"},
+		{name: "public literal", network: "tcp",
+			address: "93.184.216.34:443", want: "93.184.216.34:443"},
+		{name: "public v6 literal", network: "tcp",
+			address: "[2606:4700::1111]:443", want: "[2606:4700::1111]:443"},
+		{name: "public name", network: "tcp",
+			address: "public.example.test:443", want: "93.184.216.34:443"},
+		{name: "nat64 mapped public", network: "tcp",
+			address: "[64:ff9b::8.8.8.8]:443", want: "[64:ff9b::808:808]:443"},
+		{name: "six to four public", network: "tcp",
+			address: "[2002:0808:0808::1]:443", want: "[2002:808:808::1]:443"},
+		{name: "tcp4 skips the v6 answer", network: "tcp4",
+			address: "public.example.test:80", want: "93.184.216.34:80"},
+		{name: "tcp6 skips the v4 answer", network: "tcp6",
+			address: "public.example.test:80", want: "[2606:4700::1111]:80"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dial := &fakeDial{responses: []string{httpResponse("200 OK", "ok")}}
 			conn, err := guardedDial(dial.dial, resolver.lookup)(
-				context.Background(), "tcp", tc.address)
+				context.Background(), tc.network, tc.address)
 			if err != nil {
 				t.Fatalf("dial(%s): %v", tc.address, err)
 			}
@@ -196,9 +225,47 @@ func TestGuardedDialDialsTheCheckedAddress(t *testing.T) {
 	}
 }
 
+func TestGuardedDialRefusesANameWithNoAddress(t *testing.T) {
+	dial := &fakeDial{}
+	resolver := &fakeResolver{answers: map[string][]string{
+		"empty.example.test": {},
+	}}
+	_, err := guardedDial(dial.dial, resolver.lookup)(
+		context.Background(), "tcp", "empty.example.test:80")
+	if !errors.Is(err, ErrBlocked) {
+		t.Fatalf("dial error = %v, want %v", err, ErrBlocked)
+	}
+	if got := dial.addresses(); len(got) != 0 {
+		t.Fatalf("dialed %v without a checked address", got)
+	}
+}
+
+func TestClientRefusesATransportItCannotGuard(t *testing.T) {
+	replaced := http.DefaultTransport
+	http.DefaultTransport = unreachableTransport{}
+	t.Cleanup(func() { http.DefaultTransport = replaced })
+
+	client, err := Client(PublicOnly)
+	if err == nil {
+		if client != nil {
+			client.CloseIdleConnections()
+		}
+		t.Fatalf("Client = %v, want an error for a replaced default transport", client)
+	}
+	if !strings.Contains(err.Error(), "transport") {
+		t.Fatalf("error = %v, want the transport named", err)
+	}
+}
+
+type unreachableTransport struct{}
+
+func (unreachableTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("unreachable")
+}
+
 func TestClientAllowsPublicDestination(t *testing.T) {
 	dial := &fakeDial{responses: []string{httpResponse("200 OK", "hello")}}
-	client := newClient(PublicOnly, dial.dial, publicResolver(t).lookup)
+	client := testClient(PublicOnly, dial.dial, publicResolver(t).lookup)
 	response, err := client.Get("http://public.example.test/greeting")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -221,7 +288,7 @@ func TestClientRefusesRedirectToBlockedDestination(t *testing.T) {
 		"Location: http://internal.example.test/admin/reset\r\n" +
 		"Content-Length: 0\r\n\r\n"
 	dial := &fakeDial{responses: []string{redirect}}
-	client := newClient(PublicOnly, dial.dial, publicResolver(t).lookup)
+	client := testClient(PublicOnly, dial.dial, publicResolver(t).lookup)
 	response, err := client.Get("http://public.example.test/start")
 	if response != nil {
 		response.Body.Close()
@@ -236,14 +303,14 @@ func TestClientRefusesRedirectToBlockedDestination(t *testing.T) {
 
 func TestBlockedDestinationErrorNamesNoTopology(t *testing.T) {
 	dial := &fakeDial{}
-	client := newClient(PublicOnly, dial.dial, publicResolver(t).lookup)
+	client := testClient(PublicOnly, dial.dial, publicResolver(t).lookup)
 	_, err := client.Get("http://internal.example.test/admin/reset")
 	if !errors.Is(err, ErrBlocked) {
 		t.Fatalf("Get error = %v, want %v", err, ErrBlocked)
 	}
 	message := err.Error()
 	for _, leaked := range []string{"10.0.0.5", "10.", "127.", "169.254", "172.16",
-		"192.168", "fd00", "fe80", "scope", "support"} {
+		"192.168", "fd00", "fe80", "fec0", "100.64", "scope", "support"} {
 		if strings.Contains(message, leaked) {
 			t.Fatalf("error %q names internal topology %q", message, leaked)
 		}
@@ -255,7 +322,7 @@ func TestBlockedDestinationErrorNamesNoTopology(t *testing.T) {
 
 func TestOpenModeFiltersNothing(t *testing.T) {
 	dial := &fakeDial{responses: []string{httpResponse("200 OK", "local")}}
-	client := newClient(Open, dial.dial, publicResolver(t).lookup)
+	client := testClient(Open, dial.dial, publicResolver(t).lookup)
 	response, err := client.Get("http://127.0.0.1:9000/admin/reset")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -267,6 +334,53 @@ func TestOpenModeFiltersNothing(t *testing.T) {
 	if got := dial.addresses(); len(got) != 1 || got[0] != "127.0.0.1:9000" {
 		t.Fatalf("dialed %v, want [127.0.0.1:9000]", got)
 	}
+}
+
+func TestOpenClientKeepsTheStandardClient(t *testing.T) {
+	client, err := Client(Open)
+	if err != nil {
+		t.Fatalf("Client(Open): %v", err)
+	}
+	if client.Transport != nil {
+		t.Fatalf("transport = %T, want the standard client", client.Transport)
+	}
+}
+
+func TestPublicOnlyClientIgnoresAProxy(t *testing.T) {
+	// A proxy would carry the connection the policy never sees, so the policy
+	// dials the destination itself even when the base transport has a proxy.
+	proxy, err := url.Parse("http://127.0.0.1:3128")
+	if err != nil {
+		t.Fatalf("parse proxy: %v", err)
+	}
+	base := &http.Transport{
+		Proxy: func(*http.Request) (*url.URL, error) { return proxy, nil },
+	}
+	dial := &fakeDial{responses: []string{httpResponse("200 OK", "ok")}}
+	client := clientFor(PublicOnly, base, dial.dial, publicResolver(t).lookup)
+	response, err := client.Get("http://public.example.test/greeting")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	response.Body.Close()
+	for _, address := range dial.addresses() {
+		if strings.HasPrefix(address, "127.0.0.1:3128") {
+			t.Fatalf("proxy dialed %v, want the destination", dial.addresses())
+		}
+	}
+	if got := dial.addresses(); len(got) != 1 || got[0] != "93.184.216.34:80" {
+		t.Fatalf("dialed %v, want [93.184.216.34:80]", got)
+	}
+}
+
+// testClient builds the policy over the standard transport's settings and the
+// fakes, so the checks below exercise the client a caller would hold.
+func testClient(mode Mode, dial dialContext, lookup lookupIP) *http.Client {
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		base = &http.Transport{}
+	}
+	return clientFor(mode, base, dial, lookup)
 }
 
 // publicResolver resolves the public example name and the internal one, so a

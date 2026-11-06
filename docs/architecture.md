@@ -87,7 +87,8 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
 
 Dependencies point along `config → spec` and `engine → spec`; neither `config`
 nor `engine` imports the other, and both use the core template language
-(ADR 0034). `config` also reads the `egress` mode it validates (ADR 0048).
+(ADR 0034). `config` validates its own vocabulary and never imports `egress`;
+the runtime parses the same setting through `egress` (ADR 0048).
 
 `webhook` delivers the instance's outbound events as signed HTTP POSTs over a
 durable queue (ADR 0045). Planned capabilities land as `dashboard` (embedded

@@ -121,6 +121,11 @@ func runFleet(args []string) int {
 		return 1
 	}
 
+	client, err := outboundClient(cfg)
+	if err != nil {
+		logger.Error("build outbound client", "error", err)
+		return 1
+	}
 	runner, err = fleet.New(cfg, fleet.Options{
 		Store: db.Sessions(),
 		Chats: db.Chats(), Peers: db.Peers(),
@@ -130,7 +135,7 @@ func runFleet(args []string) int {
 		Bindings:       db.Bindings(),
 		Notify:         webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
-		HTTPClient:     outboundClient(cfg),
+		HTTPClient:     client,
 		Log:            logger,
 		Catalog:        catalog,
 	})
@@ -153,9 +158,9 @@ func runFleet(args []string) int {
 	}()
 	// Webhook deliveries stop with the process; the queue is durable, so a
 	// delivery still pending after this run is retried by the next one
-	// (ADR 0045).
-	deliveries := webhook.NewWorker(db.Webhooks(), webhook.Targets(cfg.Webhooks),
-		webhook.WorkerOptions{Log: logger})
+	// (ADR 0045). The client carries the instance egress policy like every
+	// other outbound fetch (ADR 0048).
+	deliveries := deliveryWorker(cfg, db.Webhooks(), logger, client)
 	deliveries.Start(ctx)
 	defer func() {
 		stop()

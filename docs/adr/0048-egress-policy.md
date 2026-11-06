@@ -33,20 +33,21 @@ Botflota gains an optional, owner-managed **egress policy** for outbound HTTP.
   redirect is re-checked or refused. A dialer that can be trusted to check the
   address it actually connects to is the mechanism.
 - It covers every configurable outbound fetch the runtime makes, including a
-  `request` step, media fetched by `url`, and the model endpoint of a scope's
-  `system_one` or `llms` profile, whose `base_url` is a destination like any
-  other; it never relies on `request` alone. No provider adapter dials
-  `base_url` yet, so the managed client reaches the `request` step and media
-  fetched by `url` today; a model adapter joins them by using that same
-  client.
+  `request` step, media fetched by `url`, a webhook delivery, and the model
+  endpoint of a scope's `system_one` or `llms` profile, whose `base_url` is a
+  destination like any other; it never relies on `request` alone. No provider
+  adapter dials `base_url` yet, so the managed client reaches the `request`
+  step, media fetched by `url`, and webhook delivery today; a model adapter
+  joins them by using that same client.
 - A blocked destination fails the action with an error that names neither
   internal topology nor another scope.
 - It is a policy, not a sandbox. It does not bound secrets (ADR 0049), response
   size, CPU, or fairness between scopes.
 - There is no allowlist in this decision: an owner that must reach a service on
   a private address runs with `open`, or publishes that service on a public
-  address. A narrower exception needs its own decision, so the first cut cannot
-  be widened by accident.
+  address. That includes a webhook target: under `public_only` an owner whose
+  target is internal runs with `open`. A narrower exception needs its own
+  decision, so the first cut cannot be widened by accident.
 
 ## Consequences
 
