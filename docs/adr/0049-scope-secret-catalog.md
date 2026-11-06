@@ -36,7 +36,9 @@ Botflota gains an optional, owner-managed **secret catalog** per scope.
   to it; and a line without `=`, an empty value, or a repeated name fails the
   load with the line and the name, never a value. A relative path is relative to
   the directory of the main config file, and the file must be a regular file of
-  bounded size: load refuses anything else without reading it.
+  at most 1 MiB. Load refuses any other file before opening it, and reads no more
+  than 1 MiB plus one byte, so a file that grows is refused without being read
+  whole.
 - It must live outside every scope's file root (ADR 0047), so it can never be
   sent as media; load rejects a catalog that sits inside a file root.
 - Values keep ADR 0014's behavior otherwise: the containing string is secret end

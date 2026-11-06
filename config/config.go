@@ -74,8 +74,9 @@ type Config struct {
 	// `#` comments; it is read as data, never executed, a value is kept verbatim
 	// after the first `=`, and a line with no `=`, an empty value, or a repeated
 	// name fails the load naming the line and the name, never a value. It must be
-	// a regular file of bounded size. Only the main config file declares it and
-	// only the owner sets it, so a published scope can never set or change it. A
+	// a regular file of at most 1 MiB, which load refuses before opening it and
+	// reads at most one byte past. Only the main config file declares it and only
+	// the owner sets it, so a published scope can never set or change it. A
 	// relative path is relative to the main config file, and the file must sit
 	// outside every file root so it can never be sent as media. A scope without
 	// an entry keeps resolving from the process environment. Changing it requires

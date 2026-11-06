@@ -2,7 +2,10 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -711,5 +714,55 @@ func TestSecretCatalogMustResolve(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "sk-virtual") {
 		t.Fatalf("load error %v leaked a value", err)
+	}
+}
+
+// probeCatalogReader is a reader whose catalog reports a small size and streams
+// past the bound, so a test can prove the read itself is bounded rather than
+// bounded after the fact.
+type probeCatalogReader struct{}
+
+func (probeCatalogReader) readFile(string) ([]byte, error) {
+	return nil, errors.New("the whole file was read")
+}
+
+func (probeCatalogReader) open(string) (io.ReadCloser, error) {
+	return io.NopCloser(&probeCatalog{budget: maxSecretCatalogSize + 1}), nil
+}
+
+func (probeCatalogReader) stat(string) (fs.FileInfo, error) {
+	return overlayInfo{name: "catalog.env", size: 1}, nil
+}
+
+func (probeCatalogReader) readDir(string) ([]fs.DirEntry, error) { return nil, nil }
+
+func (probeCatalogReader) glob(string) ([]string, error) { return nil, nil }
+
+// probeCatalog serves blank catalog lines up to a budget and then fails, so a
+// reader that keeps going is reported instead of succeeding.
+type probeCatalog struct{ budget int }
+
+func (p *probeCatalog) Read(b []byte) (int, error) {
+	if p.budget <= 0 {
+		return 0, errors.New("read past the bound")
+	}
+	n := min(len(b), p.budget)
+	for i := 0; i < n; i++ {
+		b[i] = '\n'
+	}
+	p.budget -= n
+	return n, nil
+}
+
+// TestSecretCatalogBoundsTheRead proves the catalog is read through a bounded
+// reader: a stream that keeps going is stopped at the bound and refused.
+func TestSecretCatalogBoundsTheRead(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTemp(t, dir, "catalog.env", "A=1\n")
+	cfg := &Config{SecretFiles: map[string]string{"alice": path}}
+	_, err := readSecretCatalogs(cfg, filepath.Join(dir, "config.yml"), nil,
+		probeCatalogReader{})
+	if err == nil || !strings.Contains(err.Error(), "grew past") {
+		t.Fatalf("read = %v, want the stream stopped at the bound", err)
 	}
 }

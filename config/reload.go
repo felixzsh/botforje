@@ -21,8 +21,8 @@ type ReloadPlan struct {
 // Callers may activate safe scopes while leaving other scopes pending.
 func PlanReload(current, next *Config) ReloadPlan {
 	plan := ReloadPlan{ScopeReasons: map[string][]string{}}
-	plan.Global = globalChanges(current, next)
-	restart := catalogRestartScopes(current, next)
+	catalogs := catalogChangedScopes(current, next)
+	plan.Global = globalChanges(current, next, catalogs)
 
 	names := map[string]bool{}
 	for name := range current.Scopes {
@@ -47,7 +47,7 @@ func PlanReload(current, next *Config) ReloadPlan {
 			continue
 		}
 		reasons := scopeRuntimeChanges(was, now, name)
-		if restart[name] {
+		if catalogs[name] {
 			// A rotation changes the value each reference already holds, and a
 			// removed declaration would resolve from the process environment: a
 			// running scope keeps what it has until the owner restarts
@@ -60,20 +60,23 @@ func PlanReload(current, next *Config) ReloadPlan {
 	return plan
 }
 
-// catalogRestartScopes names the scopes whose secret catalog changed, in the
-// declaration or in the file's content. Only a scope that has a catalog can
-// depend on one, so a scope without an entry is never held back by this.
-func catalogRestartScopes(current, next *Config) map[string]bool {
-	if reflect.DeepEqual(current.SecretFiles, next.SecretFiles) &&
-		reflect.DeepEqual(current.catalogs, next.catalogs) {
-		return nil
-	}
+// catalogChangedScopes names the scopes whose own secret catalog changed, in its
+// declared path or in the file's content. It is the plan's only comparison of
+// the catalogs, for both the global reason and the per-scope hold-back; a scope
+// whose catalog did not change is never held back by another's (ADR 0049).
+func catalogChangedScopes(current, next *Config) map[string]bool {
 	changed := map[string]bool{}
 	for _, name := range SortedKeys(current.SecretFiles) {
 		changed[name] = true
 	}
 	for _, name := range SortedKeys(next.SecretFiles) {
 		changed[name] = true
+	}
+	for name := range changed {
+		if current.SecretFiles[name] == next.SecretFiles[name] &&
+			reflect.DeepEqual(current.catalogs[name], next.catalogs[name]) {
+			delete(changed, name)
+		}
 	}
 	return changed
 }
@@ -117,7 +120,7 @@ func channelOf(bot spec.Bot) string {
 	return bot.Channel.Provider + "/" + bot.Channel.Mode + ":" + string(encoded)
 }
 
-func globalChanges(current, next *Config) []string {
+func globalChanges(current, next *Config, catalogs map[string]bool) []string {
 	var reasons []string
 	for _, change := range []struct{ name, was, now string }{
 		{"address", current.Address, next.Address},
@@ -149,8 +152,7 @@ func globalChanges(current, next *Config) []string {
 	// A secret catalog is the owner's bound on which names a scope may resolve,
 	// so only the owner's restart adopts a change — in the declaration or in
 	// the file's rotation (ADR 0049).
-	if !reflect.DeepEqual(current.SecretFiles, next.SecretFiles) ||
-		!reflect.DeepEqual(current.catalogs, next.catalogs) {
+	if len(catalogs) > 0 {
 		reasons = append(reasons, "global setting secret_files")
 	}
 	return reasons
