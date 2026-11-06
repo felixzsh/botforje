@@ -45,8 +45,9 @@ optional typed next step}`. States are `starting`, `awaiting_input`,
 `awaiting_approval`, `succeeded`, `failed`, `cancelled`, and `expired`. Steps
 are a small closed set, not provider commands or a general form engine:
 
-- display an expiring QR or login URI, whose payload expiry is separate from
-  the session deadline;
+- display an expiring QR, login URI, or pairing code the owner types on a
+  device they control (ADR 0028), whose payload expiry is separate from the
+  session deadline;
 - request a typed input (credential, identifier, verification code, password);
   secret values are write-only, and a password is a step, never a reusable
   account credential to publish or retain;

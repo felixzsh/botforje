@@ -258,8 +258,18 @@ func (s *Server) handleBindingInspect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, bindingStatusViewOf(status))
 }
 
+// bindingMethodsView is the discovery answer: the methods a definition offers
+// and, when the runner can report them, the begin parameters each needs. A
+// method that needs none is absent from Requirements, so it stays small and a
+// client reads a requirement instead of a rejected begin (ADR 0053).
+type bindingMethodsView struct {
+	Methods      []string            `json:"methods"`
+	Requirements map[string][]string `json:"requirements,omitempty"`
+}
+
 // handleBindingMethods names the supported setup methods of the bot's
-// definition; a definition with no remote setup reports none (ADR 0053).
+// definition and what each needs to begin; a definition with no remote setup
+// reports none (ADR 0053).
 func (s *Server) handleBindingMethods(w http.ResponseWriter, r *http.Request) {
 	scope, ok := s.scopeParam(w, r)
 	if !ok {
@@ -281,7 +291,29 @@ func (s *Server) handleBindingMethods(w http.ResponseWriter, r *http.Request) {
 	if methods == nil {
 		methods = []string{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"methods": methods})
+	view := bindingMethodsView{Methods: methods}
+	if discovery, ok := runner.(botflota.SetupDiscovery); ok {
+		requirements, err := discovery.SetupRequirements(r.Context(), scope, bot)
+		if err != nil {
+			s.fail(w, "read setup requirements", err)
+			return
+		}
+		view.Requirements = requiredParams(requirements)
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+// requiredParams keeps the methods that name required parameters, keyed by
+// method, so a method without requirements needs no entry in the answer.
+func requiredParams(requirements []botflota.SetupRequirement) map[string][]string {
+	params := make(map[string][]string, len(requirements))
+	for _, requirement := range requirements {
+		if len(requirement.Params) == 0 {
+			continue
+		}
+		params[requirement.Method] = requirement.Params
+	}
+	return params
 }
 
 // handleSetupBegin stages one setup session until provider confirmation and

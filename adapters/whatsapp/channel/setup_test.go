@@ -30,6 +30,9 @@ func testSetupDeps(t *testing.T) Deps {
 	if manager == nil {
 		t.Fatal("NewPairManager returned nil")
 	}
+	// Close cancels any session a test starts and waits for its goroutine, so
+	// no pairing worker outlives the test that built the manager.
+	t.Cleanup(manager.Close)
 	return Deps{
 		Devices: devices, Bindings: db.Bindings(),
 		Peers: db.Peers(), Chats: db.Chats(), Messages: db.Messages(),

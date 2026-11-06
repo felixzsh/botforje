@@ -579,3 +579,21 @@ type SetupRunner interface {
 	) (*SetupSession, error)
 	CancelSetup(ctx context.Context, scope, bot, sessionID string) error
 }
+
+// SetupRequirement names one setup method and the begin parameters it needs
+// before its session can start (ADR 0053). A method that needs none reports an
+// empty list.
+type SetupRequirement struct {
+	Method string
+	Params []string
+}
+
+// SetupDiscovery reports a bot's setup methods with the parameters each needs,
+// so a client learns a requirement before beginning a session and before it
+// reads a rejected request (ADR 0053). It is optional: a runner that only
+// names its methods leaves callers to SetupRunner.SetupMethods (ADR 0004).
+type SetupDiscovery interface {
+	SetupRequirements(
+		ctx context.Context, scope, bot string,
+	) ([]SetupRequirement, error)
+}

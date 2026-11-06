@@ -3,6 +3,8 @@ package whatsapp
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,7 +138,7 @@ func TestSetupCodeReportsPendingThenExpiry(t *testing.T) {
 	})
 	manager.pair = func(ctx context.Context, opts PairOptions) (PairResult, error) {
 		opts.OnCode("ABCD-EFGH")
-		opts.OnPending("finish the passkey step on the phone")
+		opts.OnPending()
 		<-ctx.Done()
 		return PairResult{}, ctx.Err()
 	}
@@ -151,8 +153,7 @@ func TestSetupCodeReportsPendingThenExpiry(t *testing.T) {
 	pending := waitSetup(t, manager, "dev", "alpha", started.ID,
 		botflota.SetupAwaitingApproval)
 	if pending.Step == nil || pending.Step.Kind != botflota.SetupStepApproval ||
-		pending.Step.Approval == nil ||
-		pending.Step.Approval.Instruction != "finish the passkey step on the phone" {
+		pending.Step.Approval == nil || pending.Step.Approval.Instruction == "" {
 		t.Fatalf("step = %#v, want the reported pending instruction", pending.Step)
 	}
 	if pending.Revision < 2 {
@@ -170,15 +171,12 @@ func TestSetupCodeReportsPendingThenExpiry(t *testing.T) {
 // same session only for the same phone, so a different number is a conflicting
 // request instead of a silent replacement (ADR 0053).
 func TestSetupCodeRequestKeyIsScopedToItsPhone(t *testing.T) {
-	release := make(chan struct{})
-	manager := testPairManager(t, PairManagerOptions{})
+	manager, _ := testSetupManager(t, PairManagerOptions{})
 	manager.pair = func(ctx context.Context, opts PairOptions) (PairResult, error) {
 		opts.OnCode("ABCD-EFGH")
 		<-ctx.Done()
-		<-release
 		return PairResult{}, ctx.Err()
 	}
-	defer close(release)
 	ctx := context.Background()
 	begin := botflota.SetupBegin{
 		Method: SetupMethodCode, RequestKey: "key-1",
@@ -197,5 +195,136 @@ func TestSetupCodeRequestKeyIsScopedToItsPhone(t *testing.T) {
 		err, botflota.ErrConflict,
 	) {
 		t.Fatalf("begin with another phone = %v, want ErrConflict", err)
+	}
+}
+
+// TestSetupPendingInstructionFitsTheMethod: the reported step tells the truth
+// of the method that reached it. A code link can still be finished on the
+// phone that is linking; a QR link cannot answer the ceremony from this client
+// at all (ADR 0028).
+func TestSetupPendingInstructionFitsTheMethod(t *testing.T) {
+	cases := []struct {
+		name    string
+		begin   botflota.SetupBegin
+		want    string
+		notWant string
+	}{
+		{
+			"code keeps the phone handoff",
+			botflota.SetupBegin{
+				Method: SetupMethodCode, RequestKey: "key-1",
+				Params: map[string]string{"phone": "5215500000001"},
+			},
+			"phone that is linking",
+			"cannot be linked from here",
+		},
+		{
+			"qr says it cannot be linked here",
+			botflota.SetupBegin{Method: SetupMethodQR, RequestKey: "key-2"},
+			"cannot be linked from here",
+			"phone that is linking",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manager, _ := testSetupManager(t, PairManagerOptions{})
+			manager.pair = func(ctx context.Context, opts PairOptions) (
+				PairResult, error,
+			) {
+				opts.OnPending()
+				<-ctx.Done()
+				return PairResult{}, ctx.Err()
+			}
+			started, err := manager.BeginSetup(context.Background(), "dev",
+				"alpha", tc.begin)
+			if err != nil {
+				t.Fatalf("BeginSetup: %v", err)
+			}
+			pending := waitSetup(t, manager, "dev", "alpha", started.ID,
+				botflota.SetupAwaitingApproval)
+			if pending.Step == nil || pending.Step.Approval == nil {
+				t.Fatalf("step = %#v, want the reported instruction", pending.Step)
+			}
+			instruction := pending.Step.Approval.Instruction
+			if !strings.Contains(instruction, tc.want) ||
+				strings.Contains(instruction, tc.notWant) {
+				t.Fatalf("instruction = %q, want %q and not %q",
+					instruction, tc.want, tc.notWant)
+			}
+		})
+	}
+}
+
+// TestSetupNewChallengeReplacesAPendingStep: a challenge the provider issues
+// after a pending report is published again, so the owner can still obtain the
+// code that completes the link; the pending step stays visible until it is
+// (ADR 0028).
+func TestSetupNewChallengeReplacesAPendingStep(t *testing.T) {
+	given := make(chan PairOptions, 1)
+	manager, _ := testSetupManager(t, PairManagerOptions{})
+	manager.pair = func(ctx context.Context, opts PairOptions) (PairResult, error) {
+		given <- opts
+		<-ctx.Done()
+		return PairResult{}, ctx.Err()
+	}
+	started, err := manager.BeginSetup(context.Background(), "dev", "alpha",
+		botflota.SetupBegin{
+			Method: SetupMethodCode, RequestKey: "key-1",
+			Params: map[string]string{"phone": "5215500000001"},
+		})
+	if err != nil {
+		t.Fatalf("BeginSetup: %v", err)
+	}
+	opts := <-given
+
+	opts.OnCode("ABCD-EFGH")
+	first := waitSession(t, manager, "dev", "alpha", started.ID,
+		func(session *botflota.SetupSession) bool {
+			return session.Step != nil && session.Step.Display != nil &&
+				session.Step.Display.Payload == "ABCD-EFGH"
+		})
+	opts.OnPending()
+	pending := waitSession(t, manager, "dev", "alpha", started.ID,
+		func(session *botflota.SetupSession) bool {
+			return session.Step != nil &&
+				session.Step.Kind == botflota.SetupStepApproval
+		})
+	if pending.Revision <= first.Revision {
+		t.Fatalf("revision = %d, want a bump for the pending report",
+			pending.Revision)
+	}
+
+	opts.OnCode("IJKL-MNOP")
+	refreshed := waitSession(t, manager, "dev", "alpha", started.ID,
+		func(session *botflota.SetupSession) bool {
+			return session.Step != nil && session.Step.Display != nil &&
+				session.Step.Display.Payload == "IJKL-MNOP"
+		})
+	if refreshed.Revision <= pending.Revision {
+		t.Fatalf("revision = %d, want a bump for the new challenge",
+			refreshed.Revision)
+	}
+	if refreshed.State != botflota.SetupAwaitingApproval {
+		t.Fatalf("state = %s, want the code method's approval wait",
+			refreshed.State)
+	}
+}
+
+// TestSetupRequirementsNameTheCodePhone: discovery answers what each method
+// needs to begin, so a client does not have to learn the phone requirement
+// from a rejected request (ADR 0053).
+func TestSetupRequirementsNameTheCodePhone(t *testing.T) {
+	manager := testPairManager(t, PairManagerOptions{})
+	requirements, err := manager.SetupRequirements(context.Background(),
+		"dev", "alpha")
+	if err != nil {
+		t.Fatalf("SetupRequirements: %v", err)
+	}
+	want := []botflota.SetupRequirement{
+		{Method: SetupMethodQR},
+		{Method: SetupMethodCode, Params: []string{"phone"}},
+	}
+	if !reflect.DeepEqual(requirements, want) {
+		t.Fatalf("requirements = %#v, want %#v", requirements, want)
 	}
 }

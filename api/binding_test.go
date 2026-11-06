@@ -68,6 +68,20 @@ func (s *stubSetupRunner) SetupMethods(
 	return s.methods, s.methodsErr
 }
 
+// discoveryRunner adds the optional requirement report, so a test can pin what
+// the discovery route answers for a runner that says more than method names
+// (ADR 0053).
+type discoveryRunner struct {
+	*stubSetupRunner
+	requirements []botflota.SetupRequirement
+}
+
+func (d *discoveryRunner) SetupRequirements(
+	_ context.Context, _, _ string,
+) ([]botflota.SetupRequirement, error) {
+	return d.requirements, nil
+}
+
 func (s *stubSetupRunner) BeginSetup(
 	_ context.Context, _, _ string, req botflota.SetupBegin,
 ) (*botflota.SetupSession, error) {
@@ -273,6 +287,37 @@ func TestBindingMethods(t *testing.T) {
 	}
 	if body := recorder.Body.String(); body != `{"methods":["qr","token"]}`+"\n" {
 		t.Fatalf("body = %q, want the declared methods", body)
+	}
+}
+
+// TestBindingMethodsReportRequirements: discovery names each method and the
+// begin parameters it needs, so a client learns the phone requirement without
+// provoking a rejected begin (ADR 0053).
+func TestBindingMethodsReportRequirements(t *testing.T) {
+	server := testServerWithOptions(t, &fakeFleet{},
+		func(opts *Options) {
+			opts.Setups = &stubSetups{
+				lifecycle: &stubBindingLifecycle{},
+				runner: &discoveryRunner{
+					stubSetupRunner: &stubSetupRunner{
+						methods:  []string{"qr", "code"},
+						sessions: map[string]*botflota.SetupSession{},
+					},
+					requirements: []botflota.SetupRequirement{
+						{Method: "qr"},
+						{Method: "code", Params: []string{"phone"}},
+					},
+				},
+			}
+		}, nil)
+	recorder := get(t, server.Handler(),
+		"/api/v1/scopes/support/bots/demo/binding/methods", testOwnerToken)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	want := `{"methods":["qr","code"],"requirements":{"code":["phone"]}}` + "\n"
+	if body := recorder.Body.String(); body != want {
+		t.Fatalf("body = %q, want %q", body, want)
 	}
 }
 

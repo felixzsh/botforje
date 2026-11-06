@@ -188,6 +188,27 @@ func (m *PairManager) SetupMethods(
 	return []string{SetupMethodQR, SetupMethodCode}, nil
 }
 
+// SetupRequirements reports what each advertised method needs: a code link
+// registers the owner's phone, so its begin carries one; a QR link needs
+// nothing beyond the challenge it displays (ADR 0028, ADR 0053).
+func (m *PairManager) SetupRequirements(
+	ctx context.Context, scope, bot string,
+) ([]botflota.SetupRequirement, error) {
+	methods, err := m.SetupMethods(ctx, scope, bot)
+	if err != nil {
+		return nil, err
+	}
+	requirements := make([]botflota.SetupRequirement, 0, len(methods))
+	for _, method := range methods {
+		requirement := botflota.SetupRequirement{Method: method}
+		if method == SetupMethodCode {
+			requirement.Params = []string{"phone"}
+		}
+		requirements = append(requirements, requirement)
+	}
+	return requirements, nil
+}
+
 // BeginSetup stages one bot's QR setup until the provider confirms it and the
 // local binding commits (ADR 0053). A repeated request key returns the same
 // session; reusing one for different parameters is rejected.
@@ -472,6 +493,20 @@ func displayHint(method string) string {
 			"then enter this code. The phone performs the passkey step itself."
 	}
 	return "Scan with WhatsApp > Linked devices. The code refreshes on its own."
+}
+
+// pendingInstruction tells the owner what a passkey step addressed to this
+// companion needs. A code link can still be finished on the phone that is
+// linking; a QR link has no such phone, because answering the assertion there
+// needs a browser the owner controls, which is outside this client's decision
+// (ADR 0028).
+func pendingInstruction(method string) string {
+	if method == SetupMethodCode {
+		return "This account asks for its passkey. Finish the step on the phone " +
+			"that is linking; this connection cannot answer it."
+	}
+	return "This account asks for its passkey on the companion, which needs a " +
+		"browser on the account owner's device. It cannot be linked from here."
 }
 
 // sweepLocked forgets retained sessions older than the bound, so completed

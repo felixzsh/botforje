@@ -28,9 +28,12 @@ end to end.
 5. `bot bind` prints the bound identity (`provider/subject`) and exits. Add
    `--verbose` to also print the structured log at the configured `log_level`.
 
-For new bindings, WhatsApp shows the companion as `Botflota`, or as the bot's
-`channel.options.device_name` when it sets one. Existing links keep their old
-name until they are unbound and bound again.
+For a new QR binding, WhatsApp shows the companion as `Botflota`, or as the
+bot's `channel.options.device_name` when it sets one. Existing links keep their
+old name until they are unbound and bound again. A pairing-code link is
+different: the code registration declares its own platform descriptor
+(`Chrome (Linux)`), which the provider validates against a closed set of client
+and platform pairs, so `device_name` does not name a code link.
 
 To replace a binding, run `./bin/botflota bot bind --force support-bot`; it
 detaches the committed binding first and removes the same things `bot unbind`
@@ -48,9 +51,10 @@ reads it once, at linking time.
 A pairing-code setup prints the code as its display step, and the session
 stays `awaiting_approval` while the owner types it; the code expires on its
 own, and the setup session reports its own expiry as a state instead of waiting
-for it. An account that asks the companion itself for the passkey cannot be
-linked from here: the session reports what to do on the owner's device, and
-that limitation is coverage, not a retry loop (ADR 0028).
+for it. If the provider asks the companion itself for the passkey during a code
+link, the session says so and the phone can still finish that step. A QR link
+has no such phone: for that method the session states that the account cannot
+be linked from here. That is a coverage limit, not a retry loop (ADR 0028).
 
 `bot bind` and `bot unbind` adapt to a running instance: while `fleet run` owns
 the instance both drive its API — the QR comes from the setup session, the bot

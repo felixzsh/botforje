@@ -9,6 +9,9 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
+// testPairManager builds a manager for one test and closes it afterwards:
+// Close cancels every live session and waits for its goroutine, so no pairing
+// worker or expiry timer outlives the test that started it.
 func testPairManager(t *testing.T, opts PairManagerOptions) *PairManager {
 	t.Helper()
 	if opts.Build == nil {
@@ -20,6 +23,7 @@ func testPairManager(t *testing.T, opts PairManagerOptions) *PairManager {
 	if manager == nil {
 		t.Fatal("NewPairManager returned nil")
 	}
+	t.Cleanup(manager.Close)
 	return manager
 }
 
@@ -30,15 +34,27 @@ func waitSetup(
 	want botflota.SetupState,
 ) *botflota.SetupSession {
 	t.Helper()
+	return waitSession(t, manager, scope, bot, id,
+		func(session *botflota.SetupSession) bool { return session.State == want })
+}
+
+// waitSession polls one session until check accepts it, so a test can wait for
+// a step or a revision rather than only a state.
+func waitSession(
+	t *testing.T, manager *PairManager, scope, bot, id string,
+	check func(*botflota.SetupSession) bool,
+) *botflota.SetupSession {
+	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		session, err := manager.ReadSetup(context.Background(), scope, bot, id)
-		if err == nil && session.State == want {
+		if err == nil && check(session) {
 			return session
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatalf("session never reached %s", want)
+	last, err := manager.ReadSetup(context.Background(), scope, bot, id)
+	t.Fatalf("session never reached the expected state: %#v, %v", last, err)
 	return nil
 }
 

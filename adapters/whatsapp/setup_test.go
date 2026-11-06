@@ -31,8 +31,9 @@ func testSetupManager(t *testing.T, opts PairManagerOptions) (*PairManager, *int
 			return fmt.Sprintf("session-%d", atomic.AddInt64(&seq, 1))
 		}
 	}
+	// testPairManager registers the cleanup that cancels the manager's live
+	// sessions, so a test only mints ids here.
 	manager := testPairManager(t, opts)
-	t.Cleanup(manager.Close)
 	return manager, &seq
 }
 

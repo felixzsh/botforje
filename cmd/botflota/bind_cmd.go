@@ -109,11 +109,8 @@ type setupStep struct {
 		Kind  string `json:"kind"`
 		Label string `json:"label"`
 	} `json:"fields"`
-	Approval *struct {
-		Destination string `json:"destination"`
-		Instruction string `json:"instruction"`
-	} `json:"approval"`
-	Profile *struct {
+	Approval *approvalStep `json:"approval"`
+	Profile  *struct {
 		Methods     []string `json:"methods"`
 		Options     []string `json:"options"`
 		AllowCreate bool     `json:"allow_create"`
@@ -123,6 +120,13 @@ type setupStep struct {
 			Label string `json:"label"`
 		} `json:"params"`
 	} `json:"profile"`
+}
+
+// approvalStep is the CLI's view of an external-action step: a safe
+// destination and the instruction, either of which may be absent.
+type approvalStep struct {
+	Destination string `json:"destination"`
+	Instruction string `json:"instruction"`
 }
 
 type bindingStatus struct {
@@ -211,6 +215,7 @@ func driveBind(
 	}
 	reader := bufio.NewReader(stdin)
 	lastDisplay := ""
+	lastApproval := ""
 	for {
 		switch session.State {
 		case "succeeded":
@@ -238,13 +243,14 @@ func driveBind(
 				}
 				time.Sleep(bindPollInterval)
 			case "approval":
+				// The step stays pending across polls, so it is announced
+				// once rather than burying the challenge above it
+				// (ADR 0028, ADR 0053).
 				if session.Step.Approval != nil {
-					if session.Step.Approval.Destination != "" {
-						fmt.Fprintln(stdout, "approve at "+
-							session.Step.Approval.Destination)
-					}
-					if session.Step.Approval.Instruction != "" {
-						fmt.Fprintln(stdout, session.Step.Approval.Instruction)
+					announcement := approvalAnnouncement(session.Step.Approval)
+					if announcement != lastApproval {
+						fmt.Fprint(stdout, announcement)
+						lastApproval = announcement
 					}
 				}
 				time.Sleep(bindPollInterval)
@@ -439,6 +445,19 @@ func answerProfileStep(
 		return values, true
 	}
 	return map[string]string{"profile": choice}, true
+}
+
+// approvalAnnouncement is the once-per-step text of an approval step, so a
+// pending step that survives several polls is not reprinted on each one.
+func approvalAnnouncement(approval *approvalStep) string {
+	var text strings.Builder
+	if approval.Destination != "" {
+		fmt.Fprintln(&text, "approve at "+approval.Destination)
+	}
+	if approval.Instruction != "" {
+		fmt.Fprintln(&text, approval.Instruction)
+	}
+	return text.String()
 }
 
 func renderSetupDisplay(stdout io.Writer, format, payload, hint string) {
@@ -955,10 +974,7 @@ func setupSessionOf(session *botflota.SetupSession) *setupSession {
 			}{Name: field.Name, Kind: field.Kind, Label: field.Label})
 		}
 		if session.Step.Approval != nil {
-			step.Approval = &struct {
-				Destination string `json:"destination"`
-				Instruction string `json:"instruction"`
-			}{
+			step.Approval = &approvalStep{
 				Destination: session.Step.Approval.Destination,
 				Instruction: session.Step.Approval.Instruction,
 			}
