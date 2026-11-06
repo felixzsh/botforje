@@ -132,3 +132,27 @@ Nothing here is required by Phase 8.
   in the process environment with a different value, while a name the catalog
   lacks fails with the name and never a value. That is ADR 0049's contract
   proven through `config validate`, not through a fake.
+- L12 — T1's first review rejected `24cad7a` on a reachable defect: `os.Root`
+  refuses any symlink whose target begins with a separator, so a root
+  provisioned with an absolute link that points *inside* it passed the
+  `EvalSymlinks` pre-check and then failed at the open with an error that
+  carried no `ErrOutsideFileRoot` — classified transient, retried to the end of
+  the budget, and logged as an escape that never happened. The fix opens the
+  already-resolved relative path through `os.Root`, keeping the open as the
+  enforcement point, and wraps any remaining escape in `ErrOutsideFileRoot`.
+  Also corrected: `Bind.FileRoot` was populated only by `fleet.buildBot`, so a
+  `Prepare`/`Setup` bind or `bind_cmd` inherited the zero value, which is
+  indistinguishable from "no root" — the exact bypass ADR 0047 claims an
+  adapter cannot make. Discarded: bind-mount and inode aliasing between roots
+  (a large design change the ADR does not ask for) and the instance-wide blast
+  radius of a missing root (the shape of the ADR's own requirement).
+- L13 — T4's second review confirmed seven of eight items fixed and rejected
+  `55ddd58` on how the eighth was applied: clearing the pending step on a fresh
+  challenge is right for the code method, where a new code is a new chance, but
+  on the QR method whatsmeow keeps rotating the code every 20–60 s, so the
+  pending report survived one rotation and the session then re-advertised a
+  scan that fails identically — the silent loop ADR 0028 forbids. Corrected as
+  a method-appropriate rule that ships without a third review, together with the
+  CLI dedupe keying on the instruction and revision and a test comment that
+  named an unreachable branch as if it proved something. Discarded: pinning
+  `pairOnce`'s wiring, which needs a client seam for a low-impact gap.
