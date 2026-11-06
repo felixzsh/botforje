@@ -19,6 +19,7 @@ var invalidFixtures = []fixtureCase{
 	{"bad_log_level.yml", "log_level"},
 	{"bad_log_level_deps.yml", "log_level_deps"},
 	{"bad_rate_limit.yml", "rate_limit"},
+	{"bad_egress.yml", "egress"},
 	{"bad_llm_routing.yml", "routing"},
 	{"bad_llm_realization.yml", "realization"},
 	{"bad_llm_bounds.yml", ">= 0"},

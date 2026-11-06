@@ -33,13 +33,14 @@ func install(ctx context.Context, host channels.Host) (channels.Installed, error
 		return channels.Installed{}, err
 	}
 	deps := Deps{
-		Devices:   devices,
-		Bindings:  host.Bindings,
-		Peers:     host.Peers,
-		Chats:     host.Chats,
-		Messages:  host.Messages,
-		Directory: host.Directory,
-		Outbox:    host.Outbox,
+		Devices:    devices,
+		Bindings:   host.Bindings,
+		Peers:      host.Peers,
+		Chats:      host.Chats,
+		Messages:   host.Messages,
+		Directory:  host.Directory,
+		Outbox:     host.Outbox,
+		HTTPClient: host.HTTPClient,
 		Pairs: whatsapp.NewPairManager(whatsapp.PairManagerOptions{
 			Build:    pairBuild(host, devices),
 			OnPaired: host.StartBot,

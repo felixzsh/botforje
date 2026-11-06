@@ -45,7 +45,9 @@ type Options struct {
 	Catalog *channels.Catalog
 	// Skip is for recoverable runtime conditions such as a missing local
 	// pairing; a skipped bot never gets a channel.
-	Skip           func(scope, bot string) bool
+	Skip func(scope, bot string) bool
+	// HTTPClient is the client every outbound fetch uses, so the instance
+	// egress policy (ADR 0048) covers them all; nil means the standard client.
 	HTTPClient     *http.Client
 	Now            func() time.Time
 	Rand           *rand.Rand

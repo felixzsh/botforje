@@ -200,6 +200,10 @@
         "default_timeout": {
           "type": "integer"
         },
+        "egress": {
+          "description": "Egress bounds where an outbound HTTP call may go: \"open\" (the default)\nreaches any destination, \"public_only\" only a public one. It is set by\nthe instance owner, and changing it requires a restart; a published\nscope cannot set it.",
+          "type": "string"
+        },
         "exclusive_scopes": {
           "description": "ExclusiveScopes makes a scope grant exclusive: minting an access token\nthen refuses a scope another active token already holds, and startup\nrefuses to run while a scope is already granted to several active\ntokens, so a scope belongs to at most one active token. The default\nfalse lets any number of tokens share a scope; the owner token covers\nevery scope either way. Changing it requires a restart.",
           "type": "boolean"

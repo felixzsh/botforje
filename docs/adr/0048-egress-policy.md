@@ -35,7 +35,10 @@ Botflota gains an optional, owner-managed **egress policy** for outbound HTTP.
 - It covers every configurable outbound fetch the runtime makes, including a
   `request` step, media fetched by `url`, and the model endpoint of a scope's
   `system_one` or `llms` profile, whose `base_url` is a destination like any
-  other; it never relies on `request` alone.
+  other; it never relies on `request` alone. No provider adapter dials
+  `base_url` yet, so the managed client reaches the `request` step and media
+  fetched by `url` today; a model adapter joins them by using that same
+  client.
 - A blocked destination fails the action with an error that names neither
   internal topology nor another scope.
 - It is a policy, not a sandbox. It does not bound secrets (ADR 0049), response

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 
 	"github.com/felixzsh/botflota"
@@ -11,6 +12,7 @@ import (
 	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/channels"
 	"github.com/felixzsh/botflota/config"
+	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -126,6 +128,7 @@ func channelHost(
 		Directory:    db.Directory(),
 		Outbox:       db.Outbox(),
 		Log:          log,
+		HTTPClient:   outboundClient(cfg),
 		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
 		Bot:          bot,
 		StartBot:     startBot,
@@ -169,6 +172,13 @@ func channelRuntime(
 		return nil, nil, err
 	}
 	return catalog, set, nil
+}
+
+// outboundClient is the client every configurable outbound fetch uses: a
+// request step, media fetched by url, and an adapter's own fetch, so all of
+// them obey the instance egress policy (ADR 0048).
+func outboundClient(cfg *config.Config) *http.Client {
+	return egress.Client(cfg.EgressMode())
 }
 
 // configBotLookup resolves one bot from a loaded file, so an adapter's setup

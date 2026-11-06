@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/engine"
 	"github.com/felixzsh/botflota/spec"
 )
@@ -321,5 +322,30 @@ func TestRequestFailureStopsTheRun(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("want an error when every attempt fails")
+	}
+}
+
+func TestRequestStepObeysTheEgressPolicy(t *testing.T) {
+	actions := map[string]spec.Action{
+		"call": {Steps: []spec.Step{{Request: &spec.Request{
+			Name: "reset", URL: "http://127.0.0.1:1/admin/reset",
+		}}}},
+	}
+	graph := spec.Graph{
+		Root:  "start",
+		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"call"}}},
+	}
+	store := newMemStore()
+	eng := newTestEngine(t, engine.Options{
+		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
+		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
+		HTTPClient: egress.Client(egress.PublicOnly),
+	})
+	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+		Sender: waKey("s"), Target: waTarget("s"),
+		Content: botflota.TextContent{Body: "hi"},
+	})
+	if !errors.Is(err, egress.ErrBlocked) {
+		t.Fatalf("Handle error = %v, want %v", err, egress.ErrBlocked)
 	}
 }

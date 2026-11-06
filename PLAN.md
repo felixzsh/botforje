@@ -317,10 +317,10 @@ Deliverables:
   that reads the bytes enforces confinement after templates resolve; load rejects
   a relative or missing root and overlapping roots, and validation rejects a
   literal absolute media path under a root.
-- [ ] Egress policy (ADR 0048, not implemented): an owner-managed `egress`
-  instance setting. `public_only` refuses a non-public destination on the
-  connection the call actually makes and re-checks or refuses each redirect; it
-  covers `request` steps and media fetched by `url`.
+- [x] Egress policy (ADR 0048): an owner-managed `egress` instance setting.
+  `public_only` refuses a non-public destination on the connection the call
+  actually makes and re-checks or refuses each redirect; it covers `request`
+  steps and media fetched by `url`.
 - [ ] Scope secret catalog (ADR 0049, not implemented): an owner-managed
   `secret_files` map. A scope with one resolves `${NAME}` only from that file,
   which must sit outside its file root, with no fallback to the process
@@ -754,8 +754,8 @@ and application-level evolution are outside its commitments (ADR 0046).
   provisioning contracts (Phase 7; `docs/access-policy.md`).
 - TBD — shared resource use between scopes: CPU, memory, and fairness
   (`docs/integration.md`).
-- Implementation: scope file root (ADR 0047), egress policy (ADR 0048), and
-  scope secret catalog (ADR 0049) — `PLAN.md`, Phase 7.
+- Implementation: scope file root (ADR 0047) and scope secret catalog
+  (ADR 0049) — `PLAN.md`, Phase 7.
 - TBD — implicit scope for simple YAML: whether to add root-level entities,
   ambiguity rules with explicit scopes/includes, and stable persisted identity.
   ADR 0016 still requires explicit scopes; `default` is an ordinary name.

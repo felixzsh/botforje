@@ -93,6 +93,8 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 		{"exclusive scopes", func(c *Config) {
 			c.ExclusiveScopes = true
 		}, []string{"global setting exclusive_scopes"}},
+		{"egress", func(c *Config) { c.Egress = "public_only" },
+			[]string{"global setting egress"}},
 		{"webhooks", func(c *Config) {
 			c.Webhooks = []WebhookSettings{{
 				URL:    "https://hooks.example.test/events",
@@ -122,7 +124,7 @@ func TestPlanReloadSeparatesGlobalAndScopeChanges(t *testing.T) {
 }
 
 func TestPlanReloadChangesOnlyTheEditedScope(t *testing.T) {
-	current := &Config{Scopes: map[string]spec.Scope{
+	current := &Config{Egress: "public_only", Scopes: map[string]spec.Scope{
 		"a": {Actions: map[string]spec.Action{"greet": {
 			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"hi"}}}},
 		}}},
@@ -130,7 +132,7 @@ func TestPlanReloadChangesOnlyTheEditedScope(t *testing.T) {
 			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"hello"}}}},
 		}}},
 	}}
-	next := &Config{Scopes: map[string]spec.Scope{
+	next := &Config{Egress: "open", Scopes: map[string]spec.Scope{
 		"a": {Actions: map[string]spec.Action{"greet": {
 			Steps: []spec.Step{{Message: &spec.Message{Body: spec.Text{"changed"}}}},
 		}}},
@@ -139,6 +141,14 @@ func TestPlanReloadChangesOnlyTheEditedScope(t *testing.T) {
 	plan := PlanReload(current, next)
 	if !slices.Equal(plan.Scopes, []string{"a"}) {
 		t.Fatalf("changed scopes = %v, want [a]", plan.Scopes)
+	}
+	if !slices.Equal(plan.Global, []string{"global setting egress"}) {
+		t.Fatalf("global reasons = %v, want only egress", plan.Global)
+	}
+	// A publication activates scopes only: the instance policy it never owns
+	// stays the running one, so changing it is restart-required (ADR 0048).
+	if active := WithScopes(current, next, plan.Scopes); active.Egress != "public_only" {
+		t.Fatalf("active egress = %q, want the running %q", active.Egress, "public_only")
 	}
 	active := WithScopes(current, next, plan.Scopes)
 	if !reflect.DeepEqual(active.Scopes["b"], current.Scopes["b"]) {

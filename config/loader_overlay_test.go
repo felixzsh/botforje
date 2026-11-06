@@ -139,3 +139,14 @@ func readFile(t *testing.T, path string) []byte {
 	}
 	return content
 }
+
+func TestFragmentNeverSetsTheEgressPolicy(t *testing.T) {
+	main := writeFiles(t, map[string]string{
+		"botflota.yml": "egress: public_only\ninclude:\n  - extra.yml\n",
+		"extra.yml":    "egress: open\n",
+	})
+	_, err := (Loader{}).Load(main)
+	if err == nil || !strings.Contains(err.Error(), "egress") {
+		t.Fatalf("Load error = %v, want the fragment's egress setting refused", err)
+	}
+}

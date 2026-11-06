@@ -78,13 +78,16 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
   iterates the registry and names none of them (ADR 0052, ADR 0054).
 - `instance` — the exclusive lock that makes one process the owner of an
   instance's data directory (ADR 0039).
+- `egress` — the outbound HTTP client an instance runs with: the owner's policy
+  is enforced on the connection itself, so a request step, media fetched by
+  `url`, and a redirect pass the same check (ADR 0048).
 - `cmd/botflota` — argument parsing and assembly.
 - `internal/` — only a shared implementation detail that is not a capability
   and has no owner; nothing lives there today.
 
 Dependencies point along `config → spec` and `engine → spec`; neither `config`
 nor `engine` imports the other, and both use the core template language
-(ADR 0034).
+(ADR 0034). `config` also reads the `egress` mode it validates (ADR 0048).
 
 `webhook` delivers the instance's outbound events as signed HTTP POSTs over a
 durable queue (ADR 0045). Planned capabilities land as `dashboard` (embedded

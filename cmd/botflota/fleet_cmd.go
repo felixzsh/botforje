@@ -130,6 +130,7 @@ func runFleet(args []string) int {
 		Bindings:       db.Bindings(),
 		Notify:         webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
 		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
+		HTTPClient:     outboundClient(cfg),
 		Log:            logger,
 		Catalog:        catalog,
 	})
