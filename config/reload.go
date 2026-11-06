@@ -22,6 +22,7 @@ type ReloadPlan struct {
 func PlanReload(current, next *Config) ReloadPlan {
 	plan := ReloadPlan{ScopeReasons: map[string][]string{}}
 	plan.Global = globalChanges(current, next)
+	restart := catalogRestartScopes(current, next)
 
 	names := map[string]bool{}
 	for name := range current.Scopes {
@@ -45,9 +46,36 @@ func PlanReload(current, next *Config) ReloadPlan {
 			plan.ScopeReasons[name] = []string{fmt.Sprintf("scope %q removed", name)}
 			continue
 		}
-		plan.ScopeReasons[name] = scopeRuntimeChanges(was, now, name)
+		reasons := scopeRuntimeChanges(was, now, name)
+		if restart[name] {
+			// A rotation changes the value each reference already holds, and a
+			// removed declaration would resolve from the process environment: a
+			// running scope keeps what it has until the owner restarts
+			// (ADR 0049).
+			reasons = append(reasons, fmt.Sprintf(
+				"secret catalog of scope %q changed; restart to adopt it", name))
+		}
+		plan.ScopeReasons[name] = reasons
 	}
 	return plan
+}
+
+// catalogRestartScopes names the scopes whose secret catalog changed, in the
+// declaration or in the file's content. Only a scope that has a catalog can
+// depend on one, so a scope without an entry is never held back by this.
+func catalogRestartScopes(current, next *Config) map[string]bool {
+	if reflect.DeepEqual(current.SecretFiles, next.SecretFiles) &&
+		reflect.DeepEqual(current.catalogs, next.catalogs) {
+		return nil
+	}
+	changed := map[string]bool{}
+	for _, name := range SortedKeys(current.SecretFiles) {
+		changed[name] = true
+	}
+	for _, name := range SortedKeys(next.SecretFiles) {
+		changed[name] = true
+	}
+	return changed
 }
 
 func scopeRuntimeChanges(was, now spec.Scope, name string) []string {

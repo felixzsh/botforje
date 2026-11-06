@@ -1,10 +1,16 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"strings"
 )
+
+// maxSecretCatalogSize bounds a catalog read. A catalog holds names and short
+// credentials, not data, so a larger file is a mistake and load must not read it
+// whole; the same guard the media paths use.
+const maxSecretCatalogSize = 1 << 20
 
 // secretCatalog holds one scope's secret names as the owner's file holds them
 // (ADR 0049). It is data only: no includes, no command substitution.
@@ -17,11 +23,12 @@ func (c secretCatalog) lookup(name string) (string, bool) {
 	return value, held
 }
 
-// parseSecretCatalog reads `NAME=value` lines, blank lines, and `#` comments.
-// The value is the rest of the line as written, so a second `=` belongs to it;
-// a later duplicate name wins, as a shell environment would. An error never
-// quotes a value, only a line number.
+// parseSecretCatalog reads `NAME=value` lines, blank lines, and `#` comments. A
+// line with no `=`, an empty name, an empty value, or a repeated name is an
+// error naming the line and the name; no error quotes a value, and a value is
+// otherwise the rest of its line as written, so a second `=` belongs to it.
 func parseSecretCatalog(data []byte) (secretCatalog, error) {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	catalog := secretCatalog{}
 	for i, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSuffix(line, "\r")
@@ -29,10 +36,17 @@ func parseSecretCatalog(data []byte) (secretCatalog, error) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		name, value, ok := strings.Cut(line, "=")
-		name = strings.TrimSpace(name)
-		if !ok || name == "" {
+		rawName, value, ok := strings.Cut(line, "=")
+		name := strings.TrimSpace(rawName)
+		if !ok {
 			return nil, fmt.Errorf("line %d: want NAME=value", i+1)
+		}
+		if name == "" || value == "" {
+			return nil, fmt.Errorf("line %d: name %q: want a non-empty value",
+				i+1, name)
+		}
+		if _, duplicate := catalog[name]; duplicate {
+			return nil, fmt.Errorf("line %d: duplicate name %q", i+1, name)
 		}
 		catalog[name] = value
 	}
@@ -41,8 +55,9 @@ func parseSecretCatalog(data []byte) (secretCatalog, error) {
 
 // readSecretCatalogs reads one catalog per scope that the main config file
 // declares (ADR 0049). A relative path is relative to the main config file, and
-// the file must sit outside every file root, resolved, so a catalog can never
-// be sent as media (ADR 0047).
+// the file must sit outside every file root, so a catalog can never be sent as
+// media (ADR 0047). Containment is decided on the resolved path before anything
+// is read, and a file that is not a regular, bounded file is refused unread.
 func readSecretCatalogs(
 	cfg *Config, mainPath string, roots map[string]string, files fileReader,
 ) (map[string]secretCatalog, error) {
@@ -55,20 +70,37 @@ func readSecretCatalogs(
 		if err != nil {
 			return nil, fmt.Errorf("secret_files[%q]: %w", scope, err)
 		}
-		data, err := files.readFile(path)
+		real, err := filepath.EvalSymlinks(path)
 		if err != nil {
 			return nil, fmt.Errorf("secret_files[%q]: %w", scope, err)
+		}
+		if err := checkCatalogOutsideRoots(scope, path, real, roots); err != nil {
+			return nil, err
+		}
+		if err := checkCatalogFile(scope, path, real, files); err != nil {
+			return nil, err
+		}
+		data, err := files.readFile(real)
+		if err != nil {
+			return nil, fmt.Errorf("secret_files[%q]: %w", scope, err)
+		}
+		// The stat above bounds the declared file; this bounds what was actually
+		// handed over, so a file that grew in between is refused too.
+		if int64(len(data)) > maxSecretCatalogSize {
+			return nil, catalogSizeError(scope, path)
 		}
 		catalog, err := parseSecretCatalog(data)
 		if err != nil {
 			return nil, fmt.Errorf("secret_files[%q]: %s: %w", scope, path, err)
 		}
-		if err := checkCatalogOutsideRoots(scope, path, roots); err != nil {
-			return nil, err
-		}
 		catalogs[scope] = catalog
 	}
 	return catalogs, nil
+}
+
+func catalogSizeError(scope, path string) error {
+	return fmt.Errorf("secret_files[%q]: %q is larger than %d bytes",
+		scope, path, maxSecretCatalogSize)
 }
 
 // catalogPath resolves a declared catalog to an absolute path, relative to the
@@ -92,9 +124,9 @@ func catalogPath(declared, mainPath string) (string, error) {
 // checkCatalogOutsideRoots refuses a catalog inside any scope's file root: the
 // root is where a media step may read from, so a catalog there could be sent as
 // a document, and the whole scope's secret names would leave (ADR 0047,
-// ADR 0049).
-func checkCatalogOutsideRoots(scope, path string, roots map[string]string) error {
-	real := resolvedPath(path)
+// ADR 0049). real is the path with its symbolic links resolved, so a link from
+// outside a root into it is caught too.
+func checkCatalogOutsideRoots(scope, path, real string, roots map[string]string) error {
 	for _, name := range SortedKeys(roots) {
 		if containsDirectory(roots[name], real) {
 			return fmt.Errorf(
@@ -105,13 +137,18 @@ func checkCatalogOutsideRoots(scope, path string, roots map[string]string) error
 	return nil
 }
 
-// resolvedPath follows symbolic links when it can, so a link from outside a
-// root into it is caught too. A path the filesystem does not resolve yet is
-// compared as it is.
-func resolvedPath(path string) string {
-	real, err := filepath.EvalSymlinks(path)
+// checkCatalogFile refuses anything but a regular file of bounded size before
+// its content is read: a FIFO or a device path would block or stream the load.
+func checkCatalogFile(scope, path, real string, files fileReader) error {
+	info, err := files.stat(real)
 	if err != nil {
-		return path
+		return fmt.Errorf("secret_files[%q]: %w", scope, err)
 	}
-	return real
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("secret_files[%q]: %q is not a regular file", scope, path)
+	}
+	if info.Size() > maxSecretCatalogSize {
+		return catalogSizeError(scope, path)
+	}
+	return nil
 }
