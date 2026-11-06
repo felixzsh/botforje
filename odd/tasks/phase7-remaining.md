@@ -52,3 +52,37 @@ Nothing here is required by Phase 8.
   and T3 follow T1 because all three share the instance settings in `config`
   and its validation surface, and T3 reads T1's root to decide where a secret
   file may not sit.
+- L3 — T1 (`a341a36`, `24cad7a`), T4 (`ddeaf90`) and T2 (`9f99656`, `7b1d6c4`)
+  merged into `main` with `--no-ff` as `9fa3649`, `57ce5b5` and `9274eeb`, the
+  branches kept intact so every review still binds to an immutable SHA.
+  `9274eeb` needed four resolutions: both deliverables checked in `PLAN.md`,
+  both instance fields with their own doc comment in `config/config.go`, and
+  `access-policy.md`/`integration.md` rewritten to say 0047 and 0048 are
+  implemented while 0049 alone remains pending. `config.schema.json` merged
+  itself and was proven: regenerated from the merged tree it is byte-identical,
+  carrying `egress` and `file_roots`. `make check` green on `9274eeb` (17s).
+- L4 — T3 (`627dcb5`, `f4686dc`) merged as `ca3ca53`, no conflicts, and
+  `make check` green (21s) with all four units in the tree. The worker's own
+  run had failed on `adapters/testchannel` `TestSetupConcurrentMutations…`
+  with `sqlite: database is locked (517)`; it does not reproduce here, not even
+  at `-count=8`, and T3 touches only `config`, so the load-dependent lock stays
+  a repository flake to raise on its own, not a defect of this slice.
+- L5 — the T4 reviewer rejected `ddeaf90`: the passkey-pending instruction said
+  "finish the step on the phone that is linking" for both methods, which is
+  false on the default QR path and contradicts the same commit's guide text.
+  Seven further findings (companion name per method, an unreachable
+  `SendPasskeyConfirmation` branch, a pending step that permanently displaces
+  the code, a terminal reprinting the approval twice a second, ADR 0053 still
+  listing two display formats, `binding/methods` hiding that `code` needs a
+  phone, and unpinned wiring with a goroutine outliving its test) were all
+  cheap against a consumed CLI/API contract: one correction round for all
+  eight.
+- L6 — the T2 reviewer rejected `7b1d6c4`: the destination check is a class
+  deny-list, so RFC 6598 `100.64.0.0/10` is dialled unguarded — the reviewer
+  confirmed on an ordinary host that `ip route get 100.100.100.100` resolves to
+  `tailscale0` — and webhook delivery never reaches the guard while ADR 0048
+  and `integration.md` claim every configurable outbound fetch is bounded. Six
+  more (untested guard wiring that no mutation would reveal, a media refusal
+  retried as transient, redundant conditions, a panic in an importable package,
+  and an unnecessary `config → egress` edge) are corrected; the happy-eyeballs
+  regression was discarded as a moderate design change for a low-impact stall.
