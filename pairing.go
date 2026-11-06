@@ -38,11 +38,22 @@ func (s SetupState) Final() bool {
 	return false
 }
 
+// Setup methods whose challenge is displayed: the neutral spellings a
+// channel advertises beside its own methods (ADR 0053). The qr is scanned;
+// the code is typed on a device the account owner controls, so the ceremony
+// happens there and this instance only receives the provider's handoff
+// (ADR 0028).
+const (
+	SetupMethodQR   = "qr"
+	SetupMethodCode = "code"
+)
+
 // Setup step kinds: the small closed set a session can ask for, not provider
 // commands or a general form engine (ADR 0053).
 const (
-	// SetupStepDisplay presents an expiring challenge: a QR image payload or
-	// a login URI. Its payload expiry is separate from the session deadline.
+	// SetupStepDisplay presents an expiring challenge: a QR image payload, a
+	// login URI, or a short code the owner types elsewhere. Its payload
+	// expiry is separate from the session deadline.
 	SetupStepDisplay = "display"
 	// SetupStepInput requests typed values: a credential, an identifier, a
 	// verification code, or a password. Secret values are write-only and
@@ -64,10 +75,20 @@ const (
 	SetupFieldPassword   = "password"
 )
 
-// SetupDisplay is an expiring challenge to present: a QR payload or a login
-// URI. ExpiresAt is the payload's own deadline, never the session's.
+// Setup display formats. A code is not a payload to scan: the owner types it
+// on a device they control and the session stays awaiting approval for the
+// provider's handoff (ADR 0028).
+const (
+	SetupDisplayQR   = "qr"
+	SetupDisplayURI  = "uri"
+	SetupDisplayCode = "code"
+)
+
+// SetupDisplay is an expiring challenge to present: a QR payload, a login
+// URI, or a pairing code, with what the owner must do with it in Hint.
+// ExpiresAt is the payload's own deadline, never the session's.
 type SetupDisplay struct {
-	Format    string // "qr" or "uri"
+	Format    string // one of the SetupDisplay formats
 	Payload   string
 	ExpiresAt time.Time
 	Hint      string

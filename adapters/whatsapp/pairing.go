@@ -108,6 +108,12 @@ type pairingSession struct {
 	code string
 	// requestKey is the start idempotency key that created this session.
 	requestKey string
+	// phone is the normalized number a code setup registers; empty for a QR
+	// setup (ADR 0028).
+	phone string
+	// pending is the instruction of a step the companion cannot answer, shown
+	// instead of retrying in a loop (ADR 0028).
+	pending string
 	// fullHistory asks for the full history window at registration when the
 	// provider syncs one (ADR 0035); it is part of the start parameters, so
 	// a retried key with a different window is a conflicting request.
@@ -179,7 +185,7 @@ func (m *PairManager) SetupMethods(
 	if _, err := m.opts.Build(scope, bot, false); err != nil {
 		return nil, err
 	}
-	return []string{SetupMethodQR}, nil
+	return []string{SetupMethodQR, SetupMethodCode}, nil
 }
 
 // BeginSetup stages one bot's QR setup until the provider confirms it and the
@@ -191,26 +197,50 @@ func (m *PairManager) BeginSetup(
 	if m == nil {
 		return nil, errors.New("whatsapp: no pairing manager")
 	}
-	if req.Method != "" && req.Method != SetupMethodQR {
+	if req.Method != "" && req.Method != SetupMethodQR &&
+		req.Method != SetupMethodCode {
 		return nil, fmt.Errorf("whatsapp: unsupported setup method %q: %w",
 			req.Method, botflota.ErrUnsupportedKind)
 	}
+	method := req.Method
+	if method == "" {
+		method = SetupMethodQR
+	}
 	fullHistory := false
+	phone := ""
 	for name, value := range req.Params {
-		if name != "full_history" {
-			return nil, fmt.Errorf("whatsapp: qr setup takes no parameter %q: %w",
-				name, botflota.ErrUnsupportedKind)
-		}
-		switch value {
-		case "true":
-			fullHistory = true
-		case "false":
-			fullHistory = false
+		switch name {
+		case "full_history":
+			switch value {
+			case "true":
+				fullHistory = true
+			case "false":
+				fullHistory = false
+			default:
+				return nil, fmt.Errorf(
+					"whatsapp: full_history must be \"true\" or \"false\": %w",
+					botflota.ErrInvalidParam)
+			}
+		case "phone":
+			if method != SetupMethodCode {
+				return nil, fmt.Errorf(
+					"whatsapp: qr setup takes no parameter %q: %w",
+					name, botflota.ErrUnsupportedKind)
+			}
+			normalized, err := normalizePairPhone(value)
+			if err != nil {
+				return nil, err
+			}
+			phone = normalized
 		default:
-			return nil, fmt.Errorf(
-				"whatsapp: full_history must be \"true\" or \"false\": %w",
-				botflota.ErrInvalidParam)
+			return nil, fmt.Errorf("whatsapp: %s setup takes no parameter %q: %w",
+				method, name, botflota.ErrUnsupportedKind)
 		}
+	}
+	if method == SetupMethodCode && phone == "" {
+		return nil, fmt.Errorf(
+			"whatsapp: a code setup needs the phone number: %w",
+			botflota.ErrInvalidParam)
 	}
 	key := req.RequestKey
 	if key == "" {
@@ -259,12 +289,13 @@ func (m *PairManager) BeginSetup(
 	pairCtx, cancel := context.WithCancel(context.Background())
 	session := &pairingSession{
 		neutral: botflota.SetupSession{
-			Bot: botRef, ID: m.opts.ID(), Method: SetupMethodQR, Mode: AccountMode,
+			Bot: botRef, ID: m.opts.ID(), Method: method, Mode: AccountMode,
 			State:     botflota.SetupStarting,
 			Revision:  1,
 			StartedAt: now, UpdatedAt: now, ExpiresAt: now.Add(m.opts.Lifetime),
 		},
 		requestKey:  key,
+		phone:       phone,
 		fullHistory: fullHistory,
 		inputKeys:   make(map[string]int64),
 		ctx:         pairCtx, cancel: cancel, closed: make(chan struct{}),
@@ -280,6 +311,7 @@ func (m *PairManager) BeginSetup(
 
 	pairOpts := opts
 	pairOpts.FullHistory = fullHistory
+	pairOpts.Phone = phone
 	m.launch(botRef, session, pairOpts)
 	return published, nil
 }
@@ -306,7 +338,14 @@ func (s *pairingSession) sameBegin(req botflota.SetupBegin) bool {
 		method = SetupMethodQR
 	}
 	wantHistory := req.Params["full_history"] == "true"
-	return s.neutral.Method == method && s.fullHistory == wantHistory
+	if s.neutral.Method != method || s.fullHistory != wantHistory {
+		return false
+	}
+	if method != SetupMethodCode {
+		return true
+	}
+	phone, err := normalizePairPhone(req.Params["phone"])
+	return err == nil && phone == s.phone
 }
 
 // ReadSetup returns one bot's session by id. A stale or foreign id answers
@@ -387,23 +426,52 @@ func (m *PairManager) CancelSetup(
 	return nil
 }
 
-// publishLocked copies the session for its reader, deriving the pending
-// display step from the latest challenge. The payload rotates: each new code
-// bumps the revision, so rotation is observable separately from the session
-// deadline (ADR 0053).
+// publishLocked copies the session for its reader, deriving the pending step
+// from the latest challenge or from a step the companion reported and cannot
+// answer. The payload rotates: each new code bumps the revision, so rotation
+// is observable separately from the session deadline (ADR 0053).
 func (m *PairManager) publishLocked(session *pairingSession) *botflota.SetupSession {
 	published := session.neutral
-	if session.code != "" && !session.neutral.Final() {
+	if session.neutral.Final() {
+		return &published
+	}
+	switch {
+	case session.pending != "":
+		published.Step = &botflota.SetupStep{
+			Kind: botflota.SetupStepApproval,
+			Approval: &botflota.SetupApproval{
+				Instruction: session.pending,
+			},
+		}
+	case session.code != "":
 		published.Step = &botflota.SetupStep{
 			Kind: botflota.SetupStepDisplay,
 			Display: &botflota.SetupDisplay{
-				Format:  "qr",
+				Format:  displayFormat(session.neutral.Method),
 				Payload: session.code,
-				Hint:    "Scan with WhatsApp > Linked devices. The code refreshes on its own.",
+				Hint:    displayHint(session.neutral.Method),
 			},
 		}
 	}
 	return &published
+}
+
+// displayFormat says how a method's challenge is presented: a QR to scan, or a
+// code the owner types on their phone (ADR 0028).
+func displayFormat(method string) string {
+	if method == SetupMethodCode {
+		return botflota.SetupDisplayCode
+	}
+	return botflota.SetupDisplayQR
+}
+
+// displayHint tells the owner what to do with the challenge.
+func displayHint(method string) string {
+	if method == SetupMethodCode {
+		return "On the phone: WhatsApp > Linked devices > Link with phone number, " +
+			"then enter this code. The phone performs the passkey step itself."
+	}
+	return "Scan with WhatsApp > Linked devices. The code refreshes on its own."
 }
 
 // sweepLocked forgets retained sessions older than the bound, so completed

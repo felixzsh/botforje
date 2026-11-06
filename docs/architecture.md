@@ -509,7 +509,9 @@ Binding a bot to its channel account is a separate step from running it:
 adapter's advertised method, begins a session through the API of a running
 instance, and answers the session's typed steps — display, input, approval, and
 profile — without a provider-specific form. For WhatsApp the `qr` method
-renders the QR in the terminal, and the resulting companion credentials live in
+renders the QR in the terminal, and the `code` method prints the eight-digit
+pairing code the owner types on their phone, which then performs the passkey
+ceremony itself (ADR 0028); the resulting companion credentials live in
 the adapter-owned device store in the shared SQLite file (ADR 0006). The
 companion registers under the bot's `channel.options.device_name` (default
 `Botflota`), the name the account shows in Linked devices; it is sent only when

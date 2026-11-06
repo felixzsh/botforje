@@ -354,7 +354,7 @@ Deliverables:
   second run or a binding beneath a live fleet fails immediately; the port
   probe that guarded `bot bind` is gone and `port: 0` no longer hides a
   running fleet.
-- [ ] Setup methods: keep the QR and add the eight-digit pairing code, so an
+- [x] Setup methods: keep the QR and add the eight-digit pairing code, so an
   account whose passkey step happens on the phone can link without another
   client; a pending step is a reported state, never a wait until the code
   expires (ADR 0028).

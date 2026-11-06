@@ -30,7 +30,11 @@ const (
 	ProviderName  = ingest.Provider
 	AdapterKind   = "whatsmeow"
 	AccountMode   = "native"
-	SetupMethodQR = "qr"
+	SetupMethodQR = botflota.SetupMethodQR
+	// SetupMethodCode links by an eight-digit pairing code typed on the
+	// owner's phone, which then performs the passkey ceremony itself
+	// (ADR 0028).
+	SetupMethodCode = botflota.SetupMethodCode
 )
 
 // Devices is the whatsmeow device store on Botflota's shared SQLite connection

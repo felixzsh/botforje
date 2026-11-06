@@ -14,7 +14,17 @@ end to end.
    your font is very large, zoom out or widen the window first. WhatsApp
    rotates the challenge, and the command re-renders the current one, so keep
    it running.
-4. On the phone: WhatsApp > Linked devices > Link a device, then scan.
+   When the phone is easier than a scan, ask for the pairing code instead:
+   `./bin/botflota bot bind --method code --param phone=<international number> support-bot`.
+   The number is the account's own, in international form; `+`, spaces, and
+   dashes are ignored and a national leading zero is rejected. The command
+   prints the pairing code and the instruction to type it on that phone, then
+   keeps running while the phone finishes the link; `qr` stays the default
+   method.
+4. On the phone: WhatsApp > Linked devices > Link a device, then scan; with the
+   pairing code, choose Link with phone number, enter the code the command
+   printed, and confirm the passkey step there — the phone performs it, and
+   Botflota only receives the link.
 5. `bot bind` prints the bound identity (`provider/subject`) and exits. Add
    `--verbose` to also print the structured log at the configured `log_level`.
 
@@ -34,6 +44,13 @@ it in WhatsApp > Linked devices, so a rebind adds a device rather than
 replacing one. And a fresh registration is the only way to change what the
 registration carries — the requested history window above all — because WhatsApp
 reads it once, at linking time.
+
+A pairing-code setup prints the code as its display step, and the session
+stays `awaiting_approval` while the owner types it; the code expires on its
+own, and the setup session reports its own expiry as a state instead of waiting
+for it. An account that asks the companion itself for the passkey cannot be
+linked from here: the session reports what to do on the owner's device, and
+that limitation is coverage, not a retry loop (ADR 0028).
 
 `bot bind` and `bot unbind` adapt to a running instance: while `fleet run` owns
 the instance both drive its API — the QR comes from the setup session, the bot
@@ -220,6 +237,9 @@ Deterministic flow (a bot with no `llm`):
 
 - [ ] `bot bind` prints a QR, binding succeeds, and the device credentials are
   written under `data_dir`.
+- [ ] `bot bind --method code --param phone=<number>` prints the eight-digit
+  code, the session reports `awaiting_approval` while the phone is used, and
+  the same binding lands once the code is entered.
 - [ ] `fleet run` starts and a real inbound message is answered with the graph's
   messages.
 - [ ] With the fleet running, `bot list` reports the bot's binding
