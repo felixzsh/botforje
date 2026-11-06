@@ -7,3 +7,6 @@
 /config/*.local.yml
 /.dev-data/
 .opencode/
+
+# Delegation ledger written by the agent harness.
+/.piher/
