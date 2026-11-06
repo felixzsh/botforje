@@ -327,7 +327,8 @@ Deliverables:
   process environment, and a name it lacks fails with the name; the file holds
   `NAME=value` lines and `#` comments, is read as data, and must sit outside
   every file root. A line without `=`, an empty value, or a repeated name fails
-  the load, and the file must be a regular file of bounded size. A scope without
+  the load, and the file must be a regular file of at most 1 MiB: load refuses it
+  before opening it and reads it through a bounded reader. A scope without
   an entry keeps today's behavior; scoped publication cannot set it, and
   declaring or rotating a catalog requires a restart that the live-apply path
   honors by keeping the values the running scopes already hold.

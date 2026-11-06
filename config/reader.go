@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 // the whole candidate is validated before anything is written).
 type fileReader interface {
 	readFile(path string) ([]byte, error)
+	open(path string) (io.ReadCloser, error)
 	stat(path string) (fs.FileInfo, error)
 	readDir(path string) ([]fs.DirEntry, error)
 	glob(pattern string) ([]string, error)
@@ -30,6 +33,7 @@ func newFileReader(overlay map[string][]byte) fileReader {
 type osReader struct{}
 
 func (osReader) readFile(path string) ([]byte, error)       { return os.ReadFile(path) }
+func (osReader) open(path string) (io.ReadCloser, error)    { return os.Open(path) }
 func (osReader) stat(path string) (fs.FileInfo, error)      { return os.Stat(path) }
 func (osReader) readDir(path string) ([]fs.DirEntry, error) { return os.ReadDir(path) }
 func (osReader) glob(pattern string) ([]string, error)      { return filepath.Glob(pattern) }
@@ -57,6 +61,15 @@ func (r overlayReader) readFile(path string) ([]byte, error) {
 		return content, nil
 	}
 	return r.base.readFile(path)
+}
+
+// open hands out a stream at the content, so a caller that bounds what it reads
+// reads exactly as much from memory as it would from disk.
+func (r overlayReader) open(path string) (io.ReadCloser, error) {
+	if content, ok := r.files[filepath.Clean(path)]; ok {
+		return io.NopCloser(bytes.NewReader(content)), nil
+	}
+	return r.base.open(path)
 }
 
 func (r overlayReader) stat(path string) (fs.FileInfo, error) {

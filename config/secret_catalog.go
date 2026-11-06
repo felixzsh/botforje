@@ -3,13 +3,15 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 )
 
 // maxSecretCatalogSize bounds a catalog read. A catalog holds names and short
-// credentials, not data, so a larger file is a mistake and load must not read it
-// whole; the same guard the media paths use.
+// credentials, not data, so a larger file is a mistake: load refuses a declared
+// file above it and reads at most one byte past it, the same guard the media
+// paths use.
 const maxSecretCatalogSize = 1 << 20
 
 // secretCatalog holds one scope's secret names as the owner's file holds them
@@ -80,14 +82,13 @@ func readSecretCatalogs(
 		if err := checkCatalogFile(scope, path, real, files); err != nil {
 			return nil, err
 		}
-		data, err := files.readFile(real)
+		data, err := readCatalogFile(files, real)
 		if err != nil {
 			return nil, fmt.Errorf("secret_files[%q]: %w", scope, err)
 		}
-		// The stat above bounds the declared file; this bounds what was actually
-		// handed over, so a file that grew in between is refused too.
 		if int64(len(data)) > maxSecretCatalogSize {
-			return nil, catalogSizeError(scope, path)
+			return nil, fmt.Errorf("secret_files[%q]: %q grew past %d bytes",
+				scope, path, maxSecretCatalogSize)
 		}
 		catalog, err := parseSecretCatalog(data)
 		if err != nil {
@@ -101,6 +102,17 @@ func readSecretCatalogs(
 func catalogSizeError(scope, path string) error {
 	return fmt.Errorf("secret_files[%q]: %q is larger than %d bytes",
 		scope, path, maxSecretCatalogSize)
+}
+
+// readCatalogFile reads at most one byte past the bound, so a file still being
+// appended to is refused without being read whole.
+func readCatalogFile(files fileReader, real string) ([]byte, error) {
+	file, err := files.open(real)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return io.ReadAll(io.LimitReader(file, maxSecretCatalogSize+1))
 }
 
 // catalogPath resolves a declared catalog to an absolute path, relative to the
