@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"net/http"
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/spec"
@@ -42,6 +43,9 @@ type Host struct {
 	Outbox    botflota.OutboxStore
 	// Log receives the adapter's own diagnostics.
 	Log *slog.Logger
+	// HTTPClient is the client the adapter's outbound fetches use, so they
+	// obey the instance egress policy (ADR 0048); nil keeps its own default.
+	HTTPClient *http.Client
 	// DepsLogLevel is the minimum level the adapter forwards from its
 	// dependencies.
 	DepsLogLevel slog.Level

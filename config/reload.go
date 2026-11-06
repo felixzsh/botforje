@@ -103,6 +103,7 @@ func globalChanges(current, next *Config) []string {
 			fmt.Sprint(next.RateBudgets())},
 		{"exclusive_scopes", fmt.Sprint(current.ExclusiveScopes),
 			fmt.Sprint(next.ExclusiveScopes)},
+		{"egress", current.Egress, next.Egress},
 	} {
 		if change.was != change.now {
 			reasons = append(reasons, "global setting "+change.name)

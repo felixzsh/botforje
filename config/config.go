@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 
+	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -59,6 +60,11 @@ type Config struct {
 	// false lets any number of tokens share a scope; the owner token covers
 	// every scope either way. Changing it requires a restart.
 	ExclusiveScopes bool `yaml:"exclusive_scopes" json:"exclusive_scopes,omitempty"`
+	// Egress bounds where an outbound HTTP call may go: "open" (the default)
+	// reaches any destination, "public_only" only a public one. It is set by
+	// the instance owner, and changing it requires a restart; a published
+	// scope cannot set it.
+	Egress string `yaml:"egress" json:"egress,omitempty"`
 	// Webhooks are the outbound event deliveries this instance sends; see
 	// WebhookSettings.
 	Webhooks []WebhookSettings     `yaml:"webhooks" json:"webhooks,omitempty"`
@@ -88,6 +94,16 @@ func (c *Config) RateBudgets() RateBudgets {
 		budgets.FailedPerMinute = *c.RateLimit.FailedPerMinute
 	}
 	return budgets
+}
+
+// EgressMode resolves the outbound HTTP policy. Validate rejects an unknown
+// value, so one that reaches here unvalidated falls back to the open policy.
+func (c *Config) EgressMode() egress.Mode {
+	mode, err := egress.ParseMode(c.Egress)
+	if err != nil {
+		return egress.Open
+	}
+	return mode
 }
 
 // SourcePath is the absolute path of the main file this configuration was

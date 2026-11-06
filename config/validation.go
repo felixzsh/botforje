@@ -7,6 +7,7 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/channels"
+	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -68,6 +69,9 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 	case "", "debug", "info", "warn", "error", "off":
 	default:
 		add("", "config", "invalid log_level_deps %q", cfg.LogLevelDeps)
+	}
+	if _, err := egress.ParseMode(cfg.Egress); err != nil {
+		add("", "config", "invalid egress %q", cfg.Egress)
 	}
 	if cfg.RateLimit != nil {
 		if v := cfg.RateLimit.CredentialPerMinute; v != nil && *v < 0 {
