@@ -320,7 +320,7 @@ Deliverables:
 - [x] Egress policy (ADR 0048): an owner-managed `egress` instance setting.
   `public_only` refuses a non-public destination on the connection the call
   actually makes and re-checks or refuses each redirect; it covers `request`
-  steps and media fetched by `url`.
+  steps, media fetched by `url`, and webhook delivery.
 - [ ] Scope secret catalog (ADR 0049, not implemented): an owner-managed
   `secret_files` map. A scope with one resolves `${NAME}` only from that file,
   which must sit outside its file root, with no fallback to the process

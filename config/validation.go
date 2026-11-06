@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/felixzsh/botflota"
@@ -10,15 +11,15 @@ import (
 	"github.com/felixzsh/botflota/spec"
 )
 
-// validEgress reports whether the setting names the instance's own policy
-// vocabulary, where empty means the default; the runtime parses the same values
-// in its own package, and a test pins the two together (ADR 0048).
+// egressModes is the vocabulary of the egress setting; the runtime parses the
+// same values in its own package, and a test pins the two sets together
+// (ADR 0048).
+func egressModes() []string { return []string{"open", "public_only"} }
+
+// validEgress reports whether the setting names a policy, where empty means
+// the default.
 func validEgress(value string) bool {
-	switch value {
-	case "", "open", "public_only":
-		return true
-	}
-	return false
+	return value == "" || slices.Contains(egressModes(), value)
 }
 
 // ValidationError names the file, the entity, and the reason. Scope is the

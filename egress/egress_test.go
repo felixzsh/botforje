@@ -186,8 +186,9 @@ func TestGuardedDialRefusesBlockedDestinations(t *testing.T) {
 
 func TestGuardedDialDialsTheCheckedAddress(t *testing.T) {
 	resolver := &fakeResolver{answers: map[string][]string{
-		"public.example.test":  {"93.184.216.34", "2606:4700::1111"},
-		"public6.example.test": {"2606:4700::1111"},
+		"public.example.test": {"93.184.216.34", "2606:4700::1111"},
+		"v4.example.test":     {"fd00::1", "93.184.216.34"},
+		"v6.example.test":     {"10.0.0.5", "2606:4700::1111"},
 	}}
 	for _, tc := range []struct {
 		name    string
@@ -205,10 +206,12 @@ func TestGuardedDialDialsTheCheckedAddress(t *testing.T) {
 			address: "[64:ff9b::8.8.8.8]:443", want: "[64:ff9b::808:808]:443"},
 		{name: "six to four public", network: "tcp",
 			address: "[2002:0808:0808::1]:443", want: "[2002:808:808::1]:443"},
-		{name: "tcp4 skips the v6 answer", network: "tcp4",
-			address: "public.example.test:80", want: "93.184.216.34:80"},
-		{name: "tcp6 skips the v4 answer", network: "tcp6",
-			address: "public.example.test:80", want: "[2606:4700::1111]:80"},
+		// A blocked address of the other family would refuse the call if the
+		// answer were not narrowed to the network the dialer was asked for.
+		{name: "tcp4 skips the blocked v6 answer", network: "tcp4",
+			address: "v4.example.test:80", want: "93.184.216.34:80"},
+		{name: "tcp6 skips the blocked v4 answer", network: "tcp6",
+			address: "v6.example.test:80", want: "[2606:4700::1111]:80"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dial := &fakeDial{responses: []string{httpResponse("200 OK", "ok")}}
@@ -241,20 +244,54 @@ func TestGuardedDialRefusesANameWithNoAddress(t *testing.T) {
 }
 
 func TestClientRefusesATransportItCannotGuard(t *testing.T) {
-	replaced := http.DefaultTransport
-	http.DefaultTransport = unreachableTransport{}
-	t.Cleanup(func() { http.DefaultTransport = replaced })
-
-	client, err := Client(PublicOnly)
-	if err == nil {
-		if client != nil {
-			client.CloseIdleConnections()
+	// net/http prefers a TLS dialer over DialContext for https, so a
+	// transport that carries one cannot be guarded either.
+	tlsDial := func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("no dial")
+	}
+	withTLSContext := func() *http.Transport {
+		transport := &http.Transport{DialContext: dialToNothing}
+		transport.DialTLSContext = tlsDial
+		return transport
+	}
+	withTLS := func() *http.Transport {
+		transport := &http.Transport{DialContext: dialToNothing}
+		transport.DialTLS = func(string, string) (net.Conn, error) {
+			return nil, errors.New("no dial")
 		}
-		t.Fatalf("Client = %v, want an error for a replaced default transport", client)
+		return transport
 	}
-	if !strings.Contains(err.Error(), "transport") {
-		t.Fatalf("error = %v, want the transport named", err)
+	for _, tc := range []struct {
+		name      string
+		transport http.RoundTripper
+	}{
+		{name: "not a transport", transport: unreachableTransport{}},
+		{name: "no dial context", transport: &http.Transport{}},
+		{name: "tls dial context", transport: withTLSContext()},
+		{name: "tls dial", transport: withTLS()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			replaced := http.DefaultTransport
+			http.DefaultTransport = tc.transport
+			t.Cleanup(func() { http.DefaultTransport = replaced })
+
+			client, err := Client(PublicOnly)
+			if err == nil {
+				if client != nil {
+					client.CloseIdleConnections()
+				}
+				t.Fatalf("Client = %v, want an error for a transport it cannot guard",
+					client)
+			}
+			if !strings.Contains(err.Error(), "transport") {
+				t.Fatalf("error = %v, want the transport named", err)
+			}
+		})
 	}
+}
+
+func dialToNothing(context.Context, string, string) (net.Conn, error) {
+	return nil, errors.New("no dial")
 }
 
 type unreachableTransport struct{}

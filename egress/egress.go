@@ -29,14 +29,20 @@ var ErrBlocked = errors.New("egress: destination is not public")
 
 // ParseMode reads the configured value, where empty means Open.
 func ParseMode(value string) (Mode, error) {
-	switch Mode(value) {
-	case "", Open:
+	if value == "" {
 		return Open, nil
-	case PublicOnly:
-		return PublicOnly, nil
+	}
+	for _, mode := range Modes() {
+		if Mode(value) == mode {
+			return mode, nil
+		}
 	}
 	return "", fmt.Errorf("egress: unknown mode %q", value)
 }
+
+// Modes lists every policy the setting accepts, so a caller that validates the
+// vocabulary can pin itself to this list instead of repeating it.
+func Modes() []Mode { return []Mode{Open, PublicOnly} }
 
 // Client returns a new HTTP client for mode. Open keeps the standard client's
 // behavior unchanged; PublicOnly is built on the standard transport, and a
@@ -46,7 +52,10 @@ func Client(mode Mode) (*http.Client, error) {
 		return &http.Client{}, nil
 	}
 	transport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok || transport == nil || transport.DialContext == nil {
+	// net/http prefers a TLS dialer over DialContext for an https connection,
+	// so a transport that carries one would skip the guarded dial.
+	if !ok || transport == nil || transport.DialContext == nil ||
+		transport.DialTLSContext != nil || transport.DialTLS != nil {
 		return nil, fmt.Errorf("egress: cannot guard the default transport %T",
 			http.DefaultTransport)
 	}
