@@ -97,3 +97,24 @@ Nothing here is required by Phase 8.
   rule living only in a code comment) are corrected in one round. The
   `adapters/testchannel` SQLite lock cannot come from a range that adds no
   goroutine, lock, or database call.
+- L8 — the three corrections (`0859a51`, `e04e51c`, `3a6faa5`+`55ddd58`) merged
+  as `19d7c42`, `aeb8b05` and `0ba3689`, and `make check` green on `aeb8b05`
+  (17s). The T2 and T3 first-round reviews had rejected their units on one
+  contract each, so both corrections were audited again.
+- L9 — T2's second review approved `0859a51`: the destination rule is now a
+  complete registry enumeration with NAT64 and 6to4 decoded, and each of the
+  seven items has a test that fails when it is removed. Six residual findings
+  are mechanical and confined, so they ship without a third review: a base
+  transport carrying its own TLS dialer bypasses the guard for `https`, the
+  `runFleet` composition root is still unpinned, a webhook refusal is retried
+  as transient while media treats it as permanent, the vocabulary pin is
+  sample-based, and two documents still describe egress without webhooks.
+  The RFC 8215 `/48` NAT64 decode question stays recorded and unactioned: the
+  reviewer could not demonstrate a reachable bypass.
+- L10 — T3's second review confirmed seven of eight items fixed and rejected
+  `e04e51c` on two: `catalogRestartScopes` returns every declared scope, so a
+  rotation in one catalog holds an unrelated scope's live-safe edit back with a
+  false reason, and the size bound rejects after an unbounded read instead of
+  bounding it, while the ADR advertises otherwise. Both are cheap and confined,
+  so they ship mechanically with the three documentation nits and no third
+  review.
