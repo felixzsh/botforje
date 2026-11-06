@@ -86,3 +86,14 @@ Nothing here is required by Phase 8.
   retried as transient, redundant conditions, a panic in an importable package,
   and an unnecessary `config → egress` edge) are corrected; the happy-eyeballs
   regression was discarded as a moderate design change for a low-impact stall.
+- L7 — the T3 reviewer rejected `627dcb5`: the plan detects a catalog change
+  but the live-apply path ignores it, so rotating the file (or removing a
+  declaration) became live on the next unrelated reload and left the running
+  `catalogs` map disagreeing with the values its scopes already held — the
+  restart requirement of ADR 0049 was stated in the docs and not enforced. Seven
+  more (containment decided after the file was read, a silently swallowed
+  `EvalSymlinks` failure, an unbounded read, an empty value and a duplicate
+  name hiding a mistake, a BOM, five surviving mutations, and the duplicate
+  rule living only in a code comment) are corrected in one round. The
+  `adapters/testchannel` SQLite lock cannot come from a range that adds no
+  goroutine, lock, or database call.
