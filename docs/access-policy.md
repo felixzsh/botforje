@@ -38,10 +38,12 @@ count of bots or scopes.
   timeouts, and backpressure must be justified by execution safety, not by an
   external offering. Proposed new configuration fields are not available yet.
 
-Local files (ADR 0047), outbound HTTP egress (ADR 0048), and a scope's secret
-names (ADR 0049) are settled separately. Shared resource use and optional
-implicit-scope syntax remain TBD in `integration.md` and `PLAN.md`. No new
-implementation starts until the relevant decision is accepted in an ADR.
+Local files (ADR 0047) and a scope's secret names (ADR 0049) are settled
+separately and not implemented. Outbound HTTP egress (ADR 0048) is settled and
+implemented as the instance `egress` setting: it bounds which destinations a
+call may reach, not the resources it uses. Shared resource use and optional
+implicit-scope syntax remain TBD in `integration.md` and `PLAN.md`. A new
+implementation starts only after its decision is accepted in an ADR.
 
 ## Candidate design for evaluation only
 

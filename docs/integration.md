@@ -141,6 +141,7 @@ read, and a signed webhook, without waiting for a dashboard or delegated login.
 Use a fake channel for deterministic authorization and publication tests; real
 account onboarding is a separate operational check. Onboarding authors who are
 not fully trusted uses the owner controls above: a file root, `egress:
-public_only`, and a secret catalog per scope (ADRs 0047–0049); until they exist,
-share an instance only with authors you would let read the server's files and
-environment.
+public_only`, and a secret catalog per scope (ADRs 0047–0049). The egress policy
+is available today, as the instance setting and the dial the runtime makes;
+until a file root and a secret catalog exist, still share an instance only with
+authors you would let read the server's files and process environment.
