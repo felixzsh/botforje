@@ -23,6 +23,31 @@ import (
 	"github.com/felixzsh/botflota/webhook"
 )
 
+// fleetOptions is the running instance's fleet assembly. The client it builds
+// carries the egress policy, so every request step and outbound fetch the fleet
+// makes obeys it (ADR 0048).
+func fleetOptions(
+	cfg *config.Config, db *sqlite.DB, log *slog.Logger, catalog *channels.Catalog,
+) (fleet.Options, error) {
+	client, err := outboundClient(cfg)
+	if err != nil {
+		return fleet.Options{}, err
+	}
+	return fleet.Options{
+		Store: db.Sessions(),
+		Chats: db.Chats(), Peers: db.Peers(),
+		Messages:       db.Messages(),
+		Turn:           db.Turns(),
+		Outbox:         db.Outbox(),
+		Bindings:       db.Bindings(),
+		Notify:         webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
+		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
+		HTTPClient:     client,
+		Log:            log,
+		Catalog:        catalog,
+	}, nil
+}
+
 type fleetRunCmd struct {
 	fs            *flag.FlagSet
 	config        *string
@@ -121,24 +146,12 @@ func runFleet(args []string) int {
 		return 1
 	}
 
-	client, err := outboundClient(cfg)
+	options, err := fleetOptions(cfg, db, logger, catalog)
 	if err != nil {
-		logger.Error("build outbound client", "error", err)
+		logger.Error("build fleet options", "error", err)
 		return 1
 	}
-	runner, err = fleet.New(cfg, fleet.Options{
-		Store: db.Sessions(),
-		Chats: db.Chats(), Peers: db.Peers(),
-		Messages:       db.Messages(),
-		Turn:           db.Turns(),
-		Outbox:         db.Outbox(),
-		Bindings:       db.Bindings(),
-		Notify:         webhook.NewSink(db.Webhooks(), webhook.Targets(cfg.Webhooks)),
-		DefaultTimeout: time.Duration(cfg.DefaultTimeout) * time.Second,
-		HTTPClient:     client,
-		Log:            logger,
-		Catalog:        catalog,
-	})
+	runner, err = fleet.New(cfg, options)
 	if err != nil {
 		logger.Error("build fleet", "error", err)
 		return 1
@@ -158,9 +171,12 @@ func runFleet(args []string) int {
 	}()
 	// Webhook deliveries stop with the process; the queue is durable, so a
 	// delivery still pending after this run is retried by the next one
-	// (ADR 0045). The client carries the instance egress policy like every
-	// other outbound fetch (ADR 0048).
-	deliveries := deliveryWorker(cfg, db.Webhooks(), logger, client)
+	// (ADR 0045).
+	deliveries, err := deliveryWorker(cfg, db.Webhooks(), logger)
+	if err != nil {
+		logger.Error("build webhook worker", "error", err)
+		return 1
+	}
 	deliveries.Start(ctx)
 	defer func() {
 		stop()

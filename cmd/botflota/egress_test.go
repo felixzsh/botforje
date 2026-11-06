@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/config"
 	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
@@ -43,16 +45,39 @@ func TestOutboundClientFollowsTheInstanceEgressPolicy(t *testing.T) {
 	})
 }
 
-// TestDeliveryWorkerObeysTheEgressPolicy proves the webhook worker delivers
-// through the instance client: a refused target is recorded as a retry attempt
-// and never reaches the network (ADR 0048).
-func TestDeliveryWorkerObeysTheEgressPolicy(t *testing.T) {
-	client, err := outboundClient(&config.Config{Egress: "public_only"})
+// TestFleetOptionsCarryTheEgressClient proves the fleet `fleet run` assembles
+// is built with the managed client, so a request step cannot silently fall back
+// to the standard one (ADR 0048).
+func TestFleetOptionsCarryTheEgressClient(t *testing.T) {
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "botflota.db"))
 	if err != nil {
-		t.Fatalf("outboundClient: %v", err)
+		t.Fatalf("open database: %v", err)
 	}
+	defer db.Close()
+	catalog, err := pureCatalog()
+	if err != nil {
+		t.Fatalf("pure catalog: %v", err)
+	}
+	options, err := fleetOptions(
+		&config.Config{Egress: "public_only"}, db, botflota.DiscardLogger(), catalog)
+	if err != nil {
+		t.Fatalf("fleetOptions: %v", err)
+	}
+	if options.HTTPClient == nil {
+		t.Fatal("the fleet options carry no outbound client")
+	}
+	_, err = options.HTTPClient.Get("http://127.0.0.1:1/admin/reset")
+	if !errors.Is(err, egress.ErrBlocked) {
+		t.Fatalf("Get error = %v, want %v", err, egress.ErrBlocked)
+	}
+}
+
+// TestDeliveryWorkerObeysTheEgressPolicy proves the webhook worker delivers
+// through the instance client: a refused target fails with the refusal as its
+// reason and never reaches the network (ADR 0048).
+func TestDeliveryWorkerObeysTheEgressPolicy(t *testing.T) {
 	target := newCountingServer(t)
-	cfg := &config.Config{Webhooks: []config.WebhookSettings{{
+	cfg := &config.Config{Egress: "public_only", Webhooks: []config.WebhookSettings{{
 		URL:    target.URL,
 		Secret: spec.NewSecret("secret"),
 		Events: []string{"contact.first_seen"},
@@ -64,7 +89,10 @@ func TestDeliveryWorkerObeysTheEgressPolicy(t *testing.T) {
 		},
 		attempts: make(chan string, 1),
 	}
-	worker := deliveryWorker(cfg, store, botflota.DiscardLogger(), client)
+	worker, err := deliveryWorker(cfg, store, botflota.DiscardLogger())
+	if err != nil {
+		t.Fatalf("deliveryWorker: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer worker.Wait()
 	defer cancel()
@@ -72,8 +100,9 @@ func TestDeliveryWorkerObeysTheEgressPolicy(t *testing.T) {
 
 	select {
 	case reason := <-store.attempts:
-		if !strings.Contains(reason, egress.ErrBlocked.Error()) {
-			t.Fatalf("recorded reason = %q, want the policy refusal", reason)
+		if !strings.Contains(reason, "failed: ") ||
+			!strings.Contains(reason, egress.ErrBlocked.Error()) {
+			t.Fatalf("recorded outcome = %q, want a permanent policy refusal", reason)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the delivery was never attempted")
@@ -114,14 +143,14 @@ func (s *fakeWebhookStore) MarkSent(context.Context, int64, time.Time) error {
 func (s *fakeWebhookStore) MarkRetry(
 	_ context.Context, _ int64, reason string, _, _ time.Time,
 ) error {
-	s.attempts <- reason
+	s.attempts <- "retry: " + reason
 	return nil
 }
 
 func (s *fakeWebhookStore) MarkFailed(
 	_ context.Context, _ int64, reason string, _ time.Time,
 ) error {
-	s.attempts <- reason
+	s.attempts <- "failed: " + reason
 	return nil
 }
 

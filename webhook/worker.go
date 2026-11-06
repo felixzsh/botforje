@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/egress"
 )
 
 const (
@@ -165,6 +167,13 @@ func (w *Worker) attempt(ctx context.Context, delivery botflota.WebhookDelivery)
 	defer cancel()
 	response, err := w.client.Do(request.WithContext(attemptCtx))
 	if err != nil {
+		// A policy refusal is a decision that retrying cannot change, so the
+		// target fails now with the refusal as its reason (ADR 0048); any other
+		// failure stays worth another attempt.
+		if errors.Is(err, egress.ErrBlocked) {
+			w.fail(ctx, delivery, err.Error())
+			return
+		}
 		w.retry(ctx, delivery, err.Error())
 		return
 	}
