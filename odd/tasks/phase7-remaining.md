@@ -118,3 +118,17 @@ Nothing here is required by Phase 8.
   bounding it, while the ADR advertises otherwise. Both are cheap and confined,
   so they ship mechanically with the three documentation nits and no third
   review.
+- L11 — the mechanical rounds merged as `30fcb43` and `947afd1` (two conflicts
+  resolved: the egress branch still carried 0049 as unimplemented, so its
+  `PLAN.md` block was dropped in favour of the full T3 text while its coverage
+  wording was kept; both branches added a different `config/validation.go`
+  import, and both stay), and `make check` green on `947afd1` (17s).
+  Independent evidence from the built CLI, beyond the unit tests: a config with
+  a file root, a catalog and `egress: public_only` validates; two overlapping
+  roots are refused naming both; a catalog inside a file root is refused naming
+  both; an unknown scope in either map is refused; `egress: niebla` is refused
+  by `config`'s own vocabulary, which is the shape the `config → egress` removal
+  asked for; and a `${NAME}` resolves from the catalog while the same name sits
+  in the process environment with a different value, while a name the catalog
+  lacks fails with the name and never a value. That is ADR 0049's contract
+  proven through `config validate`, not through a fake.
