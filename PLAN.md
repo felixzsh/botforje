@@ -326,9 +326,11 @@ Deliverables:
   scope with one resolves `${NAME}` only from that file, with no fallback to the
   process environment, and a name it lacks fails with the name; the file holds
   `NAME=value` lines and `#` comments, is read as data, and must sit outside
-  every file root. A scope without an entry keeps today's behavior; scoped
-  publication cannot set it, and declaring or rotating a catalog requires a
-  restart.
+  every file root. A line without `=`, an empty value, or a repeated name fails
+  the load, and the file must be a regular file of bounded size. A scope without
+  an entry keeps today's behavior; scoped publication cannot set it, and
+  declaring or rotating a catalog requires a restart that the live-apply path
+  honors by keeping the values the running scopes already hold.
 - [ ] TBD — shared resource use between scopes: CPU, memory, fairness, and fetch
   bounds beyond the media cap (`docs/integration.md`).
 - [ ] TBD — owner scope provisioning and grant lifecycle: decide minimal

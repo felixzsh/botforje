@@ -22,13 +22,21 @@ Botflota gains an optional, owner-managed **secret catalog** per scope.
 - `secret_files` is a map of scope key to a file path, declared in the main
   config file only, next to `file_roots`. It is owner-managed and
   restart-required; a scoped publication can never set or change it, because it
-  is not part of a scope's document.
+  is not part of a scope's document. A running instance keeps the catalogs and
+  the values its scopes already hold, so a rotation or a removal reaches it only
+  after a restart.
 - When a scope has a catalog, a `${NAME}` in one of its definitions resolves
   **only** from that catalog. There is no fallback to the process environment;
   a name the catalog does not hold is an error that names the name, never a
   value.
 - The file is read as data: `NAME=value` lines, blank lines and `#` comments.
   It is never executed, has no includes, and performs no command substitution.
+- The file's rules are part of the contract the owner works to. One name per
+  line; a value is taken verbatim after the first `=`, so a second `=` belongs
+  to it; and a line without `=`, an empty value, or a repeated name fails the
+  load with the line and the name, never a value. A relative path is relative to
+  the directory of the main config file, and the file must be a regular file of
+  bounded size: load refuses anything else without reading it.
 - It must live outside every scope's file root (ADR 0047), so it can never be
   sent as media; load rejects a catalog that sits inside a file root.
 - Values keep ADR 0014's behavior otherwise: the containing string is secret end

@@ -184,6 +184,7 @@ func TestParseSecretCatalog(t *testing.T) {
 		content string
 		want    secretCatalog
 		wantErr string
+		gone    string // text the error must not carry
 	}{
 		{name: "empty file", content: "", want: secretCatalog{}},
 		{name: "comments and blank lines", content: "# one\n\n   \nA=1\n  # two\n",
@@ -192,11 +193,17 @@ func TestParseSecretCatalog(t *testing.T) {
 			want: secretCatalog{"A": "b=c"}},
 		{name: "carriage returns", content: "A=1\r\nB=2\r\n",
 			want: secretCatalog{"A": "1", "B": "2"}},
-		{name: "a later duplicate wins", content: "A=1\nA=2\n",
-			want: secretCatalog{"A": "2"}},
+		{name: "a byte order mark is stripped",
+			content: "\xef\xbb\xbfA=1\n", want: secretCatalog{"A": "1"}},
 		{name: "the value is kept as written", content: "A= value \n",
 			want: secretCatalog{"A": " value "}},
-		{name: "a line without =", content: "# ok\nnoequals\n", wantErr: "line 2"},
+		{name: "a duplicate name is refused", content: "A=1\nA=2\n",
+			wantErr: `duplicate name "A"`, gone: "A=2"},
+		{name: "an empty value is refused", content: "API_KEY=\n",
+			wantErr: `name "API_KEY"`, gone: "API_KEY="},
+		{name: "a line without = names its line only",
+			content: "# ok\nnoequals sk-secret\n", wantErr: "line 2",
+			gone: "noequals sk-secret"},
 		{name: "an empty name", content: "=value\n", wantErr: "line 1"},
 	}
 	for _, tc := range cases {
@@ -209,6 +216,9 @@ func TestParseSecretCatalog(t *testing.T) {
 				}
 				if !strings.Contains(err.Error(), "line ") {
 					t.Fatalf("parse error %v does not name the line", err)
+				}
+				if tc.gone != "" && strings.Contains(err.Error(), tc.gone) {
+					t.Fatalf("parse error %v quotes %q", err, tc.gone)
 				}
 				return
 			}
@@ -346,6 +356,33 @@ func TestSecretCatalogRestartRequired(t *testing.T) {
 		if !containsReason(plan.Global, "secret_files") {
 			t.Fatalf("plan.Global = %v, want a restart for the rotation", plan.Global)
 		}
+		if !containsReason(plan.ScopeReasons["alice"], "restart") {
+			t.Fatalf("scope reasons = %v, want alice held back for a restart",
+				plan.ScopeReasons["alice"])
+		}
+	})
+	t.Run("removing a catalog requires a restart", func(t *testing.T) {
+		dir := t.TempDir()
+		catalog := writeTemp(t, dir, "alice.env", "API_KEY=one\n")
+		main := catalogConfig(t, dir,
+			yamlMap("secret_files", map[string]string{"alice": catalog}), "${API_KEY}")
+		current, err := testLoader().Load(main)
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		next, err := envOnly(map[string]string{"API_KEY": "two"}).
+			Load(catalogConfig(t, dir, nil, "${API_KEY}"))
+		if err != nil {
+			t.Fatalf("reload: %v", err)
+		}
+		plan := PlanReload(current, next)
+		if !containsReason(plan.Global, "secret_files") {
+			t.Fatalf("plan.Global = %v, want a restart for the removal", plan.Global)
+		}
+		if !containsReason(plan.ScopeReasons["alice"], "restart") {
+			t.Fatalf("scope reasons = %v, want alice held back for a restart",
+				plan.ScopeReasons["alice"])
+		}
 	})
 }
 
@@ -473,4 +510,206 @@ func readFileString(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// TestSecretCatalogsArePerScope proves each scope resolves from its own
+// catalog: the same name holds two values, and a name only the other scope's
+// catalog holds is still missing (ADR 0049).
+func TestSecretCatalogsArePerScope(t *testing.T) {
+	dir := t.TempDir()
+	alice := writeTemp(t, dir, "alice.env", "SHARED=alpha\n")
+	bob := writeTemp(t, dir, "bob.env", "SHARED=beta\n")
+	config := func(bobCatalog string) string {
+		return strings.Join([]string{
+			"secret_files:",
+			fmt.Sprintf("  alice: %q", alice),
+			fmt.Sprintf("  bob: %q", bobCatalog),
+			"scopes:",
+			"  alice:",
+			"    llms:",
+			"      primary:",
+			"        provider: openai",
+			"        model: gpt-4o-mini",
+			"        api_key: ${SHARED}",
+			"  bob:",
+			"    llms:",
+			"      primary:",
+			"        provider: openai",
+			"        model: gpt-4o-mini",
+			"        api_key: ${SHARED}",
+			"",
+		}, "\n")
+	}
+
+	t.Run("the same name holds each scope's own value", func(t *testing.T) {
+		main := writeTemp(t, dir, "config.yml", config(bob))
+		cfg, err := envOnly(map[string]string{"SHARED": "environment"}).Load(main)
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		for scope, want := range map[string]string{"alice": "alpha", "bob": "beta"} {
+			got := cfg.Scopes[scope].LLMs["primary"].APIKey.Reveal()
+			if got != want {
+				t.Fatalf("scope %q resolved %q, want %q", scope, got, want)
+			}
+		}
+	})
+
+	t.Run("another scope's name does not resolve", func(t *testing.T) {
+		own := t.TempDir()
+		onlyBob := writeTemp(t, own, "bob.env", "SHARED=beta\n")
+		aliceOnly := writeTemp(t, own, "alice.env", "DIFFERENT=alpha\n")
+		main := writeTemp(t, own, "config.yml", strings.NewReplacer(
+			alice, aliceOnly, bob, onlyBob).Replace(config(bob)))
+		_, err := envOnly(map[string]string{"SHARED": "environment"}).Load(main)
+		if err == nil || !strings.Contains(err.Error(), `scope "alice"`) ||
+			!strings.Contains(err.Error(), "SHARED") {
+			t.Fatalf("load = %v, want alice's missing SHARED named", err)
+		}
+	})
+}
+
+// TestSecretCatalogRelativePath proves a relative catalog path resolves against
+// the main config file's directory, not the process's working directory.
+func TestSecretCatalogRelativePath(t *testing.T) {
+	dir := t.TempDir()
+	writeTemp(t, dir, "catalog.env", "API_KEY=sk-relative\n")
+	main := catalogConfig(t, dir,
+		yamlMap("secret_files", map[string]string{"alice": "catalog.env"}), "${API_KEY}")
+	t.Chdir(t.TempDir())
+	cfg, err := envOnly(nil).Load(main)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := cfg.Scopes["alice"].LLMs["primary"].APIKey.Reveal(); got != "sk-relative" {
+		t.Fatalf("api_key = %q, want the catalog value", got)
+	}
+}
+
+// TestSecretCatalogEmptyFile proves an empty catalog is a catalog: the scope has
+// one, so nothing resolves from the process environment (ADR 0049).
+func TestSecretCatalogEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	empty := writeTemp(t, dir, "empty.env", "# nothing yet\n\n")
+	main := catalogConfig(t, dir,
+		yamlMap("secret_files", map[string]string{"alice": empty}), "${API_KEY}")
+	_, err := envOnly(map[string]string{"API_KEY": "sk-environment"}).Load(main)
+	if err == nil || !strings.Contains(err.Error(), "API_KEY") {
+		t.Fatalf("load = %v, want API_KEY missing from the empty catalog", err)
+	}
+	if strings.Contains(err.Error(), "sk-environment") {
+		t.Fatalf("load error %v leaked the environment value", err)
+	}
+}
+
+// TestSecretCatalogRefusedBeforeRead proves the catalog's shape and placement
+// are decided before its content is read: a directory inside a file root is
+// reported as containment, not as a read failure.
+func TestSecretCatalogRefusedBeforeRead(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "assets")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(root, "catalog.env")
+	if err := os.Mkdir(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(base, "catalog.env")
+	if err := os.Mkdir(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	large := filepath.Join(base, "large.env")
+	if err := os.WriteFile(large, []byte(strings.Repeat("A=1\n",
+		maxSecretCatalogSize/2)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name   string
+		roots  map[string]string
+		path   string
+		want   string
+		absent string
+	}{
+		{name: "a directory inside a root is containment, not a read",
+			roots: map[string]string{"alice": root}, path: inside,
+			want: "inside file_roots", absent: "is a directory"},
+		{name: "a directory outside every root is not a regular file",
+			path: outside, want: "is not a regular file"},
+		{name: "a catalog larger than the bound is refused",
+			path: large, want: "larger than"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lines := append(yamlMap("file_roots", tc.roots),
+				yamlMap("secret_files", map[string]string{"alice": tc.path})...)
+			main := catalogConfig(t, t.TempDir(), lines, "${API_KEY}")
+			_, err := envOnly(nil).Load(main)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("load = %v, want an error mentioning %q", err, tc.want)
+			}
+			if tc.absent != "" && strings.Contains(err.Error(), tc.absent) {
+				t.Fatalf("load error %v reports %q, so the content was read",
+					err, tc.absent)
+			}
+		})
+	}
+}
+
+// TestValidateSecretFilesNamesKnownScopes proves a catalog keyed by an
+// undeclared scope is a validation error, like a file root (ADR 0049).
+func TestValidateSecretFilesNamesKnownScopes(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{name: "a catalog for a declared scope",
+			files: map[string]string{"alice": "/tmp/alice.env"}},
+		{name: "a catalog for an undeclared scope is rejected",
+			files: map[string]string{"other": "/tmp/other.env"},
+			want:  `secret_files names unknown scope "other"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{SecretFiles: tc.files, Scopes: map[string]spec.Scope{
+				"alice": {},
+			}}
+			errs := Validate(cfg, testCatalog(t))
+			found := false
+			for _, e := range errs {
+				found = found || strings.Contains(e.Error(), tc.want)
+			}
+			if tc.want == "" && len(errs) != 0 {
+				t.Fatalf("validate = %v", errs)
+			}
+			if tc.want != "" && !found {
+				t.Fatalf("no error mentions %q; got %v", tc.want, errs)
+			}
+		})
+	}
+}
+
+// TestSecretCatalogMustResolve proves load does not fall back to an unresolved
+// path: a catalog the filesystem cannot resolve is an error even when a reader
+// could hand its content over, so a symbolic link is never compared lexically.
+func TestSecretCatalogMustResolve(t *testing.T) {
+	dir := t.TempDir()
+	virtual := filepath.Join(dir, "virtual.env")
+	main := catalogConfig(t, dir,
+		yamlMap("secret_files", map[string]string{"alice": virtual}), "${API_KEY}")
+	loader := envOnly(nil)
+	loader.Overlay = map[string][]byte{virtual: []byte("API_KEY=sk-virtual\n")}
+	cfg, err := loader.Load(main)
+	if err == nil {
+		t.Fatalf("load = %v, want the unresolved catalog refused",
+			cfg.Scopes["alice"].LLMs["primary"].APIKey.Reveal())
+	}
+	if !strings.Contains(err.Error(), "virtual.env") {
+		t.Fatalf("load error %v does not name the catalog path", err)
+	}
+	if strings.Contains(err.Error(), "sk-virtual") {
+		t.Fatalf("load error %v leaked a value", err)
+	}
 }
