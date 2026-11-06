@@ -9,6 +9,9 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
+// testPairManager builds a manager for one test and closes it afterwards:
+// Close cancels every live session and waits for its goroutine, so no pairing
+// worker or expiry timer outlives the test that started it.
 func testPairManager(t *testing.T, opts PairManagerOptions) *PairManager {
 	t.Helper()
 	if opts.Build == nil {
@@ -20,6 +23,7 @@ func testPairManager(t *testing.T, opts PairManagerOptions) *PairManager {
 	if manager == nil {
 		t.Fatal("NewPairManager returned nil")
 	}
+	t.Cleanup(manager.Close)
 	return manager
 }
 
