@@ -67,7 +67,8 @@ func TestInstallationBindsTheAdapterToItsOwnResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetupMethods: %v", err)
 	}
-	if len(methods) != 1 || methods[0] != whatsapp.SetupMethodQR {
+	want := []string{whatsapp.SetupMethodQR, whatsapp.SetupMethodCode}
+	if len(methods) != len(want) || methods[0] != want[0] || methods[1] != want[1] {
 		t.Fatalf("methods = %v, want the adapter's own", methods)
 	}
 }

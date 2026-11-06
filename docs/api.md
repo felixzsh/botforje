@@ -198,10 +198,14 @@ An absent optional operation answers 422 `unsupported_operation`, not 500.
 Operational CLI names are `bot bind`, `bot unbind`, `peer`, `directory`, `chat`,
 and `graph-run`; arguments name the same domain references as the API. The
 common runner presents display, input, approval, and profile steps without
-provider-specific commands. Submitted credentials stay write-only. While an
-instance runs, operations use the API; the locked offline operator path stays
-available through the same neutral contracts. See ADR 0054 for naming and
-ADR 0053 for setup semantics.
+provider-specific commands. Submitted credentials stay write-only. The WhatsApp
+definition offers the `qr` and `code` methods: a `code` begin carries the
+owner's `phone` parameter, the session reports `awaiting_approval` with a
+display step whose format is `code` and whose payload is the eight-digit code,
+and its expiry is a session state, never a read that waits for it (ADR 0028).
+While an instance runs, operations use the API; the locked offline operator
+path stays available through the same neutral contracts. See ADR 0054 for
+naming and ADR 0053 for setup semantics.
 
 ### Conversation control
 

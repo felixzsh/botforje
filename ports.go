@@ -559,9 +559,9 @@ type AccountLifecycle interface {
 
 // SetupRunner drives one bot's interactive account setup through the neutral
 // session contract (ADR 0053). Methods names the supported setup methods of
-// the bot's definition ("qr", a credential handoff, a multi-step approval,
-// a managed-profile selection); a definition with no remote setup reports
-// none. BeginSetup stages credentials until provider confirmation and local
+// the bot's definition ("qr", the "code" pairing code, a credential handoff,
+// a multi-step approval, a managed-profile selection); a definition with no
+// remote setup reports none. BeginSetup stages credentials until provider confirmation and local
 // commit: a cancelled or expired uncommitted session can never activate
 // later, and a committed one reports its actual outcome instead. Once
 // committed, cancellation cannot claim the binding never existed; explicit

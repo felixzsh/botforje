@@ -39,8 +39,9 @@ func testSetupDeps(t *testing.T) Deps {
 
 func TestDefinitionDeclaresSetupMethods(t *testing.T) {
 	def := Definition()
-	if len(def.SetupMethods) != 1 || def.SetupMethods[0] != whatsapp.SetupMethodQR {
-		t.Fatalf("SetupMethods = %v, want the qr method", def.SetupMethods)
+	if len(def.SetupMethods) != 2 || def.SetupMethods[0] != whatsapp.SetupMethodQR ||
+		def.SetupMethods[1] != whatsapp.SetupMethodCode {
+		t.Fatalf("SetupMethods = %v, want the qr and code methods", def.SetupMethods)
 	}
 	if def.Setup != nil {
 		t.Fatal("the pure definition must not bind a setup runner without deps")
@@ -68,8 +69,9 @@ func TestSetupReturnsLifecycleAndRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetupMethods: %v", err)
 	}
-	if len(methods) != 1 || methods[0] != whatsapp.SetupMethodQR {
-		t.Fatalf("methods = %v, want the qr method", methods)
+	if len(methods) != 2 || methods[0] != whatsapp.SetupMethodQR ||
+		methods[1] != whatsapp.SetupMethodCode {
+		t.Fatalf("methods = %v, want the qr and code methods", methods)
 	}
 }
 

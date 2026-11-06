@@ -99,7 +99,7 @@ func Definition() channels.Definition {
 		// ADR 0051). The value is the binding's own subject, opaque to
 		// shared code.
 		MessageSpace: messageSpace,
-		SetupMethods: []string{whatsapp.SetupMethodQR},
+		SetupMethods: []string{whatsapp.SetupMethodQR, whatsapp.SetupMethodCode},
 	}
 }
 

@@ -447,6 +447,10 @@ func renderSetupDisplay(stdout io.Writer, format, payload, hint string) {
 		qrterminal.GenerateHalfBlock(payload, qrterminal.L, stdout)
 	case "uri":
 		fmt.Fprintln(stdout, "open "+payload)
+	case "code":
+		// The owner types it on their own device, so the terminal shows it
+		// exactly as the phone expects it (ADR 0028).
+		fmt.Fprintln(stdout, "pairing code: "+payload)
 	default:
 		fmt.Fprintf(stdout, "setup challenge (%s)\n", dash(format))
 	}

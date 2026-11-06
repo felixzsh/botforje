@@ -170,6 +170,71 @@ func TestBindThroughAPIInputStep(t *testing.T) {
 	}
 }
 
+// TestBindThroughAPIPairingCodeStep drives the pairing-code method: the chosen
+// method and its phone travel to the instance, the terminal shows the code and
+// what to type, and the pending step never blocks the command (ADR 0028).
+func TestBindThroughAPIPairingCodeStep(t *testing.T) {
+	var begun string
+	reads, inspects := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding":
+				inspects++
+				if inspects == 1 {
+					writeJSON(w, http.StatusOK, bindUnconfigured)
+				} else {
+					writeJSON(w, http.StatusOK, bindBound)
+				}
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/methods":
+				writeJSON(w, http.StatusOK, `{"methods":["qr","code"]}`)
+			case r.Method == http.MethodPost &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
+				raw := make([]byte, r.ContentLength)
+				_, _ = r.Body.Read(raw)
+				begun = string(raw)
+				writeJSON(w, http.StatusAccepted, `{"id":"s1","method":"code",`+
+					`"state":"awaiting_approval","revision":2,`+
+					`"step":{"kind":"display","display":{"format":"code",`+
+					`"payload":"ABCD-EFGH","hint":"Enter it on the phone."}}}`)
+			case r.Method == http.MethodGet &&
+				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups/s1":
+				reads++
+				writeJSON(w, http.StatusOK, bindSucceededSession)
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+			}
+		}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	code := driveBind(context.Background(),
+		remoteBind{client: bindTestClient(server)},
+		"dev", "alpha",
+		bindOptions{method: "code", requestKey: "k1",
+			params: map[string]string{"phone": "5215500000001"}},
+		strings.NewReader(""), &out)
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if reads == 0 {
+		t.Fatal("the command never followed the pending session")
+	}
+	if !strings.Contains(begun, `"method":"code"`) ||
+		!strings.Contains(begun, `"phone":"5215500000001"`) {
+		t.Fatalf("begin request %q did not carry the method and its phone", begun)
+	}
+	for _, want := range []string{"ABCD-EFGH", "Enter it on the phone.",
+		"is bound as whatsapp/opaque-1"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output %q is missing %q", out.String(), want)
+		}
+	}
+}
+
 // TestBindThroughAPIReportsABoundBot covers the idempotent answer: a bot the
 // instance already knows is reported, not bound again.
 func TestBindThroughAPIReportsABoundBot(t *testing.T) {

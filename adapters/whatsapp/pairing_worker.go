@@ -12,6 +12,10 @@ func (m *PairManager) launch(
 	key botflota.BotRef, session *pairingSession, opts PairOptions,
 ) {
 	opts.RenderQR = func(code string) { m.setCode(key, code) }
+	opts.OnCode = opts.RenderQR
+	opts.OnPending = func(instruction string) {
+		m.setPending(key, session, instruction)
+	}
 	opts.OnSaved = func() { m.markSaved(key, session) }
 	go func() {
 		defer close(session.closed)
@@ -92,8 +96,32 @@ func (m *PairManager) setCode(key botflota.BotRef, code string) {
 	}
 	session.code = code
 	if session.neutral.State == botflota.SetupStarting {
-		session.neutral.State = botflota.SetupAwaitingInput
+		// A code waits for the owner's phone to finish the link; a QR waits
+		// for the scan (ADR 0028, ADR 0053).
+		if session.neutral.Method == SetupMethodCode {
+			session.neutral.State = botflota.SetupAwaitingApproval
+		} else {
+			session.neutral.State = botflota.SetupAwaitingInput
+		}
 	}
+	m.bumpLocked(session)
+}
+
+// setPending reports a step the companion cannot answer, so the session shows
+// what the owner must do elsewhere instead of waiting silently (ADR 0028).
+func (m *PairManager) setPending(
+	key botflota.BotRef, session *pairingSession, instruction string,
+) {
+	if instruction == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.sessions[key] != session || session.neutral.Final() {
+		return
+	}
+	session.pending = instruction
+	session.neutral.State = botflota.SetupAwaitingApproval
 	m.bumpLocked(session)
 }
 
@@ -123,6 +151,7 @@ func (m *PairManager) endLocked(session *pairingSession, state botflota.SetupSta
 		return
 	}
 	session.code = ""
+	session.pending = ""
 	session.neutral.State = state
 	switch state {
 	case botflota.SetupCancelled:

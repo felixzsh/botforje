@@ -60,6 +60,16 @@ type PairOptions struct {
 	// Log when Logger is nil; a nil Log discards both.
 	DepsLogLevel slog.Level
 	Force        bool // discard the existing local pairing before starting QR login
+	// Phone links by pairing code instead of a QR scan: the owner types the
+	// code on that phone, the phone performs the passkey ceremony, and this
+	// companion only receives the handoff (ADR 0028). Empty selects the QR.
+	Phone string
+	// OnCode receives the pairing code to display; nil discards it.
+	OnCode func(code string)
+	// OnPending reports a step the companion cannot answer because it needs
+	// the owner's authenticator, so the session shows what to do instead of
+	// retrying in a loop (ADR 0028).
+	OnPending func(instruction string)
 	// DeviceName is the companion name in the phone's Linked devices; empty
 	// uses the default.
 	DeviceName string
@@ -148,8 +158,12 @@ func Pair(ctx context.Context, opts PairOptions) (PairResult, error) {
 		}
 	}
 	started := time.Now()
+	link, linkErr := opts.codeLink()
+	if linkErr != nil {
+		return PairResult{}, linkErr
+	}
 	for {
-		result, retry, err := pairOnce(ctx, opts, logger, render, timeout)
+		result, retry, err := pairOnce(ctx, opts, logger, render, link, timeout)
 		if err != nil {
 			return PairResult{}, err
 		}
@@ -168,6 +182,7 @@ func pairOnce(
 	opts PairOptions,
 	logger walog.Logger,
 	render func(string),
+	link func(context.Context, *whatsmeow.Client) error,
 	timeout time.Duration,
 ) (PairResult, bool, error) {
 	client := whatsmeow.NewClient(opts.Devices.newDevice(), logger)
@@ -185,6 +200,7 @@ func pairOnce(
 
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
+	linked := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -197,7 +213,37 @@ func pairOnce(
 			}
 			switch item.Event {
 			case whatsmeow.QRChannelEventCode:
+				if link != nil {
+					// A code setup links on the first challenge and
+					// ignores what follows: the code rotates on the
+					// server, and the owner types the one shown.
+					if !linked {
+						linked = true
+						if err := link(ctx, client); err != nil {
+							return PairResult{}, false, err
+						}
+					}
+					continue
+				}
 				render(item.Code)
+			case whatsmeow.QRChannelEventPasskeyRequest:
+				// The passkey ceremony belongs to the owner's device; this
+				// companion reports the pending step instead of insisting
+				// (ADR 0028).
+				if opts.OnPending != nil {
+					opts.OnPending(passkeyPendingInstruction)
+				}
+			case whatsmeow.QRChannelEventPasskeyResponse:
+				// The phone ran the ceremony; the companion only confirms
+				// the handoff (ADR 0028).
+				if item.PasskeyConfirmation != nil &&
+					item.PasskeyConfirmation.SkipHandoffUX {
+					continue
+				}
+				if err := client.SendPasskeyConfirmation(ctx); err != nil {
+					return PairResult{}, false,
+						fmt.Errorf("whatsapp: passkey handoff: %w", err)
+				}
 			case whatsmeow.QRChannelSuccess.Event:
 				identity, err := saveAccount(ctx, opts, client)
 				if err != nil {

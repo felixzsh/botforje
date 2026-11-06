@@ -885,6 +885,37 @@ func TestBeginSetupClassifiesRequests(t *testing.T) {
 			},
 			botflota.ErrInvalidParam,
 		},
+		{
+			"code without a phone",
+			botflota.SetupBegin{Method: SetupMethodCode, RequestKey: "k4"},
+			botflota.ErrInvalidParam,
+		},
+		{
+			"code with a national number",
+			botflota.SetupBegin{
+				Method: SetupMethodCode, RequestKey: "k5",
+				Params: map[string]string{"phone": "015500000001"},
+			},
+			botflota.ErrInvalidParam,
+		},
+		{
+			"qr with a phone",
+			botflota.SetupBegin{
+				RequestKey: "k6",
+				Params:     map[string]string{"phone": "5215500000001"},
+			},
+			botflota.ErrUnsupportedKind,
+		},
+		{
+			"code with an unknown parameter",
+			botflota.SetupBegin{
+				Method: SetupMethodCode, RequestKey: "k7",
+				Params: map[string]string{
+					"phone": "5215500000001", "carrier": "pigeon",
+				},
+			},
+			botflota.ErrUnsupportedKind,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
