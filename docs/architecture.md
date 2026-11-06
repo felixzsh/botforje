@@ -59,8 +59,8 @@ its owner or, as a last resort, in `internal/` (ADR 0034).
   YAML, SQL, or a channel or LLM SDK.
 - `spec` — declarative objects: scopes, graphs, actions, bots, model
   profiles, and the `Text` and `Secret` value types.
-- `config` — documents: load, includes, interpolation, origin, validation,
-  and template reference checks.
+- `config` — documents: load, includes, interpolation, secret catalogs, origin,
+  validation, and template reference checks.
 - `engine` — execution of `spec` and the runtime context; `fleet` — one actor
   per bot.
 - `api` — REST handlers and routes; `fleet run` injects the live fleet and
@@ -681,7 +681,9 @@ YAML -> strict decode -> secret references -> semantic validation -> engine
 ```
 
 `${ENV_VAR}` resolves only in the fields enabled for secrets, after decoding,
-so secret characters cannot break the YAML; any other string rejects it.
+so secret characters cannot break the YAML; any other string rejects it. A scope
+the owner gave a secret catalog resolves its references from that file instead
+of the environment (ADR 0049).
 
 Runtime validation happens in Go only: strict YAML decoding rejects unknown
 fields and wrong types, and semantic checks cover reference resolution,

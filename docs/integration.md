@@ -124,8 +124,8 @@ inside the root could be sent as a document, which would leak the whole catalog.
 ## Secrets
 
 A scope with a secret catalog resolves `${NAME}` only from it, with no fallback
-to the process environment (ADR 0049). The host writes the file and keeps it
-outside every file root.
+to the process environment (ADR 0049). The host writes the file, declares it as
+`secret_files` in the main config file, and keeps it outside every file root.
 
 - The client never authors a `${NAME}`; the host backend decides which name a
   published header uses, or publishes a fixed credential.
@@ -144,9 +144,9 @@ read, and a signed webhook, without waiting for a dashboard or delegated login.
 Use a fake channel for deterministic authorization and publication tests; real
 account onboarding is a separate operational check. Onboarding authors who are
 not fully trusted uses the owner controls above: a file root, `egress:
-public_only`, and a secret catalog per scope (ADRs 0047–0049). A file root is
-available: `file_roots` in the main config file bounds one scope's local reads,
+public_only`, and a secret catalog per scope (ADRs 0047–0049). All three are
+available. `file_roots` in the main config file bounds one scope's local reads,
 and a scope without one still reads any file the process can. The egress policy
-is available too, as the instance setting and the dial the runtime makes. Until
-a secret catalog exists, share an instance only with authors you would let reach
-the server's process environment.
+is the instance setting and the dial the runtime makes. `secret_files` in the
+main config file bounds the names one scope resolves, and a scope without an
+entry still resolves the server's process environment.
