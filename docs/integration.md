@@ -89,7 +89,8 @@ Recommended host rules when callers are not fully trusted:
   path.
 - Run the instance with `egress: public_only`, and reach an internal service
   through a public address. Add no allowlist until a real caller needs one and
-  its decision is recorded.
+  its decision is recorded. A webhook target is an outbound destination like
+  any other: under `public_only` an internal target needs `egress: open`.
 - Give each scope a secret catalog outside its file root, and let the host
   backend choose what goes in it. A client never authors `${NAME}`, and the
   catalog holds only what that client may send to an endpoint it controls.

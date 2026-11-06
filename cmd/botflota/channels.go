@@ -118,7 +118,11 @@ func channelHost(
 	cfg *config.Config, db *sqlite.DB, log *slog.Logger,
 	bot func(scope, name string) (spec.Bot, error),
 	startBot func(ctx context.Context, scope, bot string) error,
-) channels.Host {
+) (channels.Host, error) {
+	client, err := outboundClient(cfg)
+	if err != nil {
+		return channels.Host{}, err
+	}
 	return channels.Host{
 		DB:           db.DB,
 		Bindings:     db.Bindings(),
@@ -128,11 +132,11 @@ func channelHost(
 		Directory:    db.Directory(),
 		Outbox:       db.Outbox(),
 		Log:          log,
-		HTTPClient:   outboundClient(cfg),
+		HTTPClient:   client,
 		DepsLogLevel: botflota.ParseLogLevel(cfg.LogLevelDeps),
 		Bot:          bot,
 		StartBot:     startBot,
-	}
+	}, nil
 }
 
 // channelRuntime installs the adapters cfg selects. Only a selected adapter's
@@ -150,7 +154,10 @@ func channelRuntime(
 		return nil, nil, err
 	}
 	selected := selectedKeys(pure, cfg)
-	host := channelHost(cfg, db, log, bot, startBot)
+	host, err := channelHost(cfg, db, log, bot, startBot)
+	if err != nil {
+		return nil, nil, err
+	}
 	defs := make([]channels.Definition, 0, len(installations))
 	set := &runtimeSet{}
 	for _, installation := range installations {
@@ -175,10 +182,14 @@ func channelRuntime(
 }
 
 // outboundClient is the client every configurable outbound fetch uses: a
-// request step, media fetched by url, and an adapter's own fetch, so all of
-// them obey the instance egress policy (ADR 0048).
-func outboundClient(cfg *config.Config) *http.Client {
-	return egress.Client(cfg.EgressMode())
+// request step, media fetched by url, an adapter's own fetch, and a webhook
+// delivery, so all of them obey the instance egress policy (ADR 0048).
+func outboundClient(cfg *config.Config) (*http.Client, error) {
+	mode, err := egress.ParseMode(cfg.Egress)
+	if err != nil {
+		return nil, err
+	}
+	return egress.Client(mode)
 }
 
 // configBotLookup resolves one bot from a loaded file, so an adapter's setup

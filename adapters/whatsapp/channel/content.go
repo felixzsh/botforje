@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/felixzsh/botflota"
+	"github.com/felixzsh/botflota/egress"
 )
 
 // maxMediaSize bounds what the adapter buffers before upload, so a large file
@@ -277,6 +278,13 @@ func (a *Adapter) readMedia(
 		}
 		response, err := client.Do(request)
 		if err != nil {
+			// A policy refusal is a decision that retrying cannot change, so it
+			// fails now; a network failure stays worth another attempt
+			// (ADR 0048).
+			if errors.Is(err, egress.ErrBlocked) {
+				return nil, botflota.PermanentSendFailure(
+					fmt.Errorf("whatsapp: fetch media: %w", err))
+			}
 			return nil, botflota.TransientSendFailure(
 				fmt.Errorf("whatsapp: fetch media: %w", err), 0)
 		}

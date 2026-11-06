@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 )
 
 // Mode is an instance's outbound HTTP policy.
@@ -38,26 +39,34 @@ func ParseMode(value string) (Mode, error) {
 }
 
 // Client returns a new HTTP client for mode. Open keeps the standard client's
-// behavior unchanged.
-func Client(mode Mode) *http.Client {
+// behavior unchanged; PublicOnly is built on the standard transport, and a
+// transport this package cannot guard is reported instead of guessed at.
+func Client(mode Mode) (*http.Client, error) {
 	if mode != PublicOnly {
-		return &http.Client{}
+		return &http.Client{}, nil
 	}
-	dial := http.DefaultTransport.(*http.Transport).DialContext
-	return newClient(mode, dial, net.DefaultResolver.LookupIPAddr)
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok || transport == nil || transport.DialContext == nil {
+		return nil, fmt.Errorf("egress: cannot guard the default transport %T",
+			http.DefaultTransport)
+	}
+	dial := transport.DialContext
+	return clientFor(mode, transport, dial, net.DefaultResolver.LookupIPAddr), nil
 }
 
-// newClient is Client over an injected dialer and resolver, so the policy is
-// testable without the network.
-func newClient(mode Mode, dial dialContext, lookup lookupIP) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	// A proxy would take the connection and hide the destination from the
-	// check, so PublicOnly dials every destination itself.
-	transport.Proxy = nil
+// clientFor is Client over an injected base transport, dialer, and resolver,
+// so the policy is testable without the network.
+func clientFor(
+	mode Mode, base *http.Transport, dial dialContext, lookup lookupIP,
+) *http.Client {
+	transport := base.Clone()
 	if mode != PublicOnly {
 		transport.DialContext = dial
 		return &http.Client{Transport: transport}
 	}
+	// A proxy would take the connection and hide the destination from the
+	// check, so PublicOnly dials every destination itself.
+	transport.Proxy = nil
 	transport.DialContext = guardedDial(dial, lookup)
 	return &http.Client{Transport: transport}
 }
@@ -130,11 +139,107 @@ func resolve(
 	return usable, nil
 }
 
-// blocked reports whether the policy refuses ip. It names the address classes
-// of ADR 0048: loopback, private and unique-local, link-local (which includes
-// the link-local metadata address), unspecified, and multicast.
+// blocked reports whether the policy refuses ip. Only ordinary global unicast
+// is public, and every range of the IANA special-purpose address registries is
+// refused, so this proves the ADR's destination property instead of trusting
+// an incomplete class list.
 func blocked(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsInterfaceLocalMulticast() ||
-		ip.IsMulticast() || ip.IsUnspecified()
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	addr = addr.Unmap()
+	if !addr.IsValid() || !addr.IsGlobalUnicast() {
+		return true
+	}
+	if addr.Is4() {
+		return within(addr, specialV4)
+	}
+	return blockedV6(addr)
+}
+
+// blockedV6 decides an IPv6 destination, first decoding the IPv4 address a
+// transition form carries so it is judged by the destination it reaches.
+func blockedV6(addr netip.Addr) bool {
+	raw := addr.As16()
+	switch {
+	case nat64WellKnown.Contains(addr), nat64LocalUse.Contains(addr):
+		return blocked(net.IP(raw[12:16]))
+	case sixToFour.Contains(addr):
+		return blocked(net.IP(raw[2:6]))
+	}
+	return within(addr, specialV6)
+}
+
+func within(addr netip.Addr, prefixes []netip.Prefix) bool {
+	for _, prefix := range prefixes {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// cidr4 and cidr6 build a prefix from a program literal, so the registries
+// below cannot fail at startup the way a parsed string could.
+func cidr4(a, b, c, d byte, bits int) netip.Prefix {
+	return netip.PrefixFrom(netip.AddrFrom4([4]byte{a, b, c, d}), bits)
+}
+
+func cidr6(bits int, head ...byte) netip.Prefix {
+	var raw [16]byte
+	copy(raw[:], head)
+	return netip.PrefixFrom(netip.AddrFrom16(raw), bits)
+}
+
+// specialV4 lists the IPv4 special-purpose ranges: this network, private and
+// shared address space, loopback, link-local, IETF assignments, documentation
+// and benchmarking blocks, multicast, and the reserved block that carries
+// limited broadcast.
+var specialV4 = []netip.Prefix{
+	cidr4(0, 0, 0, 0, 8),
+	cidr4(10, 0, 0, 0, 8),
+	cidr4(100, 64, 0, 0, 10),
+	cidr4(127, 0, 0, 0, 8),
+	cidr4(169, 254, 0, 0, 16),
+	cidr4(172, 16, 0, 0, 12),
+	cidr4(192, 0, 0, 0, 24),
+	cidr4(192, 0, 2, 0, 24),
+	cidr4(192, 31, 196, 0, 24),
+	cidr4(192, 52, 193, 0, 24),
+	cidr4(192, 88, 99, 0, 24),
+	cidr4(192, 168, 0, 0, 16),
+	cidr4(192, 175, 48, 0, 24),
+	cidr4(198, 18, 0, 0, 15),
+	cidr4(198, 51, 100, 0, 24),
+	cidr4(203, 0, 113, 0, 24),
+	cidr4(224, 0, 0, 0, 4),
+	cidr4(240, 0, 0, 0, 4),
+}
+
+// The transition ranges that carry an IPv4 destination; they are decoded
+// rather than refused as envelopes.
+var (
+	nat64WellKnown = cidr6(96, 0x00, 0x64, 0xff, 0x9b)
+	nat64LocalUse  = cidr6(48, 0x00, 0x64, 0xff, 0x9b, 0x00, 0x01)
+	sixToFour      = cidr6(16, 0x20, 0x02)
+)
+
+// specialV6 lists the remaining IPv6 special-purpose ranges: unspecified,
+// loopback, the deprecated IPv4-compatible form, discard-only, IETF
+// assignments (which include Teredo, benchmarking, and ORCHID), documentation,
+// segment routing, unique local, link-local (which carries the metadata
+// address), multicast, and the AS112 delegation.
+var specialV6 = []netip.Prefix{
+	cidr6(96),
+	cidr6(64, 0x01, 0x00),
+	cidr6(23, 0x20, 0x01),
+	cidr6(32, 0x20, 0x01, 0x0d, 0xb8),
+	cidr6(20, 0x3f, 0xff),
+	cidr6(16, 0x5f, 0x00),
+	cidr6(7, 0xfc),
+	cidr6(10, 0xfe, 0x80),
+	cidr6(10, 0xfe, 0xc0),
+	cidr6(8, 0xff),
+	cidr6(48, 0x26, 0x20, 0x00, 0x4f, 0x80, 0x00),
 }

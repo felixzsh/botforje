@@ -7,7 +7,6 @@ import (
 	"os"
 	"slices"
 
-	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -94,16 +93,6 @@ func (c *Config) RateBudgets() RateBudgets {
 		budgets.FailedPerMinute = *c.RateLimit.FailedPerMinute
 	}
 	return budgets
-}
-
-// EgressMode resolves the outbound HTTP policy. Validate rejects an unknown
-// value, so one that reaches here unvalidated falls back to the open policy.
-func (c *Config) EgressMode() egress.Mode {
-	mode, err := egress.ParseMode(c.Egress)
-	if err != nil {
-		return egress.Open
-	}
-	return mode
 }
 
 // SourcePath is the absolute path of the main file this configuration was

@@ -718,8 +718,12 @@ func offlineChannelCatalog(
 			catalog, err := channels.New(installation.Definition)
 			return catalog, &runtimeSet{}, err
 		}
-		runtime, err := installation.Install(ctx, channelHost(
-			cfg, db, logger, configBotLookup(cfg), offlineStart))
+		host, err := channelHost(
+			cfg, db, logger, configBotLookup(cfg), offlineStart)
+		if err != nil {
+			return nil, &runtimeSet{}, err
+		}
+		runtime, err := installation.Install(ctx, host)
 		if err != nil {
 			return nil, &runtimeSet{}, err
 		}

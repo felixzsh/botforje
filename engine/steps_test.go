@@ -336,12 +336,16 @@ func TestRequestStepObeysTheEgressPolicy(t *testing.T) {
 		Nodes: map[string]spec.Node{"start": {OnEnter: []string{"call"}}},
 	}
 	store := newMemStore()
+	client, err := egress.Client(egress.PublicOnly)
+	if err != nil {
+		t.Fatalf("egress client: %v", err)
+	}
 	eng := newTestEngine(t, engine.Options{
 		Bot: "b", Scope: "s", Graph: graph, Actions: actions,
 		Store: store, Chats: store, Peers: store, Messages: store, Turn: store,
-		HTTPClient: egress.Client(egress.PublicOnly),
+		HTTPClient: client,
 	})
-	_, _, err := eng.Handle(context.Background(), botflota.IncomingMessage{
+	_, _, err = eng.Handle(context.Background(), botflota.IncomingMessage{
 		Sender: waKey("s"), Target: waTarget("s"),
 		Content: botflota.TextContent{Body: "hi"},
 	})

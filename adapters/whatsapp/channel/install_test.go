@@ -9,6 +9,7 @@ import (
 	"github.com/felixzsh/botflota/adapters/sqlite"
 	"github.com/felixzsh/botflota/adapters/whatsapp"
 	"github.com/felixzsh/botflota/channels"
+	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
 )
 
@@ -69,5 +70,58 @@ func TestInstallationBindsTheAdapterToItsOwnResources(t *testing.T) {
 	}
 	if len(methods) != 1 || methods[0] != whatsapp.SetupMethodQR {
 		t.Fatalf("methods = %v, want the adapter's own", methods)
+	}
+}
+
+// TestInstallationCarriesTheInstanceOutboundClient proves the installed adapter
+// fetches media through the client the instance's egress policy manages, not
+// through the standard client (ADR 0048).
+func TestInstallationCarriesTheInstanceOutboundClient(t *testing.T) {
+	client, err := egress.Client(egress.PublicOnly)
+	if err != nil {
+		t.Fatalf("egress client: %v", err)
+	}
+	db, err := sqlite.Open(filepath.Join(t.TempDir(), "botflota.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+	bot := spec.Bot{Channel: spec.Channel{Provider: Provider, Mode: Mode}}
+	host := channels.Host{
+		DB:         db.DB,
+		Bindings:   db.Bindings(),
+		Peers:      db.Peers(),
+		Chats:      db.Chats(),
+		Messages:   db.Messages(),
+		Directory:  db.Directory(),
+		Outbox:     db.Outbox(),
+		Log:        botflota.DiscardLogger(),
+		HTTPClient: client,
+		Bot: func(scope, name string) (spec.Bot, error) {
+			return bot, nil
+		},
+	}
+	runtime, err := Installation().Install(context.Background(), host)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	defer runtime.Close()
+	value, reasons := Definition().Decode(bot)
+	if len(reasons) > 0 {
+		t.Fatalf("decode: %v", reasons)
+	}
+	built, err := runtime.Definition.Build(channels.Bind{
+		Scope: "dev", Bot: "alpha", Options: value,
+		Log: botflota.DiscardLogger(),
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	adapter, ok := built.(*Adapter)
+	if !ok {
+		t.Fatalf("built %T, want the adapter", built)
+	}
+	if adapter.http != client {
+		t.Fatal("the adapter does not fetch through the instance client")
 	}
 }

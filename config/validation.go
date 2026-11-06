@@ -7,9 +7,19 @@ import (
 
 	"github.com/felixzsh/botflota"
 	"github.com/felixzsh/botflota/channels"
-	"github.com/felixzsh/botflota/egress"
 	"github.com/felixzsh/botflota/spec"
 )
+
+// validEgress reports whether the setting names the instance's own policy
+// vocabulary, where empty means the default; the runtime parses the same values
+// in its own package, and a test pins the two together (ADR 0048).
+func validEgress(value string) bool {
+	switch value {
+	case "", "open", "public_only":
+		return true
+	}
+	return false
+}
 
 // ValidationError names the file, the entity, and the reason. Scope is the
 // scope the problem belongs to, empty for an instance-level problem: an API
@@ -70,7 +80,7 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 	default:
 		add("", "config", "invalid log_level_deps %q", cfg.LogLevelDeps)
 	}
-	if _, err := egress.ParseMode(cfg.Egress); err != nil {
+	if !validEgress(cfg.Egress) {
 		add("", "config", "invalid egress %q", cfg.Egress)
 	}
 	if cfg.RateLimit != nil {
