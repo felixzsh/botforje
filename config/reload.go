@@ -111,6 +111,12 @@ func globalChanges(current, next *Config) []string {
 	if !reflect.DeepEqual(current.Webhooks, next.Webhooks) {
 		reasons = append(reasons, "global setting webhooks")
 	}
+	// A file root is the owner's bound on one scope's local reads: only the
+	// owner's restart adopts it, never a publication or a live reload
+	// (ADR 0047).
+	if !reflect.DeepEqual(current.FileRoots, next.FileRoots) {
+		reasons = append(reasons, "global setting file_roots")
+	}
 	return reasons
 }
 

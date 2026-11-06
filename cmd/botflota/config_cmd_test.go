@@ -48,6 +48,11 @@ func TestInitWritesConfigAndSchema(t *testing.T) {
 	if !strings.Contains(string(data), "Config is the root document") {
 		t.Error("the generated schema lost its descriptions")
 	}
+	// A file root is owner policy for a deployment, not a starting value, so
+	// the generated config leaves the operator to add one deliberately.
+	if strings.Contains(string(configData), "file_roots") {
+		t.Error("the generated config declares file_roots")
+	}
 }
 
 func TestInitRefusesToOverwrite(t *testing.T) {
