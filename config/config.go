@@ -68,6 +68,17 @@ type Config struct {
 	// or is contained by. Changing it requires a restart. It bounds local
 	// reads only, not network destinations, secrets, or resource use.
 	FileRoots map[string]string `yaml:"file_roots" json:"file_roots,omitempty"`
+	// SecretFiles names the owner-managed secret catalog of a scope, by scope
+	// key: a ${NAME} in one of that scope's definitions then resolves only
+	// from this file, with no fallback to the process environment, and a name
+	// the file does not hold is an error. The file holds NAME=value lines and
+	// `#` comments; it is read as data, never executed. Only the main config
+	// file declares it and only the owner sets it, so a published scope can
+	// never set or change it. A relative path is relative to the main config
+	// file, and the file must sit outside every file root so it can never be
+	// sent as media. A scope without an entry keeps resolving from the process
+	// environment. Changing it requires a restart.
+	SecretFiles map[string]string `yaml:"secret_files" json:"secret_files,omitempty"`
 	// Egress bounds where an outbound HTTP call may go: "open" (the default)
 	// reaches any destination, "public_only" only a public one. It is set by
 	// the instance owner, and changing it requires a restart; a published
@@ -83,6 +94,10 @@ type Config struct {
 	source     string               `yaml:"-" json:"-"`
 	files      []string             `yaml:"-"`
 	watchPaths []string             `yaml:"-"`
+	// catalogs holds each scope's secret names as its file holds them, so
+	// rotating a catalog is a restart-only change the reload plan can see
+	// (ADR 0049).
+	catalogs map[string]secretCatalog `yaml:"-" json:"-"`
 }
 
 // RateBudgets resolves the per-minute budgets: the defaults unless

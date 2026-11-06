@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/felixzsh/botflota/spec"
@@ -15,6 +17,54 @@ import (
 var envRefPattern = regexp.MustCompile(`\$\{([^}]*)\}`)
 
 var secretType = reflect.TypeOf(spec.Secret{})
+
+// expandSecrets resolves ${NAME} in every secret field of cfg (ADR 0014). An
+// instance setting — a webhook target, which no scope document can reach —
+// resolves from the process environment, and so does a scope the owner gave no
+// catalog. A scope with one resolves only from its file, with no fallback, and a
+// name the file does not hold fails here with that name and no value
+// (ADR 0049).
+func expandSecrets(
+	cfg *Config, env func(string) (string, bool), catalogs map[string]secretCatalog,
+) error {
+	settings := reflect.ValueOf(cfg).Elem()
+	kind := settings.Type()
+	var missing []string
+	// Every instance setting but the scopes and the catalog declarations: a
+	// setting added later is reached without touching this list.
+	for i := 0; i < settings.NumField(); i++ {
+		field := kind.Field(i)
+		if !field.IsExported() || field.Name == "Scopes" || field.Name == "SecretFiles" {
+			continue
+		}
+		missing = append(missing, expandValue(settings.Field(i), env)...)
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("missing environment variable(s): %s",
+			strings.Join(missing, ", "))
+	}
+	for _, name := range SortedKeys(cfg.Scopes) {
+		scope := cfg.Scopes[name]
+		lookup := env
+		catalog, scoped := catalogs[name]
+		if scoped {
+			lookup = catalog.lookup
+		}
+		missed := expandValue(reflect.ValueOf(&scope).Elem(), lookup)
+		if len(missed) > 0 {
+			sort.Strings(missed)
+			source := "missing environment variable(s)"
+			if scoped {
+				source = "its secret catalog does not hold"
+			}
+			return fmt.Errorf("scope %q: %s: %s", name, source,
+				strings.Join(missed, ", "))
+		}
+		cfg.Scopes[name] = scope
+	}
+	return nil
+}
 
 // expandValue resolves ${ENV_VAR} in every secret field of v and returns the
 // names of variables that were referenced but unset (ADR 0014). Only

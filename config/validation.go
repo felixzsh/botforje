@@ -90,6 +90,14 @@ func Validate(cfg *Config, catalog *channels.Catalog) []ValidationError {
 			add("", "config", "file_roots names unknown scope %q", name)
 		}
 	}
+	// A catalog names a scope the instance runs: a key that matches no scope is
+	// a typo that would leave that scope resolving names from the process
+	// environment (ADR 0049).
+	for _, name := range SortedKeys(cfg.SecretFiles) {
+		if _, ok := cfg.Scopes[name]; !ok {
+			add("", "config", "secret_files names unknown scope %q", name)
+		}
+	}
 	// Settings no scope owns are never interpolated either, so a reference in
 	// one of them can only reach the runtime untouched (ADR 0014).
 	checkSecretRefValue(add, "", "config", "address", cfg.Address)

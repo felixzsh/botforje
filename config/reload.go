@@ -118,6 +118,13 @@ func globalChanges(current, next *Config) []string {
 	if !reflect.DeepEqual(current.FileRoots, next.FileRoots) {
 		reasons = append(reasons, "global setting file_roots")
 	}
+	// A secret catalog is the owner's bound on which names a scope may resolve,
+	// so only the owner's restart adopts a change — in the declaration or in
+	// the file's rotation (ADR 0049).
+	if !reflect.DeepEqual(current.SecretFiles, next.SecretFiles) ||
+		!reflect.DeepEqual(current.catalogs, next.catalogs) {
+		reasons = append(reasons, "global setting secret_files")
+	}
 	return reasons
 }
 
