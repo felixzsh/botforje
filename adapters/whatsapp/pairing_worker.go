@@ -13,9 +13,7 @@ func (m *PairManager) launch(
 ) {
 	opts.RenderQR = func(code string) { m.setCode(key, code) }
 	opts.OnCode = opts.RenderQR
-	opts.OnPending = func(instruction string) {
-		m.setPending(key, session, instruction)
-	}
+	opts.OnPending = func() { m.setPending(key, session) }
 	opts.OnSaved = func() { m.markSaved(key, session) }
 	go func() {
 		defer close(session.closed)
@@ -95,32 +93,29 @@ func (m *PairManager) setCode(key botflota.BotRef, code string) {
 		return
 	}
 	session.code = code
-	if session.neutral.State == botflota.SetupStarting {
-		// A code waits for the owner's phone to finish the link; a QR waits
-		// for the scan (ADR 0028, ADR 0053).
-		if session.neutral.Method == SetupMethodCode {
-			session.neutral.State = botflota.SetupAwaitingApproval
-		} else {
-			session.neutral.State = botflota.SetupAwaitingInput
-		}
+	// A fresh challenge is a new chance to finish the link, so it replaces a
+	// reported pending step; the state still says the owner must act elsewhere
+	// (ADR 0028).
+	hadPending := session.pending != ""
+	session.pending = ""
+	switch {
+	case session.neutral.Method == SetupMethodCode:
+		session.neutral.State = botflota.SetupAwaitingApproval
+	case session.neutral.State == botflota.SetupStarting || hadPending:
+		session.neutral.State = botflota.SetupAwaitingInput
 	}
 	m.bumpLocked(session)
 }
 
-// setPending reports a step the companion cannot answer, so the session shows
+// setPending reports a step this companion cannot answer, so the session shows
 // what the owner must do elsewhere instead of waiting silently (ADR 0028).
-func (m *PairManager) setPending(
-	key botflota.BotRef, session *pairingSession, instruction string,
-) {
-	if instruction == "" {
-		return
-	}
+func (m *PairManager) setPending(key botflota.BotRef, session *pairingSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.sessions[key] != session || session.neutral.Final() {
 		return
 	}
-	session.pending = instruction
+	session.pending = pendingInstruction(session.neutral.Method)
 	session.neutral.State = botflota.SetupAwaitingApproval
 	m.bumpLocked(session)
 }

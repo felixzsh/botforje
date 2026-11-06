@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -139,8 +140,7 @@ func TestBindThroughAPIInputStep(t *testing.T) {
 					`{"name":"token","kind":"credential","label":"Token"}]}}`)
 			case r.Method == http.MethodPost &&
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups/s1/inputs":
-				raw := make([]byte, r.ContentLength)
-				_, _ = r.Body.Read(raw)
+				raw, _ := io.ReadAll(r.Body)
 				gotInputs = string(raw)
 				writeJSON(w, http.StatusOK, bindSucceededSession)
 			default:
@@ -171,8 +171,9 @@ func TestBindThroughAPIInputStep(t *testing.T) {
 }
 
 // TestBindThroughAPIPairingCodeStep drives the pairing-code method: the chosen
-// method and its phone travel to the instance, the terminal shows the code and
-// what to type, and the pending step never blocks the command (ADR 0028).
+// method and its phone travel to the instance, the terminal shows the code, and
+// a pending approval step is announced once across polls without blocking the
+// command (ADR 0028).
 func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 	var begun string
 	reads, inspects := 0, 0
@@ -192,8 +193,7 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 				writeJSON(w, http.StatusOK, `{"methods":["qr","code"]}`)
 			case r.Method == http.MethodPost &&
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups":
-				raw := make([]byte, r.ContentLength)
-				_, _ = r.Body.Read(raw)
+				raw, _ := io.ReadAll(r.Body)
 				begun = string(raw)
 				writeJSON(w, http.StatusAccepted, `{"id":"s1","method":"code",`+
 					`"state":"awaiting_approval","revision":2,`+
@@ -202,6 +202,15 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 			case r.Method == http.MethodGet &&
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups/s1":
 				reads++
+				if reads <= 2 {
+					// The phone needs its passkey step; the same pending
+					// report survives both polls.
+					writeJSON(w, http.StatusOK, `{"id":"s1","method":"code",`+
+						`"state":"awaiting_approval","revision":3,`+
+						`"step":{"kind":"approval","approval":{"instruction":`+
+						`"Finish the step on the phone that is linking."}}}`)
+					return
+				}
 				writeJSON(w, http.StatusOK, bindSucceededSession)
 			default:
 				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -220,8 +229,8 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	if reads == 0 {
-		t.Fatal("the command never followed the pending session")
+	if reads < 2 {
+		t.Fatalf("reads = %d, want the command to follow the pending session", reads)
 	}
 	if !strings.Contains(begun, `"method":"code"`) ||
 		!strings.Contains(begun, `"phone":"5215500000001"`) {
@@ -232,6 +241,13 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("output %q is missing %q", out.String(), want)
 		}
+	}
+	// The pending step survived two polls: it is announced once, so the code
+	// above it stays readable.
+	if got := strings.Count(out.String(),
+		"Finish the step on the phone that is linking."); got != 1 {
+		t.Fatalf("the pending instruction was printed %d times:\n%s", got,
+			out.String())
 	}
 }
 

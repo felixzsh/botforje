@@ -9,16 +9,11 @@ import (
 	"github.com/felixzsh/botflota"
 )
 
-// pairCodeClient is the companion the provider sees for a code link. The
-// registration validates the display string against a closed set of client
-// and platform pairs, so a code link presents one of them rather than a free
-// value.
+// pairCodeClient is the platform descriptor a code link declares. Its field is
+// the companion's platform display, and the provider validates it against a
+// closed set of client and platform pairs, so a code link carries this value
+// instead of channel.options.device_name (ADR 0028).
 const pairCodeClient = "Chrome (Linux)"
-
-// passkeyPendingInstruction tells the owner what a challenge addressed to the
-// companion needs: the ceremony itself, on a device they control (ADR 0028).
-const passkeyPendingInstruction = "This account asks for its passkey. Finish the " +
-	"step on the phone that is linking; this connection cannot answer it."
 
 // codeLink returns the action a code setup performs once the connection is
 // ready: it registers the owner's phone and hands the code to the display. A

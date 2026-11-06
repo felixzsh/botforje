@@ -203,6 +203,10 @@ definition offers the `qr` and `code` methods: a `code` begin carries the
 owner's `phone` parameter, the session reports `awaiting_approval` with a
 display step whose format is `code` and whose payload is the eight-digit code,
 and its expiry is a session state, never a read that waits for it (ADR 0028).
+`GET B/binding/methods` answers the method names and, when the definition
+reports them, a `requirements` object mapping a method to the begin parameters
+it needs (`{"code":["phone"]}`); a method that needs none is absent, so a client
+learns a requirement before provoking a rejected begin.
 While an instance runs, operations use the API; the locked offline operator
 path stays available through the same neutral contracts. See ADR 0054 for
 naming and ADR 0053 for setup semantics.

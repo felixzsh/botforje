@@ -512,10 +512,13 @@ profile — without a provider-specific form. For WhatsApp the `qr` method
 renders the QR in the terminal, and the `code` method prints the eight-digit
 pairing code the owner types on their phone, which then performs the passkey
 ceremony itself (ADR 0028); the resulting companion credentials live in
-the adapter-owned device store in the shared SQLite file (ADR 0006). The
+the adapter-owned device store in the shared SQLite file (ADR 0006). A QR
 companion registers under the bot's `channel.options.device_name` (default
 `Botflota`), the name the account shows in Linked devices; it is sent only when
-registering, so an existing link keeps its name.
+registering, so an existing link keeps its name. A code link declares its
+platform descriptor separately (`Chrome (Linux)`), and the provider validates
+that field against a closed set, so `device_name` does not name a code link
+(ADR 0028).
 Two key systems are involved,
 and only one is software: the companion identity (Noise and Signal keys, prekeys,
 registration id) lives in the device store and can run on a server, while a

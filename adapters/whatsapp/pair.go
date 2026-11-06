@@ -22,8 +22,11 @@ import (
 // when the config does not set device_name.
 const defaultDeviceName = "Botflota"
 
-// applyDeviceName sets the name of the next registered companion: WhatsApp
-// only reads it while registering, so an existing link keeps its old name.
+// applyDeviceName sets the OS name the next registered companion sends in its
+// handshake: WhatsApp only reads it while registering, so an existing link
+// keeps its old name. A code link declares its platform display separately
+// (pairCodeClient), and the provider validates that field, so this name cannot
+// fill it (ADR 0028).
 func applyDeviceName(name string) {
 	if name == "" {
 		name = defaultDeviceName
@@ -66,10 +69,10 @@ type PairOptions struct {
 	Phone string
 	// OnCode receives the pairing code to display; nil discards it.
 	OnCode func(code string)
-	// OnPending reports a step the companion cannot answer because it needs
-	// the owner's authenticator, so the session shows what to do instead of
-	// retrying in a loop (ADR 0028).
-	OnPending func(instruction string)
+	// OnPending reports that the provider asked this companion for a passkey
+	// step it cannot answer, so the session shows what the owner must do
+	// instead of retrying in a loop (ADR 0028).
+	OnPending func()
 	// DeviceName is the companion name in the phone's Linked devices; empty
 	// uses the default.
 	DeviceName string
@@ -198,6 +201,64 @@ func pairOnce(
 		return PairResult{}, false, fmt.Errorf("whatsapp: connect: %w", err)
 	}
 
+	var linkNow func(context.Context) error
+	if link != nil {
+		linkNow = func(attemptCtx context.Context) error {
+			return link(attemptCtx, client)
+		}
+	}
+
+	return pairEvents(ctx, qrChannel, render, linkNow, opts.OnPending,
+		func() (PairResult, error) {
+			identity, err := saveAccount(ctx, opts, client)
+			if err != nil {
+				return PairResult{}, err
+			}
+			if opts.OnSaved != nil {
+				opts.OnSaved()
+			}
+			// The account identity is only known now, so the directory import
+			// records it as the source of every entry it stores (ADR 0051).
+			if contactImport != nil {
+				contactImport.SetSource(identity)
+			}
+			confirmLink(client, logger)
+			if historyWaiter != nil {
+				if err := historyWaiter.wait(ctx,
+					historyWaitBudget(opts.FullHistory)); err != nil {
+					return PairResult{}, err
+				}
+				if opts.Log != nil {
+					opts.Log.Info("history sync wait finished",
+						"requested_full", opts.FullHistory,
+						"complete", historyWaiter.finished())
+				}
+			}
+			result := PairResult{Identity: identity}
+			if historyImporter != nil {
+				result.History = historyImporter.Totals()
+			}
+			if contactImport != nil && client.Store != nil {
+				result.AddressBook = contactImport.ImportCached(ctx, client.Store.Contacts)
+			}
+			return result, nil
+		}, timeout)
+}
+
+// pairEvents drives one attempt from the provider's pairing channel: it links a
+// code setup on its first challenge, renders a QR for a scan setup, reports a
+// passkey step the owner must answer on their own device, and resolves the
+// attempt from the provider's outcome (ADR 0028, ADR 0053). link is nil for a
+// QR setup; pending and render may be nil.
+func pairEvents(
+	ctx context.Context,
+	events <-chan whatsmeow.QRChannelItem,
+	render func(string),
+	link func(context.Context) error,
+	pending func(),
+	succeeded func() (PairResult, error),
+	timeout time.Duration,
+) (PairResult, bool, error) {
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	linked := false
@@ -207,74 +268,38 @@ func pairOnce(
 			return PairResult{}, false, ctx.Err()
 		case <-deadline.C:
 			return PairResult{}, true, nil
-		case item, ok := <-qrChannel:
+		case item, ok := <-events:
 			if !ok {
 				return PairResult{}, true, nil
 			}
 			switch item.Event {
 			case whatsmeow.QRChannelEventCode:
-				if link != nil {
-					// A code setup links on the first challenge and
-					// ignores what follows: the code rotates on the
-					// server, and the owner types the one shown.
-					if !linked {
-						linked = true
-						if err := link(ctx, client); err != nil {
-							return PairResult{}, false, err
-						}
+				if link == nil {
+					if render != nil {
+						render(item.Code)
 					}
 					continue
 				}
-				render(item.Code)
-			case whatsmeow.QRChannelEventPasskeyRequest:
-				// The passkey ceremony belongs to the owner's device; this
-				// companion reports the pending step instead of insisting
-				// (ADR 0028).
-				if opts.OnPending != nil {
-					opts.OnPending(passkeyPendingInstruction)
-				}
-			case whatsmeow.QRChannelEventPasskeyResponse:
-				// The phone ran the ceremony; the companion only confirms
-				// the handoff (ADR 0028).
-				if item.PasskeyConfirmation != nil &&
-					item.PasskeyConfirmation.SkipHandoffUX {
-					continue
-				}
-				if err := client.SendPasskeyConfirmation(ctx); err != nil {
-					return PairResult{}, false,
-						fmt.Errorf("whatsapp: passkey handoff: %w", err)
-				}
-			case whatsmeow.QRChannelSuccess.Event:
-				identity, err := saveAccount(ctx, opts, client)
-				if err != nil {
-					return PairResult{}, false, err
-				}
-				if opts.OnSaved != nil {
-					opts.OnSaved()
-				}
-				// The account identity is only known now, so the directory import
-				// records it as the source of every entry it stores (ADR 0051).
-				if contactImport != nil {
-					contactImport.SetSource(identity)
-				}
-				confirmLink(client, logger)
-				if historyWaiter != nil {
-					if err := historyWaiter.wait(ctx,
-						historyWaitBudget(opts.FullHistory)); err != nil {
+				// A code setup links on the first challenge and ignores
+				// what follows: the server rotates the code, and the owner
+				// types the one displayed.
+				if !linked {
+					linked = true
+					if err := link(ctx); err != nil {
 						return PairResult{}, false, err
 					}
-					if opts.Log != nil {
-						opts.Log.Info("history sync wait finished",
-							"requested_full", opts.FullHistory,
-							"complete", historyWaiter.finished())
-					}
 				}
-				result := PairResult{Identity: identity}
-				if historyImporter != nil {
-					result.History = historyImporter.Totals()
+			case whatsmeow.QRChannelEventPasskeyRequest:
+				// The ceremony belongs to the owner's device. This companion
+				// reports the pending step instead of answering the assertion,
+				// and its own deadline ends the attempt (ADR 0028).
+				if pending != nil {
+					pending()
 				}
-				if contactImport != nil && client.Store != nil {
-					result.AddressBook = contactImport.ImportCached(ctx, client.Store.Contacts)
+			case whatsmeow.QRChannelSuccess.Event:
+				result, err := succeeded()
+				if err != nil {
+					return PairResult{}, false, err
 				}
 				return result, false, nil
 			case whatsmeow.QRChannelTimeout.Event:
@@ -284,11 +309,13 @@ func pairOnce(
 					"whatsapp: QR scanned, but multi-device is not enabled",
 				)
 			case whatsmeow.QRChannelClientOutdated.Event:
-				return PairResult{}, false, errors.New("whatsapp: this client version is out of date")
+				return PairResult{}, false, errors.New(
+					"whatsapp: this client version is out of date")
 			case whatsmeow.QRChannelErrUnexpectedEvent.Event:
 				return PairResult{}, true, nil
 			case whatsmeow.QRChannelEventError:
-				return PairResult{}, false, fmt.Errorf("whatsapp: pairing: %w", item.Error)
+				return PairResult{}, false,
+					fmt.Errorf("whatsapp: pairing: %w", item.Error)
 			}
 		}
 	}
