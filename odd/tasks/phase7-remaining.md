@@ -156,3 +156,28 @@ Nothing here is required by Phase 8.
   CLI dedupe keying on the instruction and revision and a test comment that
   named an unreachable branch as if it proved something. Discarded: pinning
   `pairOnce`'s wiring, which needs a client seam for a low-impact gap.
+- L14 — T1's second review approved `f20e242`: both corrections hold, and the
+  round-1 defects are gone, pinned by tests that fail when the fix is removed —
+  including the mutation that round 1 said no test caught. Two test-only gaps
+  (the two `cfg.FileRootOf(scopeName)` callers into the offline setup, and the
+  intermediate-directory link plus the two-hop in-root chain) shipped as
+  `5ef69c8` without a third review. One residue is recorded and unactioned: the
+  classification at `file_root.go:73-83` is best-effort for a link mutated or
+  dangling between resolution and open, so a deterministic refusal can still be
+  retried once while no unconfined read ever happens; a firmer mapping needs a
+  signal distinct from re-resolution.
+- L15 — closure. T1 merged as `b57c417` and `13147cb`, `make check` green on the
+  final state (5s, only the packages the last commit touched re-ran). All four
+  units are accepted and in `main`: the file root (ADR 0047), the egress policy
+  (ADR 0048), the secret catalog (ADR 0049) and the pairing code (ADR 0028),
+  each after one review, one correction round and one re-review, with every
+  correction that could not buy a review being mechanical and confined.
+  Phase 7 stands at 60 of 66 deliverables. The six open ones need no code: four
+  TBDs that are owner decisions, the deferred operator-UI cookie, and the
+  channel preparation's P6, whose automated gates are done and whose WhatsApp
+  manual checklist only the operator can exercise.
+- L16 — residue worth a separate look, not part of this slice:
+  `adapters/testchannel TestSetupConcurrentMutationsStaySerialized` failed twice
+  under a full parallel run with `sqlite: database is locked (517)` and never
+  reproduces alone, not at `-count=8`, and no range here adds a goroutine, lock,
+  or database call to that path.
