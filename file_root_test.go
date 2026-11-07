@@ -16,6 +16,7 @@ const fixtureRoot = "testdata/fileroot"
 //	tmp/outside.txt
 //	tmp/root/escape -> ../outside.txt
 //	tmp/root/link -> notes.txt
+//	tmp/root/edir -> <tmp>   (a directory link that leaves the root)
 func outsideTree(t *testing.T) string {
 	t.Helper()
 	base := t.TempDir()
@@ -35,6 +36,9 @@ func outsideTree(t *testing.T) string {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	if err := os.Symlink("notes.txt", filepath.Join(root, "link")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if err := os.Symlink("..", filepath.Join(root, "edir")); err != nil {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	return root
@@ -84,6 +88,8 @@ func TestOpenLocalFile(t *testing.T) {
 			path: "../outside.txt", outside: true, wantErr: true},
 		{name: "a symbolic link out of the root refused", root: root,
 			path: "escape", outside: true, wantErr: true},
+		{name: "an intermediate directory link out of the root refused", root: root,
+			path: "edir/outside.txt", outside: true, wantErr: true},
 		{name: "a symbolic link inside the root resolves", root: root,
 			path: "link", want: "inside\n"},
 		{name: "unreadable file fails", root: root,
@@ -132,6 +138,7 @@ func TestOpenLocalFile(t *testing.T) {
 //
 //	root/media -> <root>/v3            (absolute, inside)
 //	root/v3/current -> <root>/v3/photo.png (absolute, inside)
+//	root/hop2 -> <root>/hop1 -> <root>/v3  (a chain of two hops)
 func insideLinks(t *testing.T, root string) {
 	t.Helper()
 	v3 := filepath.Join(root, "v3")
@@ -147,6 +154,13 @@ func insideLinks(t *testing.T, root string) {
 	}
 	if err := os.Symlink(filepath.Join(v3, "photo.png"),
 		filepath.Join(v3, "current")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	hop1 := filepath.Join(root, "hop1")
+	if err := os.Symlink(v3, hop1); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if err := os.Symlink(hop1, filepath.Join(root, "hop2")); err != nil {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 }
@@ -167,6 +181,8 @@ func TestOpenLocalFileFollowsInRootLinks(t *testing.T) {
 		{name: "an absolute link to a file", path: "v3/current",
 			want: "v3-bytes\n"},
 		{name: "a relative path that reaches the link", path: "v3/../media/photo.png",
+			want: "v3-bytes\n"},
+		{name: "an in-root chain through two hops", path: "hop2/photo.png",
 			want: "v3-bytes\n"},
 	}
 	for _, tc := range cases {
