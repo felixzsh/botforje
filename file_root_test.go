@@ -126,3 +126,111 @@ func TestOpenLocalFile(t *testing.T) {
 		})
 	}
 }
+
+// insideLinks adds the links an operator provisions inside a root: an absolute
+// link to a directory, and one to a file, both pointing back into the root.
+//
+//	root/media -> <root>/v3            (absolute, inside)
+//	root/v3/current -> <root>/v3/photo.png (absolute, inside)
+func insideLinks(t *testing.T, root string) {
+	t.Helper()
+	v3 := filepath.Join(root, "v3")
+	if err := os.MkdirAll(v3, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v3, "photo.png"),
+		[]byte("v3-bytes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(v3, filepath.Join(root, "media")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(v3, "photo.png"),
+		filepath.Join(v3, "current")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+}
+
+// TestOpenLocalFileFollowsInRootLinks: an absolute link that stays inside the
+// root is legitimate, so a step reads its target instead of failing delivery
+// (ADR 0047).
+func TestOpenLocalFileFollowsInRootLinks(t *testing.T) {
+	root := outsideTree(t)
+	insideLinks(t, root)
+	cases := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "an absolute link to a directory", path: "media/photo.png",
+			want: "v3-bytes\n"},
+		{name: "an absolute link to a file", path: "v3/current",
+			want: "v3-bytes\n"},
+		{name: "a relative path that reaches the link", path: "v3/../media/photo.png",
+			want: "v3-bytes\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := readOpened(t, root, tc.path)
+			if err != nil {
+				t.Fatalf("open %q: %v", tc.path, err)
+			}
+			if got != tc.want {
+				t.Fatalf("read %q = %q, want %q", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestOpenLocalFileRefusesAComponentSwappedAfterResolution: the resolution is
+// only the classification; the bytes still open through the root's handle, so
+// a component that becomes an escaping link between the two is refused and
+// never read (ADR 0047).
+func TestOpenLocalFileRefusesAComponentSwappedAfterResolution(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "inside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "inside", "photo.png"),
+		[]byte("inside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "photo.png"),
+		[]byte("outside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	escape, err := filepath.Rel(root, outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const name = "inside/photo.png"
+	rel, err := localRelativePath(root, name)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+
+	// Swap the resolved component for a link that leaves the root.
+	if err := os.RemoveAll(filepath.Join(root, "inside")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(escape, filepath.Join(root, "inside")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+
+	file, err := openResolved(dir, root, name, rel)
+	if err == nil {
+		data, _ := io.ReadAll(file)
+		file.Close()
+		t.Fatalf("opened %q = %q, want a refusal", name, data)
+	}
+	if !errors.Is(err, ErrOutsideFileRoot) {
+		t.Fatalf("error %v is not a file-root refusal", err)
+	}
+}

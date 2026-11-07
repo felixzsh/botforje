@@ -170,9 +170,11 @@ type Bind struct {
 	Scope   string
 	Bot     string
 	Options any
-	// FileRoot is the scope's owner-set root for local file reads, empty when
-	// the owner set none. A channel that opens a local path passes it to
-	// botflota.OpenLocalFile instead of opening the path itself (ADR 0047).
+	// FileRoot is the scope's owner-set root for local file reads. Every bind
+	// built from an instance config carries it, and an empty value means that
+	// scope declared none rather than that a construction site forgot it; a
+	// channel that opens a local path passes it to botflota.OpenLocalFile
+	// instead of opening the path itself (ADR 0047).
 	FileRoot string
 	Log      *slog.Logger
 }

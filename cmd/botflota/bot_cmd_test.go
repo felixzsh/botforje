@@ -593,7 +593,7 @@ func TestResolveOfflineSetupUsesTheInstalledDefinition(t *testing.T) {
 	}
 	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
 	gotLifecycle, gotRunner, err := resolveOfflineSetup(
-		catalog, "dev", "alpha", botSpec, botflota.DiscardLogger())
+		catalog, "dev", "alpha", botSpec, "", botflota.DiscardLogger())
 	if err != nil {
 		t.Fatalf("resolveOfflineSetup: %v", err)
 	}
@@ -806,5 +806,38 @@ func TestBindOfflineRejectsAnUninstalledChannel(t *testing.T) {
 		"dev", "alpha", botSpec, bindOptions{}, false, nil)
 	if code != 1 {
 		t.Fatalf("code = %d, want 1", code)
+	}
+}
+
+// TestResolveOfflineSetupCarriesTheScopeFileRoot: the offline bind is built from
+// the same configuration as the running fleet, so a setup hook that reads a
+// local file is confined like a send path (ADR 0047).
+func TestResolveOfflineSetupCarriesTheScopeFileRoot(t *testing.T) {
+	root := t.TempDir()
+	var got string
+	catalog, err := channels.New(channels.Definition{
+		Provider: "fake",
+		Kind:     "fake",
+		Modes:    []string{"test"},
+		Decode: func(spec.Bot) (any, []string) {
+			return nil, nil
+		},
+		Setup: func(bind channels.Bind) (
+			botflota.AccountLifecycle, botflota.SetupRunner, error,
+		) {
+			got = bind.FileRoot
+			return nil, nil, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
+	if _, _, err := resolveOfflineSetup(
+		catalog, "dev", "alpha", botSpec, root, botflota.DiscardLogger()); err != nil {
+		t.Fatalf("resolveOfflineSetup: %v", err)
+	}
+	if got != root {
+		t.Fatalf("setup file root = %q, want %q", got, root)
 	}
 }
