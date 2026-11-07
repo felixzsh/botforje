@@ -77,7 +77,8 @@ their owning phase starts; proposed policy is not a release commitment.
   detail lives inside its owner or, as a last resort, in `internal/`
   (ADR 0034; the map is in `docs/architecture.md`).
 - AI stays optional and specialised (ADR 0030, ADR 0032, ADR 0033): System
-  One (Jev) makes typed, confidence-bearing decisions for routing, policy, and
+  One (Clef today, any compatible endpoint) makes typed, confidence-bearing
+  decisions for routing, policy, and
   tools, prescribed replies are the default, and a generative LLM only reads
   free text and realizes replies as an opt-in. Deterministic matching comes
   first.

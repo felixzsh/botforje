@@ -13,7 +13,8 @@ Three independent ports sit beside the config engine and persistence:
 - `SystemOneProvider` — **Phase 8, not implemented yet.** System One port for
   routing, policy, tool selection, and value mapping: typed answers (a choice
   from a closed set, a score, or a probability) with confidence and no
-  generated text. Jev (TypeSafe) is the first planned adapter (ADR 0030).
+  generated text. The wire is a published standard, so the endpoint is
+  configuration (ADR 0030).
 - `LLMProvider` — model port for reply realization and the tool loop. It
   exists in an interim shape that still classifies transitions, and the fleet
   injects no implementation yet; Phase 8 replaces `Classify` with the
@@ -156,18 +157,21 @@ dashboard and integrations are API-only and never see local files.
   as a scope identity, so the directory holds the people the account knows.
   The derived `address_book_imported` means an import supplied the identity,
   not that the account still has it saved (ADR 0037, ADR 0051).
-- Graph — state machine with root, fallback, timeout, a routing override
-  (ADR 0030), and a map of nodes.
-- Node — goal, policy, entry/exit actions, tools, and optional node-local
-  context.
+- Graph — state machine with root, fallback, timeout, a routing override and
+  a confidence-threshold override (ADR 0030), an optional `escalate` node, and
+  a map of nodes.
+- Node — goal, policy, entry/exit actions, tools, `tool_mode`, and optional
+  node-local context.
 - Edge — transition with a required user intent, except the default
-  (catch-all) edge. `triggers` is an optional deterministic fast path;
-  System One resolves input that matches no trigger (ADR 0030).
+  (catch-all) edge, which a node with `tools` may not declare. `triggers` is an
+  optional deterministic fast path; System One resolves input that matches no
+  trigger (ADR 0030, ADR 0055).
 - Action — ordered steps (`message`, `request`, `location`, `media`, `contact`,
-  `poll`) with guards and declared `inputs`; exposed to the LLM when a node
-  lists it in `tools`.
-- Tool — an action the LLM may invoke with validated arguments; an input
-  may bind to a node or graph variable (read and write).
+  `poll`) with guards, declared `inputs`, and an optional `confirm`; exposed to
+  the LLM when a node lists it in `tools`.
+- Tool — an action the LLM may invoke with validated arguments; an input is
+  free or a closed set, and may bind to a node or graph variable (read and
+  write). Declaring `confirm` is what marks a side effect (ADR 0055, ADR 0056).
 - Node context — node variables that reset when the node is entered again.
 - Visited nodes — ordered list of nodes visited (current last) used for
   routing and as LLM context; reordered on each visit, never reset by
@@ -244,17 +248,19 @@ Inbound:
    Steps 6–8 are the Phase 8 target: the fleet injects no model yet, so only
    the deterministic path runs today.
 6. When the graph routing mode is `always`, or nothing matched and the mode
-   is `fallback`, System One decides: one Choice question over the candidate
-   edge intents, checked against the graph's confidence threshold. Below it
-   the graph takes the default edge or escalates; the LLM never classifies
-   (ADR 0030).
-7. A node with tools handles the message through the pipeline (ADR 0033):
-   System One decides, the LLM reads free text, and code applies. The node
-   stays unless an exit edge is taken. The LLM loop (ADR 0033) is the opt-in
-   alternative for calls a pipeline cannot bound.
+   is `fallback`, System One decides: one `choice` question over the candidate
+   edge intents, gated by the graph's confidence threshold. Below it the graph
+   takes the default edge, then its `fallback` node, then its `escalate` node;
+   the LLM never classifies (ADR 0030).
+7. A node with tools handles the message through the pipeline (ADR 0033,
+   ADR 0055): the intake gate decides whether extraction runs, System One
+   selects and maps, and code applies. The node stays unless an exit it
+   declared is taken. The LLM loop is the opt-in alternative for calls a
+   pipeline cannot bound.
 8. Tool results feed the next step; a missing required argument is a tool
-   error that asks the user, storing the answer in the bound variable.
-   Neither model invents a transition; edges are the only exits.
+   error that asks the user, storing the answer in the bound variable. A
+   side-effecting tool only proposes, and a prescribed message confirms before
+   it writes. Neither model invents a transition; edges are the only exits.
 9. Engine runs the selected transition: exit actions, target node, entry
    actions. Entry actions produce the prescribed reply, so a bot with no `llm`
    needs no provider (ADR 0032).
@@ -297,8 +303,9 @@ Steps and messages may reference runtime values: `{{graph.*}}`, `{{node.*}}`,
 `{{bot.*}}`, tool arguments as `{{input.<name>}}`, and request results as
 `{{node.<request-name>.resp.body.*}}`,
 `{{node.<request-name>.resp.headers.*}}`, `{{node.<request-name>.status}}`,
-and `{{node.<request-name>.duration}}`. Tool result syntax is still open
-(Phase 4).
+and `{{node.<request-name>.duration}}`. An action's own steps read the results
+they declare, and the confirmation that precedes a side effect reads the
+arguments; there is no separate tool-result root (ADR 0055).
 
 `peer.id` is the peer's opaque handle within the scope, stable for the life of
 the identity; `peer.provider` and `peer.subject` are its comparable key, and
@@ -335,37 +342,46 @@ two arrive with Phase 8.
 
 ## Tool pipeline
 
-A node with tools handles an inbound message in place; the LLM loop is the
-opt-in alternative for calls a pipeline cannot bound (ADR 0033). The exact
-sequence below is the Phase 8 design.
+A node with tools handles an inbound message in place; the LLM loop
+(`tool_mode: loop`) is the opt-in alternative for calls a pipeline cannot bound
+(ADR 0033, ADR 0055). A tool node needs a resolved `system_one`, because the
+gate, selection, mapping, and confirmation are decision questions.
 
 1. Intake gate (System One): is the message actionable and clear for this
    node? The answers choose among act, ask and stay, delegate to extraction,
-   or escalate.
+   or escalate. Extraction runs only when the gate delegates to it.
 2. Extraction (LLM): candidate parameters as literal values and spans, never
-   final identifiers, validated against the tool `inputs`.
-3. Selection (System One): one `Noul` per tool for multi-select plus an
-   explicit `none`, or a `Choice` when only one can apply. Confidence below
+   final identifiers, validated against the tool `inputs`. Without a resolved
+   `llm` the pipeline uses bound and defaulted inputs only.
+3. Selection (System One): one `noul` per tool for multi-select plus an
+   explicit `none`, or a `choice` when only one can apply. Confidence below
    the threshold asks instead of acting.
-4. Mapping (System One): each value maps to a real catalog entry with a
-   `Choice`, in stages when the catalog exceeds the cardinality limit. Code
-   does no matching of values.
+4. Mapping (System One): each value maps to a closed set with a `choice`, in
+   stages when the set exceeds `mapping_stage_size` (ADR 0056). Code does no
+   matching of values.
 5. Verification (System One): whether the lines reflect the message; a
    signal, not a proof.
-6. Application (code): numbers and dates parsed from the literal span,
-   invariants checked, the tool applied, and a prescribed confirmation sent.
+6. Confirmation: an action that declares `confirm` is not applied. Its
+   arguments become a proposal in the node context and its prescribed body is
+   queued; the next message resolves it with one `choice` over confirm,
+   decline, and other, and the proposal is consumed with the write.
+7. Application (code): numbers and dates parsed from the literal span,
+   invariants checked, the tool applied, and its result messages sent.
 
 A handled message takes no edge and does not re-run entry actions, so a tool
 node serves many messages. Edges remain the only transitions, and a tool node
-declares its exits (`done`, `cancel`, human) instead of a catch-all default.
-Side effects wait for the confirmation.
+declares its exits (`done`, `cancel`, or any other intent) instead of a
+catch-all default. Escalation is not an exit: it is the graph's `escalate`
+node, which holds the chat for a person.
 
 ## Async requests
 
 APIs that answer asynchronously (202 plus a status endpoint) are polled
 within bounds: the LLM calls the operation, then checks its status up to its
 tool budget; longer waits continue on later messages. A deterministic polling
-step (interval, timeout, success condition) is an open decision for Phase 4/8.
+step — an interval, a timeout, and the statuses that mean the operation is
+still running, following `Location` when the response carries one — is decided
+but not implemented; it lands when a real async API needs it (`PLAN.md`).
 
 ## Webhooks
 

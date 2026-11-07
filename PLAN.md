@@ -641,62 +641,110 @@ Goal: System One becomes the primary AI path, prescribed replies are the
 default, and a generative LLM is an explicit opt-in for reading text and
 writing replies.
 
-Deliverables:
+The phase lands in two deliveries. The first is complete on its own: a bot with
+`system_one` and no `llm` — AI routing over prescribed replies — is the
+recommended shape (ADR 0032), not a half-built one. Routing is the smaller
+share of the work and most of the identity; the tool pipeline is the larger
+share and the riskiest part. Which of the two gates the MVP is a product
+decision, not a technical one.
 
-- [ ] Reconcile the interim contracts with ADR 0004 and ADR 0030 first: drop
-  `LLMProvider.Classify` (only `SystemOneProvider` decides transitions),
-  build the providers from config — `fleet` injects none today — and either
-  reject or clearly mark the config fields no runtime reads yet (`system_one`,
-  `shared`, `routing` on an `llm` profile, `tools`).
-- [ ] `SystemOneProvider` port and a Jev (TypeSafe) adapter: typed questions
-  with confidence, and the deterministic matcher first (ADR 0030).
-- [ ] `shared` and scope catalogs (`system_one`, `llms`): config types,
-  generated schema, `config/examples/reference.yml`, fixtures, and validation,
-  with a name resolving in the scope first and then in `shared` (ADR 0031).
-- [ ] Confidence-gated routing: a per-graph threshold decides between taking
-  the decision, the default edge, or escalation, and is logged per message.
-- [ ] Per-graph routing override: `off` | `fallback` | `always` (ADR 0030),
-  applied to System One; `always` gives it the decision even when a trigger
-  matches.
-- [ ] Prescribed replies as the default path: `body` messages with variants
-  chosen at random, and no provider required (ADR 0032).
-- [ ] Tool pipeline (ADR 0033): intake gate, LLM extraction of candidate
-  parameters validated against `inputs`, selection with one `Noul` per tool
-  plus an explicit `none`, mapping of values to catalog entries with a
-  `Choice`, and confidence thresholds.
-- [ ] Staying in the node: a handled tool message takes no edge and does not
-  re-run entry actions, and a tool node declares explicit exits instead of a
-  catch-all default.
-- [ ] Confirmation before side effects: the pipeline proposes, a prescribed
-  message confirms, and only then the tool writes.
-- [ ] Closed-set inputs: `inputs` declares the values System One maps against,
-  with staged mapping for catalogs beyond the `Choice` cardinality.
-- [ ] Numbers and dates parsed in code from the literal span; models never
-  compute them.
-- [ ] Opt-in generation (ADR 0032): `LLMProvider` implementations for reply
-  realization only (one cloud and one local), `body` plus `intent` anchored
-  and used as fallback, and policy checks before queueing.
-- [ ] Opt-in LLM tool loop (ADR 0033) for nodes whose calls a pipeline cannot
-  bound, sharing `inputs` validation and the edge rule.
-- [ ] Slot filling: a missing required input returns a tool error or asks the
-  user, and bound variables remember the answer; `bind` targets are validated
-  against node and graph `initial_context`.
-- [ ] Async APIs: LLM-driven polling within the tool budget (call, check
-  status, retry); longer waits continue on later messages.
-- [ ] Deterministic fallback when no provider is configured or a call fails:
-  routing degrades to triggers and the default edge.
-- [ ] Bounded calls: a timeout from the `system_one` `bounds`, and the tool
-  loop limits (max tools per message, timeout) from the `llms` `bounds`.
-- [ ] Per-message logging of node, intent, System One model (SOM), question,
-  answer, confidence, tools called, provider, and policy version.
-- [ ] Tests: provider fakes, decision cases with confidence thresholds, config
-  resolution across scope and `shared`, multi-select and mapping cases,
-  extraction validated against `inputs`, tool argument validation, policy
-  rejection fallback, and evaluation fixtures (golden conversations).
+Contracts are closed before implementation and none of them is decided in code:
+ADR 0030 (the decision standard's wire, question batches, threshold,
+escalation), ADR 0031 (catalogs, `shared`, providers, defaults), ADR 0055 (tool
+node lifecycle, exits, confirmation), ADR 0056 (inputs as closed sets). A
+requirement that turns out to need a new contract stops and goes back to an
+ADR.
 
-Gate: a graph runs deterministically, with System One routing plus prescribed
-replies, and with the tool pipeline handling a multi-message tool node, with
-logs that explain each decision. The generative path is optional.
+What must stay true, and which delivery owns it:
+
+- R1 (8A) A bot resolves its `system_one` and `llm` in its scope first and then
+  in `shared`; a reference that resolves nowhere fails validation.
+- R2 (8A) Routing is a decision, never generation: `SystemOneProvider` answers
+  a batch of typed questions over the standard's wire, and `LLMProvider` never
+  picks a transition. `LLMProvider.Classify` is deleted and `routing` under
+  `llms` is rejected.
+- R3 (8A) A confidence threshold chooses between the decision, the default
+  edge, the graph `fallback`, and escalation, and the choice is logged per
+  message. The gate reads the answer's own `confidence`, never the largest
+  probability.
+- R4 (8A) A graph may override the routing mode and the threshold of its
+  profile.
+- R5 (8A) Prescribed replies are the default path and need no provider; `body`
+  variants are chosen at random.
+- R6 (8B) A node with `tools` handles messages in place, declares its exits,
+  and runs its entry actions once.
+- R7 (8B) The pipeline runs gate, extraction, selection, mapping, and
+  application, and every applied value is either parsed by code or mapped to a
+  declared closed set.
+- R8 (8B) A side-effecting action proposes, a prescribed message confirms, and
+  only then does the tool write; an unconfirmed proposal never writes.
+- R9 (8B) Generation is opt-in: one adapter realizes a reply anchored on
+  `body`, and `off` or a failure falls back to the anchor.
+- R10 (8B) The LLM tool loop is opt-in per node and shares `inputs` validation
+  and the edge rule.
+- R11 (8A, widened by 8B) Every message logs node, intent, SOM model, question,
+  answer, and confidence; a tool message adds the tools called and the provider.
+- R12 (8A) A provider that is absent, slow, or failing degrades to triggers and
+  the default edge; a bot with no model runs deterministically.
+- R13 (8A) A decision call carries at most 64 questions and a `choice` at most
+  255 options, so the same configuration runs against any endpoint speaking the
+  standard.
+
+#### 8A — Intelligent routing
+
+The whole routing contract end to end: catalogs, one provider, the confidence
+gate, the modes, escalation, and the log line that explains each decision.
+
+- [ ] 8A.1 Scope-level routing. A bot with a `system_one` routes an unmatched
+  message through a System One endpoint and the confidence threshold.
+  Acceptance: an answer at 0.9 takes the transition and at 0.4 does not; a
+  provider error falls back to triggers; `routing` under `llms` fails
+  validation; the interim `Classify` port is gone.
+- [ ] 8A.2 Shared catalog, modes, escalation, and the decision log. Acceptance:
+  a scope entry wins over `shared`; `always` decides before a matching trigger;
+  below the threshold with no default edge and no `fallback` node the graph
+  enters `escalate` and the chat is held for a human; one log line carries
+  node, question, answer, and confidence; pointing `base_url`, `model`, and the
+  key at a second endpoint needs no code change.
+
+Gate A: `make check`, `make schema`, and `make validate` on the reference
+config pass, and a bot with `system_one` and no `llm` routes by decision over
+prescribed replies, degrades to triggers when the endpoint fails, and logs what
+took the transition. No tool, no generated text.
+
+#### 8B — Tools and generation
+
+Everything a node does beyond choosing an edge: reading free text, mapping it
+to declared values, writing with confirmation, and realizing text when asked.
+
+- [ ] 8B.1 Opt-in realization. Acceptance: `auto` realizes a message that
+  declares `intent`; a failing provider or `off` sends the anchor `body`; an
+  intent-only message on a bot with no `llm` fails validation.
+- [ ] 8B.2 Tool pipeline in a node that stays. Acceptance: entry actions run
+  once across three messages; an inline closed set resolves to one id; an
+  unmappable value asks instead of acting; a message the gate rejects takes no
+  edge.
+- [ ] 8B.3 Confirmation before side effects. Acceptance: nothing is written
+  before the confirmation, once on `confirm`, nothing on `decline`, nothing
+  after expiry, and never twice on a redelivery.
+- [ ] 8B.4 Opt-in tool loop and async calls. Acceptance: a loop node applies at
+  most `max_tools_per_message` calls and takes no undeclared edge; a
+  202-then-status flow resolves inside the tool budget and otherwise continues
+  on a later message.
+
+Gate B: a multi-message tool node is handled through the pipeline with a
+confirmation before its write, and its log lines name the tools called and the
+provider. The generative path stays optional.
+
+Phase gate: gate A and gate B pass. Gate A is the product; gate B is the
+capability.
+
+Non-goals: the deterministic polling step (its shape is decided; it lands when
+a real async API needs it), selecting a reply variant by decision (separate
+nodes for now), `actions` or `graphs` in `shared`, any second System One or chat
+provider, and the parts of the decision standard this project does not use —
+media and asset inputs, `box` questions — so no configured endpoint is required
+to support them.
 
 ### Phase 9 — MVP hardening and release
 
@@ -738,25 +786,12 @@ and application-level evolution are outside its commitments (ADR 0046).
 - Schema generator choice and approval (Phase 1; candidate:
   `invopop/jsonschema`).
 - Structured policy shape and conflict precedence (Phase 4; free string now).
-- Tool result template syntax (close in Phase 4/8).
-- Deterministic polling step shape for async APIs: interval, timeout,
-  success condition (Phase 4/8).
+- Deterministic polling step shape for async APIs: a `request.poll` carrying
+  an interval, a timeout, and the statuses that mean "still working",
+  following the `Location` header when the response has one and never an
+  expression language. It lands when a real async API needs it.
 - Context variable typing and empty-versus-default semantics (Phase 4).
-- Confirmation guard for tools with side effects (Phase 8).
-- Adopt TypeSafe Jev as the first System One implementation (early access):
-  confirm access and pricing before Phase 8 starts (ADR 0030).
-- System One confidence threshold: default and per-graph override (Phase 8).
-- Closed-set inputs: how `inputs` declares the values for mapping, and the
-  staging threshold for large catalogs (Phase 8; ADR 0033).
-- Whether extraction runs on every tool message or only when the intake gate
-  asks for it (Phase 8; ADR 0033).
-- Selecting a reply variant with a decision, or separate nodes for now
-  (Phase 8; ADR 0032).
-- Whether `shared` may ever carry `actions` or `graphs`, and the governance
-  that would need (Phase 8/15).
 - How export and import inline a scope's reference to `shared` (Phase 18).
-- LLM bounds defaults: max tools per message and timeout (Phase 8).
-- Which LLM providers ship first for realization (close in Phase 8).
 - TBD — resource policy, usage durability, periods, storage exhaustion, and
   provisioning contracts (Phase 7; `docs/access-policy.md`).
 - TBD — shared resource use between scopes: CPU, memory, and fairness
@@ -787,6 +822,14 @@ decision-only via System One (ADR 0030), model catalogs are scoped with a
 shared host catalog (ADR 0031), prescribed replies are the default (ADR
 0032), and tools run through the pipeline of ADR 0033, where verification is a
 System One role.
+Phase 8's contracts are closed in ADR 0030, ADR 0031, ADR 0055, and ADR 0056:
+the decision wire is a published standard, so an endpoint swap is a profile
+edit and a decision is one state plus a batch of typed questions; the threshold
+is overridable per graph and escalation is a declared node; providers,
+defaults, and `shared` resolution are fixed; a tool node stays, declares its
+exits, and confirms before a side effect; and tool inputs are free or closed
+sets. The intake gate decides whether extraction runs, and a reply variant is
+chosen by routing to a node, never by a decision.
 
 Dependencies in use: `go.yaml.in/yaml/v3` (the maintained successor of
 `gopkg.in/yaml.v3`), `github.com/invopop/jsonschema`, the pure-Go SQLite

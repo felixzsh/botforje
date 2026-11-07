@@ -38,11 +38,21 @@
 - Graph context — graph-run-wide variables; persist across nodes.
 - Visited nodes — ordered list of nodes visited in a session, current last;
   used for routing and as LLM context.
-- Tool pipeline — the default tool mode: the LLM extracts candidate
-  parameters from the message, System One selects tools and maps values to
-  real catalog entries, and code validates and applies.
+- Tool pipeline — the default tool mode: System One gates the message, the
+  LLM extracts candidate parameters from it, System One selects tools and maps
+  values to real catalog entries, and code validates and applies.
 - Tool loop — the LLM-driven tool mode, the alternative to the tool pipeline
-  for nodes a pipeline cannot bound.
+  for nodes a pipeline cannot bound (`tool_mode: loop`).
+- Closed set — the declared values a tool input accepts: `choices` written in
+  config, or a runtime `catalog` a template resolves. The model picks one and
+  code never matches text to a value (ADR 0056).
+- Staged mapping — mapping a value against a closed set too large for one
+  question, in bounded stages that still resolve exactly one entry.
+- Confirmation — the prescribed message and the pending proposal that must be
+  accepted before a side-effecting tool writes; declaring `confirm` is what
+  marks the side effect (ADR 0055).
+- Escalation — entering a graph's `escalate` node and holding the chat for a
+  person, instead of guessing or taking a default edge (ADR 0030, ADR 0043).
 - Step — single operation inside an action.
 - Guard — rule that limits how often an action runs per contact, such as a
   cooldown (minimum interval) or a rate limit (maximum per window).
@@ -119,8 +129,9 @@
 - System One model (SOM) — a model class that answers typed questions with calibrated
   confidence instead of generating text; the project's main AI path. Its three
   question types are `choice` (pick one option), `score` (rate on a rubric)
-  and `noul` (probability that a statement is true). Jev (TypeSafe) is the
-  first implementation.
+  and `noul` (probability that a statement is true). The wire is a published
+  standard: one state and a batch of typed questions in, a probability per
+  allowed option out, and no generated text in between (ADR 0030).
 - LLM — a named model profile (provider, model, credentials, realization
   defaults, bounds); a bot references one with `llm` or replies from
   prescribed bodies without it.

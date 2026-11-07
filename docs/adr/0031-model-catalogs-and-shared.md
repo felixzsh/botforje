@@ -27,12 +27,13 @@ by name with `system_one` and `llm`, next to `graph`. The instance holds a
 shared:
   system_one:
     default:
-      provider: "typesafe"
-      model: "jev-latest"
-      api_key: "${TYPESAFE_API_KEY}"
+      provider: "systemone"
+      base_url: "https://api.example.com/v1/systemone"
+      model: "clef"
+      api_key: "${DECISION_API_KEY}"
       routing: "fallback"        # off | fallback | always
       confidence_threshold: 0.6
-      bounds: { timeout: 2000 }  # milliseconds
+      bounds: { timeout: 2000 }  # milliseconds, measured against a real endpoint
   llms:
     standard:
       provider: "openai"
@@ -44,7 +45,7 @@ shared:
 scopes:
   support:
     # system_one:
-    #   default: { api_key: "${SUPPORT_TYPESAFE_KEY}" }  # scope wins
+    #   default: { api_key: "${SUPPORT_CLEF_KEY}" }  # scope wins
     bots:
       support-bot:
         graph: "faq-support"
@@ -62,16 +63,48 @@ Resolution and rules:
   story.
 - `shared` lives in the main file only for now.
 - `system_one.<name>`: `provider` and `model` required; `routing` and
-  `confidence_threshold` default here and a graph may override `routing`
-  (ADR 0030); `bounds` holds the call timeout.
+  `confidence_threshold` default here, and a graph may override both
+  (ADR 0030); `bounds` holds the call timeout and `mapping_stage_size`
+  (ADR 0056).
 - `llms.<name>`: `provider` and `model` required; `realization` and `bounds`;
-  no `routing`.
+  no `routing` — routing belongs to `system_one` and a `routing` key under
+  `llms` is rejected, not ignored.
+- `provider` is an identifier the binary must be able to build, never a
+  free-form vendor string: a config naming one it cannot build fails
+  validation before any bot starts. Two ship. `systemone` is the decision
+  model, and it requires `base_url` because every endpoint is someone else's
+  choice: the standard's own host, a proxy, or a gateway. `openai` and
+  `openai_compatible` are one OpenAI-compatible chat adapter, the first with
+  the public endpoint by default and the second requiring `base_url`, which is
+  how a host-run gateway is configured.
+- A decision model is always reached over an API, never run in-process, so
+  `api_key` is required for `system_one`. An `llm` may omit it only when its
+  endpoint needs none.
+- Defaults, when a field is omitted or zero: `routing: fallback` and
+  `confidence_threshold: 0.6` on `system_one`, with `bounds.timeout: 2000` ms —
+  a measured number, six times the median routing call, not a guess; and
+  `realization: auto`, `bounds.max_tools_per_message: 3`, `bounds.timeout:
+  30000` ms on `llms`. `auto` realizes only a message that declares `intent`,
+  and `off` never does. A negative value is a validation error.
+- An `intent`-only message with no `body`, reachable by a bot that resolves no
+  `llm`, is a validation error: it has no fallback text to send.
 - Model profile keys remain their identifiers. An optional `display_name`
-  supplies a UI label; when absent or empty, the interface uses the key. Apply
-  this to scoped and shared `system_one`/`llms` entries when the shared catalog
-  lands.
+  supplies a UI label; when absent or empty, the interface uses the key, for
+  scoped and shared entries alike.
 - `provider` and `model` are required; `api_key` is optional for local
   providers.
+- `shared` belongs to the instance, so a `${NAME}` in it resolves from the
+  process environment only: a scope's secret catalog (ADR 0049) never covers
+  it. A scope entry that overrides a shared profile keeps resolving from that
+  scope's own catalog.
+- A change to `shared` changes every bot that resolves there, so it is an
+  instance change: it takes effect on restart, like the other instance
+  settings, and never as a live per-bot re-resolution.
+- A model call is outbound HTTP, so it obeys the instance egress policy
+  (ADR 0048) like a `request` step: under `public_only`, an endpoint that does
+  not resolve publicly is refused, and the error names the endpoint and the
+  policy. A decision endpoint is always remote, so this bites an `llm` pointed
+  at a private host, not a `system_one`.
 - A bot with neither `system_one` nor `llm` runs deterministically. A
   `system_one` without an `llm` routes with AI and replies from prescribed
   bodies; this is the recommended shape (ADR 0032).
@@ -81,6 +114,10 @@ Resolution and rules:
 - A host defines a provider once; a scope overrides it with its own key or
   stays self-contained, so a scope still exports on its own.
 - `routing` lives on `system_one`; `realization` stays on `llms`.
+- One adapter covers cloud and local chat: the provider identifier chooses the
+  endpoint, not a second code path.
+- Exchanging one decision model for another is a profile edit: the standard is
+  the interface, so a different vendor, a proxy, or a gateway costs no code.
 - System One and LLM are configured and operated separately.
 - `shared` is one concept, not a second kind of scope: lists, quotas, and
   scoped authority stay scope-only with no exceptions.

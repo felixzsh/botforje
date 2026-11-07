@@ -26,6 +26,7 @@ hosting platform:
 - CLI: `config` and `bot` groups, plus `fleet`.
 - REST API with token-based auth.
 - Hybrid AI support designed in from the start: deterministic routing works
-  with no model configured; System One (Jev) routes and decides tools,
+  with no model configured; System One (Clef today, any compatible endpoint)
+  routes and decides tools,
   prescribed replies are the default, and an LLM reads free text and realizes
   replies only when enabled.
