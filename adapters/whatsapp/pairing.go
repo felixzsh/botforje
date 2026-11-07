@@ -449,8 +449,9 @@ func (m *PairManager) CancelSetup(
 
 // publishLocked copies the session for its reader, deriving the pending step
 // from the latest challenge or from a step the companion reported and cannot
-// answer. The payload rotates: each new code bumps the revision, so rotation
-// is observable separately from the session deadline (ADR 0053).
+// answer; a reported pending step wins over any later challenge. The payload
+// rotates: each new code bumps the revision, so rotation is observable
+// separately from the session deadline (ADR 0053).
 func (m *PairManager) publishLocked(session *pairingSession) *botflota.SetupSession {
 	published := session.neutral
 	if session.neutral.Final() {

@@ -216,6 +216,7 @@ func driveBind(
 	reader := bufio.NewReader(stdin)
 	lastDisplay := ""
 	lastApproval := ""
+	lastApprovalRevision := int64(0)
 	for {
 		switch session.State {
 		case "succeeded":
@@ -243,14 +244,17 @@ func driveBind(
 				}
 				time.Sleep(bindPollInterval)
 			case "approval":
-				// The step stays pending across polls, so it is announced
-				// once rather than burying the challenge above it
+				// A poll of the same state stays quiet, so the announcement
+				// never buries the challenge above it; a genuinely new one —
+				// a changed instruction or a new revision — prints
 				// (ADR 0028, ADR 0053).
 				if session.Step.Approval != nil {
 					announcement := approvalAnnouncement(session.Step.Approval)
-					if announcement != lastApproval {
+					if announcement != lastApproval ||
+						session.Revision != lastApprovalRevision {
 						fmt.Fprint(stdout, announcement)
 						lastApproval = announcement
+						lastApprovalRevision = session.Revision
 					}
 				}
 				time.Sleep(bindPollInterval)

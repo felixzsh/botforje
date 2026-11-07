@@ -54,7 +54,9 @@ own, and the setup session reports its own expiry as a state instead of waiting
 for it. If the provider asks the companion itself for the passkey during a code
 link, the session says so and the phone can still finish that step. A QR link
 has no such phone: for that method the session states that the account cannot
-be linked from here. That is a coverage limit, not a retry loop (ADR 0028).
+be linked from here and stops offering new QR challenges until it expires, so
+the report never turns into another scan that fails the same way. That is a
+coverage limit, not a retry loop (ADR 0028).
 
 `bot bind` and `bot unbind` adapt to a running instance: while `fleet run` owns
 the instance both drive its API — the QR comes from the setup session, the bot

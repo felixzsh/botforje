@@ -93,17 +93,19 @@ func (m *PairManager) setCode(key botflota.BotRef, code string) {
 		return
 	}
 	session.code = code
-	// A fresh challenge is a new chance to finish the link, so it replaces a
-	// reported pending step; the state still says the owner must act elsewhere
-	// (ADR 0028).
-	hadPending := session.pending != ""
-	session.pending = ""
 	switch {
 	case session.neutral.Method == SetupMethodCode:
+		// A fresh code is a new chance to finish the link, so it replaces a
+		// reported pending step; the state still says the owner must act
+		// elsewhere (ADR 0028).
+		session.pending = ""
 		session.neutral.State = botflota.SetupAwaitingApproval
-	case session.neutral.State == botflota.SetupStarting || hadPending:
+	case session.neutral.State == botflota.SetupStarting:
 		session.neutral.State = botflota.SetupAwaitingInput
 	}
+	// A QR rotation is not a new chance: the pending step stays the reported
+	// state, and publishLocked keeps answering it instead of a challenge that
+	// would fail the same way (ADR 0028).
 	m.bumpLocked(session)
 }
 

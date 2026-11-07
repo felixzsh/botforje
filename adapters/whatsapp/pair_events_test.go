@@ -57,10 +57,11 @@ func TestPairEventsWiring(t *testing.T) {
 			wantResult:  true,
 		},
 		{
-			// This companion never sends a WebAuthn response, so a
-			// confirmation has no handoff to make and must not resolve
-			// the attempt (ADR 0028).
-			name:   "passkey confirmation does not resolve the attempt",
+			// The provider emits this only after a WebAuthn response, which
+			// this companion never sends, so a healthy flow cannot reach it.
+			// The case pins that a stray one still does not resolve the
+			// attempt.
+			name:   "stray passkey confirmation does not resolve the attempt",
 			events: []whatsmeow.QRChannelItem{{Event: whatsmeow.QRChannelEventPasskeyResponse}},
 		},
 		{

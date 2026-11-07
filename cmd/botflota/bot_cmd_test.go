@@ -202,13 +202,22 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 			case r.Method == http.MethodGet &&
 				r.URL.Path == "/api/v1/scopes/dev/bots/alpha/binding/setups/s1":
 				reads++
-				if reads <= 2 {
+				switch reads {
+				case 1, 2:
 					// The phone needs its passkey step; the same pending
-					// report survives both polls.
+					// state survives both polls and is announced once.
 					writeJSON(w, http.StatusOK, `{"id":"s1","method":"code",`+
 						`"state":"awaiting_approval","revision":3,`+
 						`"step":{"kind":"approval","approval":{"instruction":`+
 						`"Finish the step on the phone that is linking."}}}`)
+					return
+				case 3:
+					// A genuinely new announcement: another revision and
+					// another instruction.
+					writeJSON(w, http.StatusOK, `{"id":"s1","method":"code",`+
+						`"state":"awaiting_approval","revision":4,`+
+						`"step":{"kind":"approval","approval":{"instruction":`+
+						`"Check the phone; the passkey step expired."}}}`)
 					return
 				}
 				writeJSON(w, http.StatusOK, bindSucceededSession)
@@ -229,7 +238,7 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
-	if reads < 2 {
+	if reads < 3 {
 		t.Fatalf("reads = %d, want the command to follow the pending session", reads)
 	}
 	if !strings.Contains(begun, `"method":"code"`) ||
@@ -243,11 +252,16 @@ func TestBindThroughAPIPairingCodeStep(t *testing.T) {
 		}
 	}
 	// The pending step survived two polls: it is announced once, so the code
-	// above it stays readable.
-	if got := strings.Count(out.String(),
-		"Finish the step on the phone that is linking."); got != 1 {
-		t.Fatalf("the pending instruction was printed %d times:\n%s", got,
-			out.String())
+	// above it stays readable, while a new revision with a new instruction
+	// prints once of its own.
+	for want, times := range map[string]int{
+		"Finish the step on the phone that is linking.": 1,
+		"Check the phone; the passkey step expired.":    1,
+	} {
+		if got := strings.Count(out.String(), want); got != times {
+			t.Fatalf("the announcement %q was printed %d times, want %d:\n%s",
+				want, got, times, out.String())
+		}
 	}
 }
 
