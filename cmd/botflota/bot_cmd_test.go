@@ -609,6 +609,7 @@ func TestBindForceUnsupportedMethodKeepsBinding(t *testing.T) {
 // the stub pair, so the offline flow is driven through the real registry.
 func fakeOfflineInstallations(
 	lifecycle *stubOfflineLifecycle, runner *stubOfflineRunner, opened *bool,
+	roots *[]string,
 ) []channels.Installation {
 	def := channels.Definition{
 		Provider: "fake",
@@ -617,9 +618,12 @@ func fakeOfflineInstallations(
 		Decode: func(spec.Bot) (any, []string) {
 			return nil, nil
 		},
-		Setup: func(channels.Bind) (
+		Setup: func(bind channels.Bind) (
 			botflota.AccountLifecycle, botflota.SetupRunner, error,
 		) {
+			if roots != nil {
+				*roots = append(*roots, bind.FileRoot)
+			}
 			return lifecycle, runner, nil
 		},
 	}
@@ -644,17 +648,25 @@ func TestBindOfflineUsesTheRegisteredAssembly(t *testing.T) {
 		Revision: 1,
 	}}
 	var opened bool
-	cfg := &config.Config{DataDir: t.TempDir()}
+	var roots []string
+	root := t.TempDir()
+	cfg := &config.Config{
+		DataDir:   t.TempDir(),
+		FileRoots: map[string]string{"dev": root},
+	}
 	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
 	var out bytes.Buffer
 	code := bindOffline(&out, strings.NewReader(""), cfg,
 		"dev", "alpha", botSpec, bindOptions{}, false,
-		fakeOfflineInstallations(lifecycle, runner, &opened))
+		fakeOfflineInstallations(lifecycle, runner, &opened, &roots))
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	if !opened {
 		t.Fatal("the registered fake assembly was not selected")
+	}
+	if len(roots) != 1 || roots[0] != root {
+		t.Fatalf("bind file roots = %v, want the scope's %q", roots, root)
 	}
 	if runner.began != 1 {
 		t.Fatalf("began = %d, want the fake runner's session", runner.began)
@@ -681,16 +693,24 @@ func TestUnbindOfflineUsesTheRegisteredAssembly(t *testing.T) {
 	}}
 	runner := &stubOfflineRunner{}
 	var opened bool
-	cfg := &config.Config{DataDir: t.TempDir()}
+	var roots []string
+	root := t.TempDir()
+	cfg := &config.Config{
+		DataDir:   t.TempDir(),
+		FileRoots: map[string]string{"dev": root},
+	}
 	botSpec := spec.Bot{Channel: spec.Channel{Provider: "fake", Mode: "test"}}
 	var out bytes.Buffer
 	code := unbindOffline(&out, cfg, "dev", "alpha", botSpec,
-		fakeOfflineInstallations(lifecycle, runner, &opened))
+		fakeOfflineInstallations(lifecycle, runner, &opened, &roots))
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	if !opened {
 		t.Fatal("the registered fake assembly was not selected")
+	}
+	if len(roots) != 1 || roots[0] != root {
+		t.Fatalf("bind file roots = %v, want the scope's %q", roots, root)
 	}
 	if lifecycle.detached != 1 {
 		t.Fatalf("detached = %d, want one detach", lifecycle.detached)
