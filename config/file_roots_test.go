@@ -150,9 +150,11 @@ func TestValidateFileRoots(t *testing.T) {
 	}
 }
 
-// TestMediaPathUnderFileRoot pins the early half of ADR 0047: under a root a
-// literal absolute path is rejected at validation, while the reader still
-// enforces the rule for a templated one.
+// TestMediaPathUnderFileRoot pins the early half of ADR 0047: under a root an
+// absolute path is rejected at validation, including one whose tail is a
+// runtime `{{...}}` reference. Whether a whole-value reference lands inside
+// the root is the reader's call, and a `${...}` in a path is a secret
+// reference, refused on its own (ADR 0014).
 func TestMediaPathUnderFileRoot(t *testing.T) {
 	root := t.TempDir()
 	cases := []struct {
@@ -163,9 +165,15 @@ func TestMediaPathUnderFileRoot(t *testing.T) {
 	}{
 		{name: "absolute path under a root", root: root,
 			path: "/etc/passwd", want: "is absolute"},
+		{name: "absolute path with a runtime reference", root: root,
+			path: "/data/{{bot.id}}.png", want: "is absolute"},
+		{name: "secret reference in an absolute path", root: root,
+			path: "/data/${MEDIA}", want: "is absolute"},
 		{name: "relative path under a root", root: root, path: "uploads/photo.png"},
-		{name: "templated path under a root", root: root,
-			path: "{{node.file}}"},
+		{name: "relative path with a runtime reference", root: root,
+			path: "media/{{bot.id}}.png"},
+		{name: "whole-value runtime reference under a root", root: root,
+			path: "{{bot.id}}"},
 		{name: "absolute path without a root keeps today's behavior",
 			path: "/etc/passwd"},
 	}
@@ -187,11 +195,27 @@ func TestMediaPathUnderFileRoot(t *testing.T) {
 				found = found || strings.Contains(e.Error(), tc.want)
 			}
 			if tc.want == "" && found {
-				t.Fatalf("media path %q was refused under its root: %v", tc.path, errs)
+				t.Fatalf("media path %q was refused as absolute under its root: %v",
+					tc.path, errs)
 			}
 			if tc.want != "" && !found {
 				t.Fatalf("no error mentions %q; got %v", tc.want, errs)
 			}
 		})
+	}
+}
+
+// TestFileRootsOnlyInTheMainFile: a fragment is scopes only, so neither an
+// include nor a publication can set, change, or remove a root (ADR 0047).
+func TestFileRootsOnlyInTheMainFile(t *testing.T) {
+	dir := t.TempDir()
+	root := t.TempDir()
+	writeTemp(t, dir, "fragment.yml",
+		"file_roots:\n  mine: \""+root+"\"\n")
+	main := writeTemp(t, dir, "config.yml",
+		"include:\n  - fragment.yml\nscopes:\n  mine: {}\n")
+	_, err := testLoader().Load(main)
+	if err == nil || !strings.Contains(err.Error(), "file_roots") {
+		t.Fatalf("load = %v, want the fragment's file_roots refused", err)
 	}
 }

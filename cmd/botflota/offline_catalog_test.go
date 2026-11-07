@@ -37,7 +37,7 @@ func TestOfflineChannelCatalogSelectsTheBotChannel(t *testing.T) {
 			chosen.opened, other.opened)
 	}
 	_, gotRunner, err := resolveOfflineSetup(
-		catalog, "dev", "alpha", botSpec, botflota.DiscardLogger())
+		catalog, "dev", "alpha", botSpec, "", botflota.DiscardLogger())
 	if err != nil {
 		t.Fatalf("resolveOfflineSetup: %v", err)
 	}

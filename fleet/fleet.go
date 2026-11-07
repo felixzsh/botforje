@@ -243,7 +243,7 @@ func (f *Fleet) buildBot(scopeName, botName string) (*Bot, error) {
 	}
 	channel, err := def.Build(channels.Bind{
 		Scope: scopeName, Bot: botName, Options: options,
-		FileRoot: cfg.FileRoots[scopeName], Log: botLog,
+		FileRoot: cfg.FileRootOf(scopeName), Log: botLog,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fleet: channel for %q: %w", botName, err)
@@ -329,7 +329,8 @@ func (f *Fleet) prepareBot(
 			"fleet: bot %q channel: %s", botName, strings.Join(reasons, "; "))
 	}
 	return def.Prepare(ctx, channels.Bind{
-		Scope: scopeName, Bot: botName, Options: options, Log: f.opts.Log,
+		Scope: scopeName, Bot: botName, Options: options,
+		FileRoot: f.cfg.FileRootOf(scopeName), Log: f.opts.Log,
 	})
 }
 
@@ -363,7 +364,8 @@ func (f *Fleet) SetupFor(
 			"fleet: bot %q channel: %s", botName, strings.Join(reasons, "; "))
 	}
 	return def.Setup(channels.Bind{
-		Scope: scopeName, Bot: botName, Options: options, Log: f.opts.Log,
+		Scope: scopeName, Bot: botName, Options: options,
+		FileRoot: f.cfg.FileRootOf(scopeName), Log: f.opts.Log,
 	})
 }
 

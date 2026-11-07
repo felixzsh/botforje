@@ -738,7 +738,8 @@ func offlineChannelCatalog(
 // catalog and returns its neutral lifecycle and setup runner, decoding the
 // bot's options without opening anything further (ADR 0052, ADR 0053).
 func resolveOfflineSetup(
-	catalog *channels.Catalog, scope, bot string, botSpec spec.Bot, log *slog.Logger,
+	catalog *channels.Catalog, scope, bot string, botSpec spec.Bot, fileRoot string,
+	log *slog.Logger,
 ) (botflota.AccountLifecycle, botflota.SetupRunner, error) {
 	def, _, err := catalog.Resolve(botSpec.Channel)
 	if err != nil {
@@ -759,7 +760,7 @@ func resolveOfflineSetup(
 		}
 	}
 	return def.Setup(channels.Bind{
-		Scope: scope, Bot: bot, Options: options, Log: log,
+		Scope: scope, Bot: bot, Options: options, FileRoot: fileRoot, Log: log,
 	})
 }
 
@@ -787,7 +788,7 @@ func bindOffline(
 	}
 	defer runtimes.Close()
 	lifecycle, runner, err := resolveOfflineSetup(
-		catalog, scopeName, botName, botSpec, logger)
+		catalog, scopeName, botName, botSpec, cfg.FileRootOf(scopeName), logger)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -816,7 +817,7 @@ func unbindOffline(
 	}
 	defer runtimes.Close()
 	lifecycle, _, err := resolveOfflineSetup(
-		catalog, scopeName, botName, botSpec, logger)
+		catalog, scopeName, botName, botSpec, cfg.FileRootOf(scopeName), logger)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

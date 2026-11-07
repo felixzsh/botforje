@@ -117,6 +117,13 @@ func (c *Config) WriteFile(path string) error {
 // what to watch (ADR 0009).
 func (c *Config) Files() []string { return slices.Clone(c.files) }
 
+// FileRootOf returns the owner-set local file root for one scope, empty when
+// that scope declares none. Every bind built from an instance configuration
+// carries this value, so a reader added later inherits the scope's bound
+// instead of an unconfined default; an empty result is the scope's declared
+// state, not a plumbing step someone skipped (ADR 0047).
+func (c *Config) FileRootOf(scope string) string { return c.FileRoots[scope] }
+
 // WatchPaths includes loaded files and include directories, so a watcher also
 // notices a new file matching a glob or directory include.
 func (c *Config) WatchPaths() []string { return slices.Clone(c.watchPaths) }

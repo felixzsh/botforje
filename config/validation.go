@@ -309,10 +309,10 @@ func validateMedia(file, entity, prefix string, i int, m spec.Media, add addErro
 	case m.URL != "" && m.Path != "":
 		add(file, entity, "%sstep %d: media cannot set both url and path", prefix, i)
 	}
-	// A templated path resolves later; the reader refuses it at the open. A
-	// literal absolute one is already wrong under a root (ADR 0047).
-	if root != "" && m.Path != "" && !strings.Contains(m.Path, "${") &&
-		filepath.IsAbs(m.Path) {
+	// A `{{...}}` reference resolves later, so whether it lands inside the root
+	// is the reader's call; an absolute path is already wrong here. A `${...}`
+	// in a path is a secret reference, reported on its own (ADR 0014, 0047).
+	if root != "" && m.Path != "" && filepath.IsAbs(m.Path) {
 		add(file, entity,
 			"%sstep %d: media path %q is absolute; it is read relative to the scope's file root",
 			prefix, i, m.Path)
