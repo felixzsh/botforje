@@ -111,8 +111,9 @@ gates remain unchecked until code and tests land.
 **Trusted auxiliary endpoints wait for their decision.** A managed local
 channel endpoint (for example a SimpleX websocket) is not an action URL; it
 needs its own trusted-connection boundary before one is added. ADRs 0047–0049
-are accepted but not implemented, so no confinement or egress protection is
-assumed.
+are implemented as owner-managed settings, so a scope's file root, egress, and
+secret names are bounded only where the instance declares them; nothing is
+assumed by default.
 
 This pending decision includes service/store ownership, grouping of bindings,
 exclusive command coordination, shutdown, and overload/replay behavior for a

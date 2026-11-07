@@ -255,5 +255,6 @@ adapter; fakes use synthetic inputs:
   credential type. Owner: ADR 0053.
 - Trusted auxiliary endpoint and profile deployment. Owner: ADR 0054.
 - A scoped caller must never choose arbitrary server paths, databases,
-  or unmanaged endpoints. Do not assume ADR 0047–0049's file-root,
-  egress, or secret-catalog protections are implemented.
+  or unmanaged endpoints. ADR 0047–0049's file-root, egress, and
+  secret-catalog protections are implemented but opt-in: an instance that
+  declares none of them confines nothing.
