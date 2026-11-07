@@ -310,6 +310,65 @@ func TestSetupNewChallengeReplacesAPendingStep(t *testing.T) {
 	}
 }
 
+// TestSetupQRRotationKeepsThePendingStep: on a QR link a rotation is not a new
+// chance to finish, so the session keeps answering the reported instruction
+// and publishes no further challenge that would fail the same way (ADR 0028).
+func TestSetupQRRotationKeepsThePendingStep(t *testing.T) {
+	given := make(chan PairOptions, 1)
+	manager, _ := testSetupManager(t, PairManagerOptions{})
+	manager.pair = func(ctx context.Context, opts PairOptions) (PairResult, error) {
+		given <- opts
+		<-ctx.Done()
+		return PairResult{}, ctx.Err()
+	}
+	started, err := manager.BeginSetup(context.Background(), "dev", "alpha",
+		botflota.SetupBegin{Method: SetupMethodQR, RequestKey: "key-1"})
+	if err != nil {
+		t.Fatalf("BeginSetup: %v", err)
+	}
+	opts := <-given
+
+	opts.OnCode("qr-1")
+	first := waitSession(t, manager, "dev", "alpha", started.ID,
+		func(session *botflota.SetupSession) bool {
+			return session.Step != nil && session.Step.Display != nil &&
+				session.Step.Display.Payload == "qr-1"
+		})
+	if first.Step.Display.Format != botflota.SetupDisplayQR {
+		t.Fatalf("display = %#v, want the scanned QR challenge", first.Step.Display)
+	}
+	opts.OnPending()
+	pending := waitSession(t, manager, "dev", "alpha", started.ID,
+		func(session *botflota.SetupSession) bool {
+			return session.Step != nil &&
+				session.Step.Kind == botflota.SetupStepApproval
+		})
+	instruction := pending.Step.Approval.Instruction
+
+	// The provider keeps rotating challenges after it asked for the passkey.
+	opts.OnCode("qr-2")
+	rotated := waitSession(t, manager, "dev", "alpha", started.ID,
+		func(session *botflota.SetupSession) bool {
+			return session.Revision > pending.Revision
+		})
+	if rotated.Step == nil ||
+		rotated.Step.Kind != botflota.SetupStepApproval ||
+		rotated.Step.Approval == nil ||
+		rotated.Step.Approval.Instruction != instruction {
+		t.Fatalf("step after rotation = %#v, want the same pending instruction",
+			rotated.Step)
+	}
+	for i := 0; i < 5; i++ {
+		current := readNeutral(t, manager, "dev", "alpha", started.ID)
+		if current.Step == nil ||
+			current.Step.Kind != botflota.SetupStepApproval {
+			t.Fatalf("rotation published %#v, want no new challenge",
+				current.Step)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // TestSetupRequirementsNameTheCodePhone: discovery answers what each method
 // needs to begin, so a client does not have to learn the phone requirement
 // from a rejected request (ADR 0053).
